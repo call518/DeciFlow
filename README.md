@@ -196,7 +196,6 @@ docker run --detach \
   --name deciflow \
   --init \
   --restart unless-stopped \
-  --env-file .env \
   --mount "type=bind,src=$(pwd),dst=/app,readonly" \
   --mount type=volume,src=deciflow-venv,dst=/opt/deciflow-venv \
   --publish 127.0.0.1:4000:4000 \
@@ -211,16 +210,16 @@ the publish address to the DeciFlow host's IP.
 
 Use a Laya URL reachable from the container; `127.0.0.1` names the container,
 not the host or remote Laya server. Sidebar host/OS/IP information describes the
-container. `.env` is supplied at startup and excluded from the image. After
-changing `.env`, recreate the container:
+container. DeciFlow reads the mounted `/app/.env` on each startup; settings supplied
+with Docker `--env` take precedence. Restart after changing `.env`:
 
 ```bash
-docker logs deciflow
-docker stop deciflow
-docker rm deciflow
+docker restart deciflow
 ```
 
-Run the `docker run` command again to apply updated settings.
+Existing containers created with `--env-file .env` must be recreated once using
+the command above and the rebuilt image. Port mappings and mounts still require
+container recreation when changed.
 For source changes or a different Git version, restart with `docker restart deciflow`;
 no image rebuild is needed. Refresh the browser after UI changes. Rebuild the image
 only when changing the Dockerfile’s runtime. Stop DeciFlow before switching versions.
@@ -228,7 +227,7 @@ only when changing the Dockerfile’s runtime. Stop DeciFlow before switching ve
 For ngrok/reverse-proxy file access, set `DECIFLOW_CSRF_TRUSTED_ORIGINS` to the
 UI origin, e.g. `https://your-domain.ngrok-free.app`, or
 `https://*.ngrok-free.app` for changing ngrok domains (no trailing slash),
-and recreate the container. Empty allows file access only through localhost.
+and restart the container. Empty allows file access only through localhost.
 This setting controls the CSRF Origin check, not CORS, login authentication, or
 CSRF token validation. Wildcards also trust other users’ subdomains; protect public
 access with proxy authentication.
@@ -323,6 +322,9 @@ not a successful connection to the decision engine.
 | Realtime | New lines after existing files' end; new/replacement files from the beginning |
 | Batch | Matching files from the beginning to EOF |
 | Paste | Pasted text grouped into chunks |
+
+Mode identifiers in the UI and exported JSON are `realtime`, `batch`, and `paste`.
+The file API also accepts legacy `follow` and returns `realtime`.
 
 File sources are on the **DeciFlow node**, not the Laya host. They require local
 browser access (`localhost`/`127.0.0.1`) and readable UTF-8 regular files. Enter one

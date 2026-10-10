@@ -1,4 +1,9 @@
 import json
+import os
+import subprocess
+import sys
+from collections.abc import AsyncIterator
+from pathlib import Path
 
 import httpx
 import pytest
@@ -208,3 +213,54 @@ async def test_remote_file_origin_allowlist(
             "/api/file-source", headers={"Origin": origin}, json={}
         )
     assert response.status_code == status
+
+
+def test_startup_reads_changed_dotenv(tmp_path: Path) -> None:
+    settings = tmp_path / ".env"
+    environment = dict(os.environ)
+    for name in ("DECISION_ENGINE", "PORT", "LAYA_MODEL", "LAYA_MAX_TOKENS"):
+        environment.pop(name, None)
+    code = (
+        "import sys; from pathlib import Path; import server; "
+        "server.ROOT = Path(sys.argv[1]); "
+        "server.uvicorn.run = lambda app, **kwargs: "
+        "print(server.get_engine().name, kwargs['host'], kwargs['port']); "
+        "server.main(host='0.0.0.0')"
+    )
+    for engine in ("jev", "laya"):
+        settings.write_text(f"DECISION_ENGINE={engine}\nPORT=4012\n")
+        process = subprocess.run(
+            [sys.executable, "-c", code, str(tmp_path)],
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert process.stdout.splitlines()[-1] == f"{engine} 0.0.0.0 4012"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("mode", ["realtime", "follow"])
+async def test_realtime_mode_normalizes_legacy_requests(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mode: str
+) -> None:
+    path = tmp_path / "events.log"
+    path.write_text("")
+
+    async def handle_records(specs: list[Result]) -> AsyncIterator[Result]:
+        for record in []:
+            yield record
+
+    monkeypatch.setattr(server, "follow_configured", handle_records)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=server.app), base_url="http://127.0.0.1"
+    ) as client:
+        response = await client.post(
+            "/api/file-source",
+            headers={"Origin": "http://127.0.0.1"},
+            json={"mode": mode, "path": str(path)},
+        )
+    assert response.status_code == 200
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert events[0]["mode"] == "realtime"
+    assert events[-1]["type"] == "done"

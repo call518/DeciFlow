@@ -126,20 +126,20 @@ test('three review filters partition results without changing totals', async () 
 
 test('analysis modes show operator-oriented labels and actions', () => {
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-  for (const [value, label] of [['text', 'Paste'], ['batch', 'Batch'],
-    ['follow', 'Realtime']]) {
-    assert.ok(html.includes(`<option value="${value}"${value === 'follow' ? ' selected' : ''}>${label}</option>`));
+  for (const [value, label] of [['paste', 'Paste'], ['batch', 'Batch'],
+    ['realtime', 'Realtime']]) {
+    assert.ok(html.includes(`<option value="${value}"${value === 'realtime' ? ' selected' : ''}>${label}</option>`));
   }
   const { nodes } = workspace([]);
-  for (const [mode, action] of [['text', 'Classify with Laya ↗'],
+  for (const [mode, action] of [['paste', 'Classify with Laya ↗'],
     ['batch', 'Run batch with Laya ↗'],
-    ['follow', 'Start realtime with Laya ↗']]) {
+    ['realtime', 'Start realtime with Laya ↗']]) {
     nodes.get('source-mode').value = mode;
     nodes.get('source-mode').onchange();
     assert.equal(nodes.get('classify').textContent, action);
-    assert.equal(nodes.get('file-input').hidden, mode === 'text');
-    assert.equal(nodes.get('file-notes').hidden, mode === 'text');
-    assert.equal(nodes.get('paste-input').hidden, mode !== 'text');
+    assert.equal(nodes.get('file-input').hidden, mode === 'paste');
+    assert.equal(nodes.get('file-notes').hidden, mode === 'paste');
+    assert.equal(nodes.get('paste-input').hidden, mode !== 'paste');
   }
 });
 
@@ -191,40 +191,40 @@ test('connection status shares the title row without a breadcrumb header', () =>
 
 test('Realtime is the default mode before server status loads', () => {
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-  assert.ok(html.includes('<option value="follow" selected>Realtime</option>'));
+  assert.ok(html.includes('<option value="realtime" selected>Realtime</option>'));
   assert.ok(html.includes('<div id="file-input">'));
   assert.ok(html.includes('<div id="paste-input" hidden>'));
   const { context } = workspace([]);
-  assert.equal(vm.runInContext('sourceMode', context), 'follow');
+  assert.equal(vm.runInContext('sourceMode', context), 'realtime');
 });
 
 test('each mode has editable sample input and retains its own edits', () => {
   const { nodes } = workspace([]);
-  assert.equal(nodes.get('file-path').value, '/host-logs/secure\n/host-logs/messages\n/host-logs/nginx/access*.log');
+  assert.equal(nodes.get('file-path').value, '/host-logs/var/log/secure\n/host-logs/var/log/messages\n/host-logs/var/log/nginx/access*.log');
   assert.equal(nodes.get('logs').value.split('\n').length, 5);
   nodes.get('file-path').value = '/custom/live.log';
   nodes.get('source-mode').value = 'batch';
   nodes.get('source-mode').onchange();
-  assert.equal(nodes.get('file-path').value, 'sample-logs/access-1k.log\n/host-logs/messages\n/host-logs/nginx/access*.log');
+  assert.equal(nodes.get('file-path').value, '/host-logs/sample-logs/access-1k.log\n/host-logs/var/log/messages\n/host-logs/var/log/nginx/access*.log');
   nodes.get('file-path').value = '/custom/batch.log';
-  nodes.get('source-mode').value = 'text';
+  nodes.get('source-mode').value = 'paste';
   nodes.get('source-mode').onchange();
   nodes.get('logs').value = 'custom pasted log';
-  nodes.get('source-mode').value = 'follow';
+  nodes.get('source-mode').value = 'realtime';
   nodes.get('source-mode').onchange();
   assert.equal(nodes.get('file-path').value, '/custom/live.log');
   nodes.get('source-mode').value = 'batch';
   nodes.get('source-mode').onchange();
   assert.equal(nodes.get('file-path').value, '/custom/batch.log');
-  nodes.get('source-mode').value = 'text';
+  nodes.get('source-mode').value = 'paste';
   nodes.get('source-mode').onchange();
   assert.equal(nodes.get('logs').value, 'custom pasted log');
-  nodes.get('source-mode').value = 'follow';
+  nodes.get('source-mode').value = 'realtime';
   nodes.get('source-mode').onchange();
   nodes.get('file-path').value = '';
   nodes.get('source-mode').value = 'batch';
   nodes.get('source-mode').onchange();
-  nodes.get('source-mode').value = 'follow';
+  nodes.get('source-mode').value = 'realtime';
   nodes.get('source-mode').onchange();
   assert.equal(nodes.get('file-path').value, '');
 });
@@ -260,11 +260,11 @@ test('source profile and chunk settings reach the API and survive mode changes',
   assert.equal(requests[0].sources[0].profile, 'authentication');
   assert.equal(requests[0].sources[0].chunkLines, 3);
   assert.equal(requests[0].sources[1].profile, 'http_access');
-  nodes.get('source-mode').value = 'text'; nodes.get('source-mode').onchange();
+  nodes.get('source-mode').value = 'paste'; nodes.get('source-mode').onchange();
   nodes.get('paste-profile').value = 'network'; nodes.get('paste-chunk-lines').value = '4';
   await nodes.get('classify').onclick();
   assert.equal(requests[1].profile, 'network'); assert.equal(requests[1].chunkLines, 4);
-  nodes.get('source-mode').value = 'follow'; nodes.get('source-mode').onchange();
+  nodes.get('source-mode').value = 'realtime'; nodes.get('source-mode').onchange();
   assert.equal(vm.runInContext('sourceRows[0].size.value', context), '3');
 });
 
@@ -357,7 +357,7 @@ test('pause excludes received results that have not yet been displayed', async (
 });
 
 test('file line labels distinguish batch from observed realtime sequences', async () => {
-  for (const mode of ['batch', 'follow']) {
+  for (const mode of ['batch', 'realtime']) {
     const first = result(0);
     Object.assign(first.result, { source: '/var/log/secure', line: 1, lineEnd: 1, profile: 'general', lineCount: 1, chunkLines: 1 });
     const second = result(1);
@@ -365,13 +365,13 @@ test('file line labels distinguish batch from observed realtime sequences', asyn
     const { nodes, context } = workspace([{ type: 'start', engine: 'laya', total: null, mode }, first, second]);
     await nodes.get('classify').onclick();
     const rows = nodes.get('results').children;
-    const prefix = mode === 'follow' ? 'Observed' : 'File';
+    const prefix = mode === 'realtime' ? 'Observed' : 'File';
     assert.equal(rows[1].children[2].textContent, `/var/log/secure · ${prefix} line 1`);
     assert.equal(rows[0].children[2].textContent, `/var/log/secure · ${prefix} lines 10–12`);
     assert.equal(rows[1].children[3].textContent, 'General system · 1 line (max 1)');
     assert.equal(rows[0].children[3].textContent, 'Authentication · 3 lines (max 5)');
-    if (mode === 'follow') assert.ok(rows[1].children[2].title.includes('not an absolute'));
-    nodes.get('source-mode').value = mode === 'follow' ? 'batch' : 'follow';
+    if (mode === 'realtime') assert.ok(rows[1].children[2].title.includes('not an absolute'));
+    nodes.get('source-mode').value = mode === 'realtime' ? 'batch' : 'realtime';
     nodes.get('source-mode').onchange();
     vm.runInContext('render()', context);
     assert.equal(nodes.get('results').children[1].children[2].textContent, `/var/log/secure · ${prefix} line 1`);
@@ -387,7 +387,7 @@ test('realtime can pause before receiving its first result', async () => {
   };
   const run = nodes.get('classify').onclick();
   await new Promise(resolve => setImmediate(resolve));
-  receive({ type: 'start', engine: 'laya', mode: 'follow', total: null });
+  receive({ type: 'start', engine: 'laya', mode: 'realtime', total: null });
   assert.equal(nodes.get('pause-updates').disabled, false);
   nodes.get('pause-updates').onclick();
   const original = nodes.get('results').children[0];
@@ -633,7 +633,7 @@ test('selected engine is explicitly named and emphasized for both engines', asyn
         engine, configured, model: 'test', workingDirectory: '/app',
         limits: { context_tokens: 8192, max_jev_input_bytes: 30000 },
       });
-      nodes.get('source-mode').value = 'follow';
+      nodes.get('source-mode').value = 'realtime';
       await new Promise(resolve => setImmediate(resolve));
       const status = nodes.get('status');
       assert.equal(status.textContent, 'Decision Engine: ');
@@ -645,4 +645,37 @@ test('selected engine is explicitly named and emphasized for both engines', asyn
   }
   const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
   assert.ok(css.includes('.selected-engine{color:#a23e34;font-weight:700}'));
+});
+
+
+test('uncertain results retain their category color class', async () => {
+  const categories = ['normal', 'warning', 'error', 'security', 'other'];
+  for (const uncertain of [false, true]) {
+    const events = categories.map((category, index) => {
+      const event = result(index);
+      Object.assign(event.result, { category, uncertain });
+      return event;
+    });
+    const { nodes } = workspace(events);
+    await nodes.get('classify').onclick();
+    for (const [index, row] of nodes.get('results').children.entries()) {
+      const category = categories[categories.length - 1 - index];
+      const badge = row.children[0].children[0];
+      assert.equal(badge.className, `badge ${category}${uncertain ? ' uncertain' : ''}`);
+      assert.equal(badge.textContent.startsWith('Uncertain · '), uncertain);
+    }
+  }
+  const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
+  assert.doesNotMatch(css, /\.badge\.uncertain\{[^}]*background/);
+});
+
+
+test('chart bars and result badges share the same category colors', () => {
+  const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
+  for (const [category, color] of Object.entries({
+    normal: '#498568', warning: '#c29b43', error: '#c86b60',
+    security: '#8c649d', other: '#84938c',
+  })) {
+    assert.ok(css.includes(`.category-bar.${category},.badge.${category}{background:${color}}`));
+  }
 });

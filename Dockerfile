@@ -5,4 +5,4 @@ WORKDIR /app
 ENV UV_PROJECT_ENVIRONMENT=/opt/deciflow-venv \
     PYTHONUNBUFFERED=1
 EXPOSE 4000
-CMD ["sh", "-c", "uv sync --frozen --no-dev --no-install-project --no-cache && exec /opt/deciflow-venv/bin/uvicorn server:app --host 0.0.0.0 --port ${PORT:-4000} --timeout-graceful-shutdown 2"]
+CMD ["sh", "-c", "uv sync --frozen --no-dev --no-install-project --no-cache && exec /opt/deciflow-venv/bin/python -c \"import server; server.main(host='0.0.0.0')\""]

@@ -42,10 +42,10 @@ let updatesPaused = false;
 let pausedOrder = [];
 let displayedOrder = [];
 let activeRequest;
-let sourceMode = 'follow';
+let sourceMode = 'realtime';
 const filePaths = {
-  batch: 'sample-logs/access-1k.log\n/host-logs/messages\n/host-logs/nginx/access*.log',
-  follow: '/host-logs/secure\n/host-logs/messages\n/host-logs/nginx/access*.log',
+  batch: '/host-logs/sample-logs/access-1k.log\n/host-logs/var/log/messages\n/host-logs/var/log/nginx/access*.log',
+  realtime: '/host-logs/var/log/secure\n/host-logs/var/log/messages\n/host-logs/var/log/nginx/access*.log',
 };
 $('logs').value = samples.join('\n');
 $('file-path').value = filePaths[sourceMode];
@@ -168,7 +168,7 @@ function render(updateList = true) {
   for (const result of visible.slice(page * 100, (page + 1) * 100)) {
     const row = element('article', '', 'result');
     const top = element('div', '', 'result-top');
-    top.append(element('span', result.error ? 'Request failed' : `${result.uncertain ? 'Uncertain · ' : ''}${labels[result.category]}`, `badge ${result.uncertain ? 'uncertain' : result.category || 'error'}`));
+    top.append(element('span', result.error ? 'Request failed' : `${result.uncertain ? 'Uncertain · ' : ''}${labels[result.category]}`, `badge ${result.error ? 'error' : result.category || 'other'}${result.uncertain ? ' uncertain' : ''}`));
     top.append(element('span', result.error ? `${result.elapsedMs}ms` : `${((result.answerProbability ?? result.probabilities?.[result.category] ?? 0) * 100).toFixed(1)}% category probability · ${result.elapsedMs}ms`));
     if (result.uncertain) top.title = `Provisional model choice. ${result.candidates?.map(key => `${labels[key]} ${(result.probabilities[key] * 100).toFixed(1)}%`).join(' vs ') || 'Low confidence'}. Not a confirmed incident.`;
     if (result.review) top.append(element('span', 'Needs review', 'review'));
@@ -177,7 +177,7 @@ function render(updateList = true) {
     if (result.source) {
       const end = result.lineEnd || result.line;
       const multiple = end !== result.line;
-      const realtime = resultSourceMode === 'follow';
+      const realtime = resultSourceMode === 'realtime';
       const location = element('p', `${result.source} · ${realtime ? 'Observed' : 'File'} ${multiple ? 'lines' : 'line'} ${multiple ? `${result.line}–${end}` : result.line}${result.incomplete ? ' · Incomplete line at rotation' : ''}`, 'caption');
       if (realtime) location.title = 'Sequence since monitoring started or the file rotated; not an absolute file line number.';
       row.append(location);
@@ -256,15 +256,15 @@ $('pause-updates').onclick = () => {
 };
 $('sample').onclick = () => { $('logs').value = samples.join('\n'); };
 $('source-mode').onchange = () => {
-  if (sourceMode !== 'text') filePaths[sourceMode] = $('file-path').value;
+  if (sourceMode !== 'paste') filePaths[sourceMode] = $('file-path').value;
   sourceMode = $('source-mode').value;
-  if (sourceMode !== 'text') $('file-path').value = filePaths[sourceMode];
+  if (sourceMode !== 'paste') $('file-path').value = filePaths[sourceMode];
   updateSourceSettings();
-  $('paste-input').hidden = sourceMode !== 'text';
-  $('sample').hidden = sourceMode !== 'text';
-  $('file-input').hidden = sourceMode === 'text';
-  $('file-notes').hidden = sourceMode === 'text';
-  $('classify').textContent = sourceMode === 'follow' ? `Start realtime with ${engineLabel} ↗` : sourceMode === 'batch' ? `Run batch with ${engineLabel} ↗` : `Classify with ${engineLabel} ↗`;
+  $('paste-input').hidden = sourceMode !== 'paste';
+  $('sample').hidden = sourceMode !== 'paste';
+  $('file-input').hidden = sourceMode === 'paste';
+  $('file-notes').hidden = sourceMode === 'paste';
+  $('classify').textContent = sourceMode === 'realtime' ? `Start realtime with ${engineLabel} ↗` : sourceMode === 'batch' ? `Run batch with ${engineLabel} ↗` : `Classify with ${engineLabel} ↗`;
 };
 $('stop').onclick = () => {
   $('stop').disabled = true;
@@ -275,7 +275,7 @@ $('classify').onclick = async () => {
   if (busy) return;
   const sources = sourceRows.map(({ path, profile, size }) => ({ path, profile: profile.value, chunkLines: Number(size.value) }));
   const chunkLines = Number($('paste-chunk-lines').value);
-  if ((sourceMode === 'text' ? [chunkLines] : sources.map(s => s.chunkLines)).some(n => !Number.isInteger(n) || n < 1)) {
+  if ((sourceMode === 'paste' ? [chunkLines] : sources.map(s => s.chunkLines)).some(n => !Number.isInteger(n) || n < 1)) {
     $('message').className = 'error-message';
     $('message').textContent = 'Lines per chunk must be a positive integer.'; return;
   }
@@ -288,10 +288,10 @@ $('classify').onclick = async () => {
   $('message').textContent = `${engineLabel} is classifying your logs…`;
   let started = false;
   try {
-    const response = await fetch(sourceMode === 'text' ? '/api/classify' : '/api/file-source', {
+    const response = await fetch(sourceMode === 'paste' ? '/api/classify' : '/api/file-source', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       signal: activeRequest.signal,
-      body: JSON.stringify(sourceMode === 'text' ? { text: $('logs').value, profile: $('paste-profile').value, chunkLines } : { mode: sourceMode, sources }),
+      body: JSON.stringify(sourceMode === 'paste' ? { text: $('logs').value, profile: $('paste-profile').value, chunkLines } : { mode: sourceMode, sources }),
     });
     if (!response.ok) throw new Error((await response.json()).error);
     await readEvents(response.body, event => {
@@ -322,7 +322,7 @@ $('classify').onclick = async () => {
       } else if (event.type === 'error') {
         throw new Error(event.error);
       }
-      $('message').textContent = total === null ? `${sourceMode === 'follow' ? 'Realtime' : 'Batch'} · ${completed.toLocaleString('en-US')} events completed${completed ? '' : ' · Waiting for logs…'}` : `Classifying · ${completed.toLocaleString('en-US')} / ${total.toLocaleString('en-US')} chunks · ${total.toLocaleString('en-US')} ${engineLabel} requests planned`;
+      $('message').textContent = total === null ? `${sourceMode === 'realtime' ? 'Realtime' : 'Batch'} · ${completed.toLocaleString('en-US')} events completed${completed ? '' : ' · Waiting for logs…'}` : `Classifying · ${completed.toLocaleString('en-US')} / ${total.toLocaleString('en-US')} chunks · ${total.toLocaleString('en-US')} ${engineLabel} requests planned`;
       scheduleRender();
     });
     $('message').textContent = `Classification complete · ${results.filter(r => r.error).length} failed`;

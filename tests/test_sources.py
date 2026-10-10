@@ -311,10 +311,10 @@ async def test_follow_pattern_initially_empty(tmp_path: Path) -> None:
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("mode", ["batch", "follow"])
+@pytest.mark.parametrize("mode", ["batch", "realtime"])
 async def test_stop_all_sources_and_workers(mode: str, tmp_path: Path) -> None:
     for name in ["a.log", "b.log"]:
-        (tmp_path / name).write_text("" if mode == "follow" else "event\n")
+        (tmp_path / name).write_text("" if mode == "realtime" else "event\n")
     cancelled = 0
     started = anyio.Event()
 
@@ -330,12 +330,12 @@ async def test_stop_all_sources_and_workers(mode: str, tmp_path: Path) -> None:
 
     source = (
         follow_sources("*.log")
-        if mode == "follow"
+        if mode == "realtime"
         else read_sources(resolve_sources("*.log"))
     )
     stream = classify_stream(source, handle_classify)
     task = asyncio.create_task(anext(stream))
-    if mode == "follow":
+    if mode == "realtime":
         await anyio.sleep(0.1)
         for name in ["a.log", "b.log"]:
             with (tmp_path / name).open("a") as file:

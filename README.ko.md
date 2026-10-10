@@ -195,7 +195,6 @@ docker run --detach \
   --name deciflow \
   --init \
   --restart unless-stopped \
-  --env-file .env \
   --mount "type=bind,src=$(pwd),dst=/app,readonly" \
   --mount type=volume,src=deciflow-venv,dst=/opt/deciflow-venv \
   --publish 127.0.0.1:4000:4000 \
@@ -210,23 +209,22 @@ publish 주소를 DeciFlow 호스트 IP로 변경하세요.
 
 Laya URL은 컨테이너에서 접근 가능한 주소를 사용하세요. `127.0.0.1`은 호스트나
 원격 Laya 서버가 아닌 컨테이너 자신입니다. 사이드바의 호스트·OS·IP 정보는
-컨테이너를 나타냅니다. `.env`는 실행 시 전달하며 이미지에 포함하지 않습니다.
-`.env` 변경 후에는 컨테이너를 다시 만드세요:
+컨테이너를 나타냅니다. DeciFlow가 시작할 때마다 마운트된 `/app/.env`를 읽습니다.
+Docker `--env`로 지정한 값은 `.env`보다 우선합니다. `.env` 수정 후 재시작하세요:
 
 ```bash
-docker logs deciflow
-docker stop deciflow
-docker rm deciflow
+docker restart deciflow
 ```
 
-위 `docker run` 명령을 다시 실행하면 변경한 설정이 적용됩니다.
+기존 `--env-file .env` 방식의 컨테이너는 새 이미지를 빌드하고 위 명령으로
+한 번만 재생성해야 합니다. 포트 매핑·마운트 변경 시에는 여전히 재생성이 필요합니다.
 소스 수정이나 Git 버전 변경은 `docker restart deciflow`로 적용하며 이미지 재빌드는
 필요하지 않습니다. UI 변경 후에는 브라우저도 새로고침하세요. Dockerfile의 실행 환경을
 바꿀 때만 이미지를 다시 빌드합니다. 버전 전환 전에는 DeciFlow를 중지하세요.
 
 ngrok·리버스 프록시로 파일을 처리하려면 `DECIFLOW_CSRF_TRUSTED_ORIGINS`에
 정확한 UI 출처 또는 랜덤 ngrok 주소용 `https://*.ngrok-free.app`을 지정하고
-컨테이너를 다시 만드세요(끝에 `/` 제외). 빈 값은 localhost 파일 접근만 허용합니다.
+컨테이너를 재시작하세요(끝에 `/` 제외). 빈 값은 localhost 파일 접근만 허용합니다.
 이 설정은 CSRF Origin 검사에 사용하며 CORS·로그인 인증·CSRF 토큰 검증은 아닙니다.
 와일드카드는 다른 사용자의 하위 도메인도 신뢰하므로 공개 접속에는 프록시 인증을 적용하세요.
 
@@ -320,6 +318,9 @@ WSL·컨테이너에서는 해당 환경의 정보이며 호스트 OS 정보가 
 | Realtime | 기존 파일 끝 이후의 새 줄; 새 파일·교체 파일은 처음부터 |
 | Batch | 매칭 파일의 처음부터 EOF까지 |
 | Paste | 붙여 넣은 텍스트를 청크로 묶어 처리 |
+
+UI·내보내기 JSON의 모드명은 `realtime`, `batch`, `paste`입니다.
+파일 API는 기존 `follow` 요청도 받으며 응답에는 `realtime`을 사용합니다.
 
 파일은 **Laya 호스트가 아닌 DeciFlow 실행 노드**에 있어야 합니다. 파일 입력에는
 로컬 브라우저 접속(`localhost`·`127.0.0.1`)과 읽기 가능한 UTF-8 일반 파일이

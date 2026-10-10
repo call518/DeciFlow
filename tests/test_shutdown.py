@@ -49,7 +49,7 @@ def test_sigint_stops_open_realtime_stream(tmp_path: Path) -> None:
                     "POST",
                     "/api/file-source",
                     headers={"Origin": base},
-                    json={"paths": str(log), "mode": "follow"},
+                    json={"paths": str(log), "mode": "realtime"},
                 ) as response:
                     response.raise_for_status()
                     lines = response.iter_lines()

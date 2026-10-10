@@ -301,12 +301,12 @@ async def handle_file_events(
             "sources": [str(path) for path in paths],
         }
     )
-    if specs is not None and mode == "follow":
+    if specs is not None and mode == "realtime":
         records = follow_configured(specs)
     elif isinstance(paths, dict):
         records = read_configured(paths)
     else:
-        records = follow_sources(values) if mode == "follow" else read_sources(paths)
+        records = follow_sources(values) if mode == "realtime" else read_sources(paths)
     try:
         async with httpx.AsyncClient(timeout=engine.timeout) as client:
 
@@ -358,13 +358,17 @@ async def handle_file_source(request: Request) -> Response:
         )
     try:
         body = await request.json()
-        if not isinstance(body, dict) or body.get("mode") not in {"batch", "follow"}:
+        if not isinstance(body, dict) or body.get("mode") not in {
+            "batch",
+            "realtime",
+            "follow",
+        }:
             raise ValueError("Select Batch or Realtime mode.")
-        mode = body["mode"]
+        mode = "realtime" if body["mode"] == "follow" else body["mode"]
         values = body.get("sources", body.get("paths", body.get("path")))
         specs = parse_source_settings(values)
         paths = await anyio.to_thread.run_sync(
-            partial(resolve_configured_sources, specs, follow=mode == "follow"),
+            partial(resolve_configured_sources, specs, follow=mode == "realtime"),
             abandon_on_cancel=True,
         )
     except (ValueError, TypeError, OSError) as error:
@@ -407,13 +411,13 @@ app = Starlette(
 )
 
 
-def main() -> None:
-    """Load local settings and start DeciFlow on loopback, port 4000 by default."""
+def main(*, host: str = "127.0.0.1") -> None:
+    """Read local settings at startup; bind to loopback unless specified."""
     load_dotenv(ROOT / ".env")
     get_engine()
     port = int(os.getenv("PORT") or "4000")
-    print(f"DeciFlow: http://127.0.0.1:{port}", flush=True)
-    uvicorn.run(app, host="127.0.0.1", port=port, timeout_graceful_shutdown=2)
+    print(f"DeciFlow: http://{host}:{port}", flush=True)
+    uvicorn.run(app, host=host, port=port, timeout_graceful_shutdown=2)
 
 
 if __name__ == "__main__":
