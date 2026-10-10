@@ -33,12 +33,13 @@ function render() {
   const averageMs = completed ? results.reduce((sum, result) => sum + result.elapsedMs, 0) / completed : 0;
   for (const [label, value] of [['Processed logs', completed], ['Needs review', results.filter(r => r.review).length], ['Total elapsed time', `${elapsedMs}ms`], ['Average processing time', `${averageMs.toFixed(1)}ms`]]) {
     const metric = element('div', label, 'metric');
+    if (label === 'Needs review') metric.title = 'Confidence below 70%, Other category, or failed request; not an error count.';
     if (label === 'Average processing time') metric.title = 'Mean request duration, including network/server wait and failed requests; excludes waiting for new file lines.';
     metric.append(element('strong', String(value)));
     $('summary').append(metric);
   }
   $('results').replaceChildren();
-  const visible = completionOrder.toReversed().map(index => results[index]).filter(r => !$('review-only').checked || r.review);
+  const visible = completionOrder.toReversed().map(index => results[index]).filter(r => $('review-filter').value === 'all' || ($('review-filter').value === 'needs-review' ? r.review : !r.review));
   const pages = Math.max(1, Math.ceil(visible.length / 100));
   page = Math.min(page, pages - 1);
   $('page-info').textContent = `Page ${page + 1} of ${pages} · ${visible.length} results`;
@@ -143,7 +144,7 @@ $('classify').onclick = async () => {
     $('export').disabled = !completed;
   }
 };
-$('review-only').onchange = () => { page = 0; if (completed) render(); };
+$('review-filter').onchange = () => { page = 0; if (completed) render(); };
 $('previous').onclick = () => { page--; render(); };
 $('next').onclick = () => { page++; render(); };
 $('export').onclick = () => {

@@ -2,11 +2,27 @@
 
 [English](README.md) | [한국어](README.ko.md)
 
-Classify logs with **Laya** or **Jev**. Paste logs, process files in batches, or
-follow live files; review predictions and export results as JSON.
+**Classify logs with AI and spot error and security events at a glance.**
 
-DeciFlow runs on the node containing your logs and sends events to a remote Laya
-server or the Jev API. Laya is the default; there is no automatic paid fallback.
+DeciFlow classifies each log event as **Normal, Warning, Error, Security, or Other**
+with Laya or Jev. Scan a batch, follow new events, and focus your review with
+category probabilities and confidence instead of reading every line unaided.
+
+- **Use logs where they live.** Paste text or select multiple files across
+  directories with wildcard patterns; no manual file merging.
+- **Switch from investigation to monitoring.** Read existing files in batches or
+  follow new lines and file rotation. Newest completed predictions appear first.
+- **Keep people in control.** Filter uncertain predictions, record reviewer
+  corrections, and export results as JSON. Rejected events retain their original
+  text for review.
+- **Share inference across nodes.** Run a lightweight Python client on each log
+  node and connect to a shared remote Laya server; clients need no local GPU or
+  PyTorch.
+- **Choose your engine.** Use self-hosted Laya by default without Jev API charges,
+  or select Jev in `.env`. Both use the same workflow; no automatic paid fallback.
+
+For access logs, application errors, and operational events—start with an existing
+log file and review the predictions in your browser.
 
 ## Quick start
 
@@ -198,7 +214,8 @@ Batch needs matching files; Follow can wait for new matches.
 
 Predictions use **Normal, Warning, Error, Security, Other**; criteria are defined in
 [classifier.py](classifier.py). Results display newest completions first, with probabilities, confidence, progress,
-and elapsed time. Below 70% confidence or Other requires review. Filter results,
+and elapsed time. Below 70% confidence, Other, or failed requests require review. Filter all results,
+items needing review, or items not needing review;
 correct reviewer categories, and export JSON; the UI displays 100 results per page.
 Results are kept in browser memory, so export before leaving.
 Reviewer category saves a human correction in JSON as `reviewerCategory`; it does

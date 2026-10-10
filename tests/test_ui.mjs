@@ -28,6 +28,7 @@ function workspace(events) {
       : { ok: true, body: {} },
     readEvents: async (_, receive) => events.forEach(receive),
   });
+  context.document.getElementById('review-filter').value = 'all';
   const source = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
   vm.runInContext(source.replace(/^import .*;\n/, ''), context);
   return { nodes, context };
@@ -56,8 +57,8 @@ test('arrival order, filtering, corrections, pagination and restart', async () =
   assert.equal(logs(nodes).length, 100);
   nodes.get('next').onclick();
   assert.deepEqual(logs(nodes), ['log-4', 'log-3', 'log-1', 'log-0', 'log-2']);
-  nodes.get('review-only').checked = true;
-  nodes.get('review-only').onchange();
+  nodes.get('review-filter').value = 'needs-review';
+  nodes.get('review-filter').onchange();
   nodes.get('next').onclick();
   assert.deepEqual(logs(nodes), ['log-4', 'log-3', 'log-1', 'log-2']);
   const select = nodes.get('results').children[0].children.at(-1).children[0];
@@ -84,11 +85,36 @@ test('average request duration includes failures, ignores filters, and resets', 
   assert.equal(average(), '0.0ms');
   await nodes.get('classify').onclick();
   assert.equal(average(), '200.0ms');
-  nodes.get('review-only').checked = true;
-  nodes.get('review-only').onchange();
+  nodes.get('review-filter').value = 'needs-review';
+  nodes.get('review-filter').onchange();
   assert.equal(average(), '200.0ms');
   assert.equal(logs(nodes).length, 1);
   events.splice(0, events.length, { type: 'start', engine: 'jev', total: 1 }, result(0));
   await nodes.get('classify').onclick();
   assert.equal(average(), '1.0ms');
+});
+
+test('three review filters partition results without changing totals', async () => {
+  const events = [{ type: 'start', engine: 'laya', total: 3 },
+    result(0, false), result(1),
+    { type: 'result', index: 2, elapsedMs: 2,
+      result: { log: 'failed-log', error: 'timeout', elapsedMs: 2, review: true } }];
+  const { nodes } = workspace(events);
+  await nodes.get('classify').onclick();
+  assert.deepEqual(logs(nodes), ['failed-log', 'log-1', 'log-0']);
+  for (const [filter, expected] of [
+    ['needs-review', ['failed-log', 'log-1']],
+    ['no-review', ['log-0']],
+    ['all', ['failed-log', 'log-1', 'log-0']],
+  ]) {
+    nodes.get('review-filter').value = filter;
+    nodes.get('review-filter').onchange();
+    assert.deepEqual(logs(nodes), expected);
+    assert.equal(nodes.get('summary').children[0].children[0].textContent, '3');
+    assert.equal(nodes.get('summary').children[1].children[0].textContent, '2');
+  }
+  nodes.get('review-filter').value = 'no-review';
+  events.splice(0, events.length, { type: 'start', engine: 'jev', total: 1 }, result(0));
+  await nodes.get('classify').onclick();
+  assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
 });
