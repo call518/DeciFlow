@@ -5,6 +5,7 @@ description = "Streaming log classification with Laya and Jev"
 requires-python = ">=3.11"
 dependencies = [
     "httpx>=0.28.1",
+    "pre-commit>=4.6.2",
     "python-dotenv>=1.2.4",
     "starlette>=1.7.0",
     "uvicorn>=0.54.0",
