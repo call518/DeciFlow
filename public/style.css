@@ -44,3 +44,7 @@
 .result-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}#pause-updates[aria-pressed="true"]{background:#faf1dd;color:#9a792b}
 
 .criteria-label{display:flex;align-items:center;gap:8px;min-width:0}.criteria-label select{min-width:0;flex:1}
+
+.category-overview .card-title{flex-wrap:wrap}.chart-note{font-size:11px;margin:6px 0 10px}.category-chart{display:grid;gap:8px}.category-chart-row{display:grid;grid-template-columns:80px minmax(0,1fr) 145px;gap:12px;align-items:center;font-size:12px}.category-label{color:#475e50}.category-count{text-align:right;font-variant-numeric:tabular-nums;color:#284438;white-space:nowrap}.category-bar-track{height:12px;background:#f0f4f1;border-radius:4px;overflow:hidden}.category-bar{height:100%;border-radius:4px;background:#71877c}.category-bar.normal{background:#498568}.category-bar.warning{background:#c29b43}.category-bar.error{background:#c86b60}.category-bar.security{background:#8c649d}.category-bar.other{background:#84938c}@media(max-width:600px){.category-chart-row{grid-template-columns:65px minmax(0,1fr) 120px;gap:8px}.category-overview .card-title{gap:4px}}
+
+.badge.uncertain{background:#faf1dd;color:#9a792b}.uncertainty-note{font-size:11px;color:#9a792b;margin:6px 0;line-height:1.5}

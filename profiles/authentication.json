@@ -1,11 +1,12 @@
 {
   "label": "Authentication",
-  "instructions": "A single failed login is not proof of an attack. Do not invent repetition outside this chunk.",
+  "instructions": "Classify the observed authentication or session outcome and failure scope, not severity words alone. Distinguish an unsuccessful individual attempt from failure of the authentication service or its supporting mechanisms. Require behavioral or policy evidence for abuse; repetition alone is not proof of an attack. Missing root cause does not make an identifiable outcome other. Do not infer missing events or identities.",
   "criteria": {
-    "normal": "Successful login, logout, or authorized privilege use.",
-    "warning": "Isolated failed authentication or denied access without evidence of abuse.",
-    "error": "Authentication service failure or inability to authenticate legitimate users.",
-    "security": "Explicit unauthorized access, policy violation, or repeated suspicious authentication attempts evidenced in this chunk.",
-    "other": "Insufficient authentication context or unrelated event."
-  }
+    "normal": "Successful authorized authentication or session operation, routine informational activity, or explicitly expected session termination.",
+    "warning": "An individual authentication or session attempt is rejected, interrupted, or unsuccessful, without evidence of service or supporting-mechanism failure or security abuse.",
+    "error": "The authentication service or a supporting mechanism fails, is unavailable, or cannot process requests; distinguish this from an unsuccessful individual attempt.",
+    "security": "Evidence of unauthorized activity, security policy violation, or abusive behavior in the supplied data; ordinary rejection, interruption, or repetition alone is insufficient.",
+    "other": "The event is outside authentication/session scope or its outcome cannot be identified from the supplied data. Unknown root cause alone does not qualify."
+  },
+  "normalization": "single_line_syslog_header"
 }

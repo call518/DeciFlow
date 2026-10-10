@@ -195,6 +195,25 @@ not Laya server workers. Increase gradually within server capacity and API limit
 The sidebar identifies the DeciFlow log source host by hostname, detected IPs, and OS name/version.
 In WSL or containers, these identify that environment; IPs are not a full interface inventory.
 
+### Provisional decisions
+
+**Uncertain** marks confidence below 70% or a top-two category probability gap
+below 10 percentage points. The model choice and probabilities remain unchanged;
+JSON includes candidates, the probability gap, and review reasons. These are
+review heuristics, not calibrated accuracy guarantees. Charts include provisional
+choices. Other categories and request failures also require review.
+
+Authentication criteria distinguish unsuccessful individual attempts (Warning),
+service/mechanism failures (Error), and evidence of abuse (Security). Other means
+an unrelated or unidentifiable outcome, not merely an unknown root cause. Specific
+log strings belong in evaluation samples, not production criteria.
+For recognized single-line classic
+syslog records, its model input removes timestamp, hostname, and process PID;
+service name and message contents (users, IPs, ports) remain. Original logs are
+preserved and the changed `decisionInput` is visible in JSON. Multiline chunks and
+unrecognized formats are unchanged. Normalization reduces input variation; it
+does not guarantee identical predictions or accuracy.
+
 ### Decision profiles and chunks
 
 Select a profile and **Lines/chunk** for each path or pattern; Paste has its own
@@ -209,6 +228,11 @@ Chunks never mix files. Batch submits the remainder at EOF. Realtime submits whe
 the chunk fills or no new nonempty line arrives for one second, and separates file
 rotation boundaries. Stopping discards unsubmitted chunks. Identical overlapping
 source settings are deduplicated; conflicting settings are rejected.
+The **Classification overview** bar chart combines AI category counts across all
+sources. Counts represent chunks, percentages use successfully classified chunks,
+and failed requests are shown separately. Filters and reviewer edits do not change
+the chart; it continues updating while the result list is paused.
+
 **Pause updates** freezes the result list while analysis and metrics continue.
 Filters and pagination use the frozen list; **Resume updates** includes new results.
 JSON export includes all received results, even while paused.
@@ -239,7 +263,8 @@ Batch needs matching files; Realtime can wait for new matches.
 
 Predictions use **Normal, Warning, Error, Security, Other**; criteria are defined in
 [classifier.py](classifier.py). Results display newest completions first, with probabilities, confidence, progress,
-and elapsed time. Below 70% confidence, Other, or failed requests require review. Filter all results,
+and elapsed time. Low-confidence or close-probability choices, Other, and failed
+requests require review. Filter all results,
 items needing review, or items not needing review;
 correct reviewer categories, and export JSON; the UI displays 100 results per page.
 Results are kept in browser memory, so export before leaving.

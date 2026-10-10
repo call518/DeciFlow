@@ -5,7 +5,7 @@
 #docker build --build-arg TORCH_INDEX=cu130 --tag call518/deciflow-laya:cuda .
 
 docker run --detach \
-  --name DeciFlow-Laya-Server \
+  --name DeciFlow-Laya \
   --init \
   --restart unless-stopped \
   --gpus all \

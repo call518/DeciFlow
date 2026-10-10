@@ -77,14 +77,43 @@ function updateSourceSettings() {
 }
 $('file-path').oninput = updateSourceSettings;
 updateSourceSettings();
+function renderCategoryChart() {
+  const counts = Object.fromEntries(Object.keys(labels).map(key => [key, 0]));
+  let failed = 0;
+  for (const result of results) {
+    if (!result) continue;
+    if (result.error) failed++;
+    else if (Object.hasOwn(counts, result.category)) counts[result.category]++;
+  }
+  const classified = Object.values(counts).reduce((sum, count) => sum + count, 0);
+  const maximum = Math.max(1, ...Object.values(counts));
+  $('category-chart').replaceChildren();
+  for (const [key, label] of Object.entries(labels)) {
+    const count = counts[key];
+    const percent = classified ? count / classified * 100 : 0;
+    const row = element('div', '', 'category-chart-row');
+    row.setAttribute('role', 'listitem');
+    const track = element('div', '', 'category-bar-track');
+    track.setAttribute('aria-hidden', 'true');
+    const bar = element('div', '', `category-bar ${key}`);
+    bar.setAttribute('style', `width:${count / maximum * 100}%`);
+    track.append(bar);
+    row.append(element('span', label, 'category-label'), track,
+      element('span', `${count.toLocaleString('en-US')} (${percent.toFixed(1)}%)`, 'category-count'));
+    $('category-chart').append(row);
+  }
+  $('chart-totals').textContent = `${classified.toLocaleString('en-US')} classified ${classified === 1 ? 'chunk' : 'chunks'} · ${failed.toLocaleString('en-US')} failed ${failed === 1 ? 'request' : 'requests'}`;
+}
+renderCategoryChart();
 function render(updateList = true) {
+  renderCategoryChart();
   $('summary').replaceChildren();
   const processingMs = results.reduce((sum, result) => sum + result.elapsedMs, 0);
   const averageMs = completed ? processingMs / completed : 0;
   const processingPercent = elapsedMs > 0 ? `${(activeProcessingMs / elapsedMs * 100).toFixed(1)}%` : 'N/A';
   for (const [label, value] of [['Processed chunks', completed], ['Needs review', results.filter(r => r.review).length], ['Total elapsed time', `${elapsedMs}ms`], ['Active processing time', `${activeProcessingMs}ms (${processingPercent})`], ['Average processing time', `${averageMs.toFixed(1)}ms`]]) {
     const metric = element('div', label, 'metric');
-    if (label === 'Needs review') metric.title = 'Confidence below 70%, Other category, or failed request; not an error count.';
+    if (label === 'Needs review') metric.title = 'Confidence below 70%, top-two probability gap below 10 percentage points, Other category, or failed request; not an error count.';
     if (label === 'Average processing time') metric.title = 'Mean request duration, including network/server wait and failed requests; excludes waiting for new file lines.';
     if (label === 'Active processing time') metric.title = 'Time with at least one request in flight, counting overlapping requests once. Includes network/server wait, excludes idle time; not CPU utilization.';
     metric.append(element('strong', String(value)));
@@ -107,10 +136,12 @@ function render(updateList = true) {
   for (const result of visible.slice(page * 100, (page + 1) * 100)) {
     const row = element('article', '', 'result');
     const top = element('div', '', 'result-top');
-    top.append(element('span', result.error ? 'Request failed' : labels[result.category], `badge ${result.category || 'error'}`));
+    top.append(element('span', result.error ? 'Request failed' : `${result.uncertain ? 'Uncertain · ' : ''}${labels[result.category]}`, `badge ${result.uncertain ? 'uncertain' : result.category || 'error'}`));
     top.append(element('span', `${Math.round(result.confidence * 100) || 0}% confidence · ${result.elapsedMs}ms`));
+    if (result.uncertain) top.title = `Provisional model choice. ${result.candidates?.map(key => `${labels[key]} ${(result.probabilities[key] * 100).toFixed(1)}%`).join(' vs ') || 'Low confidence'}. Not a confirmed incident.`;
     if (result.review) top.append(element('span', 'Needs review', 'review'));
     row.append(top, element('p', result.log, 'log'));
+    if (result.uncertain) row.append(element('p', `Provisional: ${result.candidates?.map(key => `${labels[key]} ${(result.probabilities[key] * 100).toFixed(1)}%`).join(' vs ') || 'Low confidence'} · ${result.reviewReasons?.map(reason => ({ low_confidence: 'low confidence', close_probabilities: 'close category probabilities', other_category: 'insufficient context / Other' })[reason]).join('; ') || 'review needed'}`, 'uncertainty-note'));
     if (result.source) {
       const end = result.lineEnd || result.line;
       const multiple = end !== result.line;

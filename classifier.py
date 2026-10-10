@@ -37,15 +37,32 @@ def _is_probability(value: object) -> bool:
     )
 
 
+def _decision_input(log: str, profile: str) -> str:
+    # Multiline timestamps can carry evidence about event frequency; keep them.
+    if (
+        PROFILES[profile].get("normalization") != "single_line_syslog_header"
+        or "\n" in log
+    ):
+        return log
+    match = re.fullmatch(
+        r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+"
+        r"\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\S+\s+"
+        r"(?P<service>[\w.@/-]+)(?:\[\d+\])?:\s*(?P<message>.+)",
+        log,
+    )
+    return f"{match['service']}: {match['message']}" if match else log
+
+
 async def classify_log(
     log: str, engine: Engine, client: httpx.AsyncClient, profile: str = "general"
 ) -> Result:
     """Apply the same question and validation to either provider's typed answer."""
     selected = PROFILES[profile]
+    decision_input = _decision_input(log, profile)
     label = "Laya" if engine.name == "laya" else "Jev"
     payload = {
         "model": engine.model,
-        "state": log,
+        "state": decision_input,
         "questions": {
             "category": {
                 "type": "choice",
@@ -111,11 +128,25 @@ async def classify_log(
             or abs(sum(probabilities.values()) - 1) > 0.02
         ):
             raise ValueError
+        ranked = sorted(probabilities, key=lambda key: probabilities[key], reverse=True)
+        margin = round(probabilities[ranked[0]] - probabilities[ranked[1]], 6)
+        reasons = []
+        if answer["confidence"] < 0.7:
+            reasons.append("low_confidence")
+        if margin < 0.1:
+            reasons.append("close_probabilities")
+        uncertain = bool(reasons)
+        if answer["choice"] == "other":
+            reasons.append("other_category")
         result = {
             "category": answer["choice"],
             "confidence": answer["confidence"],
             "probabilities": probabilities,
-            "review": answer["confidence"] < 0.7 or answer["choice"] == "other",
+            "review": bool(reasons),
+            "uncertain": uncertain,
+            "reviewReasons": reasons,
+            "probabilityMargin": margin,
+            "candidates": ranked[:2],
             "model": data.get("model"),
             "engine": engine.name,
         }
@@ -127,6 +158,9 @@ async def classify_log(
                 "for review without truncation."
             ) from error
         raise ValueError(f"Invalid {label} response format.") from error
+    if decision_input != log:
+        result["decisionInput"] = decision_input
+        result["inputNormalization"] = "single_line_syslog_header"
     return result
 
 

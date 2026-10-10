@@ -7,10 +7,10 @@ function workspace(events, status) {
   const nodes = new Map();
   const requests = [];
   const node = () => ({
-    children: [], value: '', checked: false,
+    children: [], value: '', checked: false, attributes: {},
     append(...children) { this.children.push(...children); },
     replaceChildren() { this.children = []; },
-    setAttribute() {},
+    setAttribute(name, value) { this.attributes[name] = value; },
   });
   const context = vm.createContext({
     document: {
@@ -399,4 +399,55 @@ test('profile selectors have visible Criteria labels', () => {
   }
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   assert.ok(html.includes('<label>Criteria <select id="paste-profile">'));
+});
+
+test('category chart counts all sources, separates failures, and ignores filters and edits', async () => {
+  const events = [{ type: 'start', engine: 'laya', total: null }];
+  for (const [index, category] of ['normal', 'normal', 'warning', 'error', 'security', 'other'].entries()) {
+    const event = result(index, index % 2 === 0);
+    Object.assign(event.result, { category, source: index % 2 ? '/logs/http' : '/logs/system', lineCount: 10, chunkLines: 10 });
+    events.push(event);
+  }
+  const failure = result(6);
+  failure.result = { log: 'failed', error: 'timeout', review: true, elapsedMs: 1, category: 'error' };
+  events.push(failure);
+  const { nodes, context } = workspace(events);
+  const values = () => nodes.get('category-chart').children.map(row => row.children[2].textContent);
+  assert.deepEqual(values(), Array(5).fill('0 (0.0%)'));
+  await nodes.get('classify').onclick();
+  assert.deepEqual(values(), ['2 (33.3%)', '1 (16.7%)', '1 (16.7%)', '1 (16.7%)', '1 (16.7%)']);
+  assert.equal(nodes.get('category-chart').children[0].children[1].children[0].attributes.style, 'width:100%');
+  assert.equal(nodes.get('category-chart').children[1].children[1].children[0].attributes.style, 'width:50%');
+  assert.equal(nodes.get('chart-totals').textContent, '6 classified chunks · 1 failed request');
+  nodes.get('review-filter').value = 'needs-review'; nodes.get('review-filter').onchange();
+  vm.runInContext("results[0].reviewerCategory = 'security'; render();", context);
+  assert.equal(values()[0], '2 (33.3%)');
+  nodes.get('pause-updates').onclick();
+  vm.runInContext("results[7] = {category: 'security', elapsedMs: 1}; completionOrder.push(7); completed++; render(false);", context);
+  assert.equal(values()[3], '2 (28.6%)');
+  events.splice(0, events.length, { type: 'start', engine: 'laya', total: 0 });
+  await nodes.get('classify').onclick();
+  assert.deepEqual(values(), Array(5).fill('0 (0.0%)'));
+});
+
+test('category overview sits between Log input and Classification results', () => {
+  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.ok(html.indexOf('Log input') < html.indexOf('Classification overview'));
+  assert.ok(html.indexOf('Classification overview') < html.indexOf('Classification results'));
+});
+
+test('uncertain category is explicitly provisional without changing the model choice', async () => {
+  const event = result(0);
+  Object.assign(event.result, { category: 'error', confidence: .26, uncertain: true,
+    candidates: ['error', 'other'], reviewReasons: ['low_confidence', 'close_probabilities'],
+    probabilities: { normal: .01, warning: .18, error: .41, security: 0, other: .4 } });
+  const { nodes } = workspace([{ type: 'start', engine: 'jev', total: 1 }, event]);
+  await nodes.get('classify').onclick();
+  const row = nodes.get('results').children[0];
+  assert.equal(row.children[0].children[0].textContent, 'Uncertain · Error');
+  assert.ok(row.children[2].textContent.includes('Error 41.0% vs Other 40.0%'));
+  assert.ok(row.children[2].textContent.includes('close category probabilities'));
+  const details = row.children.at(-1); details.open = true; details.ontoggle();
+  assert.equal(JSON.parse(details.children[1].textContent).category, 'error');
+  assert.equal(nodes.get('category-chart').children[2].children[2].textContent, '1 (100.0%)');
 });
