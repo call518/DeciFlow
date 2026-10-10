@@ -85,7 +85,7 @@ test('average request duration includes failures, ignores filters, and resets', 
   const events = [{ type: 'start', engine: 'laya', total: 2 }, first, failed,
     { type: 'done', elapsedMs: 5000 }];
   const { nodes, context } = workspace(events);
-  const average = () => nodes.get('summary').children[4].children[0].textContent;
+  const average = () => nodes.get('summary').children[5].children[0].textContent;
   vm.runInContext('render()', context);
   assert.equal(average(), '0.0ms');
   await nodes.get('classify').onclick();
@@ -162,12 +162,12 @@ test('active time uses server intervals, updates while idle, and resets', async 
     { type: 'timing', elapsedMs: 200, activeProcessingMs: 150 },
     { type: 'done', elapsedMs: 1000, activeProcessingMs: 150 }];
   const { nodes, context } = workspace(events);
-  const active = () => nodes.get('summary').children[3].children[0].textContent;
+  const active = () => nodes.get('summary').children[4].children[0].textContent;
   vm.runInContext('render()', context);
   assert.equal(active(), '0ms (N/A)');
   await nodes.get('classify').onclick();
   assert.equal(active(), '150ms (15.0%)');
-  assert.ok(nodes.get('summary').children[3].title.includes('not CPU utilization'));
+  assert.ok(nodes.get('summary').children[4].title.includes('not CPU utilization'));
   nodes.get('review-filter').value = 'no-review';
   nodes.get('review-filter').onchange();
   assert.equal(active(), '150ms (15.0%)');
@@ -678,4 +678,28 @@ test('chart bars and result badges share the same category colors', () => {
   })) {
     assert.ok(css.includes(`.category-bar.${category},.badge.${category}{background:${color}}`));
   }
+});
+
+
+test('throughput tracks a rolling five-second window and resets between runs', async () => {
+  const success = (index, elapsedMs) => ({ ...result(index), elapsedMs });
+  const failed = success(3, 5600);
+  failed.result.error = 'timeout';
+  const events = [{ type: 'start', engine: 'laya', total: null },
+    success(0, 1000), success(1, 2000), success(2, 5500), failed,
+    { type: 'timing', elapsedMs: 7000 }];
+  const { nodes } = workspace(events);
+  const rate = () => nodes.get('summary').children[2].children[0].textContent;
+  await nodes.get('classify').onclick();
+  assert.equal(rate(), '0.2 chunks/s');
+  nodes.get('review-filter').value = 'no-review';
+  nodes.get('review-filter').onchange();
+  assert.equal(rate(), '0.2 chunks/s');
+  events.push({ type: 'timing', elapsedMs: 11000 });
+  await nodes.get('classify').onclick();
+  assert.equal(rate(), '0.0 chunks/s');
+  events.splice(0, events.length, { type: 'start', engine: 'jev', total: 1 },
+    success(0, 1000));
+  await nodes.get('classify').onclick();
+  assert.equal(rate(), '1.0 chunks/s');
 });

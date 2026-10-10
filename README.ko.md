@@ -419,6 +419,7 @@ Uncertain 판단에는 사용하지 않습니다. **All results / Needs review /
 | --- | --- |
 | Processed chunks | 요청 실패를 포함한 완료 결과 수 |
 | Needs review | 선택 범주 확률 70% 미만, 근접한 범주 확률, Other, 요청 실패; 오류 개수가 아님 |
+| Throughput | 최근 5초의 성공 판정 청크/초; 유휴시간 포함, 시작 후 5초 미만은 경과시간 기준; 중지·완료 시 마지막 값 유지 |
 | Total elapsed time | 실행 시작 이후 전체 경과시간; 유휴시간 포함 |
 | Active processing time | 요청이 하나 이상 진행 중인 구간을 중복 없이 합산; 전체 경과시간 대비 비율 |
 | Average processing time | 실패를 포함한 완료 요청의 평균 소요시간; 청크 기준 |

@@ -431,6 +431,7 @@ starting another run. No saved history or JSON import is provided.
 | --- | --- |
 | Processed chunks | Completed results, including failed requests |
 | Needs review | Selected category probability below 70%, close probabilities, Other, or request failure; not an error count |
+| Throughput | Successfully classified chunks/s over the last 5 seconds, including idle time; uses elapsed time during the first 5 seconds; freezes when stopped/completed |
 | Total elapsed time | Time since the run started, including idle periods |
 | Active processing time | Time with at least one request in flight, counting overlap once; percentage of total elapsed time |
 | Average processing time | Mean completed request duration, including failures; per chunk |

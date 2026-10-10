@@ -33,6 +33,7 @@ let results = [];
 let completionOrder = [];
 let elapsedMs = 0;
 let activeProcessingMs = 0;
+let recentCompletions = [];
 let busy = false;
 let page = 0;
 let total = 0;
@@ -135,9 +136,12 @@ function render(updateList = true) {
   $('summary').replaceChildren();
   const processingMs = results.reduce((sum, result) => sum + result.elapsedMs, 0);
   const averageMs = completed ? processingMs / completed : 0;
+  recentCompletions = recentCompletions.filter(time => time > elapsedMs - 5000);
+  const throughput = elapsedMs > 0 ? recentCompletions.length * 1000 / Math.min(elapsedMs, 5000) : 0;
   const processingPercent = elapsedMs > 0 ? `${(activeProcessingMs / elapsedMs * 100).toFixed(1)}%` : 'N/A';
-  for (const [label, value] of [['Processed chunks', completed], ['Needs review', results.filter(r => r.review).length], ['Total elapsed time', `${elapsedMs}ms`], ['Active processing time', `${activeProcessingMs}ms (${processingPercent})`], ['Average processing time', `${averageMs.toFixed(1)}ms`]]) {
+  for (const [label, value] of [['Processed chunks', completed], ['Needs review', results.filter(r => r.review).length], ['Throughput', `${throughput.toFixed(1)} chunks/s`], ['Total elapsed time', `${elapsedMs}ms`], ['Active processing time', `${activeProcessingMs}ms (${processingPercent})`], ['Average processing time', `${averageMs.toFixed(1)}ms`]]) {
     const metric = element('div', label, 'metric');
+    if (label === 'Throughput') metric.title = 'Successfully classified chunks per second over the last 5 seconds, including idle time. Uses elapsed time until 5 seconds; freezes when stopped or completed.';
     if (label === 'Needs review') metric.title = 'Selected category probability below 70%, top-two probability gap below 10 percentage points, Other category, or failed request; not an error count.';
     if (label === 'Average processing time') metric.title = 'Mean request duration, including network/server wait and failed requests; excludes waiting for new file lines.';
     if (label === 'Active processing time') metric.title = 'Time with at least one request in flight, counting overlapping requests once. Includes network/server wait, excludes idle time; not CPU utilization.';
@@ -310,12 +314,14 @@ $('classify').onclick = async () => {
         displayedOrder = [];
         elapsedMs = 0;
         activeProcessingMs = 0;
+        recentCompletions = [];
         page = 0;
         render(false);
       } else if (event.type === 'result') {
         results[event.index] = event.result;
         completionOrder.push(event.index);
         completed++;
+        if (!event.result.error) recentCompletions.push(event.elapsedMs);
         elapsedMs = event.elapsedMs;
       } else if (event.type === 'done') {
         elapsedMs = event.elapsedMs;
