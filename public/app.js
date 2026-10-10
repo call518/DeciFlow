@@ -177,6 +177,9 @@ fetch('/api/status').then(async response => {
   if (!response.ok) throw new Error(data.error);
   return data;
 }).then(data => {
+  $('host-name').textContent = data.host.hostname;
+  $('host-os').textContent = data.host.os;
+  $('host-addresses').textContent = data.host.addresses.join('\n') || 'IP unavailable';
   engine = data.engine;
   engineLabel = engine === 'laya' ? 'Laya' : 'Jev';
   $('status').textContent = data.configured ? `● Ready to connect to ${engineLabel}` : '○ TypeSafe API key required';

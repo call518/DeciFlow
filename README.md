@@ -192,6 +192,9 @@ not Laya server workers. Increase gradually within server capacity and API limit
 
 ## Usage
 
+The sidebar identifies the DeciFlow log source host by hostname, detected IPs, and OS name/version.
+In WSL or containers, these identify that environment; IPs are not a full interface inventory.
+
 | Source | Behavior |
 | --- | --- |
 | Realtime | Start at existing files' end; read new/replacement files from the beginning |

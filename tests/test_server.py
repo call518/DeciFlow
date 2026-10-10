@@ -118,3 +118,57 @@ async def test_stream_contract_and_partial_failure(
     assert results[1]["review"] is True
     assert "429" in results[1]["error"]
     assert [event["completed"] for event in events[1:-1]] == [1, 2]
+
+
+@pytest.mark.anyio
+async def test_status_identifies_log_source_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        server,
+        "_host_info",
+        lambda: {"hostname": "log-node", "addresses": ["192.168.35.10"]},
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=server.app), base_url="http://test"
+    ) as client:
+        response = await client.get("/api/status")
+    assert response.json()["host"] == {
+        "hostname": "log-node",
+        "addresses": ["192.168.35.10"],
+    }
+
+
+def test_host_info_without_network(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail(*args: object) -> None:
+        raise OSError("network unavailable")
+
+    monkeypatch.setattr(server.socket, "gethostname", lambda: "offline-node")
+    monkeypatch.setattr(server.socket, "getaddrinfo", fail)
+    monkeypatch.setattr(server.socket, "socket", fail)
+    info = server._host_info()
+    assert info["hostname"] == "offline-node"
+    assert info["addresses"] == []
+    assert isinstance(info["os"], str) and info["os"]
+
+
+def test_host_os_uses_linux_distribution(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(server.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(
+        server.platform,
+        "freedesktop_os_release",
+        lambda: {"PRETTY_NAME": "Rocky Linux 8.10 (Green Obsidian)"},
+    )
+    assert server._host_info()["os"] == "Rocky Linux 8.10 (Green Obsidian)"
+
+
+def test_host_os_falls_back_without_release_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail() -> dict[str, str]:
+        raise OSError("missing os-release")
+
+    monkeypatch.setattr(server.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(server.platform, "release", lambda: "6.6.0")
+    monkeypatch.setattr(server.platform, "freedesktop_os_release", fail)
+    assert server._host_info()["os"] == "Linux 6.6.0"

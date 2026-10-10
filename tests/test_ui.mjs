@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { test } from 'node:test';
 
-function workspace(events) {
+function workspace(events, status) {
   const nodes = new Map();
   const node = () => ({
     children: [], value: '', checked: false,
@@ -24,7 +24,7 @@ function workspace(events) {
     setTimeout: () => 1,
     clearTimeout() {},
     fetch: async path => path === '/api/status'
-      ? new Promise(() => {})
+      ? (status ? { ok: true, json: async () => status } : new Promise(() => {}))
       : { ok: true, body: {} },
     readEvents: async (_, receive) => events.forEach(receive),
   });
@@ -232,4 +232,16 @@ test('mode selector and descriptions use Realtime, Batch, Paste order', () => {
   const help = html.match(/<div class="mode-help">(.*?)<\/div>/s)[1];
   assert.deepEqual([...help.matchAll(/<strong>(Realtime|Batch|Paste):/g)]
     .map(match => match[1]), ['Realtime', 'Batch', 'Paste']);
+});
+
+ test('sidebar identifies the local log source host', async () => {
+  const { nodes } = workspace([], {
+    host: { hostname: 'log-node', addresses: ['192.168.35.10', '10.0.0.2'], os: 'Rocky Linux 8.10' },
+    engine: 'laya', configured: true, model: 'multilingual',
+    workingDirectory: '/logs', limits: { context_tokens: 8192 },
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(nodes.get('host-name').textContent, 'log-node');
+  assert.equal(nodes.get('host-os').textContent, 'Rocky Linux 8.10');
+  assert.equal(nodes.get('host-addresses').textContent, '192.168.35.10\n10.0.0.2');
 });

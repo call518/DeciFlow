@@ -32,3 +32,7 @@
 .intro-title{display:flex;align-items:center;justify-content:space-between;gap:12px}.intro-title .pill{flex-shrink:0;font-size:12px}@media(max-width:600px){.intro-title{flex-wrap:wrap}.intro-title .pill{margin-left:auto}}
 
 .input-notes{grid-area:notes;border-top:1px solid #e6ece7;padding-top:8px}.input-notes p{margin:3px 0!important;font-size:11px;line-height:1.5}.input-notes #source-directory{margin-top:0!important}
+
+.host-info{margin-top:24px;padding-top:14px;border-top:1px solid #365248;font-size:12px;line-height:1.6;overflow-wrap:anywhere}.host-label{font-size:10px;letter-spacing:1px;color:#8eaaa0;margin-bottom:6px}.host-info strong{display:block;color:#effaf3}.host-info #host-addresses{color:#abc2b7;white-space:pre-line}
+
+#host-os{margin-top:8px;color:#abc2b7;font-size:11px;line-height:1.5}

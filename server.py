@@ -3,9 +3,12 @@
 import asyncio
 import json
 import os
+import platform
+import socket
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import aclosing
 from functools import partial
+from ipaddress import ip_address
 from pathlib import Path
 from time import perf_counter
 
@@ -43,6 +46,37 @@ def _json(status: int, data: Result) -> JSONResponse:
     return JSONResponse(data, status_code=status, headers=HEADERS)
 
 
+def _host_info() -> Result:
+    hostname = socket.gethostname()
+    addresses: set[str] = set()
+    try:
+        addresses.update(
+            str(address[4][0]) for address in socket.getaddrinfo(hostname, None)
+        )
+    except OSError:
+        pass
+    # UDP connect selects the default-route address without sending any packets.
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as connection:
+            connection.connect(("192.0.2.1", 9))
+            addresses.add(connection.getsockname()[0])
+    except OSError:
+        pass
+    addresses = {
+        address
+        for address in addresses
+        if not ip_address(address).is_loopback
+        and not ip_address(address).is_unspecified
+    }
+    os_name = f"{platform.system()} {platform.release()}"
+    if platform.system() == "Linux":
+        try:
+            os_name = platform.freedesktop_os_release().get("PRETTY_NAME", os_name)
+        except OSError:
+            pass
+    return {"hostname": hostname, "addresses": sorted(addresses), "os": os_name}
+
+
 async def handle_status(request: Request) -> Response:
     """Report the active engine and its budget without exposing credentials."""
     try:
@@ -56,6 +90,7 @@ async def handle_status(request: Request) -> Response:
             "engine": engine.name,
             "model": engine.model,
             "workingDirectory": str(Path.cwd()),
+            "host": await anyio.to_thread.run_sync(_host_info),
             "limits": {
                 "max_jev_input_bytes": get_jev_input_bytes(),
                 "context_tokens": JEV_CONTEXT_TOKENS,
