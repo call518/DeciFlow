@@ -11,7 +11,7 @@ category probabilities and confidence instead of reading every line unaided.
 - **Use logs where they live.** Paste text or select multiple files across
   directories with wildcard patterns; no manual file merging.
 - **Switch from investigation to monitoring.** Read existing files in batches or
-  follow new lines and file rotation. Newest completed predictions appear first.
+  monitor new lines and file rotation. Newest completed predictions appear first.
 - **Keep people in control.** Filter uncertain predictions, record reviewer
   corrections, and export results as JSON. Rejected events retain their original
   text for review.
@@ -202,15 +202,15 @@ Laya server settings are managed separately on the remote host.
 
 | Source | Behavior |
 | --- | --- |
-| Paste logs | One event per nonempty line |
-| Batch file | Read matching files from the beginning to EOF |
-| Follow file | Start at existing files' end; read new/replacement files from the beginning |
+| Paste | One event per nonempty line |
+| Batch | Read matching files from the beginning to EOF |
+| Realtime | Start at existing files' end; read new/replacement files from the beginning |
 
 File sources require local browser access (`localhost`/`127.0.0.1`) and regular
 UTF-8 files readable by DeciFlow. Enter one path or pattern per line; absolute paths,
 multiple directories, `*`, `?`, `[abc]`, and recursive `**` are supported. Relative
 paths start at the server's working directory. Matches are deduplicated by file.
-Batch needs matching files; Follow can wait for new matches.
+Batch needs matching files; Realtime can wait for new matches.
 
 Predictions use **Normal, Warning, Error, Security, Other**; criteria are defined in
 [classifier.py](classifier.py). Results display newest completions first, with probabilities, confidence, progress,
@@ -240,7 +240,7 @@ completed results. A model inference already running on the remote server may fi
 - Each event makes one request, with up to four concurrent calls (Laya: 120s timeout;
   Jev: 30s). Laya serializes inference. Throughput depends on hardware/network and
   provider limits; confidence is model certainty, not measured accuracy.
-- Follow polls every 250ms and waits for complete lines. Rotation leftovers are
+- Realtime polls every 250ms and waits for complete lines. Rotation leftovers are
   marked `incomplete`; line numbers reset on rotation. Rapid rotation or
   copy-truncate/regrowth can lose events. File deduplication does not remove duplicate
   contents; avoid matching both active logs and their rotated copies.

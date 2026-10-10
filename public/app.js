@@ -84,7 +84,7 @@ $('source-mode').onchange = () => {
   $('paste-input').hidden = sourceMode !== 'text';
   $('sample').hidden = sourceMode !== 'text';
   $('file-input').hidden = sourceMode === 'text';
-  $('classify').textContent = sourceMode === 'follow' ? `Start following with ${engineLabel} ↗` : sourceMode === 'batch' ? `Process file with ${engineLabel} ↗` : `Classify with ${engineLabel} ↗`;
+  $('classify').textContent = sourceMode === 'follow' ? `Start realtime with ${engineLabel} ↗` : sourceMode === 'batch' ? `Run batch with ${engineLabel} ↗` : `Classify with ${engineLabel} ↗`;
 };
 $('stop').onclick = () => {
   $('stop').disabled = true;
@@ -126,7 +126,7 @@ $('classify').onclick = async () => {
       } else if (event.type === 'error') {
         throw new Error(event.error);
       }
-      $('message').textContent = total === null ? `${sourceMode === 'follow' ? 'Following file' : 'Processing file'} · ${completed.toLocaleString('en-US')} events completed${completed ? '' : ' · Waiting for logs…'}` : `Classifying · ${completed.toLocaleString('en-US')} / ${total.toLocaleString('en-US')} logs · ${total.toLocaleString('en-US')} ${engineLabel} requests planned`;
+      $('message').textContent = total === null ? `${sourceMode === 'follow' ? 'Realtime' : 'Batch'} · ${completed.toLocaleString('en-US')} events completed${completed ? '' : ' · Waiting for logs…'}` : `Classifying · ${completed.toLocaleString('en-US')} / ${total.toLocaleString('en-US')} logs · ${total.toLocaleString('en-US')} ${engineLabel} requests planned`;
       scheduleRender();
     });
     $('message').textContent = `Classification complete · ${results.filter(r => r.error).length} failed`;

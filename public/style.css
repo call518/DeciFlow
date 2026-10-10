@@ -4,3 +4,5 @@
 .source-controls{display:flex;align-items:center;gap:12px;margin:18px 0;font-size:12px}.source-controls select,#file-path{font:inherit;padding:10px;border:1px solid #dce6df;border-radius:8px;background:#f6f8f6;color:#284438}.source-controls select{flex:1;min-width:0}#file-input label{font-size:12px;color:#64776a}#file-path{width:100%;margin-top:8px}#stop{display:block;width:100%;margin:10px 0 0;padding:12px;background:#fce9e6;color:#a23e34;border:1px solid #edc5bf;font-weight:600}#file-path{height:auto;min-height:105px}#source-directory{overflow-wrap:anywhere}
 
 #review-filter{font:inherit;padding:7px 10px;margin-left:8px;border:1px solid #dce6df;border-radius:8px;background:#f6f8f6;color:#284438}
+
+.mode-help{margin-top:16px}.mode-help p{margin:4px 0;font-size:12px}.mode-help strong{color:#284438;font-weight:600}

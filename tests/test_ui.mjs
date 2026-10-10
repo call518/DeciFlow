@@ -118,3 +118,31 @@ test('three review filters partition results without changing totals', async () 
   await nodes.get('classify').onclick();
   assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
 });
+
+test('analysis modes show operator-oriented labels and actions', () => {
+  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  for (const [value, label] of [['text', 'Paste'], ['batch', 'Batch'],
+    ['follow', 'Realtime']]) {
+    assert.ok(html.includes(`<option value="${value}">${label}</option>`));
+  }
+  const { nodes } = workspace([]);
+  for (const [mode, action] of [['text', 'Classify with Laya ↗'],
+    ['batch', 'Run batch with Laya ↗'],
+    ['follow', 'Start realtime with Laya ↗']]) {
+    nodes.get('source-mode').value = mode;
+    nodes.get('source-mode').onchange();
+    assert.equal(nodes.get('classify').textContent, action);
+    assert.equal(nodes.get('file-input').hidden, mode === 'text');
+    assert.equal(nodes.get('paste-input').hidden, mode !== 'text');
+  }
+});
+
+test('log input explains each analysis mode before the selector', () => {
+  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  const help = html.slice(html.indexOf('class="mode-help"'), html.indexOf('class="source-controls"'));
+  for (const description of [
+    'Paste:</strong> Paste log text for analysis.',
+    'Batch:</strong> Analyze existing log files from the beginning.',
+    'Realtime:</strong> Monitor and analyze new log lines as they arrive.',
+  ]) assert.ok(help.includes(description));
+});

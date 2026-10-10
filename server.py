@@ -183,7 +183,7 @@ async def handle_file_source(request: Request) -> Response:
     try:
         body = await request.json()
         if not isinstance(body, dict) or body.get("mode") not in {"batch", "follow"}:
-            raise ValueError("Select Batch file or Follow file mode.")
+            raise ValueError("Select Batch or Realtime mode.")
         mode = body["mode"]
         values = body.get("paths", body.get("path"))
         paths = await anyio.to_thread.run_sync(
