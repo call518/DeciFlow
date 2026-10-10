@@ -32,6 +32,8 @@ function workspace(events, status) {
     readEvents: async (_, receive) => events.forEach(receive),
   });
   context.document.getElementById('review-filter').value = 'all';
+  context.document.getElementById('category-filter').value = 'all';
+  context.document.getElementById('chart-certainty').value = 'all';
   const source = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
   vm.runInContext(source.replace(/^import .*;\n/, ''), context);
   return { nodes, context, requests };
@@ -276,13 +278,13 @@ test('individual JSON reflects review changes and stays open after rendering', a
   const row = nodes.get('results').children[1];
   const details = row.children.at(-1);
   assert.equal(details.children[0].textContent, 'View JSON');
-  assert.equal(details.children[1].textContent, '');
+  assert.equal(details.children[1].children[1].textContent, '');
   details.open = true; details.ontoggle();
-  assert.equal(JSON.parse(details.children[1].textContent).lineEnd, 11);
-  assert.equal(JSON.parse(details.children[1].textContent).log, '<script>example</script>');
+  assert.equal(JSON.parse(details.children[1].children[1].textContent).lineEnd, 11);
+  assert.equal(JSON.parse(details.children[1].children[1].textContent).log, '<script>example</script>');
   const select = row.children.at(-2).children[0];
   select.value = 'warning'; select.onchange();
-  assert.equal(JSON.parse(details.children[1].textContent).reviewerCategory, 'warning');
+  assert.equal(JSON.parse(details.children[1].children[1].textContent).reviewerCategory, 'warning');
   vm.runInContext('render()', context);
   const reopened = nodes.get('results').children[1].children.at(-1);
   assert.equal(reopened.open, true);
@@ -291,7 +293,7 @@ test('individual JSON reflects review changes and stays open after rendering', a
   assert.equal(nodes.get('results').children[1].children.at(-1).open, false);
   const failureView = nodes.get('results').children[0].children.at(-1);
   failureView.open = true; failureView.ontoggle();
-  assert.equal(JSON.parse(failureView.children[1].textContent).error, 'request failed');
+  assert.equal(JSON.parse(failureView.children[1].children[1].textContent).error, 'request failed');
 });
 
 test('pause freezes rows while analysis continues; resume includes pending results', async () => {
@@ -321,6 +323,13 @@ test('pause freezes rows while analysis continues; resume includes pending resul
   nodes.get('review-filter').onchange();
   assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
   nodes.get('review-filter').value = 'all'; nodes.get('review-filter').onchange();
+  assert.deepEqual(logs(nodes), ['log-0']);
+  nodes.get('category-filter').value = 'warning'; nodes.get('category-filter').onchange();
+  assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
+  nodes.get('category-filter').value = 'all'; nodes.get('category-filter').onchange();
+  nodes.get('log-search').value = 'LOG-1'; nodes.get('log-search').oninput();
+  assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
+  nodes.get('log-search').value = ''; nodes.get('log-search').oninput();
   assert.deepEqual(logs(nodes), ['log-0']);
   finish(); await run;
   assert.deepEqual(logs(nodes), ['log-0']);
@@ -430,9 +439,9 @@ test('category chart counts all sources, separates failures, and ignores filters
   assert.deepEqual(values(), Array(5).fill('0 (0.0%)'));
 });
 
-test('category overview sits between Log input and Classification results', () => {
+test('category overview precedes Log input and Classification results', () => {
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-  assert.ok(html.indexOf('Log input') < html.indexOf('Classification overview'));
+  assert.ok(html.indexOf('Classification overview') < html.indexOf('Log input'));
   assert.ok(html.indexOf('Classification overview') < html.indexOf('Classification results'));
 });
 
@@ -448,6 +457,160 @@ test('uncertain category is explicitly provisional without changing the model ch
   assert.ok(row.children[2].textContent.includes('Error 41.0% vs Other 40.0%'));
   assert.ok(row.children[2].textContent.includes('close category probabilities'));
   const details = row.children.at(-1); details.open = true; details.ontoggle();
-  assert.equal(JSON.parse(details.children[1].textContent).category, 'error');
+  assert.equal(JSON.parse(details.children[1].children[1].textContent).category, 'error');
   assert.equal(nodes.get('category-chart').children[2].children[2].textContent, '1 (100.0%)');
+});
+
+test('workspace places input and overview in the 40% column beside 60% results', () => {
+  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
+  const leftStart = html.indexOf('<div class="input-column">');
+  const leftEnd = html.indexOf('</div>\n      <section class="card output">', leftStart);
+  assert.ok(leftStart >= 0 && leftEnd > leftStart);
+  const left = html.slice(leftStart, leftEnd);
+  assert.ok(left.includes('Log input'));
+  assert.ok(left.includes('Classification overview'));
+  assert.ok(!left.includes('Classification results'));
+  assert.ok(css.includes('grid-template-columns:minmax(0,2fr) minmax(0,3fr)'));
+  assert.ok(css.includes('.workspace{grid-template-columns:1fr}'));
+});
+
+test('category, review and literal log search combine and retain full aggregates', async () => {
+  const normal = result(0, false);
+  normal.result.log = 'Service Started [OK]';
+  const warning = result(1);
+  warning.result.category = 'warning';
+  warning.result.log = 'Service retry [pending]';
+  const failed = { type: 'result', index: 2, elapsedMs: 3,
+    result: { log: 'Service request failed', error: 'timeout', review: true, elapsedMs: 2 } };
+  const { nodes } = workspace([{ type: 'start', engine: 'laya', total: 3 }, normal, warning, failed]);
+  await nodes.get('classify').onclick();
+  nodes.get('log-search').value = 'SERVICE'; nodes.get('log-search').oninput();
+  assert.equal(logs(nodes).length, 3);
+  nodes.get('category-filter').value = 'normal'; nodes.get('category-filter').onchange();
+  assert.deepEqual(logs(nodes), ['Service Started [OK]']);
+  nodes.get('review-filter').value = 'needs-review'; nodes.get('review-filter').onchange();
+  assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
+  nodes.get('category-filter').value = 'warning'; nodes.get('category-filter').onchange();
+  nodes.get('log-search').value = '[PENDING]'; nodes.get('log-search').oninput();
+  assert.deepEqual(logs(nodes), ['Service retry [pending]']);
+  nodes.get('log-search').value = '.*'; nodes.get('log-search').oninput();
+  assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
+  nodes.get('log-search').value = ''; nodes.get('log-search').oninput();
+  nodes.get('category-filter').value = 'failed'; nodes.get('category-filter').onchange();
+  assert.deepEqual(logs(nodes), ['Service request failed']);
+  assert.equal(nodes.get('summary').children[0].children[0].textContent, '3');
+  nodes.get('category-filter').value = 'all'; nodes.get('category-filter').onchange();
+  nodes.get('review-filter').value = 'all'; nodes.get('review-filter').onchange();
+  assert.equal(logs(nodes).length, 3);
+});
+
+test('chart certainty groups partition classified results without treating failures as uncertain', async () => {
+  const events = [{ type: 'start', engine: 'laya', total: 4 }];
+  for (const [index, category, uncertain, review] of [
+    [0, 'normal', false, false], [1, 'error', true, true], [2, 'other', false, true],
+  ]) {
+    const event = result(index, review);
+    Object.assign(event.result, { category, uncertain });
+    events.push(event);
+  }
+  events.push({ type: 'result', index: 3, result: { log: 'failed', error: 'timeout', review: true, elapsedMs: 1 } });
+  const { nodes } = workspace(events);
+  await nodes.get('classify').onclick();
+  const values = () => nodes.get('category-chart').children.map(row => row.children[2].textContent);
+  nodes.get('pause-updates').onclick();
+  nodes.get('chart-certainty').value = 'uncertain'; nodes.get('chart-certainty').onchange();
+  assert.deepEqual(values(), ['0 (0.0%)', '0 (0.0%)', '1 (100.0%)', '0 (0.0%)', '0 (0.0%)']);
+  assert.equal(nodes.get('chart-totals').textContent, '1 classified chunk · 1 failed request');
+  nodes.get('chart-certainty').value = 'certain'; nodes.get('chart-certainty').onchange();
+  assert.deepEqual(values(), ['1 (50.0%)', '0 (0.0%)', '0 (0.0%)', '0 (0.0%)', '1 (50.0%)']);
+  assert.equal(nodes.get('summary').children[0].children[0].textContent, '4');
+  assert.equal(nodes.get('results').children.length, 4);
+  nodes.get('chart-certainty').value = 'all'; nodes.get('chart-certainty').onchange();
+  assert.equal(nodes.get('chart-totals').textContent, '3 classified chunks · 1 failed request');
+});
+
+test('truncated count includes rejected responses across chart filters and paused updates', async () => {
+  const events = [{ type: 'start', engine: 'laya', total: 3 }, result(0, false),
+    { type: 'result', index: 1, result: { log: 'too long', error: 'truncated', review: true, elapsedMs: 1, providerResponse: { usage: { truncated: true } } } },
+    { type: 'result', index: 2, result: { log: 'timeout', error: 'timeout', review: true, elapsedMs: 1 } }];
+  const { nodes, context } = workspace(events);
+  await nodes.get('classify').onclick();
+  assert.equal(nodes.get('chart-truncated').textContent, 'Truncated: 1');
+  nodes.get('chart-certainty').value = 'certain'; nodes.get('chart-certainty').onchange();
+  assert.equal(nodes.get('chart-truncated').textContent, 'Truncated: 1');
+  nodes.get('pause-updates').onclick();
+  vm.runInContext("results.push({log:'more', error:'truncated', review:true, elapsedMs:1, providerResponse:{usage:{truncated:true}}}); render(false);", context);
+  assert.equal(nodes.get('chart-truncated').textContent, 'Truncated: 2');
+  assert.equal(nodes.get('chart-totals').textContent, '1 classified chunk · 3 failed requests');
+});
+
+test('result label uses selected category probability rather than provider confidence', async () => {
+  const event = result(0, false);
+  Object.assign(event.result, { confidence: .16, answerProbability: .9 });
+  const { nodes } = workspace([{ type: 'start', engine: 'laya', total: 1 }, event]);
+  await nodes.get('classify').onclick();
+  assert.equal(nodes.get('results').children[0].children[0].children[1].textContent, '90.0% category probability · 1ms');
+});
+
+test('collapsed options show the rendering integrity warning', async () => {
+  const event = result(0);
+  Object.assign(event.result, {
+    uncertain: true, candidates: ['normal'], reviewReasons: ['collapsed_options'],
+  });
+  const { nodes } = workspace([{ type: 'start', engine: 'laya', total: 1 }, event]);
+  await nodes.get('classify').onclick();
+  const texts = nodes.get('results').children[0].children.map(child => child.textContent || '');
+  assert.ok(texts.some(text => text.includes('option descriptions lost distinction')));
+});
+
+test('Copy JSON copies current reviewer edits and reports success or failure', async () => {
+  const { nodes, context } = workspace([
+    { type: 'start', engine: 'laya', total: 1 }, result(0),
+  ]);
+  let copied;
+  context.navigator = { clipboard: { writeText: async text => { copied = text; } } };
+  await nodes.get('classify').onclick();
+  const row = nodes.get('results').children[0];
+  const reviewer = row.children.at(-2).children[0];
+  reviewer.value = 'warning';
+  reviewer.onchange();
+  const actions = row.children.at(-1).children[1].children[0];
+  assert.equal(actions.children[0].textContent, 'Copy');
+  assert.equal(actions.children[0].className, 'json-copy');
+  await actions.children[0].onclick();
+  assert.equal(JSON.parse(copied).reviewerCategory, 'warning');
+  assert.equal(JSON.parse(copied).log, 'log-0');
+  assert.equal(actions.children[1].textContent, 'Copied');
+  context.navigator.clipboard.writeText = async () => { throw new Error('Denied'); };
+  await actions.children[0].onclick();
+  assert.match(actions.children[1].textContent, /Copy failed/);
+  assert.equal(actions.children[0].disabled, false);
+});
+
+test('clipboard fallback copies on HTTP and cleans up on failure', async () => {
+  const { context } = workspace([]);
+  let removed = 0;
+  let restored = 0;
+  let selected;
+  context.document.activeElement = { focus() { restored++; } };
+  context.document.body = { append(buffer) {
+    buffer.select = () => { selected = buffer.value; };
+    buffer.remove = () => { removed++; };
+  } };
+  context.document.execCommand = command => command === 'copy';
+  await vm.runInContext('copyText("example JSON")', context);
+  assert.equal(selected, 'example JSON');
+  assert.equal(removed, 1);
+  assert.equal(restored, 1);
+  context.document.execCommand = () => false;
+  await assert.rejects(vm.runInContext('copyText("example JSON")', context));
+  assert.equal(removed, 2);
+  assert.equal(restored, 2);
+});
+
+test('quiet actions and JSON disclosure have visible button borders', () => {
+  const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
+  assert.match(css, /\.quiet\{[^}]*border:1px solid/);
+  assert.match(css, /\.result-json summary\{[^}]*border:1px solid/);
 });

@@ -14,6 +14,6 @@ docker run --detach \
   --env LAYA_PORT=8000 \
   --env LAYA_DEVICE=cpu \
   --env LAYA_PRELOAD=1 \
-  --env LAYA_MODELS=multilingual \
+  --env LAYA_MODELS=english,multilingual,typed-decisions \
   --env LAYA_API_KEY=changeme \
   call518/deciflow-laya:cpu laya-serve

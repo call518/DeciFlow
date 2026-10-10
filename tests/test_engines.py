@@ -11,7 +11,7 @@ from config import get_engine
 
 def test_default_is_local_laya(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DECISION_ENGINE")
-    monkeypatch.delenv("TYPESAFE_API_KEY")
+    monkeypatch.delenv("JEV_API_KEY")
     engine = get_engine()
     assert engine.name == "laya"
     assert engine.url == "http://127.0.0.1:8000/v1/systemone"

@@ -30,6 +30,8 @@ async def test_profiles_reach_both_engines(
         question = payload["questions"]["category"]
         assert question["criteria"] == PROFILES[profile]["criteria"]
         assert PROFILES[profile]["instructions"] in question["instructions"]
+        assert "Prefer security" not in question["instructions"]
+        assert "Use other when context is insufficient" not in question["instructions"]
         return httpx.Response(
             200,
             json={

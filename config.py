@@ -1,6 +1,7 @@
 """Decision engine settings and verified model budgets."""
 
 import os
+import re
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
@@ -25,6 +26,40 @@ class Engine:
     timeout: int
     concurrency: int = 4
 
+    @property
+    def context_tokens(self) -> int:
+        """Return the conservative request window for the selected model."""
+        if self.name == "jev":
+            return JEV_CONTEXT_TOKENS
+        raw = os.getenv("LAYA_MAX_TOKENS", "").strip()
+        built_in = self.model in {"english", "multilingual", "typed-decisions"}
+        if not raw:
+            if not built_in:
+                raise ValueError("Custom LAYA_MODEL requires explicit LAYA_MAX_TOKENS.")
+            return 512 if self.model == "english" else LAYA_CONTEXT_TOKENS
+        maximum = 512 if self.model == "english" else LAYA_CONTEXT_TOKENS
+        try:
+            value = int(raw)
+        except ValueError as error:
+            raise ValueError("LAYA_MAX_TOKENS must be a positive integer.") from error
+        if not 1 <= value <= maximum:
+            raise ValueError(f"LAYA_MAX_TOKENS must be between 1 and {maximum}.")
+        return value
+
+    @property
+    def head_tokens(self) -> int:
+        """Return the selected Laya model's question budget."""
+        try:
+            value = int(os.getenv("LAYA_HEAD_TOKENS", str(LAYA_HEAD_TOKENS)))
+        except ValueError as error:
+            raise ValueError("LAYA_HEAD_TOKENS must be a positive integer.") from error
+        if not 0 < value < self.context_tokens:
+            raise ValueError(
+                f"LAYA_HEAD_TOKENS must be between 1 and {self.context_tokens - 1} "
+                f"for {self.model}."
+            )
+        return value
+
 
 def get_engine() -> Engine:
     """Select Laya by default; never fall back to a paid provider."""
@@ -34,8 +69,8 @@ def get_engine() -> Engine:
         return Engine(
             name,
             "https://api.typesafe.ai/v1/systemone",
-            os.getenv("TYPESAFE_API_KEY", ""),
-            JEV_MODEL,
+            os.getenv("JEV_API_KEY", ""),
+            get_model(name),
             30,
             get_concurrency(name),
         )
@@ -52,19 +87,32 @@ def get_engine() -> Engine:
         or parsed.fragment
     ):
         raise ValueError("LAYA_API_URL must be an HTTP(S) URL without credentials.")
-    return Engine(
+    engine = Engine(
         name,
         url,
         os.getenv("LAYA_API_KEY", "changeme"),
-        LAYA_MODEL,
+        get_model(name),
         120,
         get_concurrency(name),
     )
+    _ = engine.head_tokens  # Validate before accepting a classification run.
+    return engine
+
+
+def get_model(engine: str) -> str:
+    """Read the selected provider's model without changing providers on failure."""
+    key = f"{engine.upper()}_MODEL"
+    model = os.getenv(key, LAYA_MODEL if engine == "laya" else JEV_MODEL).strip()
+    if not model:
+        raise ValueError(f"{key} must not be empty.")
+    if engine == "laya" and not re.fullmatch(r"[a-zA-Z][a-zA-Z0-9_-]*", model):
+        raise ValueError(f"{key} must be a built-in or registered model name.")
+    return model
 
 
 def get_jev_input_bytes() -> int:
     """Read a conservative byte budget, not an exact Jev token count."""
-    key = "MAX_JEV_INPUT_BYTES"
+    key = "JEV_MAX_INPUT_BYTES"
     try:
         value = int(os.getenv(key, str(DEFAULT_JEV_INPUT_BYTES)))
     except ValueError as error:

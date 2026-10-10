@@ -90,9 +90,20 @@ def test_normalization_keeps_multiline_and_semantic_fields() -> None:
 @pytest.mark.parametrize(
     ("confidence", "probabilities", "expected"),
     [
-        (0.9, [0.5, 0.45, 0.03, 0.01, 0.01], ["close_probabilities"]),
-        (0.9, [0.5, 0.4, 0.05, 0.03, 0.02], []),
-        (0.26, [0.01, 0.18, 0.41, 0.0, 0.4], ["low_confidence", "close_probabilities"]),
+        (
+            0.9,
+            [0.5, 0.45, 0.03, 0.01, 0.01],
+            ["low_answer_probability", "close_probabilities"],
+        ),
+        (0.9, [0.5, 0.4, 0.05, 0.03, 0.02], ["low_answer_probability"]),
+        (
+            0.26,
+            [0.01, 0.18, 0.41, 0.0, 0.4],
+            ["low_answer_probability", "close_probabilities"],
+        ),
+        (0.16, [0.9, 0.04, 0.03, 0.02, 0.01], []),
+        (0.99, [0.5039, 0.1924, 0.1316, 0.0884, 0.0837], ["low_answer_probability"]),
+        (0.4, [0.7, 0.15, 0.1, 0.03, 0.02], []),
     ],
 )
 async def test_uncertainty_preserves_model_choice(
@@ -129,6 +140,9 @@ async def test_uncertainty_preserves_model_choice(
         result = await classify_log("log", get_engine(), client)
     assert result["category"] == choice
     assert result["probabilities"] == distribution
+    assert result["confidence"] == confidence
+    assert result["answerProbability"] == distribution[choice]
+    assert result["uncertaintyBasis"] == "selected_category_probability"
     assert result["reviewReasons"] == expected
     assert result["uncertain"] is bool(expected)
     assert result["review"] is bool(expected)

@@ -10,6 +10,25 @@ const samples = [
   '2026-10-10T09:00:04 event=zx17 value=unknown',
 ];
 const expandedJson = new WeakSet();
+async function copyText(text) {
+  if (globalThis.navigator?.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const previousFocus = document.activeElement;
+  const buffer = document.createElement('textarea');
+  buffer.value = text;
+  buffer.className = 'clipboard-buffer';
+  buffer.setAttribute('readonly', '');
+  document.body.append(buffer);
+  try {
+    buffer.select();
+    if (!document.execCommand('copy')) throw new Error('Clipboard unavailable');
+  } finally {
+    buffer.remove();
+    previousFocus?.focus();
+  }
+}
 let results = [];
 let completionOrder = [];
 let elapsedMs = 0;
@@ -80,10 +99,14 @@ updateSourceSettings();
 function renderCategoryChart() {
   const counts = Object.fromEntries(Object.keys(labels).map(key => [key, 0]));
   let failed = 0;
+  let truncated = 0;
+  const certainty = $('chart-certainty').value;
   for (const result of results) {
     if (!result) continue;
+    if (result.providerResponse?.usage?.truncated === true) truncated++;
     if (result.error) failed++;
-    else if (Object.hasOwn(counts, result.category)) counts[result.category]++;
+    else if (Object.hasOwn(counts, result.category)
+      && (certainty === 'all' || (certainty === 'uncertain' ? result.uncertain : !result.uncertain))) counts[result.category]++;
   }
   const classified = Object.values(counts).reduce((sum, count) => sum + count, 0);
   const maximum = Math.max(1, ...Object.values(counts));
@@ -102,8 +125,10 @@ function renderCategoryChart() {
       element('span', `${count.toLocaleString('en-US')} (${percent.toFixed(1)}%)`, 'category-count'));
     $('category-chart').append(row);
   }
+  $('chart-truncated').textContent = `Truncated: ${truncated.toLocaleString('en-US')}`;
   $('chart-totals').textContent = `${classified.toLocaleString('en-US')} classified ${classified === 1 ? 'chunk' : 'chunks'} · ${failed.toLocaleString('en-US')} failed ${failed === 1 ? 'request' : 'requests'}`;
 }
+$('chart-certainty').onchange = renderCategoryChart;
 renderCategoryChart();
 function render(updateList = true) {
   renderCategoryChart();
@@ -113,7 +138,7 @@ function render(updateList = true) {
   const processingPercent = elapsedMs > 0 ? `${(activeProcessingMs / elapsedMs * 100).toFixed(1)}%` : 'N/A';
   for (const [label, value] of [['Processed chunks', completed], ['Needs review', results.filter(r => r.review).length], ['Total elapsed time', `${elapsedMs}ms`], ['Active processing time', `${activeProcessingMs}ms (${processingPercent})`], ['Average processing time', `${averageMs.toFixed(1)}ms`]]) {
     const metric = element('div', label, 'metric');
-    if (label === 'Needs review') metric.title = 'Confidence below 70%, top-two probability gap below 10 percentage points, Other category, or failed request; not an error count.';
+    if (label === 'Needs review') metric.title = 'Selected category probability below 70%, top-two probability gap below 10 percentage points, Other category, or failed request; not an error count.';
     if (label === 'Average processing time') metric.title = 'Mean request duration, including network/server wait and failed requests; excludes waiting for new file lines.';
     if (label === 'Active processing time') metric.title = 'Time with at least one request in flight, counting overlapping requests once. Includes network/server wait, excludes idle time; not CPU utilization.';
     metric.append(element('strong', String(value)));
@@ -127,7 +152,14 @@ function render(updateList = true) {
   if (updatesPaused && !updateList) return;
   if (!updatesPaused) displayedOrder = completionOrder.slice();
   $('results').replaceChildren();
-  const visible = (updatesPaused ? pausedOrder : completionOrder).toReversed().map(index => results[index]).filter(r => $('review-filter').value === 'all' || ($('review-filter').value === 'needs-review' ? r.review : !r.review));
+  const visible = (updatesPaused ? pausedOrder : completionOrder).toReversed().map(index => results[index]).filter(r => {
+    const review = $('review-filter').value;
+    const category = $('category-filter').value;
+    const search = $('log-search').value.toLowerCase();
+    return (review === 'all' || (review === 'needs-review' ? r.review : !r.review))
+      && (category === 'all' || (category === 'failed' ? Boolean(r.error) : !r.error && r.category === category))
+      && r.log.toLowerCase().includes(search);
+  });
   const pages = Math.max(1, Math.ceil(visible.length / 100));
   page = Math.min(page, pages - 1);
   $('page-info').textContent = `Page ${page + 1} of ${pages} · ${visible.length} results`;
@@ -137,11 +169,11 @@ function render(updateList = true) {
     const row = element('article', '', 'result');
     const top = element('div', '', 'result-top');
     top.append(element('span', result.error ? 'Request failed' : `${result.uncertain ? 'Uncertain · ' : ''}${labels[result.category]}`, `badge ${result.uncertain ? 'uncertain' : result.category || 'error'}`));
-    top.append(element('span', `${Math.round(result.confidence * 100) || 0}% confidence · ${result.elapsedMs}ms`));
+    top.append(element('span', result.error ? `${result.elapsedMs}ms` : `${((result.answerProbability ?? result.probabilities?.[result.category] ?? 0) * 100).toFixed(1)}% category probability · ${result.elapsedMs}ms`));
     if (result.uncertain) top.title = `Provisional model choice. ${result.candidates?.map(key => `${labels[key]} ${(result.probabilities[key] * 100).toFixed(1)}%`).join(' vs ') || 'Low confidence'}. Not a confirmed incident.`;
     if (result.review) top.append(element('span', 'Needs review', 'review'));
     row.append(top, element('p', result.log, 'log'));
-    if (result.uncertain) row.append(element('p', `Provisional: ${result.candidates?.map(key => `${labels[key]} ${(result.probabilities[key] * 100).toFixed(1)}%`).join(' vs ') || 'Low confidence'} · ${result.reviewReasons?.map(reason => ({ low_confidence: 'low confidence', close_probabilities: 'close category probabilities', other_category: 'insufficient context / Other' })[reason]).join('; ') || 'review needed'}`, 'uncertainty-note'));
+    if (result.uncertain) row.append(element('p', `Provisional: ${result.candidates?.map(key => `${labels[key]} ${(result.probabilities[key] * 100).toFixed(1)}%`).join(' vs ') || 'Low confidence'} · ${result.reviewReasons?.map(reason => ({ low_answer_probability: 'category probability below 70%', low_confidence: 'legacy provider confidence below 70%', close_probabilities: 'close category probabilities', collapsed_options: 'option descriptions lost distinction during token rendering', other_category: 'insufficient context / Other' })[reason]).join('; ') || 'review needed'}`, 'uncertainty-note'));
     if (result.source) {
       const end = result.lineEnd || result.line;
       const multiple = end !== result.line;
@@ -156,7 +188,27 @@ function render(updateList = true) {
     }
     const jsonView = element('details', '', 'result-json');
     const jsonText = element('pre', '', 'json-content');
-    jsonView.append(element('summary', 'View JSON'), jsonText);
+    const jsonActions = element('div', '', 'json-actions');
+    const copyButton = element('button', 'Copy', 'json-copy');
+    copyButton.type = 'button';
+    copyButton.setAttribute('aria-label', 'Copy this result JSON to clipboard');
+    const copyStatus = element('span', '', 'caption');
+    copyStatus.setAttribute('role', 'status');
+    copyButton.onclick = async () => {
+      copyButton.disabled = true;
+      try {
+        await copyText(JSON.stringify(result, null, 2));
+        copyStatus.textContent = 'Copied';
+      } catch {
+        copyStatus.textContent = 'Copy failed. Select and copy the JSON below.';
+      } finally {
+        copyButton.disabled = false;
+      }
+    };
+    jsonActions.append(copyButton, copyStatus);
+    const jsonPanel = element('div', '', 'json-panel');
+    jsonPanel.append(jsonActions, jsonText);
+    jsonView.append(element('summary', 'View JSON'), jsonPanel);
     jsonView.open = expandedJson.has(result);
     if (jsonView.open) jsonText.textContent = JSON.stringify(result, null, 2);
     jsonView.ontoggle = () => {
@@ -287,7 +339,13 @@ $('classify').onclick = async () => {
     $('export').disabled = !completed;
   }
 };
-$('review-filter').onchange = () => { page = 0; if (completed) render(); };
+function handleResultFilter() {
+  page = 0;
+  if (completed) render();
+}
+$('review-filter').onchange = handleResultFilter;
+$('category-filter').onchange = handleResultFilter;
+$('log-search').oninput = handleResultFilter;
 $('previous').onclick = () => { page--; render(); };
 $('next').onclick = () => { page++; render(); };
 $('export').onclick = () => {

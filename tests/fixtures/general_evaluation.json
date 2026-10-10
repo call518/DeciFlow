@@ -1,0 +1,15 @@
+[
+  {"log":"Oct 4 15:30:07 host systemd[1]: Starting system activity accounting tool...","expected":"normal"},
+  {"log":"Oct 4 15:30:07 host systemd[1]: sysstat-collect.service: Succeeded.","expected":"normal"},
+  {"log":"Oct 4 15:30:07 host systemd[1]: Started system activity accounting tool.","expected":"normal"},
+  {"log":"Oct 4 15:30:07 host systemd[1]: Reloaded Anonymizing overlay network for TCP.","expected":"normal"},
+  {"log":"Oct 4 15:53:35 host chronyd[320]: Selected source 158.247.202.103 (1.kr.pool.ntp.org)","expected":"normal"},
+  {"log":"Oct 4 18:17:44 host kernel: NetLabel: Initializing","expected":"normal"},
+  {"log":"Oct 4 18:17:44 host kernel: NetLabel: domain hash size = 128","expected":"normal"},
+  {"log":"Oct 4 15:30:07 host systemd[1]: tor-master.service: Unit cannot be reloaded because it is inactive.","expected":"warning"},
+  {"log":"Oct 4 15:56:49 host chronyd[320]: Detected falseticker 64.176.168.216 (2.asia.pool.ntp.org)","expected":"warning"},
+  {"log":"Oct 4 15:48:15 host chronyd[320]: Can't synchronise: no majority","expected":"error"},
+  {"log":"Oct 4 16:00:00 host backup[10]: Backup failed: destination unavailable","expected":"error"},
+  {"log":"Oct 4 16:00:00 host audit[10]: Unauthorized access: user guest read protected credentials in violation of access policy","expected":"security"},
+  {"log":"Oct 4 16:00:00 host worker[10]: opaque event payload without an identifiable outcome","expected":"other"}
+]

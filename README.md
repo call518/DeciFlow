@@ -4,9 +4,11 @@
 
 **Classify logs with AI and spot error and security events at a glance.**
 
-DeciFlow classifies each log event as **Normal, Warning, Error, Security, or Other**
+DeciFlow groups log lines into chunks and classifies each chunk as **Normal, Warning, Error, Security, or Other**
 with Laya or Jev. Scan a batch, follow new events, and focus your review with
 category probabilities and confidence instead of reading every line unaided.
+Choose a domain profile and chunk size per source; compare category counts in a
+live chart and pause list updates to inspect individual results.
 
 **DeciFlow** runs on the node containing your logs, reads events, and displays
 results in a browser. The **Laya server** runs the decision model on a separate
@@ -65,7 +67,8 @@ and [driver 580 or newer](https://docs.nvidia.com/deploy/cuda-compatibility/mino
 #### Docker run
 
 Use **`call518/deciflow-laya:cpu`** or **`call518/deciflow-laya:cuda`**.
-No clone or build is needed. Copy the required script to the Laya host.
+No clone or build is needed. Copy the required script to the Laya host and run
+**only one** of the CPU/CUDA commands below.
 
 CPU: [run-deciflow-laya-cpu.sh](scripts/run-deciflow-laya-cpu.sh)
 
@@ -79,14 +82,14 @@ CUDA: [run-deciflow-laya-cuda.sh](scripts/run-deciflow-laya-cuda.sh)
 bash scripts/run-deciflow-laya-cuda.sh
 ```
 
-The scripts set `LAYA_API_KEY` to `changeme` by default; an existing environment
-value overrides it. Use a strong key for deployment and set the same value in
-DeciFlow's `.env`.
+The scripts explicitly set `--env LAYA_API_KEY=changeme`; exporting a different
+key does not override this argument. For deployment, change this argument and set
+the same key in DeciFlow's `.env`.
 
 The scripts use port **8000**, preload `multilingual`, and share the
 `deciflow-laya-model-cache` volume. CUDA exposes all GPUs to the container.
 To change the host interface/port, edit `--publish HOST_IP:HOST_PORT:8000` and
-update `LAYA_API_URL`. Both scripts use `laya-server`; stop/remove the existing
+update `LAYA_API_URL`. Both scripts use `DeciFlow-Laya`; stop/remove the existing
 container before switching CPU/CUDA or changing settings.
 
 > **NOTE:** For Docker Compose deployment, see the official
@@ -110,17 +113,18 @@ can take several minutes; inspect container logs for startup errors.
 
 | Action | Docker run |
 | --- | --- |
-| Status | `docker ps --filter name=laya-server` |
-| Logs | `docker logs --tail=100 laya-server` |
-| Stop | `docker stop laya-server` |
-| Resume | `docker start laya-server` |
-| Remove | `docker rm laya-server` after stopping |
+| Status | `docker ps --filter name=DeciFlow-Laya` |
+| Logs | `docker logs --tail=100 DeciFlow-Laya` |
+| Stop | `docker stop DeciFlow-Laya` |
+| Resume | `docker start DeciFlow-Laya` |
+| Remove | `docker rm DeciFlow-Laya` after stopping |
 
 Removal preserves the model cache. Use only one deployment method at a time.
 
 #### Custom Docker run images (optional)
 
-Build from Laya **v0.4.1** only when you need your own image:
+Build from Laya **v0.4.1** only when you need your own image. Run the CPU **or** CUDA
+build command for your target:
 
 ```bash
 git clone --branch v0.4.1 --depth 1 https://github.com/NandhaKishorM/laya.git
@@ -147,6 +151,7 @@ On the DeciFlow node, set the shared Laya server URL and matching API key in `.e
 
 ```dotenv
 DECISION_ENGINE=laya
+LAYA_MODEL=multilingual
 LAYA_API_URL=http://laya-server.example:8000/v1/systemone
 LAYA_API_KEY=changeme
 PORT=4000
@@ -159,7 +164,8 @@ and set it in `.env`. Jev is paid; no Laya server is needed.
 
 ```dotenv
 DECISION_ENGINE=jev
-TYPESAFE_API_KEY=your-typesafe-api-key
+JEV_MODEL=jev-1.13.0
+JEV_API_KEY=your-typesafe-api-key
 PORT=4000
 ```
 
@@ -179,123 +185,219 @@ Laya server settings are managed separately on the Laya host.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `DECISION_ENGINE` | `laya` | `laya` or `jev` |
+| `PORT` | `4000` | DeciFlow web port |
 | `LAYA_API_URL` | `http://127.0.0.1:8000/v1/systemone` | Full Laya URL, including any proxy prefix |
 | `LAYA_API_KEY` | `changeme` | Key matching the Laya server |
-| `PORT` | `4000` | DeciFlow web port |
-| `TYPESAFE_API_KEY` | Unset | Jev API key |
-| `MAX_JEV_INPUT_BYTES` | `30000` | Jev request JSON budget in UTF-8 bytes; range 1–30000 |
+| `LAYA_MODEL` | `multilingual` | Built-in or registered custom checkpoint name; server must provide it |
+| `LAYA_MAX_TOKENS` | Blank | Sent as `max_len`; blank keeps built-in defaults; required for custom models |
+| `LAYA_HEAD_TOKENS` | `256` | Sent as `head_max_len`; question/option budget, below the total window |
 | `LAYA_CONCURRENCY` | `4` | Maximum simultaneous Laya requests per run; positive integer |
+| `JEV_API_KEY` | Unset | Jev API key |
+| `JEV_MODEL` | `jev-1.13.0` | TypeSafe-supported version ID or alias, e.g. `jev-latest` |
+| `JEV_MAX_INPUT_BYTES` | `30000` | Jev request JSON budget in UTF-8 bytes; range 1–30000 |
 | `JEV_CONCURRENCY` | `4` | Maximum simultaneous Jev requests per run; positive integer |
 
-Concurrency applies to Paste, Batch, and Realtime. It controls DeciFlow requests,
-not Laya server workers. Increase gradually within server capacity and API limits.
+`LAYA_HEAD_TOKENS=384` sends `"head_max_len": 384` in each Laya request.
+`LAYA_MAX_TOKENS=1024` similarly sends `"max_len": 1024`. Both override the
+checkpoint defaults for that call. Restart DeciFlow after editing `.env`.
+These are DeciFlow settings; no remote Docker change is needed to send them.
+
+Blank `LAYA_MAX_TOKENS` keeps DeciFlow's built-in windows: English 512,
+Multilingual/Typed-decisions 8192. English accepts up to 512; other models up to
+8192. The question budget must be positive and below the selected window.
+256 is a default, not a Laya API maximum. These are **DeciFlow validation limits**.
+The official checkpoint defaults are English 512/192 and the others 1024/256.
+The server separately caps both overrides with `LAYA_MAX_TOKEN_BUDGET` (default
+8192); exceeding its cap returns 422. Budgets appear in result JSON `inputBudget`.
+
+Budgets are not fixed reservations: actual log space depends on the rendered
+question, not simply `max_len - head_max_len`. `usage.truncated` describes log
+truncation, not complete instruction preservation. When Laya reports collapsed
+category options, DeciFlow marks the prediction Uncertain/Needs review and shows
+why, while preserving the original category, probabilities, and provider response.
+
+For a custom checkpoint, register its name with remote server `LAYA_EXTRA_MODELS`,
+then set `LAYA_MODEL` to that name and explicitly set `LAYA_MAX_TOKENS` within
+its verified capacity. Names use letters, digits, `_` or `-`, starting with a
+letter; URLs/paths are not accepted. The response must confirm the requested
+custom name in `routing.model`; silent routing to another model is rejected.
+DeciFlow does not install or train models.
+
+Concurrency applies to Paste, Batch, and Realtime. Laya v0.4.1 uses one inference
+worker: `LAYA_CONCURRENCY` controls client requests, while server
+`LAYA_MAX_CONCURRENT` controls admission (default 16; excess returns 503).
+Neither is GPU inference parallelism. Keep server `LAYA_JEV_STRICT=0` for
+truncation/routing metadata; CPU `LAYA_THREADS` should not exceed physical cores.
+File Batch still sends individual requests, not a native inference batch.
+
+Jev ignores Laya budgets. Its API has no equivalent `head_max_len` control;
+Jev 1.13 limits state + longest question to 32k tokens and the full request to
+64k. `JEV_MAX_INPUT_BYTES` is a conservative byte guard, not a token allocation.
+Jev model availability depends on the account/API; aliases may change limits.
+
+See the [integration review](docs/laya-integration-review.md) for parameter
+behavior and implemented versus deferred improvements. Evaluate all five profiles
+with 36 labeled synthetic cases (including header variants):
+
+```bash
+uv run python -m scripts.evaluate_laya --output /tmp/laya-validation.json
+```
+
+The report includes a confusion matrix, failures, uncertain counts, and correct
+predictions within the Certain group. These samples are regression probes, not a
+production accuracy estimate. Use `--cases PATH` for your own labeled JSON cases
+(`log`, `expected`, optional `profile`), or `--model NAME` to compare checkpoints.
+Evaluation uses only Laya, never paid Jev.
 
 ## Usage
 
-The sidebar identifies the DeciFlow log source host by hostname, detected IPs, and OS name/version.
-In WSL or containers, these identify that environment; IPs are not a full interface inventory.
+On wide screens, the left **40%** shows **Classification overview → Log input**;
+the right **60%** shows **Classification results**. Narrow screens stack the panels.
+The sidebar identifies the DeciFlow log source host by hostname, detected IPs, and
+OS/version. In WSL or containers, these identify that environment, not its host OS;
+IPs are not a full interface inventory. **Ready to connect** reports configuration,
+not a successful connection to the decision engine.
 
-### Provisional decisions
+### Input and criteria
 
-**Uncertain** marks confidence below 70% or a top-two category probability gap
-below 10 percentage points. The model choice and probabilities remain unchanged;
-JSON includes candidates, the probability gap, and review reasons. These are
-review heuristics, not calibrated accuracy guarantees. Charts include provisional
-choices. Other categories and request failures also require review.
+**Realtime** is selected by default. Each mode starts with editable examples.
 
-Authentication criteria distinguish unsuccessful individual attempts (Warning),
-service/mechanism failures (Error), and evidence of abuse (Security). Other means
-an unrelated or unidentifiable outcome, not merely an unknown root cause. Specific
-log strings belong in evaluation samples, not production criteria.
-For recognized single-line classic
-syslog records, its model input removes timestamp, hostname, and process PID;
-service name and message contents (users, IPs, ports) remain. Original logs are
-preserved and the changed `decisionInput` is visible in JSON. Multiline chunks and
-unrecognized formats are unchanged. Normalization reduces input variation; it
-does not guarantee identical predictions or accuracy.
-
-### Decision profiles and chunks
-
-Select a profile and **Lines/chunk** for each path or pattern; Paste has its own
-profile and chunk size. Defaults: **General system**, **1 nonempty line**.
-Profiles are maintained separately in [`profiles/`](profiles/); edit or add a JSON
-profile and restart DeciFlow to update the selector. Built-ins: General system,
-Authentication, HTTP access, Application, and Network / tcpdump text.
-New profiles must retain the existing five category keys.
-Laya and Jev use the same selected criteria; automatic type detection is disabled.
-
-Chunks never mix files. Batch submits the remainder at EOF. Realtime submits when
-the chunk fills or no new nonempty line arrives for one second, and separates file
-rotation boundaries. Stopping discards unsubmitted chunks. Identical overlapping
-source settings are deduplicated; conflicting settings are rejected.
-The **Classification overview** bar chart combines AI category counts across all
-sources. Counts represent chunks, percentages use successfully classified chunks,
-and failed requests are shown separately. Filters and reviewer edits do not change
-the chart; it continues updating while the result list is paused.
-
-**Pause updates** freezes the result list while analysis and metrics continue.
-Filters and pagination use the frozen list; **Resume updates** includes new results.
-JSON export includes all received results, even while paused.
-
-Use **View JSON** on a result to inspect its fields, including failures and reviewer edits.
-
-Batch uses **File line(s)** for actual file line numbers. Realtime uses
-**Observed line(s)** for the sequence since monitoring started or the file rotated.
-
-Results and JSON retain the profile, configured chunk size, actual line count,
-and file line range. Metrics count chunks, not individual lines; request durations
-are per chunk. Model input budgets still apply to the complete chunk and question;
-oversized or truncated inputs are retained for review rather than silently shortened.
-Network input supports UTF-8 tcpdump text, not binary PCAP. Specialized criteria
-need validation on your own logs; a larger chunk does not guarantee accuracy.
-
-| Source | Behavior |
+| Mode | What DeciFlow reads |
 | --- | --- |
-| Realtime | Start at existing files' end; read new/replacement files from the beginning |
-| Batch | Read matching files from the beginning to EOF |
-| Paste | Nonempty lines grouped by the selected chunk size |
+| Realtime | New lines after existing files' end; new/replacement files from the beginning |
+| Batch | Matching files from the beginning to EOF |
+| Paste | Pasted text grouped into chunks |
 
-File sources require local browser access (`localhost`/`127.0.0.1`) and regular
-UTF-8 files readable by DeciFlow. Enter one path or pattern per line; absolute paths,
-multiple directories, `*`, `?`, `[abc]`, and recursive `**` are supported. Relative
-paths start at the server's working directory. Matches are deduplicated by file.
-Batch needs matching files; Realtime can wait for new matches.
+File sources are on the **DeciFlow node**, not the Laya host. They require local
+browser access (`localhost`/`127.0.0.1`) and readable UTF-8 regular files. Enter one
+path or pattern per line; absolute paths, multiple directories, `*`, `?`, `[abc]`,
+and recursive `**` are supported. Relative paths start at DeciFlow's working
+directory. Batch needs matching files; Realtime can wait for new matches.
 
-Predictions use **Normal, Warning, Error, Security, Other**; criteria are defined in
-[classifier.py](classifier.py). Results display newest completions first, with probabilities, confidence, progress,
-and elapsed time. Low-confidence or close-probability choices, Other, and failed
-requests require review. Filter all results,
-items needing review, or items not needing review;
-correct reviewer categories, and export JSON; the UI displays 100 results per page.
-Results are kept in browser memory, so export before leaving.
-Reviewer category saves a human correction in JSON as `reviewerCategory`; it does
-not change the model prediction, review flag, or train the model.
-Average processing time is the mean duration of all completed requests, including
-failures and network/server wait; it excludes waiting for new file lines.
-Active processing time measures intervals with at least one request in flight,
-counting overlapping requests once. Its share of total elapsed time stays within
-0–100%; network/server wait is included, idle time is excluded. Timing refreshes
-once per second while waiting. Stopped/disconnected runs retain the last received
-snapshot, which may lag by about one second. This is not CPU utilization.
+Choose **Criteria** and **Lines/chunk** for each path/pattern or for Paste.
+Defaults: **General system**, **1 nonempty line**. Every profile uses `choice` with
+**Normal, Warning, Error, Security, Other**; only the descriptions and instructions
+differ. Laya and Jev use the same selected profile. Type detection is manual;
+`score` and `noul` are not used.
 
-**Stop processing** cancels file readers and pending requests to Laya or Jev while retaining
-completed results. A model inference already running on the remote server may finish.
+| Criteria profile | Focus |
+| --- | --- |
+| General system | System/service operation and failures |
+| Authentication | Authentication/session outcomes, service failures, and abuse |
+| HTTP access | Responses, request failures, and suspicious access |
+| Application | Application operations, exceptions, and dependencies |
+| Network / tcpdump text | Connection/packet evidence in text; binary PCAP is unsupported |
+
+Edit/add a JSON file in [`profiles/`](profiles/) and restart DeciFlow to update the
+selector. Keep `label`, `instructions`, `criteria`, and the existing five category
+keys. Describe event outcomes and evidence; keep specific log strings in evaluation
+samples rather than adding message-by-message exceptions to production criteria.
+
+Chunks never mix files. Batch flushes remaining lines at EOF; Realtime flushes at
+the configured size or after one second without a new nonempty line, and separates
+file rotations. Blank lines are skipped; event boundaries are not automatically
+detected. Overlapping matches with identical settings are deduplicated by resolved
+path; conflicting settings are rejected. Chunking does not bypass model budgets.
+
+General system separates routine operation (Normal), recoverable problems
+(Warning), explicit failures (Error), and evidenced abuse or policy violations
+(Security). A service name, IP address, or security-related topic is not evidence
+of an incident. These criteria guide predictions; validate your deployed model
+against representative logs before relying on the categories.
+
+Authentication distinguishes unsuccessful individual attempts (Warning), service
+or supporting-mechanism failures (Error), and evidence of abuse (Security).
+Other means an unrelated or unidentifiable outcome, not merely unknown root cause.
+For recognized **single-line classic syslog**, Authentication removes timestamp,
+hostname, and PID from model input while preserving service and message contents
+(users, IPs, ports). Original logs remain intact; changed `decisionInput` appears
+in JSON. Multiline chunks and unrecognized formats are unchanged. Normalization
+reduces input variation; it does not guarantee identical predictions or accuracy.
+
+### Results and controls
+
+Newest **completed** chunks appear first, with 100 results per page; this is
+completion order, not log timestamp order. File locations show **File line(s)**
+for Batch and **Observed line(s)** for Realtime—the sequence read since monitoring
+started or the file rotated. `1 line (max 5)` means one actual line was submitted
+with a configured maximum of five.
+
+**Uncertain** marks selected category probability (`answerProbability`) below 70% or a top-two category probability
+gap below 10 percentage points. The model's choice and probabilities are preserved;
+the UI shows provisional candidates, and JSON records candidates, the gap, and
+review reasons. Other and failed requests also require review. These thresholds
+are review heuristics, not accuracy guarantees; provider `confidence` scales differ
+between engines and are preserved separately; they do not determine Uncertain. Filter **All results / Needs review / No review needed**. Category filtering
+and case-insensitive literal search of original log text combine with the review
+filter. They affect the list only, not metrics, chart, or JSON export.
+
+| Control | Behavior |
+| --- | --- |
+| Pause updates / Resume updates | Freeze/unfreeze the list, including before the first result; analysis, metrics, and chart continue. Filters/pages use the frozen list; the button counts pending results. |
+| Stop processing | Cancel file readers and pending engine requests; retain completed results, discard unsubmitted chunks. Remote inference already running may finish. |
+| View JSON | Expand one result, including failures, profile/chunk metadata, and reviewer edits. Expanded state survives list refreshes. Copy inside the JSON panel copies the current result, including reviewer edits. |
+| Reviewer category | Record `reviewerCategory`; does not change AI category, review status, chart, or train the model. |
+| Export JSON | After processing finishes or stops, export all received results—including those not displayed while paused. |
+
+**Classification overview** combines AI category counts across all sources,
+including uncertain choices. Counts are **chunks**, not raw lines; percentages use
+successfully classified chunks. Failed requests are shown separately. Filters and
+reviewer edits do not change the chart. Choose **All / Uncertain / Certain** to chart all
+classified chunks or just one certainty group; percentages use the selected group.
+Certain means no Uncertain flag, not verified accuracy. The failure count always
+shows all failed requests, which belong to neither certainty group.
+**Truncated** counts responses reporting `usage.truncated=true` across all groups;
+these rejected predictions are included in failures, not category bars. Missing
+truncation metadata and local byte-budget rejections are not counted as truncated.
+This is log/state truncation, not a count of shortened question instructions.
+
+Result JSON keeps `requestedModel`, UTC `requestedAt`, request size, input budget,
+and the question/criteria snapshot. `providerResponse` preserves the returned
+model, `routing` (actual checkpoint), `usage` (tokens/truncation), and full answer
+metadata, including provider confidence fields and action/abstention when present.
+Top-level `answerProbability` is the probability of the selected category;
+`confidence` remains the original provider value. `uncertaintyBasis` identifies
+the selected-category scale used by the fixed 70% threshold.
+HTTP status and available request-ID/inference-time headers are retained;
+credentials and authorization headers are excluded. API failures and rejected
+predictions retain available diagnostics too. `model` alone may be a generic
+Laya name: inspect `providerResponse.routing` for the actual checkpoint.
+
+Results and reviewer edits live **only in browser memory**. Refreshing/closing the
+page loses them; a newly started run replaces them. Export before leaving or
+starting another run. No saved history or JSON import is provided.
+
+### Timing metrics
+
+| Metric | Meaning |
+| --- | --- |
+| Processed chunks | Completed results, including failed requests |
+| Needs review | Selected category probability below 70%, close probabilities, Other, or request failure; not an error count |
+| Total elapsed time | Time since the run started, including idle periods |
+| Active processing time | Time with at least one request in flight, counting overlap once; percentage of total elapsed time |
+| Average processing time | Mean completed request duration, including failures; per chunk |
+
+Active and average times include network/server wait. Active time excludes idle
+periods and stays within 0–100% of elapsed time; it is not CPU/GPU utilization or
+pure inference time. Timing refreshes once per second while waiting; stopping or
+disconnecting retains the last snapshot, which may lag by about one second.
 
 ## Limits
 
 - No application file-size or line-count cap; RAM and browser capacity still matter.
   File reads are incremental. Chunks use a fixed nonempty-line count, not automatic
   event-boundary detection.
-- **Laya:** `multilingual`, 8192 tokens including the question (question head: 256).
-  The documented server also limits events to 50,000 characters and requests to 2 MiB.
+- **Laya:** selected checkpoint; request windows and question budgets are listed above.
+  The [official HTTP server](https://nandhakishorm.github.io/laya/http-api/#limits)
+  also limits state to 50,000 characters and requests to 2 MiB; verify the deployed version.
   Truncated responses or missing truncation metadata are rejected.
 - **Jev:** `jev-1.13.0`, [32k state + longest question, 64k full request](https://docs.typesafe.ai/models).
   The byte budget is a conservative guard, not a token count or acceptance guarantee.
 - Rejected events retain their original text for review; other events continue.
   Source read/UTF-8 errors stop processing and preserve completed results.
-- Each event makes one request, with up to four concurrent calls (Laya: 120s timeout;
-  Jev: 30s). Laya serializes inference. Throughput depends on hardware/network and
-  provider limits; confidence is model certainty, not measured accuracy.
+- Each chunk makes one request. Engine concurrency settings default to 4 per run;
+  timeouts are Laya 120s and Jev 30s. Higher client concurrency does not guarantee
+  parallel inference or higher throughput; server capacity and admission limits apply.
 - Realtime polls every 250ms and waits for complete lines. Rotation leftovers are
   marked `incomplete`; line numbers reset on rotation. Rapid rotation or
   copy-truncate/regrowth can lose events. File deduplication does not remove duplicate
@@ -305,7 +407,22 @@ completed results. A model inference already running on the remote server may fi
   submission and never commit `.env`. Public deployment needs authentication and
   usage limits.
 
+`Ctrl+C` stops DeciFlow, waiting up to two seconds before cancelling remaining
+requests. Browser-memory results are not saved by server shutdown.
+
 ## Development
+
+For real-model results and remaining limitations, see [Laya log validation](docs/laya-validation.md).
+Re-run the selected Laya model on the 13 labeled examples:
+
+```bash
+uv run python -m scripts.evaluate_laya \
+  --cases tests/fixtures/general_evaluation.json \
+  --output /tmp/laya-validation.json
+```
+
+This calls your Laya server only; it refuses paid Jev. The small sample is not an
+accuracy guarantee.
 
 ```bash
 uv run ruff format .

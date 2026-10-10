@@ -1,0 +1,169 @@
+[
+  {
+    "log": "Oct 4 15:30:07 host systemd[1]: Starting system activity accounting tool...",
+    "expected": "normal"
+  },
+  {
+    "log": "Oct 4 15:30:07 host systemd[1]: sysstat-collect.service: Succeeded.",
+    "expected": "normal"
+  },
+  {
+    "log": "Oct 4 15:30:07 host systemd[1]: Started system activity accounting tool.",
+    "expected": "normal"
+  },
+  {
+    "log": "Oct 4 15:30:07 host systemd[1]: Reloaded Anonymizing overlay network for TCP.",
+    "expected": "normal"
+  },
+  {
+    "log": "Oct 4 15:53:35 host chronyd[320]: Selected source 158.247.202.103 (1.kr.pool.ntp.org)",
+    "expected": "normal"
+  },
+  {
+    "log": "Oct 4 18:17:44 host kernel: NetLabel: Initializing",
+    "expected": "normal"
+  },
+  {
+    "log": "Oct 4 18:17:44 host kernel: NetLabel: domain hash size = 128",
+    "expected": "normal"
+  },
+  {
+    "log": "Oct 4 15:30:07 host systemd[1]: tor-master.service: Unit cannot be reloaded because it is inactive.",
+    "expected": "warning"
+  },
+  {
+    "log": "Oct 4 15:56:49 host chronyd[320]: Detected falseticker 64.176.168.216 (2.asia.pool.ntp.org)",
+    "expected": "warning"
+  },
+  {
+    "log": "Oct 4 15:48:15 host chronyd[320]: Can't synchronise: no majority",
+    "expected": "error"
+  },
+  {
+    "log": "Oct 4 16:00:00 host backup[10]: Backup failed: destination unavailable",
+    "expected": "error"
+  },
+  {
+    "log": "Oct 4 16:00:00 host audit[10]: Unauthorized access: user guest read protected credentials in violation of access policy",
+    "expected": "security"
+  },
+  {
+    "log": "Oct 4 16:00:00 host worker[10]: opaque event payload without an identifiable outcome",
+    "expected": "other"
+  },
+  {
+    "profile": "general",
+    "log": "Nov 12 07:01:55 other-node systemd[812]: Starting system activity accounting tool...",
+    "expected": "normal"
+  },
+  {
+    "profile": "general",
+    "log": "Nov 12 07:01:55 other-node systemd[812]: sysstat-collect.service: Succeeded.",
+    "expected": "normal"
+  },
+  {
+    "profile": "general",
+    "log": "Nov 12 07:01:55 other-node systemd[812]: Started system activity accounting tool.",
+    "expected": "normal"
+  },
+  {
+    "profile": "authentication",
+    "log": "sshd[12]: Accepted publickey for alice from 192.0.2.10 port 42100 ssh2",
+    "expected": "normal"
+  },
+  {
+    "profile": "authentication",
+    "log": "sshd[12]: Failed password for alice from 192.0.2.10 port 42100 ssh2",
+    "expected": "warning"
+  },
+  {
+    "profile": "authentication",
+    "log": "sshd[12]: Authentication service unavailable: identity backend failed",
+    "expected": "error"
+  },
+  {
+    "profile": "authentication",
+    "log": "audit: Unauthorized access to protected credentials violates access policy",
+    "expected": "security"
+  },
+  {
+    "profile": "authentication",
+    "log": "worker: opaque unrelated payload",
+    "expected": "other"
+  },
+  {
+    "profile": "http_access",
+    "log": "192.0.2.10 - - [10/Oct/2026:12:00:00 +0000] \"GET /health HTTP/1.1\" 200 12",
+    "expected": "normal"
+  },
+  {
+    "profile": "http_access",
+    "log": "192.0.2.10 - - [10/Oct/2026:12:00:00 +0000] \"GET /missing HTTP/1.1\" 404 12",
+    "expected": "warning"
+  },
+  {
+    "profile": "http_access",
+    "log": "192.0.2.10 - - [10/Oct/2026:12:00:00 +0000] \"GET /api HTTP/1.1\" 503 12",
+    "expected": "error"
+  },
+  {
+    "profile": "http_access",
+    "log": "WAF blocked request: confirmed SQL injection payload UNION SELECT password FROM users",
+    "expected": "security"
+  },
+  {
+    "profile": "http_access",
+    "log": "opaque record without HTTP request or status",
+    "expected": "other"
+  },
+  {
+    "profile": "application",
+    "log": "INFO job completed successfully: 12 records saved",
+    "expected": "normal"
+  },
+  {
+    "profile": "application",
+    "log": "WARN dependency timeout; retry succeeded, operation completed",
+    "expected": "warning"
+  },
+  {
+    "profile": "application",
+    "log": "ERROR backup failed: destination unavailable; operation aborted",
+    "expected": "error"
+  },
+  {
+    "profile": "application",
+    "log": "SECURITY unauthorized user accessed protected admin action in violation of policy",
+    "expected": "security"
+  },
+  {
+    "profile": "application",
+    "log": "opaque event without application context",
+    "expected": "other"
+  },
+  {
+    "profile": "network",
+    "log": "TCP connection established: SYN, SYN-ACK, ACK; data acknowledged; orderly FIN close",
+    "expected": "normal"
+  },
+  {
+    "profile": "network",
+    "log": "TCP retransmission after packet loss; retransmitted data acknowledged",
+    "expected": "warning"
+  },
+  {
+    "profile": "network",
+    "log": "ICMP destination unreachable: host unreachable; connection failed",
+    "expected": "error"
+  },
+  {
+    "profile": "network",
+    "log": "Firewall: confirmed unauthorized traffic violates network access policy",
+    "expected": "security"
+  },
+  {
+    "profile": "network",
+    "log": "12:00:00 IP 192.0.2.10.42000 > 192.0.2.20.443: Flags [S], seq 1, length 0",
+    "expected": "other"
+  }
+]

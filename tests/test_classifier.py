@@ -22,6 +22,51 @@ ANSWER: Result = {
 }
 
 
+@pytest.mark.anyio
+@pytest.mark.parametrize("engine", ["laya", "jev"])
+async def test_collapsed_options_require_review_only_for_laya(
+    monkeypatch: pytest.MonkeyPatch, engine: str
+) -> None:
+    monkeypatch.setenv("DECISION_ENGINE", engine)
+    data = {
+        "usage": {
+            "truncated": False,
+            "options": {"category": {"total": 5, "distinct": 3}},
+        },
+        "answers": {"category": ANSWER},
+    }
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=data))
+    ) as client:
+        result = await classify_log("original log", get_engine(), client)
+    assert result["category"] == ANSWER["choice"]
+    assert result["uncertain"] is (engine == "laya")
+    assert result["review"] is (engine == "laya")
+    assert result["reviewReasons"] == (
+        ["collapsed_options"] if engine == "laya" else []
+    )
+    assert result["providerResponse"] == data
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "options", [{"total": 5, "distinct": 6}, {"total": 5, "distinct": True}, {}]
+)
+async def test_invalid_option_integrity_metadata_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, options: Result
+) -> None:
+    monkeypatch.setenv("DECISION_ENGINE", "laya")
+    data = {
+        "usage": {"truncated": False, "options": {"category": options}},
+        "answers": {"category": ANSWER},
+    }
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=data))
+    ) as client:
+        with pytest.raises(ValueError, match="response format"):
+            await classify_log("original log", get_engine(), client)
+
+
 @pytest.mark.parametrize("text", ["", None, " \n ", 123])
 def test_invalid_input(text: object) -> None:
     with pytest.raises((ValueError, TypeError)):
@@ -52,7 +97,9 @@ async def test_jev_contract() -> None:
         transport=httpx.MockTransport(handle_request)
     ) as client:
         result = await classify_log("connection refused", get_engine(), client)
-    assert result["review"] is True
+    assert result["review"] is False
+    assert result["answerProbability"] == 0.7
+    assert result["confidence"] == 0.6
     assert result["category"] == "error"
     assert result["model"] == "jev-test"
 

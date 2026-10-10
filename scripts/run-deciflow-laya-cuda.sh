@@ -4,6 +4,7 @@
 #cd laya
 #docker build --build-arg TORCH_INDEX=cu130 --tag call518/deciflow-laya:cuda .
 
+
 docker run --detach \
   --name DeciFlow-Laya \
   --init \
@@ -15,6 +16,6 @@ docker run --detach \
   --env LAYA_PORT=8000 \
   --env LAYA_DEVICE=cuda \
   --env LAYA_PRELOAD=1 \
-  --env LAYA_MODELS=multilingual \
+  --env LAYA_MODELS=english,multilingual,typed-decisions \
   --env LAYA_API_KEY=changeme \
   call518/deciflow-laya:cuda laya-serve

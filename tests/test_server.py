@@ -11,8 +11,8 @@ from config import Engine
 @pytest.mark.anyio
 async def test_laya_status_without_jev_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DECISION_ENGINE", "laya")
-    monkeypatch.delenv("TYPESAFE_API_KEY")
-    monkeypatch.setenv("MAX_JEV_INPUT_BYTES", "unused")
+    monkeypatch.delenv("JEV_API_KEY")
+    monkeypatch.setenv("JEV_MAX_INPUT_BYTES", "unused")
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=server.app), base_url="http://test"
     ) as client:
@@ -25,7 +25,7 @@ async def test_laya_status_without_jev_key(monkeypatch: pytest.MonkeyPatch) -> N
 
 @pytest.mark.anyio
 async def test_assets_and_status(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.delenv("JEV_API_KEY", raising=False)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=server.app), base_url="http://test"
     ) as client:
@@ -46,7 +46,7 @@ async def test_assets_and_status(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.anyio
 async def test_upload_validation(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.delenv("JEV_API_KEY", raising=False)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=server.app), base_url="http://test"
     ) as client:
@@ -56,7 +56,7 @@ async def test_upload_validation(monkeypatch: pytest.MonkeyPatch) -> None:
             "/api/classify", headers=headers, json={"text": ("a" * 100 + "\n") * 10000}
         )
         assert response.status_code == 503
-        assert "TYPESAFE_API_KEY" in response.json()["error"]
+        assert "JEV_API_KEY" in response.json()["error"]
         for body in [{}, [], {"text": ""}]:
             assert (
                 await client.post("/api/classify", headers=headers, json=body)
@@ -68,7 +68,7 @@ async def test_upload_validation(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.anyio
 async def test_upload_above_old_limits(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.delenv("JEV_API_KEY", raising=False)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=server.app), base_url="http://test"
     ) as client:
@@ -79,7 +79,7 @@ async def test_upload_above_old_limits(monkeypatch: pytest.MonkeyPatch) -> None:
                 json={"text": text},
             )
             assert response.status_code == 503
-            assert "TYPESAFE_API_KEY" in response.json()["error"]
+            assert "JEV_API_KEY" in response.json()["error"]
 
 
 @pytest.mark.anyio

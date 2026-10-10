@@ -9,13 +9,13 @@ from config import get_engine, get_jev_input_bytes
 
 @pytest.mark.parametrize("value", ["0", "-1", "abc", "", "1.5", "30001"])
 def test_invalid_byte_budget(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
-    monkeypatch.setenv("MAX_JEV_INPUT_BYTES", value)
-    with pytest.raises(ValueError, match="MAX_JEV_INPUT_BYTES"):
+    monkeypatch.setenv("JEV_MAX_INPUT_BYTES", value)
+    with pytest.raises(ValueError, match="JEV_MAX_INPUT_BYTES"):
         get_jev_input_bytes()
 
 
 def test_configured_byte_budget(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MAX_JEV_INPUT_BYTES", "20000")
+    monkeypatch.setenv("JEV_MAX_INPUT_BYTES", "20000")
     assert get_jev_input_bytes() == 20000
 
 
@@ -81,10 +81,243 @@ async def test_byte_budget_includes_question_and_exact_boundary(
             await classify_log("x", get_engine(), client)
         size = sizes[0]
         assert size > 1
-        monkeypatch.setenv("MAX_JEV_INPUT_BYTES", str(size))
+        monkeypatch.setenv("JEV_MAX_INPUT_BYTES", str(size))
         with pytest.raises(ValueError, match="429"):
             await classify_log("x", get_engine(), client)
-        monkeypatch.setenv("MAX_JEV_INPUT_BYTES", str(size - 1))
+        monkeypatch.setenv("JEV_MAX_INPUT_BYTES", str(size - 1))
         with pytest.raises(ValueError, match="preflight"):
             await classify_log("x", get_engine(), client)
     assert len(sizes) == 2
+
+
+@pytest.mark.parametrize(
+    ("name", "model", "context"),
+    [
+        ("laya", "english", 512),
+        ("laya", "typed-decisions", 8192),
+        ("laya", "multilingual", 8192),
+        ("jev", "jev-latest", None),
+    ],
+)
+def test_model_selection(
+    monkeypatch: pytest.MonkeyPatch, name: str, model: str, context: int | None
+) -> None:
+    monkeypatch.setenv("DECISION_ENGINE", name)
+    monkeypatch.setenv(f"{name.upper()}_MODEL", model)
+    engine = get_engine()
+    assert engine.model == model
+    if context is not None:
+        assert engine.context_tokens == context
+
+
+@pytest.mark.parametrize(
+    ("name", "model"), [("laya", ""), ("laya", "unknown"), ("jev", "")]
+)
+def test_invalid_model_selection(
+    monkeypatch: pytest.MonkeyPatch, name: str, model: str
+) -> None:
+    monkeypatch.setenv("DECISION_ENGINE", name)
+    monkeypatch.setenv(f"{name.upper()}_MODEL", model)
+    with pytest.raises(ValueError, match=f"{name.upper()}_MODEL"):
+        get_engine()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("name", ["laya", "jev"])
+@pytest.mark.parametrize("status", [200, 429])
+async def test_response_metadata_survives_exportable_results(
+    monkeypatch: pytest.MonkeyPatch, name: str, status: int
+) -> None:
+    monkeypatch.setenv("DECISION_ENGINE", name)
+    model = "english" if name == "laya" else "jev-latest"
+    monkeypatch.setenv(f"{name.upper()}_MODEL", model)
+    response_data = {
+        "model": "actual-model",
+        "routing": {"model": model, "repo": "checkpoint"},
+        "usage": {"truncated": False, "input_tokens": 100},
+        "answers": {
+            "category": {
+                "choice": "normal",
+                "confidence": 0.9,
+                "answer_confidence": 0.95,
+                "action": {"act_probability": 1},
+                "probabilities": {
+                    "normal": 1,
+                    "warning": 0,
+                    "error": 0,
+                    "security": 0,
+                    "other": 0,
+                },
+            }
+        },
+    }
+
+    def handle_request(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        assert payload["model"] == model
+        if name == "laya":
+            assert payload["max_len"] == 512
+            assert payload["head_max_len"] == 256
+        return httpx.Response(
+            status,
+            json=response_data,
+            headers={
+                "x-request-id": "request-123",
+                "x-inference-time-ms": "12.5",
+                "authorization": "must-not-be-exported",
+            },
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handle_request)
+    ) as client:
+
+        async def handle_classify(log: str) -> Result:
+            return await classify_log(log, get_engine(), client)
+
+        rows = [r async for r in classify_batch(["example"], handle_classify)]
+    result = rows[0][1]
+    assert result["requestedModel"] == model
+    assert result["providerResponse"] == response_data
+    assert result["httpStatus"] == status
+    assert result["responseHeaders"] == {
+        "x-request-id": "request-123",
+        "x-inference-time-ms": "12.5",
+    }
+    assert "criteria" in result["question"]
+    assert result["requestBytes"] > 0
+    assert result["requestedAt"].endswith("+00:00")
+    assert ("error" in result) == (status == 429)
+
+
+@pytest.mark.parametrize(
+    ("model", "value"), [("english", "384"), ("multilingual", "512")]
+)
+@pytest.mark.anyio
+async def test_configured_laya_question_budget_reaches_request_and_metadata(
+    monkeypatch: pytest.MonkeyPatch, model: str, value: str
+) -> None:
+    monkeypatch.setenv("DECISION_ENGINE", "laya")
+    monkeypatch.setenv("LAYA_MODEL", model)
+    monkeypatch.setenv("LAYA_HEAD_TOKENS", value)
+
+    def handle_request(request: httpx.Request) -> httpx.Response:
+        assert json.loads(request.content)["head_max_len"] == int(value)
+        return httpx.Response(429)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handle_request)
+    ) as client:
+
+        async def handle_classify(log: str) -> Result:
+            return await classify_log(log, get_engine(), client)
+
+        rows = [r async for r in classify_batch(["example"], handle_classify)]
+    assert rows[0][1]["inputBudget"]["head_max_len"] == int(value)
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "", "abc", "1.5", "512", "8192"])
+def test_invalid_english_question_budget(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("DECISION_ENGINE", "laya")
+    monkeypatch.setenv("LAYA_MODEL", "english")
+    monkeypatch.setenv("LAYA_HEAD_TOKENS", value)
+    with pytest.raises(ValueError, match="LAYA_HEAD_TOKENS"):
+        get_engine()
+
+
+def test_jev_ignores_laya_question_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DECISION_ENGINE", "jev")
+    monkeypatch.setenv("LAYA_HEAD_TOKENS", "invalid-unused-value")
+    assert get_engine().name == "jev"
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "abc", "1.5", "8193"])
+def test_invalid_laya_total_budget(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+    monkeypatch.setenv("DECISION_ENGINE", "laya")
+    monkeypatch.setenv("LAYA_MAX_TOKENS", value)
+    with pytest.raises(ValueError, match="LAYA_MAX_TOKENS"):
+        get_engine()
+
+
+def test_total_budget_must_leave_question_room(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DECISION_ENGINE", "laya")
+    monkeypatch.setenv("LAYA_MAX_TOKENS", "256")
+    with pytest.raises(ValueError, match="LAYA_HEAD_TOKENS"):
+        get_engine()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("model", ["multilingual", "log-specialist"])
+async def test_explicit_total_budget_and_custom_model_reach_provider(
+    monkeypatch: pytest.MonkeyPatch, model: str
+) -> None:
+    monkeypatch.setenv("DECISION_ENGINE", "laya")
+    monkeypatch.setenv("LAYA_MODEL", model)
+    monkeypatch.setenv("LAYA_MAX_TOKENS", "1024")
+
+    def handle_request(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        assert payload["model"] == model
+        assert payload["max_len"] == 1024
+        assert payload["head_max_len"] == 256
+        return httpx.Response(422)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handle_request)
+    ) as client:
+        with pytest.raises(ValueError, match="422"):
+            await classify_log("original text", get_engine(), client)
+
+
+@pytest.mark.parametrize("model", ["../model", "https://hub/model", "a b"])
+def test_custom_model_must_be_a_registered_name(
+    monkeypatch: pytest.MonkeyPatch, model: str
+) -> None:
+    monkeypatch.setenv("DECISION_ENGINE", "laya")
+    monkeypatch.setenv("LAYA_MODEL", model)
+    monkeypatch.setenv("LAYA_MAX_TOKENS", "1024")
+    with pytest.raises(ValueError, match="LAYA_MODEL"):
+        get_engine()
+
+
+def test_jev_ignores_invalid_laya_total_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LAYA_MAX_TOKENS", "invalid")
+    assert get_engine().context_tokens == 32000
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("routing", [{}, {"model": "english"}, {"model": "logs"}])
+async def test_custom_model_requires_server_routing_confirmation(
+    monkeypatch: pytest.MonkeyPatch, routing: Result
+) -> None:
+    monkeypatch.setenv("DECISION_ENGINE", "laya")
+    monkeypatch.setenv("LAYA_MODEL", "logs")
+    monkeypatch.setenv("LAYA_MAX_TOKENS", "1024")
+    data = {
+        "routing": routing,
+        "usage": {"truncated": False},
+        "answers": {
+            "category": {
+                "choice": "normal",
+                "confidence": 1,
+                "probabilities": {
+                    "normal": 1,
+                    "warning": 0,
+                    "error": 0,
+                    "security": 0,
+                    "other": 0,
+                },
+            }
+        },
+    }
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=data))
+    ) as client:
+        if routing.get("model") == "logs":
+            result = await classify_log("example", get_engine(), client)
+            assert result["requestedModel"] == "logs"
+        else:
+            with pytest.raises(ValueError, match="confirm.*custom model"):
+                await classify_log("example", get_engine(), client)

@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 import laya_server
-from config import LAYA_CONTEXT_TOKENS, LAYA_HEAD_TOKENS
+from config import LAYA_CONTEXT_TOKENS
 
 
 class Tokenizer:
@@ -31,12 +31,15 @@ class Router:
 
 
 @pytest.mark.parametrize("extra_tokens", [0, 1])
+@pytest.mark.parametrize("head_tokens", [256, 384])
 def test_exact_event_budget_before_inference(
-    monkeypatch: pytest.MonkeyPatch, extra_tokens: int
+    monkeypatch: pytest.MonkeyPatch, extra_tokens: int, head_tokens: int
 ) -> None:
+    monkeypatch.setenv("LAYA_HEAD_TOKENS", str(head_tokens))
+
     def build_empty(*args: Any) -> tuple[list[int], list[int]]:
         assert args[1] == ""
-        assert args[3:] == (LAYA_CONTEXT_TOKENS, LAYA_HEAD_TOKENS)
+        assert args[3:] == (LAYA_CONTEXT_TOKENS, head_tokens)
         return list(range(100)), []
 
     monkeypatch.setattr(
@@ -57,5 +60,5 @@ def test_exact_event_budget_before_inference(
         assert router.calls == []
     else:
         assert router.calls == [
-            {"model": "multilingual", "max_len": 8192, "head_max_len": 256}
+            {"model": "multilingual", "max_len": 8192, "head_max_len": head_tokens}
         ]

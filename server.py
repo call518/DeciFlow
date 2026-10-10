@@ -25,7 +25,6 @@ from classifier import Result, classify_batch, classify_log, classify_stream, pa
 from config import (
     JEV_CONTEXT_TOKENS,
     JEV_REQUEST_TOKENS,
-    LAYA_CONTEXT_TOKENS,
     Engine,
     get_engine,
     get_jev_input_bytes,
@@ -101,7 +100,7 @@ async def handle_status(request: Request) -> Response:
                 "request_tokens": JEV_REQUEST_TOKENS,
             }
             if engine.name == "jev"
-            else {"context_tokens": LAYA_CONTEXT_TOKENS},
+            else {"context_tokens": engine.context_tokens},
         },
     )
 
@@ -236,7 +235,7 @@ async def handle_classify(request: Request) -> Response:
     if engine.name == "jev" and not engine.api_key:
         return _json(
             503,
-            {"error": "Set the TYPESAFE_API_KEY environment variable on the server."},
+            {"error": "Set the JEV_API_KEY environment variable on the server."},
         )
     return StreamingResponse(
         handle_events(logs, engine, profile, chunk_lines),
@@ -340,7 +339,7 @@ async def handle_file_source(request: Request) -> Response:
     if engine.name == "jev" and not engine.api_key:
         return _json(
             503,
-            {"error": "Set the TYPESAFE_API_KEY environment variable on the server."},
+            {"error": "Set the JEV_API_KEY environment variable on the server."},
         )
     return StreamingResponse(
         handle_file_events(values, paths, mode, engine, specs),

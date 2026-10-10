@@ -1,11 +1,11 @@
 {
   "label": "General system",
-  "instructions": "Judge system and service events from the supplied lines only.",
+  "instructions": "Judge operational outcomes, not service names or topics. Routine changes are normal; recoverable problems are warning; explicit failures are error. Security requires abuse or policy-violation evidence, not addresses or security terminology. Unknown cause alone is not other.",
   "criteria": {
-    "normal": "Successful operation or routine informational event without a problem.",
-    "warning": "Degraded performance, retry, or recoverable issue without a confirmed failure.",
-    "error": "Failed operation, exception, unavailable service, or data loss.",
-    "security": "Authentication abuse, unauthorized access, attack, or security policy violation.",
-    "other": "Insufficient context or none of these categories apply."
+    "normal": "Routine startup, initialization, configuration, maintenance, status update, or successful operation without evidence of a problem.",
+    "warning": "Recoverable issue, degraded performance, rejected individual attempt, unreliable dependency, or retry without an explicit operational failure.",
+    "error": "Explicitly failed operation, inability to perform a required function, unavailable service, unhandled exception, or data loss.",
+    "security": "Evidence of unauthorized access, malicious activity, authentication abuse, or security policy violation; not merely a security-related service or topic.",
+    "other": "No identifiable operational outcome or an event outside these categories; an unknown cause alone is insufficient."
   }
 }

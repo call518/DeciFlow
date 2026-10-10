@@ -7,7 +7,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-from config import LAYA_CONTEXT_TOKENS, LAYA_HEAD_TOKENS, LAYA_MODEL
+from config import Engine, get_model
 
 
 class LogRouter:
@@ -16,7 +16,9 @@ class LogRouter:
     def __init__(self, router: Any) -> None:
         """Reuse the official model loader and request serialization gate."""
         self.router = router
-        self.agent = router.load(LAYA_MODEL)
+        self.model = get_model("laya")
+        self.settings = Engine("laya", "", "", self.model, 120)
+        self.agent = router.load(self.model)
 
     @property
     def loaded(self) -> list[str]:
@@ -27,8 +29,8 @@ class LogRouter:
         self, state: str, questions: dict[str, Any], model: str | None = None
     ) -> dict[str, Any]:
         """Check exact token room before inference rather than silently slicing."""
-        if model != LAYA_MODEL or not isinstance(state, str):
-            raise ValueError("DeciFlow Laya requires text and the multilingual model.")
+        if model != self.model or not isinstance(state, str):
+            raise ValueError(f"DeciFlow Laya requires text and the {self.model} model.")
         tokenizer = self.agent.tok
         state_ids = tokenizer(
             state.replace(tokenizer.mask_token, " "), add_special_tokens=False
@@ -43,17 +45,21 @@ class LogRouter:
                 "crit": question["criteria"],
             }
             empty, _ = build_sequence(
-                tokenizer, "", internal, LAYA_CONTEXT_TOKENS, LAYA_HEAD_TOKENS
+                tokenizer,
+                "",
+                internal,
+                self.settings.context_tokens,
+                self.settings.head_tokens,
             )
-            if len(state_ids) + len(empty) > LAYA_CONTEXT_TOKENS:
+            if len(state_ids) + len(empty) > self.settings.context_tokens:
                 # No partial prediction is run; report the would-be truncation.
                 return {"usage": {"truncated": True}, "answers": {}}
         result = self.router.predict(
             state,
             questions,
-            model=LAYA_MODEL,
-            max_len=LAYA_CONTEXT_TOKENS,
-            head_max_len=LAYA_HEAD_TOKENS,
+            model=self.model,
+            max_len=self.settings.context_tokens,
+            head_max_len=self.settings.head_tokens,
         )
         result["usage"]["truncated"] = False
         return result
@@ -64,7 +70,7 @@ def main() -> None:
     load_dotenv(Path(__file__).resolve().parent / ".env")
     os.environ.setdefault("LAYA_HOST", "127.0.0.1")
     os.environ.setdefault("LAYA_DEVICE", "cpu")
-    os.environ.setdefault("LAYA_MODELS", "multilingual")
+    os.environ.setdefault("LAYA_MODELS", get_model("laya"))
     os.environ.setdefault("LAYA_PRELOAD", "1")
     os.environ.setdefault("LAYA_THREADS", "4")
     serve = import_module("laya.serve")
