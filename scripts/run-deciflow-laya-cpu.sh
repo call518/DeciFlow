@@ -6,6 +6,7 @@
 
 docker run --detach \
   --name DeciFlow-Laya \
+  --hostname DeciFlow-Laya \
   --init \
   --restart unless-stopped \
   --publish 0.0.0.0:8000:8000 \

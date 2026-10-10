@@ -4,6 +4,7 @@
 
 docker run --detach \
   --name DeciFlow-UI \
+  --hostname DeciFlow-UI \
   --init \
   --restart unless-stopped \
   --publish 0.0.0.0:4000:4000 \

@@ -7,6 +7,7 @@
 
 docker run --detach \
   --name DeciFlow-Laya \
+  --hostname DeciFlow-Laya \
   --init \
   --restart unless-stopped \
   --gpus all \
