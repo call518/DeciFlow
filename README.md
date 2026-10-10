@@ -184,14 +184,19 @@ Laya server settings are managed separately on the Laya host.
 | `PORT` | `4000` | DeciFlow web port |
 | `TYPESAFE_API_KEY` | Unset | Jev API key |
 | `MAX_JEV_INPUT_BYTES` | `30000` | Jev request JSON budget in UTF-8 bytes; range 1–30000 |
+| `LAYA_CONCURRENCY` | `4` | Maximum simultaneous Laya requests per run; positive integer |
+| `JEV_CONCURRENCY` | `4` | Maximum simultaneous Jev requests per run; positive integer |
+
+Concurrency applies to Paste, Batch, and Realtime. It controls DeciFlow requests,
+not Laya server workers. Increase gradually within server capacity and API limits.
 
 ## Usage
 
 | Source | Behavior |
 | --- | --- |
-| Paste | One event per nonempty line |
-| Batch | Read matching files from the beginning to EOF |
 | Realtime | Start at existing files' end; read new/replacement files from the beginning |
+| Batch | Read matching files from the beginning to EOF |
+| Paste | One event per nonempty line |
 
 File sources require local browser access (`localhost`/`127.0.0.1`) and regular
 UTF-8 files readable by DeciFlow. Enter one path or pattern per line; absolute paths,
@@ -209,9 +214,11 @@ Reviewer category saves a human correction in JSON as `reviewerCategory`; it doe
 not change the model prediction, review flag, or train the model.
 Average processing time is the mean duration of all completed requests, including
 failures and network/server wait; it excludes waiting for new file lines.
-Total processing time sums those request durations and shows their percentage
-of total elapsed time. Concurrent requests overlap, so this ratio may exceed 100%;
-it is not CPU utilization or the wall-clock time spent actively processing.
+Active processing time measures intervals with at least one request in flight,
+counting overlapping requests once. Its share of total elapsed time stays within
+0–100%; network/server wait is included, idle time is excluded. Timing refreshes
+once per second while waiting. Stopped/disconnected runs retain the last received
+snapshot, which may lag by about one second. This is not CPU utilization.
 
 **Stop processing** cancels file readers and pending requests to Laya or Jev while retaining
 completed results. A model inference already running on the remote server may finish.

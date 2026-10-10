@@ -15,3 +15,5 @@ def engine_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LAYA_API_KEY", raising=False)
     monkeypatch.delenv("LAYA_API_URL", raising=False)
     monkeypatch.delenv("MAX_JEV_INPUT_BYTES", raising=False)
+    monkeypatch.delenv("LAYA_CONCURRENCY", raising=False)
+    monkeypatch.delenv("JEV_CONCURRENCY", raising=False)

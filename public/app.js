@@ -12,13 +12,20 @@ const samples = [
 let results = [];
 let completionOrder = [];
 let elapsedMs = 0;
+let activeProcessingMs = 0;
 let busy = false;
 let page = 0;
 let total = 0;
 let completed = 0;
 let renderTimer;
 let activeRequest;
-let sourceMode = 'text';
+let sourceMode = 'follow';
+const filePaths = {
+  batch: 'sample-logs/access-1k.log\n/var/log/messages\n/var/log/nginx/access*.log',
+  follow: '/var/log/secure\n/var/log/messages\n/var/log/nginx/access*.log',
+};
+$('logs').value = samples.join('\n');
+$('file-path').value = filePaths[sourceMode];
 let engine = 'laya';
 let resultEngine = engine;
 let engineLabel = 'Laya';
@@ -32,12 +39,12 @@ function render() {
   $('summary').replaceChildren();
   const processingMs = results.reduce((sum, result) => sum + result.elapsedMs, 0);
   const averageMs = completed ? processingMs / completed : 0;
-  const processingPercent = elapsedMs > 0 ? `${(processingMs / elapsedMs * 100).toFixed(1)}%` : 'N/A';
-  for (const [label, value] of [['Processed logs', completed], ['Needs review', results.filter(r => r.review).length], ['Total elapsed time', `${elapsedMs}ms`], ['Total processing time', `${processingMs}ms (${processingPercent})`], ['Average processing time', `${averageMs.toFixed(1)}ms`]]) {
+  const processingPercent = elapsedMs > 0 ? `${(activeProcessingMs / elapsedMs * 100).toFixed(1)}%` : 'N/A';
+  for (const [label, value] of [['Processed logs', completed], ['Needs review', results.filter(r => r.review).length], ['Total elapsed time', `${elapsedMs}ms`], ['Active processing time', `${activeProcessingMs}ms (${processingPercent})`], ['Average processing time', `${averageMs.toFixed(1)}ms`]]) {
     const metric = element('div', label, 'metric');
     if (label === 'Needs review') metric.title = 'Confidence below 70%, Other category, or failed request; not an error count.';
     if (label === 'Average processing time') metric.title = 'Mean request duration, including network/server wait and failed requests; excludes waiting for new file lines.';
-    if (label === 'Total processing time') metric.title = 'Sum of completed request durations, including failures and network/server wait. Percentage is relative to total elapsed time and may exceed 100% with concurrent requests; not CPU utilization.';
+    if (label === 'Active processing time') metric.title = 'Time with at least one request in flight, counting overlapping requests once. Includes network/server wait, excludes idle time; not CPU utilization.';
     metric.append(element('strong', String(value)));
     $('summary').append(metric);
   }
@@ -83,10 +90,13 @@ function scheduleRender() {
 }
 $('sample').onclick = () => { $('logs').value = samples.join('\n'); };
 $('source-mode').onchange = () => {
+  if (sourceMode !== 'text') filePaths[sourceMode] = $('file-path').value;
   sourceMode = $('source-mode').value;
+  if (sourceMode !== 'text') $('file-path').value = filePaths[sourceMode];
   $('paste-input').hidden = sourceMode !== 'text';
   $('sample').hidden = sourceMode !== 'text';
   $('file-input').hidden = sourceMode === 'text';
+  $('file-notes').hidden = sourceMode === 'text';
   $('classify').textContent = sourceMode === 'follow' ? `Start realtime with ${engineLabel} ↗` : sourceMode === 'batch' ? `Run batch with ${engineLabel} ↗` : `Classify with ${engineLabel} ↗`;
 };
 $('stop').onclick = () => {
@@ -110,6 +120,8 @@ $('classify').onclick = async () => {
     });
     if (!response.ok) throw new Error((await response.json()).error);
     await readEvents(response.body, event => {
+      if (event.activeProcessingMs !== undefined) activeProcessingMs = event.activeProcessingMs;
+      if (event.elapsedMs !== undefined) elapsedMs = event.elapsedMs;
       if (event.type === 'start') {
         started = true;
         resultEngine = event.engine;
@@ -118,6 +130,7 @@ $('classify').onclick = async () => {
         results = total === null ? [] : new Array(total);
         completionOrder = [];
         elapsedMs = 0;
+        activeProcessingMs = 0;
         page = 0;
       } else if (event.type === 'result') {
         results[event.index] = event.result;
@@ -151,7 +164,7 @@ $('review-filter').onchange = () => { page = 0; if (completed) render(); };
 $('previous').onclick = () => { page--; render(); };
 $('next').onclick = () => { page++; render(); };
 $('export').onclick = () => {
-  const blob = new Blob([JSON.stringify({ mode: resultEngine, sourceMode, total, completed, elapsedMs, results: results.filter(Boolean) }, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify({ mode: resultEngine, sourceMode, total, completed, elapsedMs, activeProcessingMs, results: results.filter(Boolean) }, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;

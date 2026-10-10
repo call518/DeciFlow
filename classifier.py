@@ -135,9 +135,9 @@ async def classify_log(log: str, engine: Engine, client: httpx.AsyncClient) -> R
 
 
 async def classify_batch(
-    logs: list[str], classify: Classifier
+    logs: list[str], classify: Classifier, concurrency: int = 4
 ) -> AsyncGenerator[tuple[int, Result], None]:
-    """Yield indexed results with four workers; cancel requests on stream closure."""
+    """Yield indexed results with configurable workers; cancel requests on stream closure."""
 
     async def handle_log(index: int) -> tuple[int, Result]:
         start = perf_counter()
@@ -148,7 +148,7 @@ async def classify_batch(
         result["elapsedMs"] = int((perf_counter() - start) * 1000 + 0.5)
         return index, result
 
-    next_index = min(4, len(logs))
+    next_index = min(concurrency, len(logs))
     pending = {asyncio.create_task(handle_log(index)) for index in range(next_index)}
     try:
         while pending:
@@ -167,9 +167,9 @@ async def classify_batch(
 
 
 async def classify_stream(
-    records: AsyncGenerator[Result, None], classify: Classifier
+    records: AsyncGenerator[Result, None], classify: Classifier, concurrency: int = 4
 ) -> AsyncGenerator[tuple[int, Result], None]:
-    """Classify a finite or live source with at most four records in flight."""
+    """Classify a finite or live source with a configurable limit on records in flight."""
     pending: set[asyncio.Task[tuple[int, Result]]] = set()
     reader: asyncio.Task[Result] | None = None
     exhausted = False
@@ -186,7 +186,7 @@ async def classify_stream(
 
     try:
         while not exhausted or pending:
-            if not exhausted and reader is None and len(pending) < 4:
+            if not exhausted and reader is None and len(pending) < concurrency:
                 reader = asyncio.create_task(anext(records))
             waiting: set[asyncio.Task[Any]] = set(pending)
             if reader is not None:

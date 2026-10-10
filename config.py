@@ -23,6 +23,7 @@ class Engine:
     api_key: str
     model: str
     timeout: int
+    concurrency: int = 4
 
 
 def get_engine() -> Engine:
@@ -36,6 +37,7 @@ def get_engine() -> Engine:
             os.getenv("TYPESAFE_API_KEY", ""),
             JEV_MODEL,
             30,
+            get_concurrency(name),
         )
     if name != "laya":
         raise ValueError("DECISION_ENGINE must be laya or jev.")
@@ -50,7 +52,14 @@ def get_engine() -> Engine:
         or parsed.fragment
     ):
         raise ValueError("LAYA_API_URL must be an HTTP(S) URL without credentials.")
-    return Engine(name, url, os.getenv("LAYA_API_KEY", "changeme"), LAYA_MODEL, 120)
+    return Engine(
+        name,
+        url,
+        os.getenv("LAYA_API_KEY", "changeme"),
+        LAYA_MODEL,
+        120,
+        get_concurrency(name),
+    )
 
 
 def get_jev_input_bytes() -> int:
@@ -62,4 +71,16 @@ def get_jev_input_bytes() -> int:
         raise ValueError(f"{key} must be an integer from 1 to 30,000.") from error
     if not 1 <= value <= DEFAULT_JEV_INPUT_BYTES:
         raise ValueError(f"{key} must be an integer from 1 to 30,000.")
+    return value
+
+
+def get_concurrency(engine: str) -> int:
+    """Read the selected engine's positive simultaneous request limit."""
+    key = f"{engine.upper()}_CONCURRENCY"
+    try:
+        value = int(os.getenv(key, "4"))
+    except ValueError as error:
+        raise ValueError(f"{key} must be a positive integer.") from error
+    if value < 1:
+        raise ValueError(f"{key} must be a positive integer.")
     return value

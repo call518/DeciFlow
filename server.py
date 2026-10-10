@@ -1,8 +1,9 @@
 """Serve the DeciFlow UI and its existing JSON/NDJSON API."""
 
+import asyncio
 import json
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import aclosing
 from functools import partial
 from pathlib import Path
@@ -70,31 +71,90 @@ def _encode(event: Result) -> str:
     return json.dumps(event, ensure_ascii=True, allow_nan=False) + "\n"
 
 
+class _ProcessingClock:
+    def __init__(self) -> None:
+        self.started = perf_counter()
+        self.pending = 0
+        self.active_since = self.started
+        self.active_seconds = 0.0
+
+    def begin(self) -> None:
+        if self.pending == 0:
+            self.active_since = perf_counter()
+        self.pending += 1
+
+    def end(self) -> None:
+        self.pending -= 1
+        if self.pending == 0:
+            self.active_seconds += perf_counter() - self.active_since
+
+    def snapshot(self) -> Result:
+        now = perf_counter()
+        active = self.active_seconds
+        if self.pending:
+            active += now - self.active_since
+        return {
+            "elapsedMs": round((now - self.started) * 1000),
+            "activeProcessingMs": round(active * 1000),
+        }
+
+
+async def _timed_results(
+    results: AsyncGenerator[tuple[int, Result], None], clock: _ProcessingClock
+) -> AsyncGenerator[str, None]:
+    pending: asyncio.Task[tuple[int, Result]] | None = None
+    completed = 0
+    try:
+        while True:
+            if pending is None:
+                pending = asyncio.create_task(anext(results))
+            done, _ = await asyncio.wait({pending}, timeout=1)
+            if not done:
+                yield _encode({"type": "timing", **clock.snapshot()})
+                continue
+            try:
+                index, result = pending.result()
+            except StopAsyncIteration:
+                break
+            pending = None
+            completed += 1
+            yield _encode(
+                {
+                    "type": "result",
+                    "index": index,
+                    "result": result,
+                    "completed": completed,
+                    **clock.snapshot(),
+                }
+            )
+    finally:
+        if pending is not None:
+            pending.cancel()
+            await asyncio.gather(pending, return_exceptions=True)
+
+
 async def handle_events(logs: list[str], engine: Engine) -> AsyncIterator[str]:
     """Stream progress and cancel in-flight engine calls on client disconnect."""
-    start = perf_counter()
+    clock = _ProcessingClock()
     yield _encode({"type": "start", "total": len(logs), "engine": engine.name})
     async with httpx.AsyncClient(timeout=engine.timeout) as client:
 
         async def handle_classify(log: str) -> Result:
-            return await classify_log(log, engine, client)
+            clock.begin()
+            try:
+                return await classify_log(log, engine, client)
+            finally:
+                clock.end()
 
-        async with aclosing(classify_batch(logs, handle_classify)) as results:
-            completed = 0
-            async for index, result in results:
-                completed += 1
-                yield _encode(
-                    {
-                        "type": "result",
-                        "index": index,
-                        "result": result,
-                        "completed": completed,
-                        "elapsedMs": int((perf_counter() - start) * 1000 + 0.5),
-                    }
-                )
-    yield _encode(
-        {"type": "done", "elapsedMs": int((perf_counter() - start) * 1000 + 0.5)}
-    )
+        async with (
+            aclosing(
+                classify_batch(logs, handle_classify, engine.concurrency)
+            ) as results,
+            aclosing(_timed_results(results, clock)) as events,
+        ):
+            async for event in events:
+                yield event
+    yield _encode({"type": "done", **clock.snapshot()})
 
 
 async def handle_classify(request: Request) -> Response:
@@ -130,7 +190,7 @@ async def handle_file_events(
     values: object, paths: list[Path], mode: str, engine: Engine
 ) -> AsyncIterator[str]:
     """Stream classifications from a file without buffering its full contents."""
-    start = perf_counter()
+    clock = _ProcessingClock()
     yield _encode(
         {
             "type": "start",
@@ -145,28 +205,25 @@ async def handle_file_events(
         async with httpx.AsyncClient(timeout=engine.timeout) as client:
 
             async def handle_classify(log: str) -> Result:
-                return await classify_log(log, engine, client)
+                clock.begin()
+                try:
+                    return await classify_log(log, engine, client)
+                finally:
+                    clock.end()
 
-            async with aclosing(classify_stream(records, handle_classify)) as results:
-                completed = 0
-                async for index, result in results:
-                    completed += 1
-                    yield _encode(
-                        {
-                            "type": "result",
-                            "index": index,
-                            "result": result,
-                            "completed": completed,
-                            "elapsedMs": int((perf_counter() - start) * 1000 + 0.5),
-                        }
-                    )
+            async with (
+                aclosing(
+                    classify_stream(records, handle_classify, engine.concurrency)
+                ) as results,
+                aclosing(_timed_results(results, clock)) as events,
+            ):
+                async for event in events:
+                    yield event
     except (OSError, UnicodeError, ValueError) as error:
         yield _encode({"type": "error", "error": f"File source stopped: {error}"})
     finally:
         await records.aclose()
-    yield _encode(
-        {"type": "done", "elapsedMs": int((perf_counter() - start) * 1000 + 0.5)}
-    )
+    yield _encode({"type": "done", **clock.snapshot()})
 
 
 async def handle_file_source(request: Request) -> Response:
@@ -236,7 +293,7 @@ def main() -> None:
     get_engine()
     port = int(os.getenv("PORT") or "4000")
     print(f"DeciFlow: http://127.0.0.1:{port}", flush=True)
-    uvicorn.run(app, host="127.0.0.1", port=port)
+    uvicorn.run(app, host="127.0.0.1", port=port, timeout_graceful_shutdown=2)
 
 
 if __name__ == "__main__":

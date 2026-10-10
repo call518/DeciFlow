@@ -123,7 +123,7 @@ test('analysis modes show operator-oriented labels and actions', () => {
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   for (const [value, label] of [['text', 'Paste'], ['batch', 'Batch'],
     ['follow', 'Realtime']]) {
-    assert.ok(html.includes(`<option value="${value}">${label}</option>`));
+    assert.ok(html.includes(`<option value="${value}"${value === 'follow' ? ' selected' : ''}>${label}</option>`));
   }
   const { nodes } = workspace([]);
   for (const [mode, action] of [['text', 'Classify with Laya ↗'],
@@ -133,6 +133,7 @@ test('analysis modes show operator-oriented labels and actions', () => {
     nodes.get('source-mode').onchange();
     assert.equal(nodes.get('classify').textContent, action);
     assert.equal(nodes.get('file-input').hidden, mode === 'text');
+    assert.equal(nodes.get('file-notes').hidden, mode === 'text');
     assert.equal(nodes.get('paste-input').hidden, mode !== 'text');
   }
 });
@@ -147,27 +148,88 @@ test('log input explains each analysis mode before the selector', () => {
   ]) assert.ok(help.includes(description));
 });
 
-test('cumulative processing time sums durations and allows ratios over 100%', async () => {
+test('active time uses server intervals, updates while idle, and resets', async () => {
   const first = result(0, false);
   first.result.elapsedMs = 100;
   const failed = result(1);
   failed.result = { log: 'failed-log', error: 'timeout', review: true, elapsedMs: 300 };
   const events = [{ type: 'start', engine: 'laya', total: 2 }, first, failed,
-    { type: 'done', elapsedMs: 200 }];
+    { type: 'timing', elapsedMs: 200, activeProcessingMs: 150 },
+    { type: 'done', elapsedMs: 1000, activeProcessingMs: 150 }];
   const { nodes, context } = workspace(events);
-  const cumulative = () => nodes.get('summary').children[3].children[0].textContent;
+  const active = () => nodes.get('summary').children[3].children[0].textContent;
   vm.runInContext('render()', context);
-  assert.equal(cumulative(), '0ms (N/A)');
+  assert.equal(active(), '0ms (N/A)');
   await nodes.get('classify').onclick();
-  assert.equal(cumulative(), '400ms (200.0%)');
+  assert.equal(active(), '150ms (15.0%)');
   assert.ok(nodes.get('summary').children[3].title.includes('not CPU utilization'));
   nodes.get('review-filter').value = 'no-review';
   nodes.get('review-filter').onchange();
-  assert.equal(cumulative(), '400ms (200.0%)');
-  events.at(-1).elapsedMs = 1000;
+  assert.equal(active(), '150ms (15.0%)');
+  events.at(-1).elapsedMs = 200;
   await nodes.get('classify').onclick();
-  assert.equal(cumulative(), '400ms (40.0%)');
+  assert.equal(active(), '150ms (75.0%)');
   events.splice(0, events.length, { type: 'start', engine: 'jev', total: 1 }, result(0));
   await nodes.get('classify').onclick();
-  assert.equal(cumulative(), '1ms (N/A)');
+  assert.equal(active(), '0ms (N/A)');
+});
+
+test('connection status shares the title row without a breadcrumb header', () => {
+  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.ok(!html.includes('Workspace / Log classification'));
+  assert.ok(!html.includes('<header>'));
+  const title = html.match(/<div class="intro-title">(.*?)<\/div>/s)[1];
+  assert.ok(title.includes('<h1>Turn logs into decisions.</h1>'));
+  assert.ok(title.includes('id="status"'));
+  assert.equal((html.match(/id="status"/g) || []).length, 1);
+});
+
+test('Realtime is the default mode before server status loads', () => {
+  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.ok(html.includes('<option value="follow" selected>Realtime</option>'));
+  assert.ok(html.includes('<div id="file-input">'));
+  assert.ok(html.includes('<div id="paste-input" hidden>'));
+  const { context } = workspace([]);
+  assert.equal(vm.runInContext('sourceMode', context), 'follow');
+});
+
+test('each mode has editable sample input and retains its own edits', () => {
+  const { nodes } = workspace([]);
+  assert.equal(nodes.get('file-path').value, '/var/log/secure\n/var/log/messages\n/var/log/nginx/access*.log');
+  assert.equal(nodes.get('logs').value.split('\n').length, 5);
+  nodes.get('file-path').value = '/custom/live.log';
+  nodes.get('source-mode').value = 'batch';
+  nodes.get('source-mode').onchange();
+  assert.equal(nodes.get('file-path').value, 'sample-logs/access-1k.log\n/var/log/messages\n/var/log/nginx/access*.log');
+  nodes.get('file-path').value = '/custom/batch.log';
+  nodes.get('source-mode').value = 'text';
+  nodes.get('source-mode').onchange();
+  nodes.get('logs').value = 'custom pasted log';
+  nodes.get('source-mode').value = 'follow';
+  nodes.get('source-mode').onchange();
+  assert.equal(nodes.get('file-path').value, '/custom/live.log');
+  nodes.get('source-mode').value = 'batch';
+  nodes.get('source-mode').onchange();
+  assert.equal(nodes.get('file-path').value, '/custom/batch.log');
+  nodes.get('source-mode').value = 'text';
+  nodes.get('source-mode').onchange();
+  assert.equal(nodes.get('logs').value, 'custom pasted log');
+  nodes.get('source-mode').value = 'follow';
+  nodes.get('source-mode').onchange();
+  nodes.get('file-path').value = '';
+  nodes.get('source-mode').value = 'batch';
+  nodes.get('source-mode').onchange();
+  nodes.get('source-mode').value = 'follow';
+  nodes.get('source-mode').onchange();
+  assert.equal(nodes.get('file-path').value, '');
+});
+
+test('mode selector and descriptions use Realtime, Batch, Paste order', () => {
+  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  const selector = html.match(/<select id="source-mode">(.*?)<\/select>/s)[1];
+  assert.deepEqual([...selector.matchAll(/>(Realtime|Batch|Paste)<\/option>/g)]
+    .map(match => match[1]), ['Realtime', 'Batch', 'Paste']);
+  const help = html.match(/<div class="mode-help">(.*?)<\/div>/s)[1];
+  assert.deepEqual([...help.matchAll(/<strong>(Realtime|Batch|Paste):/g)]
+    .map(match => match[1]), ['Realtime', 'Batch', 'Paste']);
 });
