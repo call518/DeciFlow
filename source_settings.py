@@ -44,5 +44,8 @@ def resolve_configured_sources(
                 result[path]["chunkLines"],
             ) != (spec["profile"], spec["chunkLines"]):
                 raise ValueError(f"Conflicting profile or chunk size for: {path}")
-            result[path] = spec
+            if path not in result:
+                result[path] = {**spec, "sourcePatterns": [spec["path"]]}
+            elif spec["path"] not in result[path]["sourcePatterns"]:
+                result[path]["sourcePatterns"].append(spec["path"])
     return result

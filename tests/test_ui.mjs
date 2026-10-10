@@ -703,3 +703,34 @@ test('throughput tracks a rolling five-second window and resets between runs', a
   await nodes.get('classify').onclick();
   assert.equal(rate(), '1.0 chunks/s');
 });
+
+
+test('source filtering uses input patterns with counts and combines with other filters', async () => {
+  const first = result(0, false);
+  Object.assign(first.result, { source: '/logs/access-1.log', sourcePatterns: ['/logs/access*.log'], log: 'request ok' });
+  const second = result(1);
+  Object.assign(second.result, { source: '/logs/messages', sourcePatterns: ['/logs/*', '/logs/messages'], log: 'service failed', category: 'error' });
+  const events = [{ type: 'start', engine: 'jev', total: null,
+    sourcePatterns: ['/logs/access*.log', '/logs/*', '/logs/messages', '/logs/empty.log'] },
+    first, second];
+  const { nodes } = workspace(events);
+  await nodes.get('classify').onclick();
+  const select = nodes.get('source-filter');
+  assert.ok(select.children.some(option => option.text === '/logs/messages (1)'));
+  assert.ok(select.children.some(option => option.text === '/logs/empty.log (0)'));
+  select.value = '/logs/messages'; select.onchange();
+  assert.deepEqual(logs(nodes), ['service failed']);
+  nodes.get('category-filter').value = 'normal'; nodes.get('category-filter').onchange();
+  assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
+  nodes.get('category-filter').value = 'all';
+  nodes.get('log-search').value = 'failed'; nodes.get('log-search').oninput();
+  assert.deepEqual(logs(nodes), ['service failed']);
+  assert.equal(nodes.get('summary').children[0].children[0].textContent, '2');
+  select.value = '/logs/*'; select.onchange();
+  assert.deepEqual(logs(nodes), ['service failed']);
+  events.splice(0, events.length, { type: 'start', engine: 'laya', total: null,
+    sourcePatterns: ['/logs/new.log'] });
+  await nodes.get('classify').onclick();
+  assert.equal(select.value, 'all');
+  assert.ok(!select.children.some(option => option.value === '/logs/messages'));
+});

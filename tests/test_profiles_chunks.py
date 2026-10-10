@@ -93,10 +93,11 @@ async def test_batch_chunks_do_not_mix_files_and_flush_eof(tmp_path: Path) -> No
         [{"path": str(tmp_path / "*.log"), "profile": "application", "chunkLines": 2}]
     )
     rows = [row async for row in read_configured(resolve_configured_sources(specs))]
-    assert [row["log"] for row in rows] == ["one\ntwo", "three"] * 2
-    assert [row["lineCount"] for row in rows] == [2, 1, 2, 1]
-    assert rows[0]["line"] == 1 and rows[0]["lineEnd"] == 3
-    assert rows[0]["source"] != rows[2]["source"]
+    for name in ("a.log", "b.log"):
+        source_rows = [row for row in rows if row["source"].endswith(name)]
+        assert [row["log"] for row in source_rows] == ["one\ntwo", "three"]
+        assert [row["lineCount"] for row in source_rows] == [2, 1]
+        assert source_rows[0]["line"] == 1 and source_rows[0]["lineEnd"] == 3
     assert all(row["profile"] == "application" for row in rows)
 
 
@@ -246,3 +247,41 @@ async def test_live_rotation_does_not_mix_generations(tmp_path: Path) -> None:
         finally:
             pending.cancel()
             await asyncio.gather(pending, return_exceptions=True)
+
+
+@pytest.mark.anyio
+async def test_batch_files_keep_independent_profiles_and_chunk_sizes(
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "a.log"
+    second = tmp_path / "b.log"
+    first.write_text("a\n" * 30)
+    second.write_text("b\n" * 7)
+    paths = {
+        first: {"profile": "general", "chunkLines": 2},
+        second: {"profile": "authentication", "chunkLines": 3},
+    }
+    rows = [row async for row in read_configured(paths)]
+    assert next(i for i, row in enumerate(rows) if row["source"] == str(second)) < 15
+    for path, spec in paths.items():
+        selected = [row for row in rows if row["source"] == str(path)]
+        assert all(row["profile"] == spec["profile"] for row in selected)
+        assert all(row["chunkLines"] == spec["chunkLines"] for row in selected)
+        assert [row["line"] for row in selected] == (
+            list(range(1, 31, 2)) if path == first else [1, 4, 7]
+        )
+        assert selected[-1]["lineCount"] == (2 if path == first else 1)
+
+
+@pytest.mark.anyio
+async def test_overlapping_source_patterns_are_retained_without_duplicate_chunks(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "events.log"
+    path.write_text("first\nsecond\n")
+    pattern = str(tmp_path / "*.log")
+    specs = parse_source_settings([str(path), pattern])
+    paths = resolve_configured_sources(specs)
+    rows = [row async for row in read_configured(paths)]
+    assert len(rows) == 2
+    assert all(row["sourcePatterns"] == [str(path), pattern] for row in rows)

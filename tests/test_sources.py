@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from config import Engine
 from sources import (
     follow_file,
     follow_sources,
+    merge_batch,
     read_file,
     read_sources,
     resolve_source,
@@ -261,7 +263,7 @@ async def test_files_across_directories(tmp_path: Path) -> None:
     paths = resolve_sources(f"local.log\n{external}/*.log\n{remote}")
     assert paths == [local, remote]
     records = [record async for record in read_sources(paths)]
-    assert [record["log"] for record in records] == ["local", "remote"]
+    assert {record["log"] for record in records} == {"local", "remote"}
 
 
 @pytest.mark.anyio
@@ -270,8 +272,9 @@ async def test_multiple_batch_files_once(tmp_path: Path) -> None:
     (tmp_path / "b.log").write_text("b1\n")
     paths = resolve_sources("a.log\n*.log")
     records = [record async for record in read_sources(paths)]
-    assert [record["log"] for record in records] == ["a1", "a2", "b1"]
-    assert [record["line"] for record in records] == [1, 2, 1]
+    assert {record["log"] for record in records} == {"a1", "a2", "b1"}
+    assert [r["line"] for r in records if r["source"].endswith("a.log")] == [1, 2]
+    assert [r["line"] for r in records if r["source"].endswith("b.log")] == [1]
 
 
 @pytest.mark.anyio
@@ -347,3 +350,85 @@ async def test_stop_all_sources_and_workers(mode: str, tmp_path: Path) -> None:
             await task
         await stream.aclose()
     assert cancelled >= 1
+
+
+@pytest.mark.anyio
+async def test_batch_slow_file_does_not_block_others_and_stop_closes_all() -> None:
+    closed: set[str] = set()
+    started = asyncio.Event()
+
+    async def handle_slow() -> AsyncGenerator[Result, None]:
+        try:
+            started.set()
+            await asyncio.Event().wait()
+            yield {"log": "slow"}
+        finally:
+            closed.add("slow")
+
+    async def handle_fast() -> AsyncGenerator[Result, None]:
+        try:
+            await started.wait()
+            yield {"log": "fast"}
+        finally:
+            closed.add("fast")
+
+    async with aclosing(merge_batch([handle_slow(), handle_fast()])) as records:
+        with anyio.fail_after(2):
+            assert (await anext(records))["log"] == "fast"
+    assert closed == {"slow", "fast"}
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("engine_name", ["laya", "jev"])
+async def test_batch_files_reach_engine_concurrently(
+    engine_name: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("DECISION_ENGINE", engine_name)
+    monkeypatch.setenv(f"{engine_name.upper()}_CONCURRENCY", "2")
+    first = tmp_path / "a.log"
+    second = tmp_path / "b.log"
+    first.write_text("a\n" * 20)
+    second.write_text("b\n" * 3)
+    arrived = {"a": asyncio.Event(), "b": asyncio.Event()}
+
+    async def handle_classify(
+        log: str, engine: Engine, client: httpx.AsyncClient, profile: str = "general"
+    ) -> Result:
+        arrived[log].set()
+        await arrived["b" if log == "a" else "a"].wait()
+        return {"category": "normal", "review": False}
+
+    monkeypatch.setattr(server, "classify_log", handle_classify)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=server.app), base_url="http://127.0.0.1"
+    ) as client:
+        with anyio.fail_after(3):
+            response = await client.post(
+                "/api/file-source",
+                headers={"Origin": "http://127.0.0.1"},
+                json={
+                    "mode": "batch",
+                    "sources": [
+                        {"path": str(first), "profile": "http_access"},
+                        {"path": str(second), "profile": "general"},
+                    ],
+                },
+            )
+    assert response.status_code == 200
+    import json
+
+    events = [json.loads(line) for line in response.text.splitlines()]
+    results = [event["result"] for event in events if event["type"] == "result"]
+    assert len(results) == 23
+    assert {row["source"] for row in results[:2]} == {str(first), str(second)}
+
+    assert all(
+        row["profile"] == "http_access"
+        for row in results
+        if row["source"] == str(first)
+    )
+    assert all(
+        row["sourcePatterns"] == [str(second)]
+        for row in results
+        if row["source"] == str(second)
+    )

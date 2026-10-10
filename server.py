@@ -299,6 +299,7 @@ async def handle_file_events(
             "mode": mode,
             "engine": engine.name,
             "sources": [str(path) for path in paths],
+            "sourcePatterns": [spec["path"] for spec in specs] if specs else values,
         }
     )
     if specs is not None and mode == "realtime":

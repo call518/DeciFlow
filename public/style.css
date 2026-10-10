@@ -71,3 +71,5 @@
 #chart-truncated{color:#a23e34;font-weight:700}
 #status{font-weight:700}
 .selected-engine{color:#a23e34;font-weight:700}
+
+.source-filter{flex:1 1 100%;min-width:0}.source-filter select{flex:1;max-width:100%;overflow:hidden;text-overflow:ellipsis}

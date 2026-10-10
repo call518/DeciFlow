@@ -130,12 +130,35 @@ def resolve_sources(values: object, *, follow: bool = False) -> list[Path]:
     return paths
 
 
+async def merge_batch(
+    streams: list[AsyncGenerator[Result, None]],
+) -> AsyncGenerator[Result, None]:
+    """Read files concurrently, yielding ready records fairly with bounded buffers."""
+    reads = {asyncio.create_task(anext(stream)): stream for stream in streams}
+    try:
+        while reads:
+            done, _ = await asyncio.wait(reads, return_when=asyncio.FIRST_COMPLETED)
+            task = next(task for task in reads if task in done)
+            stream = reads.pop(task)
+            try:
+                record = task.result()
+            except StopAsyncIteration:
+                continue
+            yield record
+            reads[asyncio.create_task(anext(stream))] = stream
+    finally:
+        for task in reads:
+            task.cancel()
+        await asyncio.gather(*reads, return_exceptions=True)
+        for stream in streams:
+            await stream.aclose()
+
+
 async def read_sources(paths: list[Path]) -> AsyncGenerator[Result, None]:
-    """Read the batch snapshot sequentially, retaining source metadata."""
-    for path in paths:
-        async with aclosing(read_file(path)) as records:
-            async for record in records:
-                yield record
+    """Merge batch files concurrently, preserving each file's line order."""
+    async with aclosing(merge_batch([read_file(path) for path in paths])) as records:
+        async for record in records:
+            yield record
 
 
 async def follow_sources(values: object) -> AsyncGenerator[Result, None]:

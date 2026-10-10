@@ -2,7 +2,9 @@
 
 [English](README.md) | [한국어](README.ko.md)
 
-**쌓이는 로그를 AI로 분류하고, 오류·보안 이벤트를 한눈에 확인하세요.**
+**로그를 AI로 실시간 분류하고, 오류·보안 이벤트를 한눈에 확인하세요.**
+
+[![YouTube에서 DeciFlow 데모 보기](images/DeciFlow-Demo-Screenshot-2026-10-11-034530.png)](https://www.youtube.com/watch?v=wGMtxpeHHBs)
 
 DeciFlow는 로그 줄을 청크로 묶어 Laya 또는 Jev로
 **Normal, Warning, Error, Security, Other**로
@@ -327,6 +329,9 @@ UI·내보내기 JSON의 모드명은 `realtime`, `batch`, `paste`입니다.
 필요합니다. 경로·패턴을 한 줄씩 입력하며 절대 경로, 여러 디렉터리, `*`, `?`,
 `[abc]`, 재귀 `**`를 지원합니다. 상대 경로는 DeciFlow 실행 디렉터리 기준입니다.
 Batch는 매칭 파일이 필요하고 Realtime은 새 매칭 파일을 기다릴 수 있습니다.
+Batch는 선택한 파일을 동시에 읽고 준비된 청크를 교차 공급합니다. 파일별 라인 순서·
+분류 기준·청크 크기는 유지합니다. 엔진 동시 요청 제한은 파일별이 아닌 전체 실행에
+적용하며, 값을 1로 설정하면 판정 요청은 순차 처리됩니다.
 
 각 경로·패턴 또는 Paste에 **Criteria**와 **Lines/chunk**를 지정하세요.
 기본값은 **General system**, **비어 있지 않은 1라인**입니다. 모든 프로필은
@@ -380,6 +385,10 @@ JSON에 후보·확률 차이·검토 사유를 남깁니다. Other·요청 실�
 Uncertain 판단에는 사용하지 않습니다. **All results / Needs review / No review needed**로 필터링합니다.
 범주 필터와 원본 로그의 대소문자 구분 없는 문자열 검색을 함께 적용할 수 있습니다.
 목록에만 적용하며 지표·차트·JSON 내보내기는 전체 결과 기준입니다.
+
+**Source**는 Search logs 다음에서 입력한 경로·패턴별 결과를 필터링하고 실패를 포함한
+처리 건수를 표시합니다. 중복 매칭은 JSON의 `sourcePatterns`에 모두 남기며 파일은
+한 번만 처리합니다. 필터는 목록에만 적용하고 지표·차트·내보내기에는 영향을 주지 않습니다.
 
 | 조작 | 동작 |
 | --- | --- |

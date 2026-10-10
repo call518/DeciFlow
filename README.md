@@ -2,7 +2,9 @@
 
 [English](README.md) | [한국어](README.ko.md)
 
-**Classify logs with AI and spot error and security events at a glance.**
+**Classify logs in real time with AI and spot error and security events at a glance.**
+
+[![Watch the DeciFlow demo on YouTube](images/DeciFlow-Demo-Screenshot-2026-10-11-034530.png)](https://www.youtube.com/watch?v=wGMtxpeHHBs)
 
 DeciFlow groups log lines into chunks and classifies each chunk as **Normal, Warning, Error, Security, or Other**
 with Laya or Jev. Scan a batch, follow new events, and focus your review with
@@ -331,6 +333,9 @@ browser access (`localhost`/`127.0.0.1`) and readable UTF-8 regular files. Enter
 path or pattern per line; absolute paths, multiple directories, `*`, `?`, `[abc]`,
 and recursive `**` are supported. Relative paths start at DeciFlow's working
 directory. Batch needs matching files; Realtime can wait for new matches.
+Batch reads selected files concurrently and interleaves ready chunks, preserving
+each file’s line order, profile, and chunk size. Engine concurrency limits apply
+to the entire run, not separately to each file; a limit of 1 serializes requests.
 
 Choose **Criteria** and **Lines/chunk** for each path/pattern or for Paste.
 Defaults: **General system**, **1 nonempty line**. Every profile uses `choice` with
@@ -387,7 +392,10 @@ review reasons. Other and failed requests also require review. These thresholds
 are review heuristics, not accuracy guarantees; provider `confidence` scales differ
 between engines and are preserved separately; they do not determine Uncertain. Filter **All results / Needs review / No review needed**. Category filtering
 and case-insensitive literal search of original log text combine with the review
-filter. They affect the list only, not metrics, chart, or JSON export.
+filter. **Source**, after Search logs, filters by an entered path/pattern and shows
+completed counts, including failures. Overlapping patterns retain all matches in
+`sourcePatterns`; files are still processed once. Filters affect the list only,
+not metrics, chart, or JSON export.
 
 | Control | Behavior |
 | --- | --- |

@@ -63,6 +63,7 @@ function element(tag, text, className = '') {
 const profileLabels = { general: 'General system', authentication: 'Authentication', http_access: 'HTTP access', application: 'Application', network: 'Network / tcpdump text' };
 const sourcePreferences = new Map();
 let sourceRows = [];
+let runSourcePatterns = [];
 function profileSelect(value) {
   const select = element('select', '');
   for (const [key, label] of Object.entries(profileLabels)) select.append(new Option(label, key));
@@ -131,7 +132,24 @@ function renderCategoryChart() {
 }
 $('chart-certainty').onchange = renderCategoryChart;
 renderCategoryChart();
+function renderSourceFilter() {
+  const select = $('source-filter');
+  const selected = select.value || 'all';
+  const counts = new Map(runSourcePatterns.map(path => [path, 0]));
+  for (const result of results) {
+    if (!result) continue;
+    for (const path of new Set(result.sourcePatterns || (result.source ? [result.source] : []))) {
+      counts.set(path, (counts.get(path) || 0) + 1);
+    }
+  }
+  select.replaceChildren();
+  select.append(new Option(`All sources (${completed})`, 'all'));
+  for (const [path, count] of counts) select.append(new Option(`${path} (${count})`, path));
+  select.value = counts.has(selected) ? selected : 'all';
+  select.disabled = !counts.size;
+}
 function render(updateList = true) {
+  renderSourceFilter();
   renderCategoryChart();
   $('summary').replaceChildren();
   const processingMs = results.reduce((sum, result) => sum + result.elapsedMs, 0);
@@ -160,9 +178,11 @@ function render(updateList = true) {
     const review = $('review-filter').value;
     const category = $('category-filter').value;
     const search = $('log-search').value.toLowerCase();
+    const source = $('source-filter').value || 'all';
     return (review === 'all' || (review === 'needs-review' ? r.review : !r.review))
       && (category === 'all' || (category === 'failed' ? Boolean(r.error) : !r.error && r.category === category))
-      && r.log.toLowerCase().includes(search);
+      && r.log.toLowerCase().includes(search)
+      && (source === 'all' || r.sourcePatterns?.includes(source) || r.source === source);
   });
   const pages = Math.max(1, Math.ceil(visible.length / 100));
   page = Math.min(page, pages - 1);
@@ -305,6 +325,8 @@ $('classify').onclick = async () => {
         started = true;
         resultEngine = event.engine;
         resultSourceMode = event.mode || sourceMode;
+        runSourcePatterns = sourceMode === 'paste' ? [] : [...new Set(event.sourcePatterns || sources.map(source => source.path))];
+        $('source-filter').value = 'all';
         total = event.total;
         completed = 0;
         results = total === null ? [] : new Array(total);
@@ -355,6 +377,7 @@ function handleResultFilter() {
 $('review-filter').onchange = handleResultFilter;
 $('category-filter').onchange = handleResultFilter;
 $('log-search').oninput = handleResultFilter;
+$('source-filter').onchange = handleResultFilter;
 $('previous').onclick = () => { page--; render(); };
 $('next').onclick = () => { page++; render(); };
 $('export').onclick = () => {

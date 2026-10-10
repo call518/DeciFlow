@@ -11,17 +11,29 @@ import anyio
 from chunks import chunk_records
 from classifier import Result
 from source_settings import resolve_configured_sources
-from sources import follow_file, read_file
+from sources import follow_file, merge_batch, read_file
+
+
+async def _source_chunks(
+    path: Path, spec: Result, *, live: bool = False, from_start: bool = False
+) -> AsyncGenerator[Result, None]:
+    source = follow_file(path, from_start=from_start) if live else read_file(path)
+    async with aclosing(
+        chunk_records(source, spec["profile"], spec["chunkLines"], live=live)
+    ) as records:
+        async for record in records:
+            yield {
+                **record,
+                "sourcePatterns": spec.get("sourcePatterns", [str(path)]),
+            }
 
 
 async def read_configured(paths: dict[Path, Result]) -> AsyncGenerator[Result, None]:
-    """Read each batch file with its selected profile and chunk size."""
-    for path, spec in paths.items():
-        async with aclosing(
-            chunk_records(read_file(path), spec["profile"], spec["chunkLines"])
-        ) as records:
-            async for record in records:
-                yield record
+    """Merge batch files concurrently with independent profiles and chunk sizes."""
+    streams = [_source_chunks(path, spec) for path, spec in paths.items()]
+    async with aclosing(merge_batch(streams)) as records:
+        async for record in records:
+            yield record
 
 
 async def follow_configured(specs: list[Result]) -> AsyncGenerator[Result, None]:
@@ -40,11 +52,8 @@ async def follow_configured(specs: list[Result]) -> AsyncGenerator[Result, None]
                 for path, spec in paths.items():
                     if path in watchers:
                         continue
-                    records = chunk_records(
-                        follow_file(path, from_start=not initial),
-                        spec["profile"],
-                        spec["chunkLines"],
-                        live=True,
+                    records = _source_chunks(
+                        path, spec, live=True, from_start=not initial
                     )
                     watchers[path] = records
                     reads[asyncio.create_task(anext(records))] = path
