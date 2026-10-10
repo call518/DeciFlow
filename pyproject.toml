@@ -1,0 +1,39 @@
+[project]
+name = "deciflow"
+version = "0.1.0"
+description = "Streaming log classification with Laya and Jev"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.28.1",
+    "python-dotenv>=1.2.4",
+    "starlette>=1.7.0",
+    "uvicorn>=0.54.0",
+]
+
+[project.optional-dependencies]
+laya = [
+    "laya[serve]==0.3.20",
+]
+
+[tool.ruff]
+line-length = 88
+extend-exclude = ["vendor"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+include = ["classifier.py", "config.py", "server.py", "sources.py", "laya_server.py", "tests"]
+exclude = [".venv", "vendor"]
+pythonVersion = "3.11"
+
+[dependency-groups]
+dev = [
+    "anyio>=4.15.1",
+    "pyright>=1.1.414",
+    "pytest>=9.1.1",
+    "ruff>=0.16.10",
+]

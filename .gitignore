@@ -218,3 +218,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local agent settings and credentials
+/.agents/
+/.aws/
+/.codex/
