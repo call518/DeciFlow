@@ -1,0 +1,11 @@
+{
+  "label": "Application",
+  "instructions": "Use the supplied lines to distinguish retries followed by success from final failures.",
+  "criteria": {
+    "normal": "Successful application operation or routine informational event.",
+    "warning": "Retry, recoverable exception, or degradation without confirmed final failure.",
+    "error": "Unhandled exception, failed application operation, unavailable dependency, or data loss.",
+    "security": "Explicit application authentication abuse, unauthorized action, attack, or security policy violation.",
+    "other": "Insufficient application context or unrelated event."
+  }
+}

@@ -26,7 +26,7 @@ testpaths = ["tests"]
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
-include = ["classifier.py", "config.py", "server.py", "sources.py", "laya_server.py", "tests"]
+include = ["classifier.py", "config.py", "server.py", "sources.py", "laya_server.py", "profiles", "chunks.py", "source_settings.py", "configured_sources.py", "tests"]
 exclude = [".venv", "vendor"]
 pythonVersion = "3.11"
 

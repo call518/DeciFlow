@@ -1,0 +1,11 @@
+{
+  "label": "HTTP access",
+  "instructions": "A 404 alone is not an outage or attack. A bot user-agent or encoded URL alone is not malicious. Use only requests in this chunk.",
+  "criteria": {
+    "normal": "Successful HTTP response or routine redirect without suspicious evidence.",
+    "warning": "Client error such as isolated 4xx, slow request, or recoverable HTTP issue.",
+    "error": "Server-side 5xx response or explicit failure to serve a request.",
+    "security": "Explicit exploit attempt, malicious payload, or unauthorized access evidenced by request details.",
+    "other": "Unparseable access record or insufficient HTTP context."
+  }
+}

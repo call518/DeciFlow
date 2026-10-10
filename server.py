@@ -30,7 +30,10 @@ from config import (
     get_engine,
     get_jev_input_bytes,
 )
-from sources import follow_sources, read_sources, resolve_sources
+from configured_sources import follow_configured, read_configured
+from profiles import PROFILES, validate_settings
+from source_settings import parse_source_settings, resolve_configured_sources
+from sources import follow_sources, read_sources
 
 ROOT = Path(__file__).resolve().parent
 HEADERS = {"X-Content-Type-Options": "nosniff", "Cache-Control": "no-store"}
@@ -90,6 +93,7 @@ async def handle_status(request: Request) -> Response:
             "engine": engine.name,
             "model": engine.model,
             "workingDirectory": str(Path.cwd()),
+            "profiles": {key: value["label"] for key, value in PROFILES.items()},
             "host": await anyio.to_thread.run_sync(_host_info),
             "limits": {
                 "max_jev_input_bytes": get_jev_input_bytes(),
@@ -168,8 +172,13 @@ async def _timed_results(
             await asyncio.gather(pending, return_exceptions=True)
 
 
-async def handle_events(logs: list[str], engine: Engine) -> AsyncIterator[str]:
+async def handle_events(
+    logs: list[str], engine: Engine, profile: str = "general", chunk_lines: int = 1
+) -> AsyncIterator[str]:
     """Stream progress and cancel in-flight engine calls on client disconnect."""
+    logs = [
+        "\n".join(logs[i : i + chunk_lines]) for i in range(0, len(logs), chunk_lines)
+    ]
     clock = _ProcessingClock()
     yield _encode({"type": "start", "total": len(logs), "engine": engine.name})
     async with httpx.AsyncClient(timeout=engine.timeout) as client:
@@ -177,13 +186,23 @@ async def handle_events(logs: list[str], engine: Engine) -> AsyncIterator[str]:
         async def handle_classify(log: str) -> Result:
             clock.begin()
             try:
-                return await classify_log(log, engine, client)
+                decision = (
+                    await classify_log(log, engine, client)
+                    if profile == "general"
+                    else await classify_log(log, engine, client, profile)
+                )
+                return decision
             finally:
                 clock.end()
 
         async with (
             aclosing(
-                classify_batch(logs, handle_classify, engine.concurrency)
+                classify_batch(
+                    logs,
+                    handle_classify,
+                    engine.concurrency,
+                    metadata={"profile": profile, "chunkLines": chunk_lines},
+                )
             ) as results,
             aclosing(_timed_results(results, clock)) as events,
         ):
@@ -205,6 +224,9 @@ async def handle_classify(request: Request) -> Response:
         return _json(400, {"error": "Invalid JSON request body."})
     try:
         logs = parse_logs(body.get("text") if isinstance(body, dict) else None)
+        profile, chunk_lines = validate_settings(
+            body.get("profile", "general"), body.get("chunkLines", 1)
+        )
     except (ValueError, TypeError) as error:
         return _json(400, {"error": str(error)})
     try:
@@ -217,12 +239,18 @@ async def handle_classify(request: Request) -> Response:
             {"error": "Set the TYPESAFE_API_KEY environment variable on the server."},
         )
     return StreamingResponse(
-        handle_events(logs, engine), media_type="application/x-ndjson", headers=HEADERS
+        handle_events(logs, engine, profile, chunk_lines),
+        media_type="application/x-ndjson",
+        headers=HEADERS,
     )
 
 
 async def handle_file_events(
-    values: object, paths: list[Path], mode: str, engine: Engine
+    values: object,
+    paths: list[Path] | dict[Path, Result],
+    mode: str,
+    engine: Engine,
+    specs: list[Result] | None = None,
 ) -> AsyncIterator[str]:
     """Stream classifications from a file without buffering its full contents."""
     clock = _ProcessingClock()
@@ -235,7 +263,12 @@ async def handle_file_events(
             "sources": [str(path) for path in paths],
         }
     )
-    records = follow_sources(values) if mode == "follow" else read_sources(paths)
+    if specs is not None and mode == "follow":
+        records = follow_configured(specs)
+    elif isinstance(paths, dict):
+        records = read_configured(paths)
+    else:
+        records = follow_sources(values) if mode == "follow" else read_sources(paths)
     try:
         async with httpx.AsyncClient(timeout=engine.timeout) as client:
 
@@ -246,9 +279,24 @@ async def handle_file_events(
                 finally:
                     clock.end()
 
+            async def handle_record(record: Result) -> Result:
+                clock.begin()
+                try:
+                    profile = record.get("profile", "general")
+                    if profile == "general":
+                        return await classify_log(record["log"], engine, client)
+                    return await classify_log(record["log"], engine, client, profile)
+                finally:
+                    clock.end()
+
             async with (
                 aclosing(
-                    classify_stream(records, handle_classify, engine.concurrency)
+                    classify_stream(
+                        records,
+                        handle_classify,
+                        engine.concurrency,
+                        classify_record=handle_record,
+                    )
                 ) as results,
                 aclosing(_timed_results(results, clock)) as events,
             ):
@@ -277,9 +325,10 @@ async def handle_file_source(request: Request) -> Response:
         if not isinstance(body, dict) or body.get("mode") not in {"batch", "follow"}:
             raise ValueError("Select Batch or Realtime mode.")
         mode = body["mode"]
-        values = body.get("paths", body.get("path"))
+        values = body.get("sources", body.get("paths", body.get("path")))
+        specs = parse_source_settings(values)
         paths = await anyio.to_thread.run_sync(
-            partial(resolve_sources, values, follow=mode == "follow"),
+            partial(resolve_configured_sources, specs, follow=mode == "follow"),
             abandon_on_cancel=True,
         )
     except (ValueError, TypeError, OSError) as error:
@@ -294,7 +343,7 @@ async def handle_file_source(request: Request) -> Response:
             {"error": "Set the TYPESAFE_API_KEY environment variable on the server."},
         )
     return StreamingResponse(
-        handle_file_events(values, paths, mode, engine),
+        handle_file_events(values, paths, mode, engine, specs),
         media_type="application/x-ndjson",
         headers=HEADERS,
     )

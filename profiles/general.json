@@ -1,0 +1,11 @@
+{
+  "label": "General system",
+  "instructions": "Judge system and service events from the supplied lines only.",
+  "criteria": {
+    "normal": "Successful operation or routine informational event without a problem.",
+    "warning": "Degraded performance, retry, or recoverable issue without a confirmed failure.",
+    "error": "Failed operation, exception, unavailable service, or data loss.",
+    "security": "Authentication abuse, unauthorized access, attack, or security policy violation.",
+    "other": "Insufficient context or none of these categories apply."
+  }
+}

@@ -195,11 +195,41 @@ not Laya server workers. Increase gradually within server capacity and API limit
 The sidebar identifies the DeciFlow log source host by hostname, detected IPs, and OS name/version.
 In WSL or containers, these identify that environment; IPs are not a full interface inventory.
 
+### Decision profiles and chunks
+
+Select a profile and **Lines/chunk** for each path or pattern; Paste has its own
+profile and chunk size. Defaults: **General system**, **1 nonempty line**.
+Profiles are maintained separately in [`profiles/`](profiles/); edit or add a JSON
+profile and restart DeciFlow to update the selector. Built-ins: General system,
+Authentication, HTTP access, Application, and Network / tcpdump text.
+New profiles must retain the existing five category keys.
+Laya and Jev use the same selected criteria; automatic type detection is disabled.
+
+Chunks never mix files. Batch submits the remainder at EOF. Realtime submits when
+the chunk fills or no new nonempty line arrives for one second, and separates file
+rotation boundaries. Stopping discards unsubmitted chunks. Identical overlapping
+source settings are deduplicated; conflicting settings are rejected.
+**Pause updates** freezes the result list while analysis and metrics continue.
+Filters and pagination use the frozen list; **Resume updates** includes new results.
+JSON export includes all received results, even while paused.
+
+Use **View JSON** on a result to inspect its fields, including failures and reviewer edits.
+
+Batch uses **File line(s)** for actual file line numbers. Realtime uses
+**Observed line(s)** for the sequence since monitoring started or the file rotated.
+
+Results and JSON retain the profile, configured chunk size, actual line count,
+and file line range. Metrics count chunks, not individual lines; request durations
+are per chunk. Model input budgets still apply to the complete chunk and question;
+oversized or truncated inputs are retained for review rather than silently shortened.
+Network input supports UTF-8 tcpdump text, not binary PCAP. Specialized criteria
+need validation on your own logs; a larger chunk does not guarantee accuracy.
+
 | Source | Behavior |
 | --- | --- |
 | Realtime | Start at existing files' end; read new/replacement files from the beginning |
 | Batch | Read matching files from the beginning to EOF |
-| Paste | One event per nonempty line |
+| Paste | Nonempty lines grouped by the selected chunk size |
 
 File sources require local browser access (`localhost`/`127.0.0.1`) and regular
 UTF-8 files readable by DeciFlow. Enter one path or pattern per line; absolute paths,
@@ -229,7 +259,8 @@ completed results. A model inference already running on the remote server may fi
 ## Limits
 
 - No application file-size or line-count cap; RAM and browser capacity still matter.
-  File reads are incremental. Multiline events are not grouped.
+  File reads are incremental. Chunks use a fixed nonempty-line count, not automatic
+  event-boundary detection.
 - **Laya:** `multilingual`, 8192 tokens including the question (question head: 256).
   The documented server also limits events to 50,000 characters and requests to 2 MiB.
   Truncated responses or missing truncation metadata are rejected.

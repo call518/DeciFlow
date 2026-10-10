@@ -1,0 +1,11 @@
+{
+  "label": "Network / tcpdump text",
+  "instructions": "Input is tcpdump text, not PCAP. A SYN, RST, unusual port, or single packet is not proof of an attack. Do not infer retransmission or connection outcome without supporting sequence context.",
+  "criteria": {
+    "normal": "Ordinary packet exchange, connection establishment or orderly close.",
+    "warning": "Evidence of retransmission, packet loss, or an isolated rejected connection without confirmed outage.",
+    "error": "Explicit unreachable destination or confirmed failed connection shown in this chunk.",
+    "security": "Explicit hostile traffic or policy violation supported by packet details, not guessed from ports alone.",
+    "other": "Insufficient packet sequence, uninterpretable text, or unrelated event."
+  }
+}

@@ -5,6 +5,7 @@ import { test } from 'node:test';
 
 function workspace(events, status) {
   const nodes = new Map();
+  const requests = [];
   const node = () => ({
     children: [], value: '', checked: false,
     append(...children) { this.children.push(...children); },
@@ -23,15 +24,17 @@ function workspace(events, status) {
     AbortController,
     setTimeout: () => 1,
     clearTimeout() {},
-    fetch: async path => path === '/api/status'
-      ? (status ? { ok: true, json: async () => status } : new Promise(() => {}))
-      : { ok: true, body: {} },
+    fetch: async (path, options) => {
+      if (path === '/api/status') return status ? { ok: true, json: async () => status } : new Promise(() => {});
+      requests.push(JSON.parse(options.body));
+      return { ok: true, body: {} };
+    },
     readEvents: async (_, receive) => events.forEach(receive),
   });
   context.document.getElementById('review-filter').value = 'all';
   const source = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
   vm.runInContext(source.replace(/^import .*;\n/, ''), context);
-  return { nodes, context };
+  return { nodes, context, requests };
 }
 
 function result(index, review = true) {
@@ -61,11 +64,11 @@ test('arrival order, filtering, corrections, pagination and restart', async () =
   nodes.get('review-filter').onchange();
   nodes.get('next').onclick();
   assert.deepEqual(logs(nodes), ['log-4', 'log-3', 'log-1', 'log-2']);
-  const select = nodes.get('results').children[0].children.at(-1).children[0];
+  const select = nodes.get('results').children[0].children.at(-2).children[0];
   select.value = 'warning';
   select.onchange();
   vm.runInContext('render()', context);
-  assert.equal(nodes.get('results').children[0].children.at(-1).children[0].value,
+  assert.equal(nodes.get('results').children[0].children.at(-2).children[0].value,
     'warning');
   events.splice(0, events.length, { type: 'start', engine: 'jev', total: 1 }, result(0));
   await nodes.get('classify').onclick();
@@ -244,4 +247,156 @@ test('mode selector and descriptions use Realtime, Batch, Paste order', () => {
   assert.equal(nodes.get('host-name').textContent, 'log-node');
   assert.equal(nodes.get('host-os').textContent, 'Rocky Linux 8.10');
   assert.equal(nodes.get('host-addresses').textContent, '192.168.35.10\n10.0.0.2');
+});
+
+test('source profile and chunk settings reach the API and survive mode changes', async () => {
+  const { nodes, context, requests } = workspace([]);
+  nodes.get('file-path').value = '/var/log/secure\n/var/log/nginx/access*.log';
+  nodes.get('file-path').oninput();
+  vm.runInContext(`sourceRows[0].profile.value = 'authentication'; sourceRows[0].profile.onchange(); sourceRows[0].size.value = '3'; sourceRows[0].size.oninput(); sourceRows[1].profile.value = 'http_access'; sourceRows[1].profile.onchange();`, context);
+  await nodes.get('classify').onclick();
+  assert.equal(requests[0].sources[0].profile, 'authentication');
+  assert.equal(requests[0].sources[0].chunkLines, 3);
+  assert.equal(requests[0].sources[1].profile, 'http_access');
+  nodes.get('source-mode').value = 'text'; nodes.get('source-mode').onchange();
+  nodes.get('paste-profile').value = 'network'; nodes.get('paste-chunk-lines').value = '4';
+  await nodes.get('classify').onclick();
+  assert.equal(requests[1].profile, 'network'); assert.equal(requests[1].chunkLines, 4);
+  nodes.get('source-mode').value = 'follow'; nodes.get('source-mode').onchange();
+  assert.equal(vm.runInContext('sourceRows[0].size.value', context), '3');
+});
+
+test('individual JSON reflects review changes and stays open after rendering', async () => {
+  const event = result(0);
+  Object.assign(event.result, { profile: 'http_access', chunkLines: 3, lineCount: 2, source: '/logs/access.log', line: 10, lineEnd: 11, log: '<script>example</script>' });
+  const failed = result(1);
+  failed.result = { log: 'bad input', error: 'request failed', review: true, elapsedMs: 1, profile: 'network' };
+  const { nodes, context } = workspace([{ type: 'start', total: 2, engine: 'laya' }, event, failed]);
+  await nodes.get('classify').onclick();
+  const row = nodes.get('results').children[1];
+  const details = row.children.at(-1);
+  assert.equal(details.children[0].textContent, 'View JSON');
+  assert.equal(details.children[1].textContent, '');
+  details.open = true; details.ontoggle();
+  assert.equal(JSON.parse(details.children[1].textContent).lineEnd, 11);
+  assert.equal(JSON.parse(details.children[1].textContent).log, '<script>example</script>');
+  const select = row.children.at(-2).children[0];
+  select.value = 'warning'; select.onchange();
+  assert.equal(JSON.parse(details.children[1].textContent).reviewerCategory, 'warning');
+  vm.runInContext('render()', context);
+  const reopened = nodes.get('results').children[1].children.at(-1);
+  assert.equal(reopened.open, true);
+  reopened.open = false; reopened.ontoggle();
+  vm.runInContext('render()', context);
+  assert.equal(nodes.get('results').children[1].children.at(-1).open, false);
+  const failureView = nodes.get('results').children[0].children.at(-1);
+  failureView.open = true; failureView.ontoggle();
+  assert.equal(JSON.parse(failureView.children[1].textContent).error, 'request failed');
+});
+
+test('pause freezes rows while analysis continues; resume includes pending results', async () => {
+  const { nodes, context } = workspace([]);
+  let receive, finish;
+  context.readEvents = async (_, callback) => {
+    receive = callback;
+    await new Promise(resolve => { finish = resolve; });
+  };
+  const run = nodes.get('classify').onclick();
+  await new Promise(resolve => setImmediate(resolve));
+  receive({ type: 'start', engine: 'laya', total: null });
+  receive(result(0, false));
+  vm.runInContext('render()', context);
+  const original = nodes.get('results').children[0];
+  const details = original.children.at(-1);
+  details.open = true; details.ontoggle();
+  nodes.get('pause-updates').onclick();
+  receive(result(1));
+  receive(result(2, false));
+  vm.runInContext('render(false)', context);
+  assert.equal(nodes.get('results').children[0], original);
+  assert.equal(details.open, true);
+  assert.equal(nodes.get('summary').children[0].children[0].textContent, '3');
+  assert.equal(nodes.get('pause-updates').textContent, 'Resume updates (2 new)');
+  nodes.get('review-filter').value = 'needs-review';
+  nodes.get('review-filter').onchange();
+  assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
+  nodes.get('review-filter').value = 'all'; nodes.get('review-filter').onchange();
+  assert.deepEqual(logs(nodes), ['log-0']);
+  finish(); await run;
+  assert.deepEqual(logs(nodes), ['log-0']);
+  assert.equal(nodes.get('pause-updates').textContent, 'Resume updates (2 new)');
+  nodes.get('pause-updates').onclick();
+  assert.deepEqual(logs(nodes), ['log-2', 'log-1', 'log-0']);
+  assert.equal(nodes.get('pause-updates').textContent, 'Pause updates');
+  nodes.get('pause-updates').onclick();
+  context.readEvents = async (_, callback) => {
+    callback({ type: 'start', engine: 'laya', total: 1 }); callback(result(0));
+  };
+  await nodes.get('classify').onclick();
+  assert.equal(nodes.get('pause-updates').textContent, 'Pause updates');
+  assert.deepEqual(logs(nodes), ['log-0']);
+});
+
+test('pause excludes received results that have not yet been displayed', async () => {
+  const { nodes, context } = workspace([{ type: 'start', total: null, engine: 'laya' }, result(0)]);
+  await nodes.get('classify').onclick();
+  vm.runInContext("results[1] = { log: 'queued', elapsedMs: 1, review: true }; completionOrder.push(1); completed++;", context);
+  nodes.get('pause-updates').onclick();
+  nodes.get('review-filter').onchange();
+  assert.deepEqual(logs(nodes), ['log-0']);
+  assert.equal(nodes.get('pause-updates').textContent, 'Resume updates (1 new)');
+});
+
+test('file line labels distinguish batch from observed realtime sequences', async () => {
+  for (const mode of ['batch', 'follow']) {
+    const first = result(0);
+    Object.assign(first.result, { source: '/var/log/secure', line: 1, lineEnd: 1, profile: 'general', lineCount: 1, chunkLines: 1 });
+    const second = result(1);
+    Object.assign(second.result, { source: '/var/log/secure', line: 10, lineEnd: 12, profile: 'authentication', lineCount: 3, chunkLines: 5 });
+    const { nodes, context } = workspace([{ type: 'start', engine: 'laya', total: null, mode }, first, second]);
+    await nodes.get('classify').onclick();
+    const rows = nodes.get('results').children;
+    const prefix = mode === 'follow' ? 'Observed' : 'File';
+    assert.equal(rows[1].children[2].textContent, `/var/log/secure · ${prefix} line 1`);
+    assert.equal(rows[0].children[2].textContent, `/var/log/secure · ${prefix} lines 10–12`);
+    assert.equal(rows[1].children[3].textContent, 'General system · 1 line (max 1)');
+    assert.equal(rows[0].children[3].textContent, 'Authentication · 3 lines (max 5)');
+    if (mode === 'follow') assert.ok(rows[1].children[2].title.includes('not an absolute'));
+    nodes.get('source-mode').value = mode === 'follow' ? 'batch' : 'follow';
+    nodes.get('source-mode').onchange();
+    vm.runInContext('render()', context);
+    assert.equal(nodes.get('results').children[1].children[2].textContent, `/var/log/secure · ${prefix} line 1`);
+  }
+});
+
+test('realtime can pause before receiving its first result', async () => {
+  const { nodes, context } = workspace([]);
+  let receive, finish;
+  context.readEvents = async (_, callback) => {
+    receive = callback;
+    await new Promise(resolve => { finish = resolve; });
+  };
+  const run = nodes.get('classify').onclick();
+  await new Promise(resolve => setImmediate(resolve));
+  receive({ type: 'start', engine: 'laya', mode: 'follow', total: null });
+  assert.equal(nodes.get('pause-updates').disabled, false);
+  nodes.get('pause-updates').onclick();
+  const original = nodes.get('results').children[0];
+  receive(result(0));
+  vm.runInContext('render(false)', context);
+  assert.equal(nodes.get('results').children[0], original);
+  assert.equal(nodes.get('pause-updates').textContent, 'Resume updates (1 new)');
+  nodes.get('pause-updates').onclick();
+  assert.deepEqual(logs(nodes), ['log-0']);
+  finish(); await run;
+});
+
+test('profile selectors have visible Criteria labels', () => {
+  const { nodes } = workspace([]);
+  for (const row of nodes.get('source-settings').children) {
+    assert.equal(row.children[1].textContent, 'Criteria ');
+    assert.equal(row.children[1].children.length, 1);
+  }
+  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.ok(html.includes('<label>Criteria <select id="paste-profile">'));
 });
