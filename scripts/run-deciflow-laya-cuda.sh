@@ -18,4 +18,4 @@ docker run --detach \
   --env LAYA_PRELOAD=1 \
   --env LAYA_MODELS=english,multilingual,typed-decisions \
   --env LAYA_API_KEY=changeme \
-  call518/deciflow-laya:cuda laya-serve
+  call518/deciflow-laya-cuda:0.0.1 laya-serve

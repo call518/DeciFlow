@@ -172,3 +172,30 @@ def test_host_os_falls_back_without_release_file(
     monkeypatch.setattr(server.platform, "release", lambda: "6.6.0")
     monkeypatch.setattr(server.platform, "freedesktop_os_release", fail)
     assert server._host_info()["os"] == "Linux 6.6.0"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "origin,allowed,status",
+    [
+        ("https://demo.ngrok-free.app", "", 403),
+        ("https://demo.ngrok-free.app", "https://demo.ngrok-free.app", 400),
+        ("https://evil.example", "https://demo.ngrok-free.app", 403),
+        (
+            "https://demo.ngrok-free.app.evil.example",
+            "https://demo.ngrok-free.app",
+            403,
+        ),
+    ],
+)
+async def test_remote_file_origin_allowlist(
+    monkeypatch: pytest.MonkeyPatch, origin: str, allowed: str, status: int
+) -> None:
+    monkeypatch.setenv("DECIFLOW_ALLOWED_ORIGINS", allowed)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=server.app), base_url="http://127.0.0.1"
+    ) as client:
+        response = await client.post(
+            "/api/file-source", headers={"Origin": origin}, json={}
+        )
+    assert response.status_code == status

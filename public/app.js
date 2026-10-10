@@ -276,6 +276,7 @@ $('classify').onclick = async () => {
   const sources = sourceRows.map(({ path, profile, size }) => ({ path, profile: profile.value, chunkLines: Number(size.value) }));
   const chunkLines = Number($('paste-chunk-lines').value);
   if ((sourceMode === 'text' ? [chunkLines] : sources.map(s => s.chunkLines)).some(n => !Number.isInteger(n) || n < 1)) {
+    $('message').className = 'error-message';
     $('message').textContent = 'Lines per chunk must be a positive integer.'; return;
   }
   busy = true;
@@ -283,6 +284,7 @@ $('classify').onclick = async () => {
   activeRequest = new AbortController();
   for (const id of ['classify', 'sample', 'export', 'source-mode', 'file-path', 'paste-profile', 'paste-chunk-lines']) $(id).disabled = true;
   $('stop').disabled = false;
+  $('message').className = '';
   $('message').textContent = `${engineLabel} is classifying your logs…`;
   let started = false;
   try {
@@ -325,6 +327,7 @@ $('classify').onclick = async () => {
     });
     $('message').textContent = `Classification complete · ${results.filter(r => r.error).length} failed`;
   } catch (error) {
+    $('message').className = error.name === 'AbortError' ? '' : 'error-message';
     $('message').textContent = `${error.name === 'AbortError' ? 'Processing stopped' : error.message} · ${started ? `${completed} completed results have been retained.` : 'Previous results have been retained.'}`;
   } finally {
     busy = false;

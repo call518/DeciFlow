@@ -11,6 +11,7 @@ from functools import partial
 from ipaddress import ip_address
 from pathlib import Path
 from time import perf_counter
+from urllib.parse import urlsplit
 
 import anyio
 import httpx
@@ -210,9 +211,23 @@ async def handle_events(
     yield _encode({"type": "done", **clock.snapshot()})
 
 
+def _allowed_origin(request: Request, *, files: bool = False) -> bool:
+    origin = request.headers.get("origin", "")
+    allowed = {
+        entry.strip()
+        for entry in os.getenv("DECIFLOW_ALLOWED_ORIGINS", "").split(",")
+        if entry.strip()
+    }
+    if origin and origin in allowed:
+        return True
+    if origin != f"http://{request.headers.get('host')}":
+        return False
+    return not files or urlsplit(origin).hostname in {"127.0.0.1", "localhost"}
+
+
 async def handle_classify(request: Request) -> Response:
     """Validate a same-origin upload before opening the decision stream."""
-    if request.headers.get("origin") != f"http://{request.headers.get('host')}":
+    if not _allowed_origin(request):
         return _json(403, {"error": "Only same-origin requests are allowed."})
     chunks = bytearray()
     async for chunk in request.stream():
@@ -310,14 +325,12 @@ async def handle_file_events(
 
 async def handle_file_source(request: Request) -> Response:
     """Start explicitly selected server files through a local same-origin request."""
-    if request.headers.get(
-        "origin"
-    ) != f"http://{request.headers.get('host')}" or request.url.hostname not in {
-        "127.0.0.1",
-        "localhost",
-    }:
+    if not _allowed_origin(request, files=True):
         return _json(
-            403, {"error": "File sources require a same-origin localhost request."}
+            403,
+            {
+                "error": "File access denied. Add this UI origin to DECIFLOW_ALLOWED_ORIGINS."
+            },
         )
     try:
         body = await request.json()

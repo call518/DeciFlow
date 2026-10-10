@@ -32,6 +32,7 @@ access 로그, 애플리케이션 오류, 운영 이벤트에 활용하세요.
 ## 빠른 시작
 
 아래 **Laya 또는 Jev 중 하나만 선택**해 설정하세요.
+컨테이너 실행은 [Docker로 DeciFlow 실행](#docker로-deciflow-실행)을 참고하세요.
 
 DeciFlow 실행 노드에는 **Python 3.11 이상**과 **uv**가 필요합니다. 추론은 별도
 Laya 서버 또는 Jev API가 처리하므로 이 노드에는 Docker·CUDA가 필요하지 않습니다.
@@ -175,6 +176,58 @@ uv run python server.py
 ```
 
 **http://127.0.0.1:4000**에 접속하세요. 설정 변경 후 DeciFlow를 재시작합니다.
+
+## Docker로 DeciFlow 실행
+
+위 **Python 실행 대신 이 방식을 선택**합니다. DeciFlow 호스트에는 Docker만
+필요하며 로컬 Python·uv·CUDA는 필요하지 않습니다. 먼저 `.env`에 Laya 또는 Jev를
+설정하세요. Laya 추론은 기존의 별도 Laya 서버가 처리합니다.
+
+Git clone한 DeciFlow 디렉토리에서 아래 명령을 실행하세요. 이미지에는 Python과
+uv만 포함하며, 저장소는 `/app`에 읽기 전용으로 마운트합니다. 시작할 때
+`uv sync --frozen`이 현재 버전의 의존성을 별도 Docker 볼륨에 설치합니다.
+최초 실행에는 패키지 다운로드를 위한 네트워크 연결이 필요합니다.
+
+```bash
+docker build --tag deciflow:local .
+
+docker run --detach \
+  --name deciflow \
+  --init \
+  --restart unless-stopped \
+  --env-file .env \
+  --mount "type=bind,src=$(pwd),dst=/app,readonly" \
+  --mount type=volume,src=deciflow-venv,dst=/opt/deciflow-venv \
+  --publish 127.0.0.1:4000:4000 \
+  --mount type=bind,src=/var/log,dst=/host-logs,readonly \
+  deciflow:local
+```
+
+**http://127.0.0.1:4000**에 접속하세요. 호스트의 `/var/log`는 Batch·Realtime에서
+`/host-logs/messages` 같은 `/host-logs` 경로로 사용합니다. 다른 디렉토리도 필요하면 읽기 전용으로 마운트하세요.
+`.env`의 `PORT`가 다르면 위 포트 번호 두 곳도 변경합니다. 원격 브라우저 접속은
+publish 주소를 DeciFlow 호스트 IP로 변경하세요.
+
+Laya URL은 컨테이너에서 접근 가능한 주소를 사용하세요. `127.0.0.1`은 호스트나
+원격 Laya 서버가 아닌 컨테이너 자신입니다. 사이드바의 호스트·OS·IP 정보는
+컨테이너를 나타냅니다. `.env`는 실행 시 전달하며 이미지에 포함하지 않습니다.
+`.env` 변경 후에는 컨테이너를 다시 만드세요:
+
+```bash
+docker logs deciflow
+docker stop deciflow
+docker rm deciflow
+```
+
+위 `docker run` 명령을 다시 실행하면 변경한 설정이 적용됩니다.
+소스 수정이나 Git 버전 변경은 `docker restart deciflow`로 적용하며 이미지 재빌드는
+필요하지 않습니다. UI 변경 후에는 브라우저도 새로고침하세요. Dockerfile의 실행 환경을
+바꿀 때만 이미지를 다시 빌드합니다. 버전 전환 전에는 DeciFlow를 중지하세요.
+
+ngrok·리버스 프록시로 파일을 처리하려면 `DECIFLOW_ALLOWED_ORIGINS`에
+`https://your-domain.ngrok-free.app`처럼 정확한 UI 출처를 지정하고
+컨테이너를 다시 만드세요(끝에 `/` 제외). 빈 값은 localhost 파일 접근만 허용합니다.
+로그인 인증이 아니므로 공개 접속에는 프록시 인증을 적용하세요.
 
 ## 설정
 

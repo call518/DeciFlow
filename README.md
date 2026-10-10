@@ -33,6 +33,7 @@ log file and review the predictions in your browser.
 ## Quick start
 
 Choose **Laya or Jev** below; configure only one engine.
+For container startup, see [Run DeciFlow with Docker](#run-deciflow-with-docker).
 
 Requires **Python 3.11+** and **uv** on the DeciFlow node. A separate Laya server
 or the Jev API handles inference, so this node needs no Docker or CUDA.
@@ -176,6 +177,58 @@ uv run python server.py
 ```
 
 Open **http://127.0.0.1:4000**. Restart DeciFlow after configuration changes.
+
+## Run DeciFlow with Docker
+
+Choose this **instead of the Python startup above**. The DeciFlow host needs
+Docker, not local Python/uv/CUDA. Configure `.env` for either Laya or Jev first;
+Laya inference still runs on the separate Laya server.
+
+Run these commands from your cloned DeciFlow directory. The image contains only
+Python and uv; your repository is mounted read-only at `/app`. On startup,
+`uv sync --frozen` installs the checked-out version’s dependencies into a separate
+Docker volume. The first startup requires network access for package downloads.
+
+```bash
+docker build --tag deciflow:local .
+
+docker run --detach \
+  --name deciflow \
+  --init \
+  --restart unless-stopped \
+  --env-file .env \
+  --mount "type=bind,src=$(pwd),dst=/app,readonly" \
+  --mount type=volume,src=deciflow-venv,dst=/opt/deciflow-venv \
+  --publish 127.0.0.1:4000:4000 \
+  --mount type=bind,src=/var/log,dst=/host-logs,readonly \
+  deciflow:local
+```
+
+Open **http://127.0.0.1:4000**. Host `/var/log` is available as `/host-logs` in
+Batch/Realtime (e.g. `/host-logs/messages`); mount other directories read-only as needed. If `.env` uses
+another `PORT`, adjust both port numbers above. For remote browser access, change
+the publish address to the DeciFlow host's IP.
+
+Use a Laya URL reachable from the container; `127.0.0.1` names the container,
+not the host or remote Laya server. Sidebar host/OS/IP information describes the
+container. `.env` is supplied at startup and excluded from the image. After
+changing `.env`, recreate the container:
+
+```bash
+docker logs deciflow
+docker stop deciflow
+docker rm deciflow
+```
+
+Run the `docker run` command again to apply updated settings.
+For source changes or a different Git version, restart with `docker restart deciflow`;
+no image rebuild is needed. Refresh the browser after UI changes. Rebuild the image
+only when changing the Dockerfile’s runtime. Stop DeciFlow before switching versions.
+
+For ngrok/reverse-proxy file access, set `DECIFLOW_ALLOWED_ORIGINS` to the
+exact UI origin, e.g. `https://your-domain.ngrok-free.app` (no trailing slash),
+and recreate the container. Empty allows file access only through localhost.
+This is not user authentication; protect public access with proxy authentication.
 
 ## Configuration
 

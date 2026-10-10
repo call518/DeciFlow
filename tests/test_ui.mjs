@@ -614,3 +614,13 @@ test('quiet actions and JSON disclosure have visible button borders', () => {
   assert.match(css, /\.quiet\{[^}]*border:1px solid/);
   assert.match(css, /\.result-json summary\{[^}]*border:1px solid/);
 });
+
+test('stream errors are red and a new successful run clears the error style', async () => {
+  const events = [{ type: 'error', error: 'File access denied' }];
+  const { nodes } = workspace(events);
+  await nodes.get('classify').onclick();
+  assert.equal(nodes.get('message').className, 'error-message');
+  events.splice(0, events.length, { type: 'start', engine: 'laya', total: 1 }, result(0));
+  await nodes.get('classify').onclick();
+  assert.equal(nodes.get('message').className, '');
+});
