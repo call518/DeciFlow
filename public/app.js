@@ -44,8 +44,8 @@ let displayedOrder = [];
 let activeRequest;
 let sourceMode = 'follow';
 const filePaths = {
-  batch: 'sample-logs/access-1k.log\n/var/log/messages\n/var/log/nginx/access*.log',
-  follow: '/var/log/secure\n/var/log/messages\n/var/log/nginx/access*.log',
+  batch: 'sample-logs/access-1k.log\n/host-logs/messages\n/host-logs/nginx/access*.log',
+  follow: '/host-logs/secure\n/host-logs/messages\n/host-logs/nginx/access*.log',
 };
 $('logs').value = samples.join('\n');
 $('file-path').value = filePaths[sourceMode];
@@ -378,7 +378,9 @@ fetch('/api/status').then(async response => {
   }
   engine = data.engine;
   engineLabel = engine === 'laya' ? 'Laya' : 'Jev';
-  $('status').textContent = data.configured ? `● Ready to connect to ${engineLabel}` : '○ TypeSafe API key required';
+  $('status').textContent = 'Decision Engine: ';
+  $('status').append(element('strong', engineLabel, 'selected-engine'));
+  if (!data.configured) $('status').append(element('span', ' · API key required'));
   $('powered-by').textContent = `Powered by ${engineLabel}`;
   $('source-mode').onchange();
   $('classify').disabled = !data.configured;

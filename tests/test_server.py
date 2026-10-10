@@ -179,6 +179,15 @@ def test_host_os_falls_back_without_release_file(
     "origin,allowed,status",
     [
         ("https://demo.ngrok-free.app", "", 403),
+        ("https://demo.ngrok-free.app", "https://*.ngrok-free.app", 400),
+        ("https://another.ngrok-free.app", "https://*.ngrok-free.app", 400),
+        ("http://demo.ngrok-free.app", "https://*.ngrok-free.app", 403),
+        ("https://ngrok-free.app", "https://*.ngrok-free.app", 403),
+        ("https://badngrok-free.app", "https://*.ngrok-free.app", 403),
+        ("https://demo.ngrok-free.app.evil.example", "https://*.ngrok-free.app", 403),
+        ("https://demo.ngrok-free.app:9999", "https://*.ngrok-free.app", 403),
+        ("https://evil@demo.ngrok-free.app", "https://*.ngrok-free.app", 403),
+        ("https://demo.ngrok-free.app/path", "https://*.ngrok-free.app", 403),
         ("https://demo.ngrok-free.app", "https://demo.ngrok-free.app", 400),
         ("https://evil.example", "https://demo.ngrok-free.app", 403),
         (
@@ -191,7 +200,7 @@ def test_host_os_falls_back_without_release_file(
 async def test_remote_file_origin_allowlist(
     monkeypatch: pytest.MonkeyPatch, origin: str, allowed: str, status: int
 ) -> None:
-    monkeypatch.setenv("DECIFLOW_ALLOWED_ORIGINS", allowed)
+    monkeypatch.setenv("DECIFLOW_CSRF_TRUSTED_ORIGINS", allowed)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=server.app), base_url="http://127.0.0.1"
     ) as client:

@@ -200,12 +200,12 @@ test('Realtime is the default mode before server status loads', () => {
 
 test('each mode has editable sample input and retains its own edits', () => {
   const { nodes } = workspace([]);
-  assert.equal(nodes.get('file-path').value, '/var/log/secure\n/var/log/messages\n/var/log/nginx/access*.log');
+  assert.equal(nodes.get('file-path').value, '/host-logs/secure\n/host-logs/messages\n/host-logs/nginx/access*.log');
   assert.equal(nodes.get('logs').value.split('\n').length, 5);
   nodes.get('file-path').value = '/custom/live.log';
   nodes.get('source-mode').value = 'batch';
   nodes.get('source-mode').onchange();
-  assert.equal(nodes.get('file-path').value, 'sample-logs/access-1k.log\n/var/log/messages\n/var/log/nginx/access*.log');
+  assert.equal(nodes.get('file-path').value, 'sample-logs/access-1k.log\n/host-logs/messages\n/host-logs/nginx/access*.log');
   nodes.get('file-path').value = '/custom/batch.log';
   nodes.get('source-mode').value = 'text';
   nodes.get('source-mode').onchange();
@@ -623,4 +623,26 @@ test('stream errors are red and a new successful run clears the error style', as
   events.splice(0, events.length, { type: 'start', engine: 'laya', total: 1 }, result(0));
   await nodes.get('classify').onclick();
   assert.equal(nodes.get('message').className, '');
+});
+
+test('selected engine is explicitly named and emphasized for both engines', async () => {
+  for (const engine of ['laya', 'jev']) {
+    for (const configured of [true, false]) {
+      const { nodes } = workspace([], {
+        host: { hostname: 'host', addresses: [], os: 'Linux' },
+        engine, configured, model: 'test', workingDirectory: '/app',
+        limits: { context_tokens: 8192, max_jev_input_bytes: 30000 },
+      });
+      nodes.get('source-mode').value = 'follow';
+      await new Promise(resolve => setImmediate(resolve));
+      const status = nodes.get('status');
+      assert.equal(status.textContent, 'Decision Engine: ');
+      assert.equal(status.children[0].textContent, engine === 'laya' ? 'Laya' : 'Jev');
+      assert.equal(status.children[0].className, 'selected-engine');
+      assert.equal(status.children.length, configured ? 1 : 2);
+      if (!configured) assert.equal(status.children[1].textContent, ' · API key required');
+    }
+  }
+  const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
+  assert.ok(css.includes('.selected-engine{color:#a23e34;font-weight:700}'));
 });

@@ -69,3 +69,5 @@
 .result-json summary:hover{background:#d2e9da;border-color:#79ad90}
 #stop:hover:not(:disabled){background:#f8d5ce;border-color:#d18c80}
 #chart-truncated{color:#a23e34;font-weight:700}
+#status{font-weight:700}
+.selected-engine{color:#a23e34;font-weight:700}

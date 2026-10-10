@@ -211,14 +211,38 @@ async def handle_events(
     yield _encode({"type": "done", **clock.snapshot()})
 
 
+def _matches_origin(origin: str, pattern: str) -> bool:
+    if "*" not in pattern:
+        return origin == pattern
+    try:
+        actual = urlsplit(origin)
+        expected = urlsplit(pattern)
+        hostname = expected.hostname or ""
+        if not hostname.startswith("*.") or hostname.count("*") != 1:
+            return False
+        return (
+            actual.scheme == expected.scheme
+            and actual.scheme in {"http", "https"}
+            and actual.port == expected.port
+            and bool(actual.hostname)
+            and actual.hostname.endswith(hostname[1:])
+            and actual.username is None
+            and expected.username is None
+            and not (actual.path or actual.query or actual.fragment)
+            and not (expected.path or expected.query or expected.fragment)
+        )
+    except ValueError:
+        return False
+
+
 def _allowed_origin(request: Request, *, files: bool = False) -> bool:
     origin = request.headers.get("origin", "")
     allowed = {
         entry.strip()
-        for entry in os.getenv("DECIFLOW_ALLOWED_ORIGINS", "").split(",")
+        for entry in os.getenv("DECIFLOW_CSRF_TRUSTED_ORIGINS", "").split(",")
         if entry.strip()
     }
-    if origin and origin in allowed:
+    if origin and any(_matches_origin(origin, pattern) for pattern in allowed):
         return True
     if origin != f"http://{request.headers.get('host')}":
         return False
@@ -329,7 +353,7 @@ async def handle_file_source(request: Request) -> Response:
         return _json(
             403,
             {
-                "error": "File access denied. Add this UI origin to DECIFLOW_ALLOWED_ORIGINS."
+                "error": "File access denied. Add this UI origin to DECIFLOW_CSRF_TRUSTED_ORIGINS."
             },
         )
     try:

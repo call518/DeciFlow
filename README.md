@@ -225,10 +225,13 @@ For source changes or a different Git version, restart with `docker restart deci
 no image rebuild is needed. Refresh the browser after UI changes. Rebuild the image
 only when changing the Dockerfile’s runtime. Stop DeciFlow before switching versions.
 
-For ngrok/reverse-proxy file access, set `DECIFLOW_ALLOWED_ORIGINS` to the
-exact UI origin, e.g. `https://your-domain.ngrok-free.app` (no trailing slash),
+For ngrok/reverse-proxy file access, set `DECIFLOW_CSRF_TRUSTED_ORIGINS` to the
+UI origin, e.g. `https://your-domain.ngrok-free.app`, or
+`https://*.ngrok-free.app` for changing ngrok domains (no trailing slash),
 and recreate the container. Empty allows file access only through localhost.
-This is not user authentication; protect public access with proxy authentication.
+This setting controls the CSRF Origin check, not CORS, login authentication, or
+CSRF token validation. Wildcards also trust other users’ subdomains; protect public
+access with proxy authentication.
 
 ## Configuration
 

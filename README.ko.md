@@ -224,10 +224,11 @@ docker rm deciflow
 필요하지 않습니다. UI 변경 후에는 브라우저도 새로고침하세요. Dockerfile의 실행 환경을
 바꿀 때만 이미지를 다시 빌드합니다. 버전 전환 전에는 DeciFlow를 중지하세요.
 
-ngrok·리버스 프록시로 파일을 처리하려면 `DECIFLOW_ALLOWED_ORIGINS`에
-`https://your-domain.ngrok-free.app`처럼 정확한 UI 출처를 지정하고
+ngrok·리버스 프록시로 파일을 처리하려면 `DECIFLOW_CSRF_TRUSTED_ORIGINS`에
+정확한 UI 출처 또는 랜덤 ngrok 주소용 `https://*.ngrok-free.app`을 지정하고
 컨테이너를 다시 만드세요(끝에 `/` 제외). 빈 값은 localhost 파일 접근만 허용합니다.
-로그인 인증이 아니므로 공개 접속에는 프록시 인증을 적용하세요.
+이 설정은 CSRF Origin 검사에 사용하며 CORS·로그인 인증·CSRF 토큰 검증은 아닙니다.
+와일드카드는 다른 사용자의 하위 도메인도 신뢰하므로 공개 접속에는 프록시 인증을 적용하세요.
 
 ## 설정
 
