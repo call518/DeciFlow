@@ -80,7 +80,7 @@ test('average request duration includes failures, ignores filters, and resets', 
   const events = [{ type: 'start', engine: 'laya', total: 2 }, first, failed,
     { type: 'done', elapsedMs: 5000 }];
   const { nodes, context } = workspace(events);
-  const average = () => nodes.get('summary').children[3].children[0].textContent;
+  const average = () => nodes.get('summary').children[4].children[0].textContent;
   vm.runInContext('render()', context);
   assert.equal(average(), '0.0ms');
   await nodes.get('classify').onclick();
@@ -145,4 +145,29 @@ test('log input explains each analysis mode before the selector', () => {
     'Batch:</strong> Analyze existing log files from the beginning.',
     'Realtime:</strong> Monitor and analyze new log lines as they arrive.',
   ]) assert.ok(help.includes(description));
+});
+
+test('cumulative processing time sums durations and allows ratios over 100%', async () => {
+  const first = result(0, false);
+  first.result.elapsedMs = 100;
+  const failed = result(1);
+  failed.result = { log: 'failed-log', error: 'timeout', review: true, elapsedMs: 300 };
+  const events = [{ type: 'start', engine: 'laya', total: 2 }, first, failed,
+    { type: 'done', elapsedMs: 200 }];
+  const { nodes, context } = workspace(events);
+  const cumulative = () => nodes.get('summary').children[3].children[0].textContent;
+  vm.runInContext('render()', context);
+  assert.equal(cumulative(), '0ms (N/A)');
+  await nodes.get('classify').onclick();
+  assert.equal(cumulative(), '400ms (200.0%)');
+  assert.ok(nodes.get('summary').children[3].title.includes('not CPU utilization'));
+  nodes.get('review-filter').value = 'no-review';
+  nodes.get('review-filter').onchange();
+  assert.equal(cumulative(), '400ms (200.0%)');
+  events.at(-1).elapsedMs = 1000;
+  await nodes.get('classify').onclick();
+  assert.equal(cumulative(), '400ms (40.0%)');
+  events.splice(0, events.length, { type: 'start', engine: 'jev', total: 1 }, result(0));
+  await nodes.get('classify').onclick();
+  assert.equal(cumulative(), '1ms (N/A)');
 });

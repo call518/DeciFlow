@@ -30,11 +30,14 @@ function element(tag, text, className = '') {
 }
 function render() {
   $('summary').replaceChildren();
-  const averageMs = completed ? results.reduce((sum, result) => sum + result.elapsedMs, 0) / completed : 0;
-  for (const [label, value] of [['Processed logs', completed], ['Needs review', results.filter(r => r.review).length], ['Total elapsed time', `${elapsedMs}ms`], ['Average processing time', `${averageMs.toFixed(1)}ms`]]) {
+  const processingMs = results.reduce((sum, result) => sum + result.elapsedMs, 0);
+  const averageMs = completed ? processingMs / completed : 0;
+  const processingPercent = elapsedMs > 0 ? `${(processingMs / elapsedMs * 100).toFixed(1)}%` : 'N/A';
+  for (const [label, value] of [['Processed logs', completed], ['Needs review', results.filter(r => r.review).length], ['Total elapsed time', `${elapsedMs}ms`], ['Total processing time', `${processingMs}ms (${processingPercent})`], ['Average processing time', `${averageMs.toFixed(1)}ms`]]) {
     const metric = element('div', label, 'metric');
     if (label === 'Needs review') metric.title = 'Confidence below 70%, Other category, or failed request; not an error count.';
     if (label === 'Average processing time') metric.title = 'Mean request duration, including network/server wait and failed requests; excludes waiting for new file lines.';
+    if (label === 'Total processing time') metric.title = 'Sum of completed request durations, including failures and network/server wait. Percentage is relative to total elapsed time and may exceed 100% with concurrent requests; not CPU utilization.';
     metric.append(element('strong', String(value)));
     $('summary').append(metric);
   }

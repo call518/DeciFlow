@@ -10,6 +10,10 @@
   When multiple execution methods exist, state whether users choose one or combine
   them, and distinguish each method's requirements and steps explicitly.
 
+- Define DeciFlow, the Laya server, and the Jev service before describing their
+  interactions. Name the application or host explicitly when giving requirements,
+  settings, or commands; avoid undefined labels such as "remote client" or "server".
+
 - Document each environment setting with both English and Korean comments.
 
 - When changing `.env.example` (or `.env.template`, if introduced), apply the same

@@ -8,6 +8,11 @@ DeciFlow classifies each log event as **Normal, Warning, Error, Security, or Oth
 with Laya or Jev. Scan a batch, follow new events, and focus your review with
 category probabilities and confidence instead of reading every line unaided.
 
+**DeciFlow** runs on the node containing your logs, reads events, and displays
+results in a browser. The **Laya server** runs the decision model on a separate
+host; **Jev** is an alternative hosted decision API. DeciFlow sends events to the
+selected engine and receives predictions.
+
 - **Use logs where they live.** Paste text or select multiple files across
   directories with wildcard patterns; no manual file merging.
 - **Switch from investigation to monitoring.** Read existing files in batches or
@@ -15,9 +20,8 @@ category probabilities and confidence instead of reading every line unaided.
 - **Keep people in control.** Filter uncertain predictions, record reviewer
   corrections, and export results as JSON. Rejected events retain their original
   text for review.
-- **Share inference across nodes.** Run a lightweight Python client on each log
-  node and connect to a shared remote Laya server; clients need no local GPU or
-  PyTorch.
+- **Share inference across nodes.** Run DeciFlow on each log node and connect
+  to a shared Laya server; DeciFlow nodes need no local GPU or PyTorch.
 - **Choose your engine.** Use self-hosted Laya by default without Jev API charges,
   or select Jev in `.env`. Both use the same workflow; no automatic paid fallback.
 
@@ -26,34 +30,29 @@ log file and review the predictions in your browser.
 
 ## Quick start
 
-Requires **Python 3.11+** and **uv**. Remote clients need no Docker or CUDA.
+Choose **Laya or Jev** below; configure only one engine.
 
-Create `.env` from [.env.example](.env.example) if it does not exist. Set your Laya
-server URL and matching API key:
-
-```dotenv
-DECISION_ENGINE=laya
-LAYA_API_URL=http://laya-server.example:8000/v1/systemone
-LAYA_API_KEY=changeme
-PORT=4000
-```
-
-Run from the DeciFlow directory:
+Requires **Python 3.11+** and **uv** on the DeciFlow node. A separate Laya server
+or the Jev API handles inference, so this node needs no Docker or CUDA.
+Create and activate the virtual environment, then install dependencies from the
+DeciFlow directory (Linux/macOS/WSL, Bash):
 
 ```bash
+uv venv
+source .venv/bin/activate
 uv sync
-uv run python server.py
 ```
 
-Open **http://127.0.0.1:4000**. Restart the server after configuration changes.
-To use Jev, set `DECISION_ENGINE=jev` and `TYPESAFE_API_KEY` instead.
+If `.env` does not exist, copy [.env.example](.env.example) to `.env`.
+Apply the settings for your chosen engine:
 
-## Remote Laya server
+### Use the Laya decision engine
 
-Choose **one** deployment method on the remote Laya host:
+Connect to an existing shared Laya server, or set up one on a remote host below.
+If a server is already available, skip setup and configure DeciFlow.
 
-- **Docker run:** start a prebuilt image with a script.
-- **Docker Compose:** clone the official Laya repository and build from source.
+The instructions below use Docker run on the Laya host. Docker Compose is an
+alternative; see the official guide linked below and choose only one method.
 
 This guide uses Docker to simplify Laya server setup for both CPU and CUDA.
 CUDA additionally requires an NVIDIA driver and
@@ -63,7 +62,7 @@ support, not the installed Toolkit. `nvcc --version` checks a local Toolkit,
 which these containers do not require. A CUDA 13.0 image requires a compatible GPU
 and [driver 580 or newer](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html).
 
-### Docker run
+#### Docker run
 
 Use **`call518/deciflow-laya:cpu`** or **`call518/deciflow-laya:cuda`**.
 No clone or build is needed. Copy the required script to the Laya host.
@@ -90,52 +89,10 @@ To change the host interface/port, edit `--publish HOST_IP:HOST_PORT:8000` and
 update `LAYA_API_URL`. Both scripts use `laya-server`; stop/remove the existing
 container before switching CPU/CUDA or changing settings.
 
-### Docker Compose
+> **NOTE:** For Docker Compose deployment, see the official
+> [Laya Docker guide — HTTP serving](https://nandhakishorm.github.io/laya/docker/#http-serving).
 
-Requires Docker Compose v2. Clone Laya and configure its official Compose files;
-this method builds a local image from source.
-Use a strong API key instead of `changeme` and set the same key in DeciFlow's `.env`.
-
-```bash
-git clone --branch v0.4.1 --depth 1 https://github.com/NandhaKishorM/laya.git
-cd laya
-
-export LAYA_API_KEY="${LAYA_API_KEY:-changeme}"
-export LAYA_BIND_ADDRESS=0.0.0.0
-export LAYA_PORT=8000
-export LAYA_PRELOAD=1
-export LAYA_MODELS=multilingual
-```
-
-Choose **CPU or CUDA**:
-
-**CPU**
-
-```bash
-export COMPOSE_FILE=compose.yaml:compose.http.yaml
-export LAYA_DEVICE=cpu
-export LAYA_TORCH_INDEX=cpu
-
-docker compose up --detach --build --wait laya-serve
-```
-
-**CUDA**
-
-```bash
-export COMPOSE_FILE=compose.yaml:compose.http.yaml:compose.cuda.yaml
-export LAYA_DEVICE=cuda
-export LAYA_TORCH_INDEX=cu130
-
-docker compose up --detach --build --wait laya-serve
-```
-
-`compose.http.yaml` configures the HTTP server; `compose.cuda.yaml` adds GPU access
-and the CUDA build. `LAYA_BIND_ADDRESS` selects the host IP and `LAYA_PORT` sets both
-host and container ports. Update `LAYA_API_URL` to match. Keep the same directory,
-`COMPOSE_FILE`, and exported settings for management; repeat `up` after changes.
-For slow model loading, add `--wait-timeout 1200`.
-
-### Check and manage
+#### Check and manage
 
 Use the server's key in `LAYA_API_KEY` for the health request (default: `changeme`).
 
@@ -147,21 +104,21 @@ curl --fail --silent --show-error \
 
 On the DeciFlow node, replace `127.0.0.1` with the server address. Inspect
 `checkpoint_devices`/`device` and `cpu_fallbacks` to verify actual GPU use.
-Restrict access to trusted clients and use TLS over external networks.
+Restrict Laya access to trusted DeciFlow nodes and use TLS over external networks.
 Keep `LAYA_JEV_STRICT=0` for required truncation metadata. Initial model loading
 can take several minutes; inspect container logs for startup errors.
 
-| Action | Docker run | Compose |
-| --- | --- | --- |
-| Status | `docker ps --filter name=laya-server` | `docker compose ps` |
-| Logs | `docker logs --tail=100 laya-server` | `docker compose logs --tail=100 laya-serve` |
-| Stop | `docker stop laya-server` | `docker compose stop laya-serve` |
-| Resume | `docker start laya-server` | `docker compose up --detach` |
-| Remove | `docker rm laya-server` after stopping | `docker compose down` |
+| Action | Docker run |
+| --- | --- |
+| Status | `docker ps --filter name=laya-server` |
+| Logs | `docker logs --tail=100 laya-server` |
+| Stop | `docker stop laya-server` |
+| Resume | `docker start laya-server` |
+| Remove | `docker rm laya-server` after stopping |
 
 Removal preserves the model cache. Use only one deployment method at a time.
 
-### Custom Docker run images (optional)
+#### Custom Docker run images (optional)
 
 Build from Laya **v0.4.1** only when you need your own image:
 
@@ -184,10 +141,40 @@ supported by your GPU/driver and the Dockerfile's `TORCH_VERSION` using the
 [PyTorch installation list](https://pytorch.org/get-started/previous-versions/).
 Validate API compatibility when upgrading Laya.
 
+#### DeciFlow connection
+
+On the DeciFlow node, set the shared Laya server URL and matching API key in `.env`:
+
+```dotenv
+DECISION_ENGINE=laya
+LAYA_API_URL=http://laya-server.example:8000/v1/systemone
+LAYA_API_KEY=changeme
+PORT=4000
+```
+
+### Use the Jev decision engine
+
+Obtain a TypeSafe API key from the [Jev setup guide](https://docs.typesafe.ai/introduction/quickstart)
+and set it in `.env`. Jev is paid; no Laya server is needed.
+
+```dotenv
+DECISION_ENGINE=jev
+TYPESAFE_API_KEY=your-typesafe-api-key
+PORT=4000
+```
+
+### Run DeciFlow
+
+```bash
+uv run python server.py
+```
+
+Open **http://127.0.0.1:4000**. Restart DeciFlow after configuration changes.
+
 ## Configuration
 
-Client settings live in `.env`; process environment variables take precedence.
-Laya server settings are managed separately on the remote host.
+DeciFlow settings live in `.env`; process environment variables take precedence.
+Laya server settings are managed separately on the Laya host.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -222,8 +209,11 @@ Reviewer category saves a human correction in JSON as `reviewerCategory`; it doe
 not change the model prediction, review flag, or train the model.
 Average processing time is the mean duration of all completed requests, including
 failures and network/server wait; it excludes waiting for new file lines.
+Total processing time sums those request durations and shows their percentage
+of total elapsed time. Concurrent requests overlap, so this ratio may exceed 100%;
+it is not CPU utilization or the wall-clock time spent actively processing.
 
-**Stop processing** cancels file readers and pending client requests while retaining
+**Stop processing** cancels file readers and pending requests to Laya or Jev while retaining
 completed results. A model inference already running on the remote server may finish.
 
 ## Limits
@@ -275,9 +265,9 @@ uv sync --extra laya
 uv run --extra laya python laya_server.py
 ```
 
-Set the client URL to loopback and start DeciFlow in another terminal. Use this
+Set DeciFlow's `LAYA_API_URL` to loopback and start DeciFlow in another terminal. Use this
 adapter for 0.3.20; it adds token-budget checks and truncation metadata missing from
 that version's HTTP server. Set local server options through process environment
-variables. Remote clients do not need the `laya` extra.
+variables. DeciFlow nodes using a separate Laya server do not need the `laya` extra.
 
 [Laya](https://github.com/NandhaKishorM/laya) · [Jev](https://docs.typesafe.ai/introduction/quickstart)

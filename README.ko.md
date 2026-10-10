@@ -8,14 +8,18 @@ DeciFlow는 Laya 또는 Jev로 로그를 **Normal, Warning, Error, Security, Oth
 분류합니다. 기존 파일은 배치로 분석하고 새 로그는 실시간으로 받아보세요.
 각 줄을 직접 읽는 대신 분류별 확률과 신뢰도를 참고해 검토할 결과를 추릴 수 있습니다.
 
+**DeciFlow**는 로그가 있는 노드에서 실행해 이벤트를 읽고 브라우저에 결과를 표시합니다.
+**Laya 서버**는 별도 호스트에서 판정 모델을 실행하며, **Jev 서비스**는 대신 선택할 수
+있는 외부 판정 API입니다. DeciFlow는 선택한 엔진에 이벤트를 보내고 판정 결과를 받습니다.
+
 - **로그가 있는 곳에서 바로 시작합니다.** 붙여 넣기부터 여러 디렉터리의 파일·
   와일드카드 입력까지 지원하므로 파일을 수동으로 합칠 필요가 없습니다.
 - **일회성 분석과 실시간 감시를 함께 제공합니다.** Batch로 기존 로그를 읽거나
   Realtime으로 새 줄과 파일 회전을 감시합니다. 최근 판정 완료 결과부터 표시합니다.
 - **최종 검토는 사람이 합니다.** 불확실한 판정을 필터링하고 검토자 수정값을 기록해
   JSON으로 내보내세요. 거절된 이벤트도 원문을 검토 대상으로 보존합니다.
-- **여러 노드가 추론 서버를 공유합니다.** 로그 노드에는 가벼운 Python 클라이언트를
-  실행하고 원격 Laya 서버에 연결합니다. 클라이언트에는 GPU·PyTorch가 필요하지 않습니다.
+- **여러 노드가 추론 서버를 공유합니다.** 각 로그 노드에서 DeciFlow를 실행하고
+  공유 Laya 서버에 연결합니다. DeciFlow 실행 노드에는 GPU·PyTorch가 필요하지 않습니다.
 - **엔진을 선택합니다.** 기본 Laya를 자체 운영하면 Jev API 호출료가 없습니다.
   `.env`에서 Jev로 전환해도 사용 흐름은 같으며 유료 엔진으로 자동 전환하지 않습니다.
 
@@ -24,34 +28,29 @@ access 로그, 애플리케이션 오류, 운영 이벤트에 활용하세요.
 
 ## 빠른 시작
 
-**Python 3.11 이상**과 **uv**가 필요합니다. 원격 클라이언트에는 Docker·CUDA가 필요하지 않습니다.
+아래 **Laya 또는 Jev 중 하나만 선택**해 설정하세요.
 
-`.env`가 없으면 [.env.example](.env.example)을 복사하고 Laya 서버 URL과
-서버와 동일한 API 키를 설정하세요:
-
-```dotenv
-DECISION_ENGINE=laya
-LAYA_API_URL=http://laya-server.example:8000/v1/systemone
-LAYA_API_KEY=changeme
-PORT=4000
-```
-
-DeciFlow 디렉터리에서 실행합니다:
+DeciFlow 실행 노드에는 **Python 3.11 이상**과 **uv**가 필요합니다. 추론은 별도
+Laya 서버 또는 Jev API가 처리하므로 이 노드에는 Docker·CUDA가 필요하지 않습니다.
+DeciFlow 디렉터리에서 가상환경을 생성·활성화한 뒤 의존성을 설치합니다
+(Linux·macOS·WSL의 Bash 기준):
 
 ```bash
+uv venv
+source .venv/bin/activate
 uv sync
-uv run python server.py
 ```
 
-**http://127.0.0.1:4000**에 접속하세요. 설정 변경 후 서버를 재시작합니다.
-Jev를 사용하려면 `DECISION_ENGINE=jev`와 `TYPESAFE_API_KEY`를 설정하세요.
+`.env`가 없으면 [.env.example](.env.example)을 `.env`로 복사하세요.
+선택한 엔진의 설정을 적용합니다:
 
-## 원격 Laya 서버
+### Laya 엔진 사용
 
-원격 Laya 호스트에서 **아래 두 방법 중 하나만 선택**하세요.
+기존 공용 Laya 서버에 연결하거나 아래 절차로 원격 노드에 서버를 구성하세요.
+이미 서버가 있다면 구성 절차를 건너뛰고 DeciFlow 연결 설정만 적용합니다.
 
-- **Docker run:** 스크립트로 이미 빌드된 이미지를 실행합니다.
-- **Docker Compose:** 공식 Laya 저장소를 복제하고 소스에서 빌드합니다.
+아래는 Laya 호스트에서 Docker run으로 실행하는 절차입니다. Docker Compose를
+사용하려면 아래 공식 문서 링크를 참고하고 **둘 중 하나만 선택**하세요.
 
 이 문서는 CPU·CUDA 모두 Docker로 Laya 서버를 간편하게 실행하는 절차를 안내합니다.
 CUDA 실행에는 NVIDIA 드라이버와
@@ -61,7 +60,7 @@ CUDA 실행에는 NVIDIA 드라이버와
 확인하며 이 컨테이너에는 설치가 필요하지 않습니다. CUDA 13.0 이미지에는 호환 GPU와
 [580 이상 드라이버](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html)가 필요합니다.
 
-### Docker run
+#### Docker run
 
 **`call518/deciflow-laya:cpu`** 또는 **`call518/deciflow-laya:cuda`**를 사용합니다.
 복제·빌드는 필요하지 않습니다. 사용할 스크립트를 Laya 호스트로 복사하세요.
@@ -88,52 +87,10 @@ bash scripts/run-deciflow-laya-cuda.sh
 수정하고 `LAYA_API_URL`에도 반영하세요. 두 스크립트 모두 `laya-server`를 사용하므로
 CPU·CUDA 전환 또는 설정 변경 전에 기존 컨테이너를 중지·제거합니다.
 
-### Docker Compose
+> **NOTE:** Docker Compose로 구성하려면 공식
+> [Laya Docker 문서의 HTTP serving 항목](https://nandhakishorm.github.io/laya/docker/#http-serving)을 참고하세요.
 
-Docker Compose v2가 필요합니다. Laya를 복제하고 공식 Compose 파일을 사용합니다.
-이 방법은 소스에서 로컬 이미지를 빌드합니다.
-`changeme` 대신 강한 API 키를 사용하고 DeciFlow의 `.env`에도 같은 키를 설정하세요.
-
-```bash
-git clone --branch v0.4.1 --depth 1 https://github.com/NandhaKishorM/laya.git
-cd laya
-
-export LAYA_API_KEY="${LAYA_API_KEY:-changeme}"
-export LAYA_BIND_ADDRESS=0.0.0.0
-export LAYA_PORT=8000
-export LAYA_PRELOAD=1
-export LAYA_MODELS=multilingual
-```
-
-**CPU 또는 CUDA 중 하나**를 선택하세요.
-
-**CPU**
-
-```bash
-export COMPOSE_FILE=compose.yaml:compose.http.yaml
-export LAYA_DEVICE=cpu
-export LAYA_TORCH_INDEX=cpu
-
-docker compose up --detach --build --wait laya-serve
-```
-
-**CUDA**
-
-```bash
-export COMPOSE_FILE=compose.yaml:compose.http.yaml:compose.cuda.yaml
-export LAYA_DEVICE=cuda
-export LAYA_TORCH_INDEX=cu130
-
-docker compose up --detach --build --wait laya-serve
-```
-
-`compose.http.yaml`은 HTTP 서버 설정, `compose.cuda.yaml`은 GPU 사용과 CUDA 빌드
-설정입니다. `LAYA_BIND_ADDRESS`로 호스트 IP, `LAYA_PORT`로 호스트·컨테이너 포트를
-설정하고 `LAYA_API_URL`에도 반영하세요. 관리 시 같은 디렉터리, `COMPOSE_FILE`,
-export한 설정을 유지하고 변경 후 `up`을 다시 실행합니다.
-모델 적재가 느리면 `--wait-timeout 1200`을 추가하세요.
-
-### 상태 확인과 관리
+#### 상태 확인과 관리
 
 상태 확인 시 `LAYA_API_KEY`에 서버와 동일한 키를 사용하세요(기본값: `changeme`).
 
@@ -145,21 +102,21 @@ curl --fail --silent --show-error \
 
 DeciFlow 노드에서는 `127.0.0.1`을 서버 주소로 바꾸세요.
 `checkpoint_devices`·`device`와 `cpu_fallbacks`로 실제 GPU 사용을 확인합니다.
-신뢰할 수 있는 클라이언트로 접근을 제한하고 외부 네트워크에는 TLS를 사용하세요.
+신뢰할 수 있는 DeciFlow 노드만 Laya에 접근하도록 제한하고 외부 네트워크에는 TLS를 사용하세요.
 잘림 메타데이터를 위해 `LAYA_JEV_STRICT=0`을 유지합니다. 최초 모델 적재에는 수 분이
 걸릴 수 있으며 시작 오류는 컨테이너 로그에서 확인하세요.
 
-| 작업 | Docker run | Compose |
-| --- | --- | --- |
-| 상태 | `docker ps --filter name=laya-server` | `docker compose ps` |
-| 로그 | `docker logs --tail=100 laya-server` | `docker compose logs --tail=100 laya-serve` |
-| 중지 | `docker stop laya-server` | `docker compose stop laya-serve` |
-| 재시작 | `docker start laya-server` | `docker compose up --detach` |
-| 제거 | 중지 후 `docker rm laya-server` | `docker compose down` |
+| 작업 | Docker run |
+| --- | --- |
+| 상태 | `docker ps --filter name=laya-server` |
+| 로그 | `docker logs --tail=100 laya-server` |
+| 중지 | `docker stop laya-server` |
+| 재시작 | `docker start laya-server` |
+| 제거 | 중지 후 `docker rm laya-server` |
 
 제거 시 모델 캐시는 유지됩니다. 배포 방법은 한 번에 하나만 사용하세요.
 
-### Docker run 커스텀 이미지(선택)
+#### Docker run 커스텀 이미지(선택)
 
 직접 만든 이미지가 필요한 경우에만 Laya **v0.4.1**에서 빌드합니다:
 
@@ -182,10 +139,40 @@ Dockerfile의 `TORCH_VERSION`에 맞는 CUDA 빌드를
 [PyTorch 설치 목록](https://pytorch.org/get-started/previous-versions/)에서 선택하세요.
 Laya 업그레이드 시 API 호환성을 검증합니다.
 
+#### DeciFlow 연결 설정
+
+DeciFlow 실행 노드의 `.env`에 공용 Laya 서버 URL과 서버와 동일한 API 키를 설정하세요:
+
+```dotenv
+DECISION_ENGINE=laya
+LAYA_API_URL=http://laya-server.example:8000/v1/systemone
+LAYA_API_KEY=changeme
+PORT=4000
+```
+
+### Jev 엔진 사용
+
+[Jev 설정 안내](https://docs.typesafe.ai/introduction/quickstart)에서 TypeSafe API 키를
+발급받아 `.env`에 설정하세요. Jev는 유료이며 Laya 서버는 필요하지 않습니다.
+
+```dotenv
+DECISION_ENGINE=jev
+TYPESAFE_API_KEY=your-typesafe-api-key
+PORT=4000
+```
+
+### DeciFlow 실행
+
+```bash
+uv run python server.py
+```
+
+**http://127.0.0.1:4000**에 접속하세요. 설정 변경 후 DeciFlow를 재시작합니다.
+
 ## 설정
 
-클라이언트 설정은 `.env`에서 관리하며 프로세스 환경변수가 우선합니다.
-Laya 서버 설정은 원격 호스트에서 별도로 관리합니다.
+DeciFlow 설정은 `.env`에서 관리하며 프로세스 환경변수가 우선합니다.
+Laya 서버 설정은 Laya 호스트에서 별도로 관리합니다.
 
 | 환경변수 | 기본값 | 역할 |
 | --- | --- | --- |
@@ -220,8 +207,11 @@ Reviewer category는 사람의 수정값을 JSON의 `reviewerCategory`로 저장
 모델 판정·검토 대상 여부를 변경하거나 모델을 학습시키지는 않습니다.
 평균 처리시간은 실패를 포함한 완료 요청의 소요시간 평균이며 네트워크·서버 대기를
 포함하고 새 로그 줄을 기다리는 시간은 제외합니다.
+총 처리시간(Total processing time)은 해당 요청 소요시간의 합과 전체 경과시간 대비 비율입니다.
+동시 요청은 시간이 겹치므로 100%를 넘을 수 있으며 CPU 가동률이나 실제 작업 구간의
+경과시간을 뜻하지 않습니다.
 
-**Stop processing**은 파일 읽기와 진행 중 클라이언트 요청을 취소하고 완료 결과를
+**Stop processing**은 파일 읽기와 진행 중 Laya·Jev 요청을 취소하고 완료 결과를
 보존합니다. 원격 서버에서 이미 실행 중인 추론은 완료될 수 있습니다.
 
 ## 제약
@@ -272,9 +262,9 @@ uv sync --extra laya
 uv run --extra laya python laya_server.py
 ```
 
-클라이언트 URL을 루프백으로 설정하고 다른 터미널에서 DeciFlow를 시작하세요.
+DeciFlow의 `LAYA_API_URL`을 루프백으로 설정하고 다른 터미널에서 DeciFlow를 시작하세요.
 0.3.20에서는 해당 버전의 HTTP 서버에 없는 토큰 예산 검사와 잘림 메타데이터를
 제공하는 이 어댑터를 사용합니다. 로컬 서버 옵션은 프로세스 환경변수로 지정합니다.
-원격 클라이언트에는 `laya` 추가 의존성이 필요하지 않습니다.
+별도 Laya 서버를 사용하는 DeciFlow 실행 노드에는 `laya` 추가 의존성이 필요하지 않습니다.
 
 [Laya](https://github.com/NandhaKishorM/laya) · [Jev](https://docs.typesafe.ai/introduction/quickstart)
