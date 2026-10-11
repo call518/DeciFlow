@@ -542,29 +542,26 @@ variables. DeciFlow nodes using a separate Laya server do not need the `laya` ex
 
 ## Implementation status and roadmap
 
-`[x]` Implemented · `[ ]` Planned (listed in priority order).
+✅ Available · ⬜ Planned, in priority order.
 
-| Status | Item | Features / target |
-| --- | --- | --- |
-| [x] | Log sources | Realtime, Batch, Paste; multiple paths, wildcards, concurrent file reads, discovery and rotation tracking |
-| [x] | Criteria and chunks | Five profiles; per-source Events/chunk; original logs and source metadata retained |
-| [x] | Decision engines | Laya/Jev; model, input budget and concurrency settings in `.env`; shared validation |
-| [x] | Analysis UI | Category chart; review, category and source filters; text search and source counts |
-| [x] | Monitoring and controls | Throughput and timing metrics; stop processing; pause/resume list updates |
-| [x] | Results | Individual JSON view/copy, full export and reviewer annotations |
-| [x] | Diagnostics | Uncertainty reasons, truncation counts, provider responses and request metadata |
-| [x] | Deployment | Docker with mounted source; `.env` reload on restart; trusted-origin checks |
-| [x] | Verification | Python/UI regression tests and labeled-case Laya evaluation tool |
-| [ ] | Classification quality | Expand labeled logs; compare profiles/models and category errors; evaluate log-specific checkpoints |
-| [ ] | Question preservation | Verify instructions and choices with the deployed tokenizer, separately from log truncation |
-| [ ] | Persistent results | Restore runs, results and reviews after refresh/restart; reuse reviewed labels for evaluation |
-| [ ] | **Multiline events** | Recognize variable-length Python/Java stack traces and other event boundaries; group complete events using Events/chunk |
-| [ ] | Profile suggestions | Validate automatic type/profile suggestions while retaining manual selection |
-| [ ] | Inference throughput | Benchmark Laya inference batch API and GPU capacity; retain cancellation and Realtime responsiveness |
-| [ ] | Realtime recovery | Save read positions; recover reconnects; verify loss/duplication during rapid rotation and copy-truncate |
-| [ ] | Long-running sessions | Limit browser memory and aggregation costs; incrementally load retained results; benchmark large runs |
-| [ ] | Shared access | Add authentication, per-user file permissions and request limits |
+- ✅ **Log sources** — Realtime, Batch and Paste; multiple files, wildcards, concurrent reads and rotation tracking.
+- ✅ **Criteria** — Five profiles, per-source Events/chunk and original source metadata.
+- ✅ **Engines** — Laya/Jev with model, budget and concurrency settings in `.env`.
+- ✅ **Analysis** — Category chart, review/category/source filters, log search and source counts.
+- ✅ **Monitoring** — Throughput and timing metrics; stop processing and pause/resume updates.
+- ✅ **Results** — JSON view, copy and export; reviewer annotations.
+- ✅ **Diagnostics** — Uncertainty reasons, truncation counts and provider/request metadata.
+- ✅ **Docker** — Mounted source, `.env` reload on restart and trusted-origin checks.
+- ✅ **Verification** — Python/UI tests and labeled-case Laya evaluation.
+- ⬜ **Classification quality** — Expand labeled logs; compare profiles, models and category errors.
+- ⬜ **Question preservation** — Verify instructions and choices with the deployed tokenizer.
+- ⬜ **Persistence** — Restore runs, results and reviews; reuse reviewed labels for evaluation.
+- ⬜ **Multiline events** — Recognize variable-length stack traces and group complete events with Events/chunk.
+- ⬜ **Profile suggestions** — Validate automatic type/profile suggestions; retain manual selection.
+- ⬜ **Inference throughput** — Benchmark Laya inference batches and GPU capacity; retain cancellation and responsiveness.
+- ⬜ **Realtime recovery** — Save read positions; verify reconnects, rapid rotation and copy-truncate.
+- ⬜ **Long-running sessions** — Reduce memory/aggregation costs; load retained results incrementally and benchmark large runs.
+- ⬜ **Shared access** — Authentication, per-user file permissions and request limits.
 
-Currently, **one nonempty line is one event**. Events/chunk groups events but does
-not detect multiline boundaries. Inference batching is separate from multi-file
-Batch mode. Certain is a model-based flag, not verified accuracy.
+> Currently, one nonempty line is one event. Multiline recognition is planned.
+> Inference batching is separate from multi-file Batch mode; Certain does not mean verified accuracy.
