@@ -24,6 +24,7 @@ async def _source_chunks(
         async for record in records:
             yield {
                 **record,
+                **({"action": spec["action"]} if spec.get("action") else {}),
                 "sourcePatterns": spec.get("sourcePatterns", [str(path)]),
             }
 

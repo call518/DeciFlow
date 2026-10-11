@@ -15,3 +15,5 @@ vendor
 scripts
 sample-logs
 *.log
+
+action-data

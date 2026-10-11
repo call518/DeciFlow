@@ -670,8 +670,8 @@ footer {
 
 .source-settings {
   display: grid;
-  gap: 6px;
-  margin-top: 8px
+  gap: 18px;
+  margin-top: 12px
 }
 
 .source-setting {
@@ -679,12 +679,23 @@ footer {
   grid-template-columns: minmax(0,1fr) 265px 145px;
   align-items: center;
   gap: 10px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #dce6df;
   font-size: 12px
+}
+
+.source-setting:last-child {
+  padding-bottom: 0;
+  border-bottom: 0
 }
 
 .source-path {
   overflow-wrap: anywhere;
-  font-family: monospace
+  font-family: monospace;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: #203f32
 }
 
 .source-setting select,.paste-settings select {
@@ -898,7 +909,8 @@ footer {
 }
 
 .input-column .input-actions {
-  flex-direction: row
+  flex-direction: row;
+  margin: 8px 0
 }
 
 .input-column .input-actions button {
@@ -1153,3 +1165,44 @@ footer {
 .chart-groups button:hover:not([aria-pressed="true"]) {
   background: #e5efe8;
 }
+
+.actions-settings { margin: 12px 0; }
+.action-registration { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.action-registration label { flex: 1 1 180px; }
+.action-registration input, .action-registration textarea { display: block; width: 100%; box-sizing: border-box; }
+
+[hidden] { display: none !important; }
+.sidebar-nav { display: grid; gap: 8px; margin-top: 14px; }
+.sidebar-nav .nav { margin-top: 0; text-align: left; color: #effaf3; background: transparent; border: 1px solid #49665c; }
+.sidebar-nav .nav[aria-current="page"] { background: #25453b; font-weight: 700; }
+.actions-manager { max-width: 1050px; }
+.actions-manager .action-registration { padding: 20px; border: 1px solid #dce6df; border-radius: 9px; gap: 16px; background: #fbfdfb; }
+.actions-manager .action-code-label { flex-basis: 100%; }
+.actions-manager .action-code { height: 320px; tab-size: 4; white-space: pre; overflow: auto; line-height: 1.5; }
+.actions-manager .action-registration label { font-size: 13px; font-weight: 600; }
+.actions-manager .action-registration input { padding: 10px; border: 1px solid #dce6df; border-radius: 6px; margin-top: 6px; }
+.actions-manager .action-registration textarea { margin-top: 6px; }
+.actions-manager .action-registration button { flex: 0 0 auto; padding: 8px 16px; }
+
+.action-list { width: 100%; border-collapse: collapse; margin: 10px 0; }
+.action-list th, .action-list td { text-align: left; padding: 8px; border-bottom: 1px solid #dce6df; }
+.action-list th { font-size: 12px; color: #607d80; }
+.action-list td:first-child { font-weight: 600; }
+.action-list td { font-size: 14px; overflow-wrap: anywhere; }
+.action-list-controls { white-space: nowrap; }
+.action-list-controls button { padding: 5px 9px; margin-top: 0; }
+.action-list-controls button + button { margin-left: 8px; }
+#action-registry { overflow-x: auto; }
+.action-search-row { display: flex; align-items: center; gap: 8px; margin: 6px 0 10px; }
+.action-search-row label { margin: 0; }
+#action-search { width: 320px; max-width: 100%; min-width: 0; margin: 0; }
+#cancel-action { margin-bottom: 12px; }
+
+.input-column .source-setting .source-path-input { width: 100%; flex: 1 1 auto; min-width: 0; box-sizing: border-box; font: 13px monospace; padding: 8px; }
+.source-setting .source-path { display: flex; flex-direction: row; gap: 8px; }
+.source-remove { justify-self: end; margin-top: 0; color: #9a443c; background: #fbeae7; border-color: #eccac4; }
+.source-remove:hover:not(:disabled) { background: #f7dcd7; border-color: #e5b6ae; }
+#add-source { width: auto; margin-top: 4px; padding: 7px 10px; color: #2d5d43; background: #dbeee2; border-color: #b4d4c0; }
+#add-source:hover:not(:disabled) { background: #cce5d5; border-color: #9cc5ad; }
+
+.input-column .source-setting>.source-path { align-items: center; white-space: nowrap; }

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { test } from 'node:test';
 
-function workspace(events, status) {
+function workspace(events, status, storage = { getItem: () => null, setItem() {} }) {
   const nodes = new Map();
   const requests = [];
   const node = () => ({
@@ -21,10 +21,12 @@ function workspace(events, status) {
       createElement: node,
     },
     Option: function(text, value) { return { text, value }; },
+    localStorage: storage,
     AbortController,
     setTimeout: () => 1,
     clearTimeout() {},
     fetch: async (path, options) => {
+      if (path === '/api/actions') return { ok: true, json: async () => ({ actions: [] }) };
       if (path === '/api/status') return status ? { ok: true, json: async () => status } : new Promise(() => {});
       requests.push(JSON.parse(options.body));
       return { ok: true, body: {} };
@@ -130,9 +132,9 @@ test('analysis modes show operator-oriented labels and actions', () => {
     assert.ok(html.includes(`<option value="${value}"${value === 'batch' ? ' selected' : ''}>${label}</option>`));
   }
   const { nodes } = workspace([]);
-  for (const [mode, action] of [['paste', 'Classify with Laya ↗'],
-    ['batch', 'Run batch with Laya ↗'],
-    ['realtime', 'Start realtime with Laya ↗']]) {
+  for (const [mode, action] of [['paste', 'Run'],
+    ['batch', 'Run'],
+    ['realtime', 'Run']]) {
     nodes.get('source-mode').value = mode;
     nodes.get('source-mode').onchange();
     assert.equal(nodes.get('classify').textContent, action);
@@ -749,4 +751,196 @@ test('source filtering uses input patterns with counts and combines with other f
   await nodes.get('classify').onclick();
   assert.equal(select.value, 'all');
   assert.ok(!select.children.some(option => option.value === '/logs/messages'));
+});
+
+test('file Actions are assigned in requests and execution failures are visible', async () => {
+  const event = result(0, false);
+  event.result.actionExecution = { name: 'notify', status: 'failed', exitCode: 7, elapsedMs: 12 };
+  const { nodes, context, requests } = workspace([
+    { type: 'start', engine: 'laya', total: 1 }, event,
+  ]);
+  await new Promise(resolve => setImmediate(resolve));
+  vm.runInContext("registeredActions = [{name: 'notify', python: '/venv/bin/python', script: '/actions/notify.py'}]; renderActions(); updateSourceSettings();", context);
+  const selector = nodes.get('source-settings').children[0].children[3].children[0];
+  assert.deepEqual(selector.children.map(option => option.text), ['None', 'notify']);
+  selector.value = 'notify'; selector.onchange();
+  await nodes.get('classify').onclick();
+  assert.equal(requests[0].sources[0].action, 'notify');
+  assert.ok(nodes.get('results').children[0].children.some(node => node.textContent?.includes('Action: notify · failed · 12ms · exit 7')));
+  assert.equal(selector.disabled, false);
+});
+
+test('Action editor sends Python versions and module lists and recovers from preparation errors', async () => {
+  const { nodes, context } = workspace([]);
+  await new Promise(resolve => setImmediate(resolve));
+  nodes.get('add-action').onclick();
+  const row = nodes.get('action-editor').children[0];
+  const inputs = row.children.slice(0, 4).map(label => label.children[0]);
+  assert.equal(inputs[1].value, '3.12');
+  inputs[0].value = 'notify'; inputs[3].value = 'import json, sys\nresult = json.load(sys.stdin)\n';
+  inputs[2].value = 'httpx==0.28.1\nrequests';
+  let sent, complete;
+  context.fetch = async (path, options) => {
+    assert.equal(path, '/api/actions');
+    sent = JSON.parse(options.body);
+    await new Promise(resolve => { complete = resolve; });
+    return { ok: false, json: async () => ({ error: 'Could not prepare action notify.' }) };
+  };
+  const saving = nodes.get('save-actions').onclick();
+  assert.equal(nodes.get('save-actions').disabled, true);
+  assert.equal(inputs[2].disabled, true);
+  assert.equal(sent[0].pythonVersion, '3.12');
+  assert.equal(sent[0].modules, 'httpx==0.28.1\nrequests');
+  assert.ok(sent[0].code.includes('json.load(sys.stdin)'));
+  assert.equal(Object.hasOwn(sent[0], 'script'), false);
+  complete(); await saving;
+  assert.equal(nodes.get('save-actions').disabled, false);
+  assert.equal(inputs[2].disabled, false);
+  assert.equal(inputs[2].value, 'httpx==0.28.1\nrequests');
+  assert.equal(nodes.get('action-message').textContent, 'Could not prepare action notify.');
+  context.fetch = async (path, options) => ({ ok: true, json: async () => ({ actions: JSON.parse(options.body) }) });
+  await nodes.get('save-actions').onclick();
+  assert.ok(nodes.get('action-message').textContent.includes('environments ready'));
+});
+
+
+test('sidebar switches Main and Actions without losing editor content', async () => {
+  const { nodes } = workspace([]);
+  await new Promise(resolve => setImmediate(resolve));
+  nodes.get('nav-actions').onclick();
+  assert.equal(nodes.get('main-page').hidden, true);
+  assert.equal(nodes.get('actions-page').hidden, false);
+  assert.equal(nodes.get('nav-actions').attributes['aria-current'], 'page');
+  nodes.get('add-action').onclick();
+  const code = nodes.get('action-editor').children[0].children[3].children[0];
+  code.value = 'print("editor draft")';
+  nodes.get('nav-main').onclick();
+  nodes.get('nav-actions').onclick();
+  assert.equal(code.value, 'print("editor draft")');
+  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.ok(html.indexOf('id="action-registry"') > html.indexOf('id="actions-page"'));
+  assert.ok(!html.includes('Python script path'));
+});
+
+
+test('Action list edits one handler, cancels drafts, and saves deletion without losing others', async () => {
+  const { nodes, context } = workspace([]);
+  await new Promise(resolve => setImmediate(resolve));
+  vm.runInContext("registeredActions = [{id:'first', name:'First', pythonVersion:'3.12', modules:[], code:'pass'}, {id:'second', name:'Second', pythonVersion:'3.13', modules:['httpx'], code:'pass'}]; renderActions();", context);
+  const table = () => nodes.get('action-registry').children[0];
+  assert.equal(table().children.length, 3);
+  assert.equal(table().children[2].children[0].textContent, 'Second');
+  table().children[2].children[3].children[0].onclick();
+  assert.equal(nodes.get('action-editor').children.length, 1);
+  nodes.get('action-editor').children[0].children[0].children[0].value = 'Discard';
+  nodes.get('cancel-action').onclick();
+  assert.equal(table().children[2].children[0].textContent, 'Second');
+  table().children[2].children[3].children[0].onclick();
+  nodes.get('action-editor').children[0].children[0].children[0].value = 'Edited';
+  let sent;
+  context.fetch = async (path, options) => {
+    sent = JSON.parse(options.body);
+    return {ok:true, json:async () => ({actions:sent})};
+  };
+  await nodes.get('save-actions').onclick();
+  assert.equal(sent.length, 2);
+  assert.equal(sent[0].name, 'First');
+  assert.equal(sent[1].name, 'Edited');
+  assert.equal(nodes.get('action-editor').hidden, true);
+  table().children[1].children[3].children[1].onclick();
+  await nodes.get('save-actions').onclick();
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].name, 'Edited');
+  nodes.get('add-action').onclick();
+  nodes.get('cancel-action').onclick();
+  assert.equal(table().children.length, 2);
+});
+
+
+test('Action name search ignores case and retains original edit and delete targets', async () => {
+  const { nodes, context } = workspace([]);
+  await new Promise(resolve => setImmediate(resolve));
+  vm.runInContext("registeredActions = [{name:'First', code:'pass'}, {name:'Notify admin', code:'pass'}, {name:'Last', code:'pass'}]; renderActions();", context);
+  const search = nodes.get('action-search');
+  search.value = '  NOTIFY  '; search.oninput();
+  const table = nodes.get('action-registry').children[0];
+  assert.equal(table.children.length, 2);
+  assert.equal(table.children[1].children[0].textContent, 'Notify admin');
+  table.children[1].children[3].children[0].onclick();
+  assert.equal(nodes.get('action-editor').children[0].children[0].children[0].value, 'Notify admin');
+  nodes.get('cancel-action').onclick();
+  nodes.get('action-registry').children[0].children[1].children[3].children[1].onclick();
+  assert.equal(nodes.get('action-registry').children[0].textContent, 'No Actions match your search.');
+  search.value = ''; search.oninput();
+  assert.equal(nodes.get('action-registry').children[0].children.length, 3);
+  assert.equal(nodes.get('action-registry').children[0].children[2].children[0].textContent, 'Last');
+});
+
+
+test('source rows edit paths, remove samples, add sources, and retain settings across modes', async () => {
+  const { nodes, context, requests } = workspace([]);
+  assert.equal(nodes.get('source-settings').children.length, 3);
+  const first = nodes.get('source-settings').children[0];
+  const path = first.children[0].children[0];
+  assert.equal(path.value, '/host-logs/sample-logs/access-1k.log');
+  path.value = '/custom/access*.log'; path.oninput();
+  const profile = first.children[1].children[0];
+  profile.value = 'http_access'; profile.onchange();
+  first.children.at(-1).onclick();
+  assert.equal(nodes.get('source-settings').children.length, 2);
+  nodes.get('add-source').onclick();
+  const added = nodes.get('source-settings').children[2].children[0].children[0];
+  assert.equal(added.value, '');
+  await nodes.get('classify').onclick();
+  assert.equal(requests.length, 0);
+  assert.match(nodes.get('message').textContent, /Enter a file path/);
+  added.value = '/custom/access*.log'; added.oninput();
+  vm.runInContext("sourceRows[2].profile.value = 'http_access'; sourceRows[2].profile.onchange();", context);
+  assert.equal(vm.runInContext('sourceRows[2].path', context), '/custom/access*.log');
+  nodes.get('source-mode').value = 'realtime'; nodes.get('source-mode').onchange();
+  nodes.get('source-mode').value = 'batch'; nodes.get('source-mode').onchange();
+  assert.equal(nodes.get('source-settings').children[2].children[0].children[0].value, '/custom/access*.log');
+  assert.equal(vm.runInContext('sourceRows[2].profile.value', context), 'http_access');
+  await nodes.get('classify').onclick();
+  assert.equal(requests[0].sources.length, 3);
+  assert.equal(requests[0].sources[2].path, '/custom/access*.log');
+  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.ok(!html.includes('Server-side file paths or patterns'));
+});
+
+
+test('result JSON puts metadata first and preserves UTC ISO 8601 timestamps and values', () => {
+  const { context } = workspace([]);
+  const value = vm.runInContext("orderedResult({log:'original', category:'normal', source:'/logs/test', elapsedMs:12, requestedAt:'2026-10-12T03:00:00.123456+00:00', engine:'laya'})", context);
+  assert.deepEqual(Object.keys(value), ['requestedAt', 'engine', 'source', 'elapsedMs', 'log', 'category']);
+  assert.equal(value.requestedAt, '2026-10-12T03:00:00.123456+00:00');
+  assert.equal(value.log, 'original');
+  assert.equal(value.category, 'normal');
+});
+
+
+test('stored Action assignments never run by default; explicit selections last only for this page', async () => {
+  let saved;
+  const storage = {
+    getItem: () => JSON.stringify([['/host-logs/sample-logs/access-1k.log', {profile:'http_access', chunkEvents:3, action:'notify'}]]),
+    setItem: (_, value) => { saved = JSON.parse(value); },
+  };
+  const {nodes, context, requests} = workspace([], undefined, storage);
+  await new Promise(resolve => setImmediate(resolve));
+  vm.runInContext("registeredActions = [{name:'notify'}]; updateSourceSettings();", context);
+  const selector = () => nodes.get('source-settings').children[0].children[3].children[0];
+  assert.equal(selector().value, '');
+  assert.equal(vm.runInContext('sourceRows[0].profile.value', context), 'http_access');
+  assert.equal(vm.runInContext('sourceRows[0].size.value', context), '3');
+  await nodes.get('classify').onclick();
+  assert.ok(requests[0].sources.every(source => source.action === ''));
+  selector().value = 'notify'; selector().onchange();
+  assert.ok(saved.every(([, preference]) => !Object.hasOwn(preference, 'action')));
+  nodes.get('source-mode').value = 'realtime'; nodes.get('source-mode').onchange();
+  nodes.get('source-mode').value = 'batch'; nodes.get('source-mode').onchange();
+  assert.equal(selector().value, 'notify');
+  const reloaded = workspace([], undefined, {getItem:() => JSON.stringify(saved), setItem() {}});
+  await new Promise(resolve => setImmediate(resolve));
+  vm.runInContext("registeredActions = [{name:'notify'}]; updateSourceSettings();", reloaded.context);
+  assert.equal(reloaded.nodes.get('source-settings').children[0].children[3].children[0].value, '');
 });

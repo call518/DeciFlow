@@ -28,8 +28,16 @@ def parse_source_settings(values: object) -> list[dict[str, Any]]:
             value.get("profile", "general"),
             value.get("chunkEvents", value.get("chunkLines", 1)),
         )
+        action = value.get("action", "")
+        if not isinstance(action, str):
+            raise TypeError("Action must be a registered action name.")
         sources.append(
-            {"path": path.strip(), "profile": profile, "chunkEvents": events}
+            {
+                "path": path.strip(),
+                "profile": profile,
+                "chunkEvents": events,
+                **({"action": action.strip()} if action.strip() else {}),
+            }
         )
     return sources
 
@@ -45,8 +53,11 @@ def resolve_configured_sources(
             if path in result and (
                 result[path]["profile"],
                 result[path]["chunkEvents"],
-            ) != (spec["profile"], spec["chunkEvents"]):
-                raise ValueError(f"Conflicting profile or chunk size for: {path}")
+                result[path].get("action", ""),
+            ) != (spec["profile"], spec["chunkEvents"], spec.get("action", "")):
+                raise ValueError(
+                    f"Conflicting profile, chunk size, or action for: {path}"
+                )
             if path not in result:
                 result[path] = {**spec, "sourcePatterns": [spec["path"]]}
             elif spec["path"] not in result[path]["sourcePatterns"]:

@@ -10,6 +10,13 @@ const samples = [
   '2026-10-10T09:00:04 event=zx17 value=unknown',
 ];
 const expandedJson = new WeakSet();
+function orderedResult(result) {
+  const metadata = ['requestedAt', 'decidedAt', 'schemaVersion', 'eventId', 'engine', 'requestedModel', 'source', 'sourcePatterns', 'line', 'lineEnd', 'lineCount', 'eventCount', 'profile', 'chunkEvents', 'incomplete', 'elapsedMs', 'requestBytes', 'inputBudget', 'httpStatus', 'responseHeaders', 'action', 'actionExecution'];
+  return Object.fromEntries([
+    ...metadata.filter(key => Object.hasOwn(result, key)).map(key => [key, result[key]]),
+    ...Object.entries(result).filter(([key]) => !metadata.includes(key)),
+  ]);
+}
 async function copyText(text) {
   if (globalThis.navigator?.clipboard?.writeText) {
     await navigator.clipboard.writeText(text);
@@ -60,8 +67,118 @@ function element(tag, text, className = '') {
   node.className = className;
   return node;
 }
+function handleNavigation(view) {
+  $('main-page').hidden = view !== 'main';
+  $('actions-page').hidden = view !== 'actions';
+  $('nav-main').setAttribute('aria-current', view === 'main' ? 'page' : 'false');
+  $('nav-actions').setAttribute('aria-current', view === 'actions' ? 'page' : 'false');
+}
+$('nav-main').onclick = () => handleNavigation('main');
+$('nav-actions').onclick = () => handleNavigation('actions');
+const defaultActionCode = `import json
+import sys
+
+result = json.load(sys.stdin)
+
+# Use result["category"], result["log"], and result["source"] here.
+# Replace this handler with your notification, storage, or other integration.
+`;
 const profileLabels = { general: 'General system', authentication: 'Authentication', http_access: 'HTTP access', application: 'Application', network: 'Network / tcpdump text' };
+let registeredActions = [];
+let actionRows = [];
+let preparingActions = false;
 const sourcePreferences = new Map();
+try {
+  for (const [path, preference] of JSON.parse(localStorage.getItem('deciflow-source-preferences') || '[]')) sourcePreferences.set(path, { profile: preference.profile, chunkEvents: preference.chunkEvents });
+} catch { /* Keep the UI usable when browser storage is unavailable or invalid. */ }
+let editingAction = null;
+function renderActions() {
+  $('action-registry').replaceChildren();
+  const query = $('action-search').value.trim().toLowerCase();
+  let matches = 0;
+  const table = element('table', '', 'action-list');
+  const header = element('tr', '');
+  for (const title of ['Name', 'Python', 'Modules', 'Manage']) header.append(element('th', title));
+  table.append(header);
+  registeredActions.forEach((action, index) => {
+    if (!action.name.toLowerCase().includes(query)) return;
+    matches++;
+    const row = element('tr', '');
+    const modules = Array.isArray(action.modules) ? action.modules.join(', ') : action.modules;
+    for (const value of [action.name, action.pythonVersion || 'External', modules || 'Standard library']) row.append(element('td', value));
+    const controls = element('td', '', 'action-list-controls');
+    for (const [caption, handler] of [
+      ['Edit', () => handleEditAction(index)],
+      ['Delete', () => { registeredActions.splice(index, 1); renderActions(); $('action-message').textContent = 'Deletion pending. Save changes to apply.'; }],
+    ]) {
+      const button = element('button', caption, 'quiet');
+      button.type = 'button'; button.disabled = preparingActions || editingAction !== null;
+      button.onclick = handler; controls.append(button);
+    }
+    row.append(controls); table.append(row);
+  });
+  $('action-registry').append(matches ? table : element('p', registeredActions.length ? 'No Actions match your search.' : 'No Actions registered. Click Add action to create one.', 'caption'));
+  $('add-action').disabled = preparingActions || editingAction !== null;
+}
+$('action-search').oninput = renderActions;
+function handleEditAction(index) {
+  editingAction = index;
+  const action = registeredActions[index] || { pythonVersion: '3.12', code: defaultActionCode };
+  const row = element('div', '', 'action-registration');
+  const fields = { id: { value: action.id || '' } };
+  for (const [key, caption] of [['name', 'Name'], ['pythonVersion', 'Python version (e.g. 3.12)'], ['modules', 'Modules (one per line; versions optional)'], ['code', 'Python code']]) {
+    const label = element('label', caption);
+    const input = element(['modules', 'code'].includes(key) ? 'textarea' : 'input', '');
+    input.value = key === 'modules' && Array.isArray(action.modules) ? action.modules.join('\n') : action[key] || (key === 'pythonVersion' ? '3.12' : '');
+    if (key === 'modules') input.rows = 3;
+    if (key === 'code') { input.rows = 14; input.spellcheck = false; input.className = 'action-code'; label.className = 'action-code-label'; }
+    input.setAttribute('aria-label', caption);
+    label.append(input); row.append(label); fields[key] = input;
+  }
+  actionRows = [fields];
+  $('action-editor').replaceChildren(); $('action-editor').append(row);
+  $('action-editor').hidden = false;
+  $('cancel-action').hidden = false;
+  renderActions();
+  $('action-editor').scrollIntoView?.({ block: 'nearest' });
+}
+function handleCloseAction() {
+  editingAction = null; actionRows = [];
+  $('action-editor').replaceChildren(); $('action-editor').hidden = true;
+  $('cancel-action').hidden = true;
+  renderActions();
+}
+$('cancel-action').onclick = handleCloseAction;
+$('add-action').onclick = () => handleEditAction(registeredActions.length);
+$('save-actions').onclick = async () => {
+  preparingActions = true;
+  $('save-actions').disabled = true;
+  $('add-action').disabled = true; $('cancel-action').disabled = true;
+  renderActions();
+  $('action-message').textContent = 'Preparing Python environments and installing modules…';
+  for (const fields of actionRows) for (const input of Object.values(fields)) input.disabled = true;
+  try {
+    const values = registeredActions.slice();
+    if (editingAction !== null) values[editingAction] = { ...registeredActions[editingAction], ...Object.fromEntries(Object.entries(actionRows[0]).map(([key, input]) => [key, input.value])) };
+    const response = await fetch('/api/actions', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values) });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    registeredActions = data.actions;
+    handleCloseAction(); updateSourceSettings();
+    $('action-message').textContent = 'Actions saved and environments ready. Changes apply to the next run.';
+  } catch (error) { $('action-message').textContent = error.message; }
+  finally {
+    preparingActions = false;
+    $('save-actions').disabled = false; $('add-action').disabled = false;
+    for (const fields of actionRows) for (const input of Object.values(fields)) input.disabled = false;
+    $('cancel-action').disabled = false; renderActions();
+  }
+};
+fetch('/api/actions', { method: 'POST' }).then(async response => {
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error);
+  registeredActions = data.actions; renderActions(); updateSourceSettings();
+}).catch(error => { $('action-message').textContent = error.message; });
 let sourceRows = [];
 let runSourcePatterns = [];
 function profileSelect(value) {
@@ -73,30 +190,68 @@ function profileSelect(value) {
 for (const [key, label] of Object.entries(profileLabels)) $('paste-profile').append(new Option(label, key));
 $('paste-profile').value = 'general';
 $('paste-chunk-events').value = '1';
-function updateSourceSettings() {
+function updateSourceSettings(paths = $('file-path').value.split('\n').map(s => s.trim()).filter(Boolean)) {
   $('source-settings').replaceChildren();
   sourceRows = [];
-  for (const path of $('file-path').value.split('\n').map(s => s.trim()).filter(Boolean)) {
+  for (const path of paths) {
     const preference = sourcePreferences.get(path) || { profile: 'general', chunkEvents: 1 };
     const row = element('div', '', 'source-setting');
-    const name = element('span', path, 'source-path');
+    const name = element('input', '', 'source-path-input');
+    name.type = 'text'; name.value = path; name.disabled = busy;
+    name.placeholder = 'File path or pattern';
+    name.setAttribute('aria-label', 'File path or pattern');
+    const pathLabel = element('label', 'Path ', 'source-path');
+    pathLabel.append(name);
     const profile = profileSelect(preference.profile);
+    profile.disabled = busy;
     profile.setAttribute('aria-label', `Decision profile for ${path}`);
     const size = element('input', '');
+    size.disabled = busy;
     size.type = 'number'; size.min = '1'; size.step = '1'; size.value = String(preference.chunkEvents);
     size.setAttribute('aria-label', `Events per chunk for ${path}`);
     const label = element('label', 'Events/chunk ');
     label.append(size);
     const criteriaLabel = element('label', 'Criteria ', 'criteria-label');
     criteriaLabel.append(profile);
-    row.append(name, criteriaLabel, label);
-    const save = () => sourcePreferences.set(path, { profile: profile.value, chunkEvents: Number(size.value) });
-    profile.onchange = save; size.oninput = save;
-    sourceRows.push({ path, profile, size });
+    const action = element('select', '');
+    action.append(new Option('None', ''));
+    for (const item of registeredActions.filter(item => item.name)) action.append(new Option(item.name, item.name));
+    action.value = preference.action || '';
+    if (action.selectedIndex < 0) action.value = '';
+    action.disabled = busy;
+    action.setAttribute('aria-label', `Action for ${path}`);
+    const actionLabel = element('label', 'Action ');
+    actionLabel.append(action);
+    const remove = element('button', 'Remove', 'quiet source-remove');
+    remove.type = 'button'; remove.disabled = busy;
+    row.append(pathLabel, criteriaLabel, label, actionLabel, remove);
+    const save = () => {
+      sourcePreferences.set(name.value.trim(), { profile: profile.value, chunkEvents: Number(size.value), action: action.value });
+      try { localStorage.setItem('deciflow-source-preferences', JSON.stringify([...sourcePreferences].map(([path, { profile, chunkEvents }]) => [path, { profile, chunkEvents }]))); } catch { /* Preferences remain available for this page session. */ }
+    };
+    profile.onchange = save; size.oninput = save; action.onchange = save;
+    const source = { path, name, profile, size, action, remove };
+    name.oninput = () => {
+      source.path = name.value.trim();
+      save();
+      $('file-path').value = sourceRows.map(item => item.path).join('\n');
+    };
+    remove.onclick = () => {
+      if (busy) return;
+      const remaining = sourceRows.filter(item => item !== source).map(item => item.path);
+      $('file-path').value = remaining.join('\n');
+      updateSourceSettings(remaining);
+    };
+    sourceRows.push(source);
     $('source-settings').append(row);
   }
 }
-$('file-path').oninput = updateSourceSettings;
+$('file-path').oninput = () => updateSourceSettings();
+$('add-source').onclick = () => {
+  if (busy) return;
+  updateSourceSettings([...sourceRows.map(item => item.path), '']);
+  sourceRows.at(-1).name.focus?.();
+};
 updateSourceSettings();
 let chartCertainty = 'all';
 function renderCategoryChart() {
@@ -216,6 +371,10 @@ function render(updateList = true) {
     if (result.uncertain) top.title = `Provisional model choice. ${result.candidates?.map(key => `${labels[key]} ${(result.probabilities[key] * 100).toFixed(1)}%`).join(' vs ') || 'Low confidence'}. Not a confirmed incident.`;
     if (result.review) top.append(element('span', 'Needs review', 'review'));
     row.append(top, element('p', result.log, 'log'));
+    if (result.actionExecution) {
+      const execution = result.actionExecution;
+      row.append(element('p', `Action: ${execution.name} · ${execution.status} · ${execution.elapsedMs}ms${execution.exitCode != null ? ` · exit ${execution.exitCode}` : ''}${execution.error ? ` · ${execution.error}` : ''}`, execution.status === 'failed' ? 'error-message' : 'caption'));
+    }
     if (result.uncertain) row.append(element('p', `Provisional: ${result.candidates?.map(key => `${labels[key]} ${(result.probabilities[key] * 100).toFixed(1)}%`).join(' vs ') || 'Low confidence'} · ${result.reviewReasons?.map(reason => ({ low_answer_probability: 'category probability below 70%', low_confidence: 'legacy provider confidence below 70%', close_probabilities: 'close category probabilities', collapsed_options: 'option descriptions lost distinction during token rendering', other_category: 'insufficient context / Other' })[reason]).join('; ') || 'review needed'}`, 'uncertainty-note'));
     if (result.source) {
       const end = result.lineEnd || result.line;
@@ -240,7 +399,7 @@ function render(updateList = true) {
     copyButton.onclick = async () => {
       copyButton.disabled = true;
       try {
-        await copyText(JSON.stringify(result, null, 2));
+        await copyText(JSON.stringify(orderedResult(result), null, 2));
         copyStatus.textContent = 'Copied';
       } catch {
         copyStatus.textContent = 'Copy failed. Select and copy the JSON below.';
@@ -253,11 +412,11 @@ function render(updateList = true) {
     jsonPanel.append(jsonActions, jsonText);
     jsonView.append(element('summary', 'View JSON'), jsonPanel);
     jsonView.open = expandedJson.has(result);
-    if (jsonView.open) jsonText.textContent = JSON.stringify(result, null, 2);
+    if (jsonView.open) jsonText.textContent = JSON.stringify(orderedResult(result), null, 2);
     jsonView.ontoggle = () => {
       if (jsonView.open) {
         expandedJson.add(result);
-        jsonText.textContent = JSON.stringify(result, null, 2);
+        jsonText.textContent = JSON.stringify(orderedResult(result), null, 2);
       } else expandedJson.delete(result);
     };
     if (result.error) row.append(element('p', result.error, 'error-message'));
@@ -271,7 +430,7 @@ function render(updateList = true) {
       select.value = result.reviewerCategory || '';
       select.onchange = () => {
         result.reviewerCategory = select.value;
-        if (jsonView.open) jsonText.textContent = JSON.stringify(result, null, 2);
+        if (jsonView.open) jsonText.textContent = JSON.stringify(orderedResult(result), null, 2);
       };
       label.append(select);
       row.append(label);
@@ -307,7 +466,7 @@ $('source-mode').onchange = () => {
   $('sample').hidden = sourceMode !== 'paste';
   $('file-input').hidden = sourceMode === 'paste';
   $('file-notes').hidden = sourceMode === 'paste';
-  $('classify').textContent = sourceMode === 'realtime' ? `Start realtime with ${engineLabel} ↗` : sourceMode === 'batch' ? `Run batch with ${engineLabel} ↗` : `Classify with ${engineLabel} ↗`;
+  $('classify').textContent = 'Run';
 };
 $('stop').onclick = () => {
   $('stop').disabled = true;
@@ -316,14 +475,19 @@ $('stop').onclick = () => {
 };
 $('classify').onclick = async () => {
   if (busy) return;
-  const sources = sourceRows.map(({ path, profile, size }) => ({ path, profile: profile.value, chunkEvents: Number(size.value) }));
+  const sources = sourceRows.map(({ path, profile, size, action }) => ({ path, profile: profile.value, chunkEvents: Number(size.value), action: action.value }));
+  if (sourceMode !== 'paste' && (!sources.length || sources.some(source => !source.path))) {
+    $('message').className = 'error-message';
+    $('message').textContent = 'Enter a file path or pattern for each source.'; return;
+  }
   const chunkEvents = Number($('paste-chunk-events').value);
   if ((sourceMode === 'paste' ? [chunkEvents] : sources.map(s => s.chunkEvents)).some(n => !Number.isInteger(n) || n < 1)) {
     $('message').className = 'error-message';
     $('message').textContent = 'Events per chunk must be a positive integer.'; return;
   }
   busy = true;
-  for (const { profile, size } of sourceRows) { profile.disabled = true; size.disabled = true; }
+  for (const { name, profile, size, action, remove } of sourceRows) { name.disabled = true; profile.disabled = true; size.disabled = true; action.disabled = true; remove.disabled = true; }
+  $('add-source').disabled = true;
   activeRequest = new AbortController();
   for (const id of ['classify', 'sample', 'export', 'source-mode', 'file-path', 'paste-profile', 'paste-chunk-events']) $(id).disabled = true;
   $('stop').disabled = false;
@@ -378,7 +542,8 @@ $('classify').onclick = async () => {
     $('message').textContent = `${error.name === 'AbortError' ? 'Processing stopped' : error.message} · ${started ? `${completed} completed results have been retained.` : 'Previous results have been retained.'}`;
   } finally {
     busy = false;
-    for (const { profile, size } of sourceRows) { profile.disabled = false; size.disabled = false; }
+    for (const { name, profile, size, action, remove } of sourceRows) { name.disabled = false; profile.disabled = false; size.disabled = false; action.disabled = false; remove.disabled = false; }
+    $('add-source').disabled = false;
     activeRequest.abort();
     activeRequest = undefined;
     $('stop').disabled = true;
@@ -400,7 +565,7 @@ $('source-filter').onchange = handleResultFilter;
 $('previous').onclick = () => { page--; render(); };
 $('next').onclick = () => { page++; render(); };
 $('export').onclick = () => {
-  const blob = new Blob([JSON.stringify({ mode: resultEngine, sourceMode: resultSourceMode, total, completed, elapsedMs, activeProcessingMs, results: results.filter(Boolean) }, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify({ mode: resultEngine, sourceMode: resultSourceMode, total, completed, elapsedMs, activeProcessingMs, results: results.filter(Boolean).map(orderedResult) }, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;

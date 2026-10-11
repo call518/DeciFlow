@@ -7,11 +7,13 @@ import platform
 import socket
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import aclosing
+from datetime import UTC, datetime
 from functools import partial
 from ipaddress import ip_address
 from pathlib import Path
 from time import perf_counter
 from urllib.parse import urlsplit
+from uuid import uuid4
 
 import anyio
 import httpx
@@ -22,6 +24,7 @@ from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
+from actions import load_actions, run_action, save_actions
 from classifier import Result, classify_log, classify_stream, parse_logs
 from config import (
     JEV_CONTEXT_TOKENS,
@@ -299,6 +302,7 @@ async def handle_file_events(
     mode: str,
     engine: Engine,
     specs: list[Result] | None = None,
+    actions: list[Result] | None = None,
 ) -> AsyncIterator[str]:
     """Stream classifications from a file without buffering its full contents."""
     clock = _ProcessingClock()
@@ -347,7 +351,8 @@ async def handle_file_events(
                         classify_record=handle_record,
                     )
                 ) as results,
-                aclosing(_timed_results(results, clock)) as events,
+                aclosing(_action_results(results, actions or [], engine.name)) as acted,
+                aclosing(_timed_results(acted, clock)) as events,
             ):
                 async for event in events:
                     yield event
@@ -378,6 +383,10 @@ async def handle_file_source(request: Request) -> Response:
         mode = "realtime" if body["mode"] == "follow" else body["mode"]
         values = body.get("sources", body.get("paths", body.get("path")))
         specs = parse_source_settings(values)
+        actions = load_actions() if any(spec.get("action") for spec in specs) else []
+        names = {action["name"] for action in actions}
+        if any(spec.get("action") and spec["action"] not in names for spec in specs):
+            raise ValueError("Select a registered action or None.")
         paths = await anyio.to_thread.run_sync(
             partial(resolve_configured_sources, specs, follow=mode == "realtime"),
             abandon_on_cancel=True,
@@ -394,10 +403,67 @@ async def handle_file_source(request: Request) -> Response:
             {"error": "Set the JEV_API_KEY environment variable on the server."},
         )
     return StreamingResponse(
-        handle_file_events(values, paths, mode, engine, specs),
+        handle_file_events(values, paths, mode, engine, specs, actions),
         media_type="application/x-ndjson",
         headers=HEADERS,
     )
+
+
+async def _action_results(
+    results: AsyncGenerator[tuple[int, Result], None],
+    actions: list[Result],
+    engine: str,
+) -> AsyncGenerator[tuple[int, Result], None]:
+    registered = {action["name"]: action for action in actions}
+    async for index, result in results:
+        name = result.get("action")
+        if name and not result.get("error"):
+            result.update(
+                {
+                    "schemaVersion": 1,
+                    "eventId": str(uuid4()),
+                    "decidedAt": datetime.now(UTC).isoformat(),
+                    "engine": engine,
+                }
+            )
+            result["actionExecution"] = await run_action(registered[name], result)
+        yield index, result
+
+
+async def handle_actions(request: Request) -> Response:
+    """List or replace local action registrations using file-access origin checks."""
+    if request.method != "GET" and not _allowed_origin(request, files=True):
+        return _json(
+            403, {"error": "Action registration requires a trusted UI origin."}
+        )
+    try:
+        if request.method in {"GET", "POST"}:
+            actions = load_actions()
+            if request.method == "GET":
+                return _json(
+                    200,
+                    {
+                        "actions": [
+                            {
+                                key: value
+                                for key, value in action.items()
+                                if key != "code"
+                            }
+                            for action in actions
+                        ]
+                    },
+                )
+            for action in actions:
+                if "code" not in action:
+                    script = Path(action["script"])
+                    action["code"] = (
+                        script.read_text(encoding="utf-8") if script.is_file() else ""
+                    )
+        else:
+            actions = await save_actions(await request.json())
+    except (ValueError, TypeError, OSError) as error:
+        return _json(400, {"error": str(error)})
+    return _json(200, {"actions": actions})
 
 
 async def handle_asset(request: Request) -> Response:
@@ -414,6 +480,7 @@ async def handle_asset(request: Request) -> Response:
 
 app = Starlette(
     routes=[
+        Route("/api/actions", handle_actions, methods=["GET", "POST", "PUT"]),
         Route("/api/status", handle_status, methods=["GET"]),
         Route("/api/classify", handle_classify, methods=["POST"]),
         Route("/api/file-source", handle_file_source, methods=["POST"]),

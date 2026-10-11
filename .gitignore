@@ -223,3 +223,6 @@ __marimo__/
 /.agents/
 /.aws/
 /.codex/
+
+# Local action registrations
+/action-data/
