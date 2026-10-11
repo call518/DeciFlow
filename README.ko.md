@@ -4,6 +4,8 @@
 
 **로그를 AI로 실시간 분류하고, 오류·보안 이벤트를 한눈에 확인하세요.**
 
+[Demo Video](https://www.youtube.com/watch?v=wGMtxpeHHBs)
+
 [![YouTube에서 DeciFlow 데모 보기](images/DeciFlow-Demo-Screenshot-2026-10-11-034530.png)](https://www.youtube.com/watch?v=wGMtxpeHHBs)
 
 DeciFlow는 로그 이벤트를 청크로 묶어 Laya 또는 Jev로
@@ -38,7 +40,11 @@ access 로그, 애플리케이션 오류, 운영 이벤트에 활용하세요.
 
 ## Architecture & Internal (DeepWiki)
 
+### Flow Diagram of Quickstart/Tutorial
+
 [![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue)](https://deepwiki.com/call518/DeciFlow)
+
+![Flow Diagram of Quickstart/Tutorial](images/DeciFlow-Architecture.png)
 
 ## 빠른 시작
 

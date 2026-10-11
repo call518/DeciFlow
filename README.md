@@ -4,6 +4,8 @@
 
 **Classify logs in real time with AI and spot error and security events at a glance.**
 
+[Demo Video](https://www.youtube.com/watch?v=wGMtxpeHHBs)
+
 [![Watch the DeciFlow demo on YouTube](images/DeciFlow-Demo-Screenshot-2026-10-11-034530.png)](https://www.youtube.com/watch?v=wGMtxpeHHBs)
 
 DeciFlow groups log events into chunks and classifies each chunk as **Normal, Warning, Error, Security, or Other**
@@ -41,6 +43,8 @@ log file and review the predictions in your browser.
 ## Architecture & Internal (DeepWiki)
 
 [![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue)](https://deepwiki.com/call518/DeciFlow)
+
+![Flow Diagram of Quickstart/Tutorial](images/DeciFlow-Architecture.png)
 
 ## Quick start
 
