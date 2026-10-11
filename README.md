@@ -406,12 +406,48 @@ limit and `eventCount` for actual events. `line`, `lineEnd`, and `lineCount`
 retain line locations/counts. Legacy API input `chunkLines` remains accepted;
 new requests and results use `chunkEvents`.
 
-**Uncertain** marks selected category probability (`answerProbability`) below 70% or a top-two category probability
-gap below 10 percentage points. The model's choice and probabilities are preserved;
-the UI shows provisional candidates, and JSON records candidates, the gap, and
-review reasons. Other and failed requests also require review. These thresholds
-are review heuristics, not accuracy guarantees; provider `confidence` scales differ
-between engines and are preserved separately; they do not determine Uncertain. Filter **All results / Needs review / No review needed**. Category filtering
+#### Uncertainty and human review
+
+**Uncertain is a DeciFlow feature**, computed from the provider response in
+[`classifier.py`](classifier.py); it is not Laya's own uncertainty flag.
+Any of the following conditions sets `uncertain=true`:
+
+| Condition | JSON `reviewReasons` value | Engine |
+| --- | --- | --- |
+| Selected category probability (`probabilities[choice]`) below 70% | `low_answer_probability` | Laya and Jev |
+| Highest minus second-highest category probability below 10 percentage points | `close_probabilities` | Laya and Jev |
+| Rendered options lose distinction (`usage.options.category.distinct < total`) | `collapsed_options` | Laya, when this metadata is present |
+
+Exactly 70% or a gap of exactly 10 percentage points does not trigger its
+respective condition. The 70% and 10-point thresholds are fixed project
+heuristics, not provider requirements or thresholds validated on DeciFlow's
+operating data. They are not configurable through `.env`. Category probabilities
+are model outputs, not measured correctness rates. Provider `confidence` is
+preserved separately and does not determine Uncertain.
+
+The first two checks correspond to **confidence thresholding** and
+**margin-based uncertainty**. In active learning, related data-selection methods
+are called least-confidence and margin sampling; least confidence normally uses
+the maximum probability, matching our selected-category check only when the
+provider chooses the highest-probability category. See
+[Settles' Active Learning Literature Survey](https://burrsettles.com/pub/settles.activelearning.pdf).
+DeciFlow flags results for review while retaining predictions; it does not
+implement a formal reject-option classifier or use these flags to train the model.
+The third check detects input integrity problems rather than statistical uncertainty.
+
+For example, **Uncertain · Normal** with Normal 42.1% and Error 21.9% means the
+provider selected Normal, but its probability is below 70%; it is a provisional
+choice, not a confirmed normal event. The original choice and probabilities are
+preserved. The UI shows provisional candidates; JSON records `candidates`,
+`probabilityMargin`, and `reviewReasons`.
+
+**Needs review** is broader: all Uncertain results, Other choices, and failed or
+rejected requests require review. Other alone does not set Uncertain. **Certain**
+means no Uncertain flag, not verified accuracy. Use labeled logs to evaluate
+misclassifications and review workload before treating the thresholds as an
+operating policy.
+
+Filter **All results / Needs review / No review needed**. Category filtering
 and case-insensitive literal search of original log text combine with the review
 filter. **Source**, after Search logs, filters by an entered path/pattern and shows
 completed counts, including failures. Overlapping patterns retain all matches in
@@ -632,7 +668,7 @@ starting another run. No saved history or JSON import is provided.
 | Metric | Meaning |
 | --- | --- |
 | Processed chunks | Completed results, including failed requests |
-| Needs review | Selected category probability below 70%, close probabilities, Other, or request failure; not an error count |
+| Needs review | Uncertain (low probability, close probabilities, or collapsed options), Other, or failed/rejected request; not an error count |
 | Throughput | Successfully classified chunks/s over the last 5 seconds, including idle time; uses elapsed time during the first 5 seconds; freezes when stopped/completed |
 | Total elapsed time | Time since the run started, including idle periods |
 | Active processing time | Time with at least one request in flight, counting overlap once; percentage of total elapsed time |

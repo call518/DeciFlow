@@ -400,11 +400,45 @@ JSON의 `chunkEvents`는 설정값, `eventCount`는 실제 이벤트 수입니�
 `line`·`lineEnd`·`lineCount`는 줄 위치·수를 유지합니다. 기존 API 입력 `chunkLines`도
 받지만 새 요청·결과에는 `chunkEvents`를 사용합니다.
 
-선택 범주의 확률(`answerProbability`)이 70% 미만이거나 상위 두 범주의 확률 차이가 10%p 미만이면
-**Uncertain**으로 표시합니다. 모델의 원래 범주·확률은 유지하며 화면에 잠정 후보를,
-JSON에 후보·확률 차이·검토 사유를 남깁니다. Other·요청 실패도 검토 대상입니다.
-이 임계값은 검토 기준이며 정확도 보장이 아닙니다. 엔진 고유 `confidence`는 척도가 달라 별도로 보존하며
-Uncertain 판단에는 사용하지 않습니다. **All results / Needs review / No review needed**로 필터링합니다.
+#### 불확실성과 사람의 검토
+
+**Uncertain은 DeciFlow 자체 기능**입니다. [`classifier.py`](classifier.py)에서
+엔진 응답을 바탕으로 계산하며, Laya 자체의 불확실성 표시가 아닙니다.
+다음 중 하나라도 충족하면 `uncertain=true`로 설정합니다.
+
+| 조건 | JSON `reviewReasons` 값 | 적용 엔진 |
+| --- | --- | --- |
+| 선택 범주 확률(`probabilities[choice]`)이 70% 미만 | `low_answer_probability` | Laya·Jev |
+| 1위와 2위 범주 확률 차이가 10%p 미만 | `close_probabilities` | Laya·Jev |
+| 렌더링된 선택지 구분 소실(`usage.options.category.distinct < total`) | `collapsed_options` | 해당 메타데이터가 있는 Laya 응답 |
+
+정확히 70%이거나 차이가 정확히 10%p이면 해당 조건에는 걸리지 않습니다.
+70%·10%p는 프로젝트 코드에 고정된 휴리스틱이며, 엔진 요구사항이나 DeciFlow 운영
+데이터로 검증한 임계값이 아닙니다. `.env`로 변경할 수 없습니다. 범주 확률은 모델
+출력값이지 측정된 정답률이 아닙니다. 엔진 고유 `confidence`는 별도로 보존하며
+Uncertain 판단에 사용하지 않습니다.
+
+앞의 두 검사는 **confidence thresholding(신뢰도 임계값 적용)**과
+**margin-based uncertainty(마진 기반 불확실성)**에 대응합니다. 능동학습에서 관련
+데이터 선택 방식은 least-confidence sampling과 margin sampling이라고 합니다.
+Least confidence는 보통 최대 확률을 사용하므로, 엔진이 최대 확률 범주를 선택할 때만
+현재 선택 범주 검사와 일치합니다.
+[Settles의 능동학습 문헌 조사](https://burrsettles.com/pub/settles.activelearning.pdf)를 참고하세요.
+DeciFlow는 예측을 유지하면서 검토 표시를 붙입니다. 정식 reject-option 분류기를
+구현하거나 이 표시로 모델을 학습시키지는 않습니다. 세 번째 검사는 통계적 불확실성이
+아닌 입력 무결성 문제를 탐지합니다.
+
+예를 들어 Normal 42.1%, Error 21.9%인 **Uncertain · Normal**은 엔진이 Normal을
+선택했지만 확률이 70% 미만이라는 뜻입니다. 확정된 정상 이벤트가 아닌 잠정 판정입니다.
+원래 범주·확률은 유지하며, 화면에는 잠정 후보를, JSON에는 `candidates`,
+`probabilityMargin`, `reviewReasons`를 기록합니다.
+
+**Needs review**는 더 넓은 개념입니다. 모든 Uncertain 결과에 더해 Other 판정과
+요청 실패·거절도 검토 대상입니다. Other라는 이유만으로 Uncertain이 되지는 않습니다.
+**Certain**은 Uncertain 표시가 없다는 뜻이며 검증된 정확도를 뜻하지 않습니다.
+임계값을 운영 정책으로 사용하기 전에 정답이 있는 로그로 오분류와 검토량을 평가하세요.
+
+**All results / Needs review / No review needed**로 필터링합니다.
 범주 필터와 원본 로그의 대소문자 구분 없는 문자열 검색을 함께 적용할 수 있습니다.
 목록에만 적용하며 지표·차트·JSON 내보내기는 전체 결과 기준입니다.
 
@@ -622,7 +656,7 @@ Jev도 같은 최상위 결과 구조를 사용하며, `providerResponse`는 엔
 | 지표 | 의미 |
 | --- | --- |
 | Processed chunks | 요청 실패를 포함한 완료 결과 수 |
-| Needs review | 선택 범주 확률 70% 미만, 근접한 범주 확률, Other, 요청 실패; 오류 개수가 아님 |
+| Needs review | Uncertain(낮은 확률·근접한 확률·선택지 구분 소실), Other, 요청 실패·거절; 오류 개수가 아님 |
 | Throughput | 최근 5초의 성공 판정 청크/초; 유휴시간 포함, 시작 후 5초 미만은 경과시간 기준; 중지·완료 시 마지막 값 유지 |
 | Total elapsed time | 실행 시작 이후 전체 경과시간; 유휴시간 포함 |
 | Active processing time | 요청이 하나 이상 진행 중인 구간을 중복 없이 합산; 전체 경과시간 대비 비율 |
