@@ -1,10 +1,36 @@
 import json
+from pathlib import Path
 
 import httpx
 import pytest
+from dotenv import dotenv_values
 
 from classifier import Result, classify_batch, classify_log, parse_logs
 from config import get_engine, get_jev_input_bytes
+
+
+def test_example_laya_settings_pass_startup_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = dotenv_values(Path(__file__).resolve().parents[1] / ".env.example")
+    for key, value in settings.items():
+        if value is not None:
+            monkeypatch.setenv(key, value)
+    engine = get_engine()
+    assert engine.name == "laya"
+    assert engine.model == "english"
+    assert engine.context_tokens == 512
+    assert engine.head_tokens == 256
+
+
+def test_english_rejects_oversized_total_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DECISION_ENGINE", "laya")
+    monkeypatch.setenv("LAYA_MODEL", "english")
+    monkeypatch.setenv("LAYA_MAX_TOKENS", "8192")
+    with pytest.raises(ValueError, match="LAYA_MAX_TOKENS must be between 1 and 512"):
+        get_engine()
 
 
 @pytest.mark.parametrize("value", ["0", "-1", "abc", "", "1.5", "30001"])

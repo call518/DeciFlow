@@ -273,8 +273,11 @@ Laya server settings are managed separately on the Laya host.
 checkpoint defaults for that call. Restart DeciFlow after editing `.env`.
 These are DeciFlow settings; no remote Docker change is needed to send them.
 
-Blank `LAYA_MAX_TOKENS` keeps DeciFlow's built-in windows: English 512,
-Multilingual/Typed-decisions 8192. English accepts up to 512; other models up to
+**Leave `LAYA_MAX_TOKENS=` blank for built-in models.** DeciFlow automatically
+selects the window from `LAYA_MODEL`: English 512, Multilingual/Typed-decisions
+8192. When switching built-in models, change only `LAYA_MODEL`; no token-budget
+edit is needed while this value is blank. Custom models require an explicit budget.
+An explicit value overrides automatic selection. English accepts up to 512; other models up to
 8192. The question budget must be positive and below the selected window.
 256 is a default, not a Laya API maximum. These are **DeciFlow validation limits**.
 The official checkpoint defaults are English 512/192 and the others 1024/256.

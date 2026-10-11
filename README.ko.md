@@ -270,8 +270,11 @@ Laya 서버 설정은 Laya 호스트에서 별도로 관리합니다.
 체크포인트 기본값을 덮어씁니다. `.env` 변경 후 DeciFlow를 재시작하세요.
 DeciFlow 설정이므로 이 값을 전송하기 위해 원격 Docker를 변경할 필요는 없습니다.
 
-`LAYA_MAX_TOKENS`가 비어 있으면 DeciFlow 기본 윈도를 유지합니다:
-English 512, Multilingual·Typed-decisions 8192. English는 최대 512,
+**내장 모델은 `LAYA_MAX_TOKENS=`를 비워두는 것을 권장합니다.** DeciFlow가
+`LAYA_MODEL`에 따라 English 512, Multilingual·Typed-decisions 8192를 자동 적용합니다.
+빈 값이면 내장 모델을 바꿀 때 `LAYA_MODEL`만 변경하고 토큰 예산은 수정하지 않아도
+됩니다. 사용자 모델은 예산을 명시해야 합니다. 숫자를 직접 지정하면 자동 선택 대신
+그 값을 사용합니다. English는 최대 512,
 다른 모델은 최대 8192를 허용합니다. 질문 예산은 양의 정수이며 전체 윈도 미만이어야
 합니다. 256은 기본값이며 Laya API 최대값이 아닙니다. 이는 **DeciFlow 검증 범위**입니다.
 공식 체크포인트 기본값은 English 512/192, 나머지 1024/256 토큰입니다.
