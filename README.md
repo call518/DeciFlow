@@ -331,7 +331,7 @@ not a successful connection to the decision engine.
 
 ### Input and criteria
 
-**Realtime** is selected by default. Each mode starts with editable examples.
+**Batch** is selected by default. Each mode starts with editable examples.
 
 | Mode | What DeciFlow reads |
 | --- | --- |
@@ -426,8 +426,10 @@ not metrics, chart, or JSON export.
 **Classification overview** combines AI category counts across all sources,
 including uncertain choices. Counts are **chunks**, not raw lines; percentages use
 successfully classified chunks. Failed requests are shown separately. Filters and
-reviewer edits do not change the chart. Choose **All / Uncertain / Certain** to chart all
+reviewer edits do not change the chart. Use the **All / Certain / Uncertain** buttons to chart all
 classified chunks or just one certainty group; percentages use the selected group.
+The buttons always show their counts. All shows the total count; Certain and Uncertain show their counts and shares of
+all successfully classified chunks. Category-bar percentages use the selected group.
 Certain means no Uncertain flag, not verified accuracy. The failure count always
 shows all failed requests, which belong to neither certainty group.
 **Truncated** counts responses reporting `usage.truncated=true` across all groups;
@@ -544,7 +546,7 @@ variables. DeciFlow nodes using a separate Laya server do not need the `laya` ex
 
 ✅ Available · ⬜ Planned, in priority order.
 
-- ✅ **Log sources** — Realtime, Batch and Paste; multiple files, wildcards, concurrent reads and rotation tracking.
+- ✅ **Log sources** — Batch, Realtime and Paste; multiple files, wildcards, concurrent reads and rotation tracking.
 - ✅ **Criteria** — Five profiles, per-source Events/chunk and original source metadata.
 - ✅ **Engines** — Laya/Jev with model, budget and concurrency settings in `.env`.
 - ✅ **Analysis** — Category chart, review/category/source filters, log search and source counts.

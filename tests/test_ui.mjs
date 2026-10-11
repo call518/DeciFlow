@@ -33,7 +33,6 @@ function workspace(events, status) {
   });
   context.document.getElementById('review-filter').value = 'all';
   context.document.getElementById('category-filter').value = 'all';
-  context.document.getElementById('chart-certainty').value = 'all';
   const source = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
   vm.runInContext(source.replace(/^import .*;\n/, ''), context);
   return { nodes, context, requests };
@@ -128,7 +127,7 @@ test('analysis modes show operator-oriented labels and actions', () => {
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   for (const [value, label] of [['paste', 'Paste'], ['batch', 'Batch'],
     ['realtime', 'Realtime']]) {
-    assert.ok(html.includes(`<option value="${value}"${value === 'realtime' ? ' selected' : ''}>${label}</option>`));
+    assert.ok(html.includes(`<option value="${value}"${value === 'batch' ? ' selected' : ''}>${label}</option>`));
   }
   const { nodes } = workspace([]);
   for (const [mode, action] of [['paste', 'Classify with Laya ↗'],
@@ -189,17 +188,20 @@ test('connection status shares the title row without a breadcrumb header', () =>
   assert.equal((html.match(/id="status"/g) || []).length, 1);
 });
 
-test('Realtime is the default mode before server status loads', () => {
+test('Batch is the default mode before server status loads', () => {
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-  assert.ok(html.includes('<option value="realtime" selected>Realtime</option>'));
+  assert.ok(html.includes('<option value="batch" selected>Batch</option>'));
   assert.ok(html.includes('<div id="file-input">'));
   assert.ok(html.includes('<div id="paste-input" hidden>'));
   const { context } = workspace([]);
-  assert.equal(vm.runInContext('sourceMode', context), 'realtime');
+  assert.equal(vm.runInContext('sourceMode', context), 'batch');
 });
 
 test('each mode has editable sample input and retains its own edits', () => {
   const { nodes } = workspace([]);
+  assert.equal(nodes.get('file-path').value, '/host-logs/sample-logs/access-1k.log\n/host-logs/var/log/messages\n/host-logs/var/log/nginx/access*.log');
+  nodes.get('source-mode').value = 'realtime';
+  nodes.get('source-mode').onchange();
   assert.equal(nodes.get('file-path').value, '/host-logs/var/log/secure\n/host-logs/var/log/messages\n/host-logs/var/log/nginx/access*.log');
   assert.equal(nodes.get('logs').value.split('\n').length, 5);
   nodes.get('file-path').value = '/custom/live.log';
@@ -229,14 +231,14 @@ test('each mode has editable sample input and retains its own edits', () => {
   assert.equal(nodes.get('file-path').value, '');
 });
 
-test('mode selector and descriptions use Realtime, Batch, Paste order', () => {
+test('mode selector and descriptions use Batch, Realtime, Paste order', () => {
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   const selector = html.match(/<select id="source-mode">(.*?)<\/select>/s)[1];
   assert.deepEqual([...selector.matchAll(/>(Realtime|Batch|Paste)<\/option>/g)]
-    .map(match => match[1]), ['Realtime', 'Batch', 'Paste']);
+    .map(match => match[1]), ['Batch', 'Realtime', 'Paste']);
   const help = html.match(/<div class="mode-help">(.*?)<\/div>/s)[1];
   assert.deepEqual([...help.matchAll(/<strong>(Realtime|Batch|Paste):/g)]
-    .map(match => match[1]), ['Realtime', 'Batch', 'Paste']);
+    .map(match => match[1]), ['Batch', 'Realtime', 'Paste']);
 });
 
  test('sidebar identifies the local log source host', async () => {
@@ -264,7 +266,7 @@ test('source profile and chunk settings reach the API and survive mode changes',
   nodes.get('paste-profile').value = 'network'; nodes.get('paste-chunk-events').value = '4';
   await nodes.get('classify').onclick();
   assert.equal(requests[1].profile, 'network'); assert.equal(requests[1].chunkEvents, 4);
-  nodes.get('source-mode').value = 'realtime'; nodes.get('source-mode').onchange();
+  nodes.get('source-mode').value = 'batch'; nodes.get('source-mode').onchange();
   assert.equal(vm.runInContext('sourceRows[0].size.value', context), '3');
 });
 
@@ -518,16 +520,27 @@ test('chart certainty groups partition classified results without treating failu
   const { nodes } = workspace(events);
   await nodes.get('classify').onclick();
   const values = () => nodes.get('category-chart').children.map(row => row.children[2].textContent);
+  const options = () => ['all', 'certain', 'uncertain'].map(key => nodes.get(`chart-${key}`).textContent);
+  assert.deepEqual(options(), ['All · 3', 'Certain · 2 (66.7%)', 'Uncertain · 1 (33.3%)']);
   nodes.get('pause-updates').onclick();
-  nodes.get('chart-certainty').value = 'uncertain'; nodes.get('chart-certainty').onchange();
+  nodes.get('chart-uncertain').onclick();
   assert.deepEqual(values(), ['0 (0.0%)', '0 (0.0%)', '1 (100.0%)', '0 (0.0%)', '0 (0.0%)']);
   assert.equal(nodes.get('chart-totals').textContent, '1 classified chunk · 1 failed request');
-  nodes.get('chart-certainty').value = 'certain'; nodes.get('chart-certainty').onchange();
+  assert.equal(nodes.get('chart-uncertain').attributes['aria-pressed'], 'true');
+  assert.equal(nodes.get('chart-all').attributes['aria-pressed'], 'false');
+  assert.deepEqual(options(), ['All · 3', 'Certain · 2 (66.7%)', 'Uncertain · 1 (33.3%)']);
+  nodes.get('chart-certain').onclick();
   assert.deepEqual(values(), ['1 (50.0%)', '0 (0.0%)', '0 (0.0%)', '0 (0.0%)', '1 (50.0%)']);
   assert.equal(nodes.get('summary').children[0].children[0].textContent, '4');
   assert.equal(nodes.get('results').children.length, 4);
-  nodes.get('chart-certainty').value = 'all'; nodes.get('chart-certainty').onchange();
+  nodes.get('chart-all').onclick();
   assert.equal(nodes.get('chart-totals').textContent, '3 classified chunks · 1 failed request');
+});
+
+test('chart certainty buttons show zero counts before results arrive', () => {
+  const { nodes } = workspace([]);
+  assert.deepEqual(['all', 'certain', 'uncertain'].map(key => nodes.get(`chart-${key}`).textContent),
+    ['All · 0', 'Certain · 0 (0.0%)', 'Uncertain · 0 (0.0%)']);
 });
 
 test('truncated count includes rejected responses across chart filters and paused updates', async () => {
@@ -537,7 +550,7 @@ test('truncated count includes rejected responses across chart filters and pause
   const { nodes, context } = workspace(events);
   await nodes.get('classify').onclick();
   assert.equal(nodes.get('chart-truncated').textContent, 'Truncated: 1');
-  nodes.get('chart-certainty').value = 'certain'; nodes.get('chart-certainty').onchange();
+  nodes.get('chart-certain').onclick();
   assert.equal(nodes.get('chart-truncated').textContent, 'Truncated: 1');
   nodes.get('pause-updates').onclick();
   vm.runInContext("results.push({log:'more', error:'truncated', review:true, elapsedMs:1, providerResponse:{usage:{truncated:true}}}); render(false);", context);
@@ -639,8 +652,11 @@ test('selected engine is explicitly named and emphasized for both engines', asyn
       assert.equal(status.textContent, 'Decision Engine: ');
       assert.equal(status.children[0].textContent, engine === 'laya' ? 'Laya' : 'Jev');
       assert.equal(status.children[0].className, 'selected-engine');
-      assert.equal(status.children.length, configured ? 1 : 2);
-      if (!configured) assert.equal(status.children[1].textContent, ' · API key required');
+      assert.equal(status.children[1].textContent, ' · Model: ');
+      assert.equal(status.children[2].textContent, 'test');
+      assert.equal(status.children[2].className, 'selected-model');
+      assert.equal(status.children.length, configured ? 3 : 4);
+      if (!configured) assert.equal(status.children[3].textContent, ' · API key required');
     }
   }
   const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8').replace(/\s*([{}:;])\s*/g, '$1');

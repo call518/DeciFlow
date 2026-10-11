@@ -43,7 +43,7 @@ let updatesPaused = false;
 let pausedOrder = [];
 let displayedOrder = [];
 let activeRequest;
-let sourceMode = 'realtime';
+let sourceMode = 'batch';
 const filePaths = {
   batch: '/host-logs/sample-logs/access-1k.log\n/host-logs/var/log/messages\n/host-logs/var/log/nginx/access*.log',
   realtime: '/host-logs/var/log/secure\n/host-logs/var/log/messages\n/host-logs/var/log/nginx/access*.log',
@@ -98,17 +98,31 @@ function updateSourceSettings() {
 }
 $('file-path').oninput = updateSourceSettings;
 updateSourceSettings();
+let chartCertainty = 'all';
 function renderCategoryChart() {
   const counts = Object.fromEntries(Object.keys(labels).map(key => [key, 0]));
   let failed = 0;
   let truncated = 0;
-  const certainty = $('chart-certainty').value;
+  const groups = { all: 0, uncertain: 0, certain: 0 };
+  const certainty = chartCertainty;
   for (const result of results) {
     if (!result) continue;
     if (result.providerResponse?.usage?.truncated === true) truncated++;
     if (result.error) failed++;
-    else if (Object.hasOwn(counts, result.category)
-      && (certainty === 'all' || (certainty === 'uncertain' ? result.uncertain : !result.uncertain))) counts[result.category]++;
+    else if (Object.hasOwn(counts, result.category)) {
+      const group = result.uncertain ? 'uncertain' : 'certain';
+      groups.all++;
+      groups[group]++;
+      if (certainty === 'all' || certainty === group) counts[result.category]++;
+    }
+  }
+  for (const [key, label] of Object.entries({ all: 'All', certain: 'Certain', uncertain: 'Uncertain' })) {
+    const count = groups[key];
+    const percent = groups.all ? count / groups.all * 100 : 0;
+    const caption = `${label} · ${count.toLocaleString('en-US')}`;
+    const button = $(`chart-${key}`);
+    button.textContent = key === 'all' ? caption : `${caption} (${percent.toFixed(1)}%)`;
+    button.setAttribute('aria-pressed', String(certainty === key));
   }
   const classified = Object.values(counts).reduce((sum, count) => sum + count, 0);
   const maximum = Math.max(1, ...Object.values(counts));
@@ -130,7 +144,12 @@ function renderCategoryChart() {
   $('chart-truncated').textContent = `Truncated: ${truncated.toLocaleString('en-US')}`;
   $('chart-totals').textContent = `${classified.toLocaleString('en-US')} classified ${classified === 1 ? 'chunk' : 'chunks'} · ${failed.toLocaleString('en-US')} failed ${failed === 1 ? 'request' : 'requests'}`;
 }
-$('chart-certainty').onchange = renderCategoryChart;
+for (const key of ['all', 'certain', 'uncertain']) {
+  $(`chart-${key}`).onclick = () => {
+    chartCertainty = key;
+    renderCategoryChart();
+  };
+}
 renderCategoryChart();
 function renderSourceFilter() {
   const select = $('source-filter');
@@ -409,6 +428,8 @@ fetch('/api/status').then(async response => {
   engineLabel = engine === 'laya' ? 'Laya' : 'Jev';
   $('status').textContent = 'Decision Engine: ';
   $('status').append(element('strong', engineLabel, 'selected-engine'));
+  $('status').append(element('span', ' · Model: '));
+  $('status').append(element('strong', data.model, 'selected-model'));
   if (!data.configured) $('status').append(element('span', ' · API key required'));
   $('powered-by').textContent = `Powered by ${engineLabel}`;
   $('source-mode').onchange();

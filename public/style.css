@@ -987,11 +987,12 @@ footer {
 
 .chart-filter {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px
 }
 
-.chart-filter select {
+.chart-groups button {
   font: inherit;
   padding: 7px 10px;
   border: 1px solid #dce6df;
@@ -1119,6 +1120,11 @@ footer {
   font-weight: 700
 }
 
+.selected-model {
+  color: #a23e34;
+  font-weight: 700;
+}
+
 .source-filter {
   flex: 1 1 100%;
   min-width: 0
@@ -1129,4 +1135,21 @@ footer {
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis
+}
+
+.chart-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chart-groups button[aria-pressed="true"] {
+  background: #24634a;
+  border-color: #24634a;
+  color: #fff;
+  font-weight: 600;
+}
+
+.chart-groups button:hover:not([aria-pressed="true"]) {
+  background: #e5efe8;
 }
