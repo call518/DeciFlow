@@ -19,7 +19,7 @@ async def _source_chunks(
 ) -> AsyncGenerator[Result, None]:
     source = follow_file(path, from_start=from_start) if live else read_file(path)
     async with aclosing(
-        chunk_records(source, spec["profile"], spec["chunkLines"], live=live)
+        chunk_records(source, spec["profile"], spec["chunkEvents"], live=live)
     ) as records:
         async for record in records:
             yield {

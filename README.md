@@ -6,7 +6,7 @@
 
 [![Watch the DeciFlow demo on YouTube](images/DeciFlow-Demo-Screenshot-2026-10-11-034530.png)](https://www.youtube.com/watch?v=wGMtxpeHHBs)
 
-DeciFlow groups log lines into chunks and classifies each chunk as **Normal, Warning, Error, Security, or Other**
+DeciFlow groups log events into chunks and classifies each chunk as **Normal, Warning, Error, Security, or Other**
 with Laya or Jev. Scan a batch, follow new events, and focus your review with
 category probabilities and confidence instead of reading every line unaided.
 Choose a domain profile and chunk size per source; compare category counts in a
@@ -341,8 +341,9 @@ Batch reads selected files concurrently and interleaves ready chunks, preserving
 each file’s line order, profile, and chunk size. Engine concurrency limits apply
 to the entire run, not separately to each file; a limit of 1 serializes requests.
 
-Choose **Criteria** and **Lines/chunk** for each path/pattern or for Paste.
-Defaults: **General system**, **1 nonempty line**. Every profile uses `choice` with
+Choose **Criteria** and **Events/chunk** for each path/pattern or for Paste.
+Defaults: **General system**, **1 event per chunk**. Currently, each nonempty line
+is one event; multiline boundaries are not yet detected. Every profile uses `choice` with
 **Normal, Warning, Error, Security, Other**; only the descriptions and instructions
 differ. Laya and Jev use the same selected profile. Type detection is manual;
 `score` and `noul` are not used.
@@ -360,8 +361,8 @@ selector. Keep `label`, `instructions`, `criteria`, and the existing five catego
 keys. Describe event outcomes and evidence; keep specific log strings in evaluation
 samples rather than adding message-by-message exceptions to production criteria.
 
-Chunks never mix files. Batch flushes remaining lines at EOF; Realtime flushes at
-the configured size or after one second without a new nonempty line, and separates
+Chunks never mix files. Batch flushes remaining events at EOF; Realtime flushes at
+the configured size or after one second without a new event, and separates
 file rotations. Blank lines are skipped; event boundaries are not automatically
 detected. Overlapping matches with identical settings are deduplicated by resolved
 path; conflicting settings are rejected. Chunking does not bypass model budgets.
@@ -386,8 +387,11 @@ reduces input variation; it does not guarantee identical predictions or accuracy
 Newest **completed** chunks appear first, with 100 results per page; this is
 completion order, not log timestamp order. File locations show **File line(s)**
 for Batch and **Observed line(s)** for Realtime—the sequence read since monitoring
-started or the file rotated. `1 line (max 5)` means one actual line was submitted
-with a configured maximum of five.
+started or the file rotated. `1 event (max 5)` means one event was submitted
+with a configured maximum of five. JSON uses `chunkEvents` for the configured
+limit and `eventCount` for actual events. `line`, `lineEnd`, and `lineCount`
+retain line locations/counts. Legacy API input `chunkLines` remains accepted;
+new requests and results use `chunkEvents`.
 
 **Uncertain** marks selected category probability (`answerProbability`) below 70% or a top-two category probability
 gap below 10 percentage points. The model's choice and probabilities are preserved;
@@ -456,8 +460,8 @@ disconnecting retains the last snapshot, which may lag by about one second.
 ## Limits
 
 - No application file-size or line-count cap; RAM and browser capacity still matter.
-  File reads are incremental. Chunks use a fixed nonempty-line count, not automatic
-  event-boundary detection.
+  File reads are incremental. Chunks use an event count; each nonempty line currently forms one event.
+  Automatic multiline event-boundary detection is not implemented.
 - **Laya:** selected checkpoint; request windows and question budgets are listed above.
   The [official HTTP server](https://nandhakishorm.github.io/laya/http-api/#limits)
   also limits state to 50,000 characters and requests to 2 MiB; verify the deployed version.
@@ -525,3 +529,32 @@ that version's HTTP server. Set local server options through process environment
 variables. DeciFlow nodes using a separate Laya server do not need the `laya` extra.
 
 [Laya](https://github.com/NandhaKishorM/laya) · [Jev](https://docs.typesafe.ai/introduction/quickstart)
+
+## Implementation status and roadmap
+
+`[x]` Implemented · `[ ]` Planned (listed in priority order).
+
+| Status | Item | Features / target |
+| --- | --- | --- |
+| [x] | Log sources | Realtime, Batch, Paste; multiple paths, wildcards, concurrent file reads, discovery and rotation tracking |
+| [x] | Criteria and chunks | Five profiles; per-source Events/chunk; original logs and source metadata retained |
+| [x] | Decision engines | Laya/Jev; model, input budget and concurrency settings in `.env`; shared validation |
+| [x] | Analysis UI | Category chart; review, category and source filters; text search and source counts |
+| [x] | Monitoring and controls | Throughput and timing metrics; stop processing; pause/resume list updates |
+| [x] | Results | Individual JSON view/copy, full export and reviewer annotations |
+| [x] | Diagnostics | Uncertainty reasons, truncation counts, provider responses and request metadata |
+| [x] | Deployment | Docker with mounted source; `.env` reload on restart; trusted-origin checks |
+| [x] | Verification | Python/UI regression tests and labeled-case Laya evaluation tool |
+| [ ] | Classification quality | Expand labeled logs; compare profiles/models and category errors; evaluate log-specific checkpoints |
+| [ ] | Question preservation | Verify instructions and choices with the deployed tokenizer, separately from log truncation |
+| [ ] | Persistent results | Restore runs, results and reviews after refresh/restart; reuse reviewed labels for evaluation |
+| [ ] | **Multiline events** | Recognize variable-length Python/Java stack traces and other event boundaries; group complete events using Events/chunk |
+| [ ] | Profile suggestions | Validate automatic type/profile suggestions while retaining manual selection |
+| [ ] | Inference throughput | Benchmark Laya inference batch API and GPU capacity; retain cancellation and Realtime responsiveness |
+| [ ] | Realtime recovery | Save read positions; recover reconnects; verify loss/duplication during rapid rotation and copy-truncate |
+| [ ] | Long-running sessions | Limit browser memory and aggregation costs; incrementally load retained results; benchmark large runs |
+| [ ] | Shared access | Add authentication, per-user file permissions and request limits |
+
+Currently, **one nonempty line is one event**. Events/chunk groups events but does
+not detect multiline boundaries. Inference batching is separate from multi-file
+Batch mode. Certain is a model-based flag, not verified accuracy.

@@ -149,7 +149,7 @@ test('log input explains each analysis mode before the selector', () => {
   for (const description of [
     'Paste:</strong> Paste log text for analysis.',
     'Batch:</strong> Analyze existing log files from the beginning.',
-    'Realtime:</strong> Monitor and analyze new log lines as they arrive.',
+    'Realtime:</strong> Monitor and analyze new log events as they arrive.',
   ]) assert.ok(help.includes(description));
 });
 
@@ -258,19 +258,19 @@ test('source profile and chunk settings reach the API and survive mode changes',
   vm.runInContext(`sourceRows[0].profile.value = 'authentication'; sourceRows[0].profile.onchange(); sourceRows[0].size.value = '3'; sourceRows[0].size.oninput(); sourceRows[1].profile.value = 'http_access'; sourceRows[1].profile.onchange();`, context);
   await nodes.get('classify').onclick();
   assert.equal(requests[0].sources[0].profile, 'authentication');
-  assert.equal(requests[0].sources[0].chunkLines, 3);
+  assert.equal(requests[0].sources[0].chunkEvents, 3);
   assert.equal(requests[0].sources[1].profile, 'http_access');
   nodes.get('source-mode').value = 'paste'; nodes.get('source-mode').onchange();
-  nodes.get('paste-profile').value = 'network'; nodes.get('paste-chunk-lines').value = '4';
+  nodes.get('paste-profile').value = 'network'; nodes.get('paste-chunk-events').value = '4';
   await nodes.get('classify').onclick();
-  assert.equal(requests[1].profile, 'network'); assert.equal(requests[1].chunkLines, 4);
+  assert.equal(requests[1].profile, 'network'); assert.equal(requests[1].chunkEvents, 4);
   nodes.get('source-mode').value = 'realtime'; nodes.get('source-mode').onchange();
   assert.equal(vm.runInContext('sourceRows[0].size.value', context), '3');
 });
 
 test('individual JSON reflects review changes and stays open after rendering', async () => {
   const event = result(0);
-  Object.assign(event.result, { profile: 'http_access', chunkLines: 3, lineCount: 2, source: '/logs/access.log', line: 10, lineEnd: 11, log: '<script>example</script>' });
+  Object.assign(event.result, { profile: 'http_access', chunkEvents: 3, eventCount: 2, source: '/logs/access.log', line: 10, lineEnd: 11, log: '<script>example</script>' });
   const failed = result(1);
   failed.result = { log: 'bad input', error: 'request failed', review: true, elapsedMs: 1, profile: 'network' };
   const { nodes, context } = workspace([{ type: 'start', total: 2, engine: 'laya' }, event, failed]);
@@ -359,17 +359,17 @@ test('pause excludes received results that have not yet been displayed', async (
 test('file line labels distinguish batch from observed realtime sequences', async () => {
   for (const mode of ['batch', 'realtime']) {
     const first = result(0);
-    Object.assign(first.result, { source: '/var/log/secure', line: 1, lineEnd: 1, profile: 'general', lineCount: 1, chunkLines: 1 });
+    Object.assign(first.result, { source: '/var/log/secure', line: 1, lineEnd: 1, profile: 'general', eventCount: 1, chunkEvents: 1 });
     const second = result(1);
-    Object.assign(second.result, { source: '/var/log/secure', line: 10, lineEnd: 12, profile: 'authentication', lineCount: 3, chunkLines: 5 });
+    Object.assign(second.result, { source: '/var/log/secure', line: 10, lineEnd: 12, lineCount: 3, profile: 'authentication', eventCount: 1, chunkEvents: 5 });
     const { nodes, context } = workspace([{ type: 'start', engine: 'laya', total: null, mode }, first, second]);
     await nodes.get('classify').onclick();
     const rows = nodes.get('results').children;
     const prefix = mode === 'realtime' ? 'Observed' : 'File';
     assert.equal(rows[1].children[2].textContent, `/var/log/secure · ${prefix} line 1`);
     assert.equal(rows[0].children[2].textContent, `/var/log/secure · ${prefix} lines 10–12`);
-    assert.equal(rows[1].children[3].textContent, 'General system · 1 line (max 1)');
-    assert.equal(rows[0].children[3].textContent, 'Authentication · 3 lines (max 5)');
+    assert.equal(rows[1].children[3].textContent, 'General system · 1 event (max 1)');
+    assert.equal(rows[0].children[3].textContent, 'Authentication · 1 event (max 5)');
     if (mode === 'realtime') assert.ok(rows[1].children[2].title.includes('not an absolute'));
     nodes.get('source-mode').value = mode === 'realtime' ? 'batch' : 'realtime';
     nodes.get('source-mode').onchange();
@@ -414,7 +414,7 @@ test('category chart counts all sources, separates failures, and ignores filters
   const events = [{ type: 'start', engine: 'laya', total: null }];
   for (const [index, category] of ['normal', 'normal', 'warning', 'error', 'security', 'other'].entries()) {
     const event = result(index, index % 2 === 0);
-    Object.assign(event.result, { category, source: index % 2 ? '/logs/http' : '/logs/system', lineCount: 10, chunkLines: 10 });
+    Object.assign(event.result, { category, source: index % 2 ? '/logs/http' : '/logs/system', eventCount: 10, chunkEvents: 10 });
     events.push(event);
   }
   const failure = result(6);
@@ -463,7 +463,7 @@ test('uncertain category is explicitly provisional without changing the model ch
 
 test('workspace places input and overview in the 40% column beside 60% results', () => {
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-  const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8').replace(/\s*([{}:;])\s*/g, '$1');
   const leftStart = html.indexOf('<div class="input-column">');
   const leftEnd = html.indexOf('</div>\n      <section class="card output">', leftStart);
   assert.ok(leftStart >= 0 && leftEnd > leftStart);
@@ -610,7 +610,7 @@ test('clipboard fallback copies on HTTP and cleans up on failure', async () => {
 });
 
 test('quiet actions and JSON disclosure have visible button borders', () => {
-  const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8').replace(/\s*([{}:;])\s*/g, '$1');
   assert.match(css, /\.quiet\{[^}]*border:1px solid/);
   assert.match(css, /\.result-json summary\{[^}]*border:1px solid/);
 });
@@ -643,7 +643,7 @@ test('selected engine is explicitly named and emphasized for both engines', asyn
       if (!configured) assert.equal(status.children[1].textContent, ' · API key required');
     }
   }
-  const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8').replace(/\s*([{}:;])\s*/g, '$1');
   assert.ok(css.includes('.selected-engine{color:#a23e34;font-weight:700}'));
 });
 
@@ -665,13 +665,13 @@ test('uncertain results retain their category color class', async () => {
       assert.equal(badge.textContent.startsWith('Uncertain · '), uncertain);
     }
   }
-  const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8').replace(/\s*([{}:;])\s*/g, '$1');
   assert.doesNotMatch(css, /\.badge\.uncertain\{[^}]*background/);
 });
 
 
 test('chart bars and result badges share the same category colors', () => {
-  const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8').replace(/\s*([{}:;])\s*/g, '$1');
   for (const [category, color] of Object.entries({
     normal: '#498568', warning: '#c29b43', error: '#c86b60',
     security: '#8c649d', other: '#84938c',

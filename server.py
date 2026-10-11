@@ -22,7 +22,7 @@ from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
-from classifier import Result, classify_batch, classify_log, classify_stream, parse_logs
+from classifier import Result, classify_log, classify_stream, parse_logs
 from config import (
     JEV_CONTEXT_TOKENS,
     JEV_REQUEST_TOKENS,
@@ -173,14 +173,24 @@ async def _timed_results(
 
 
 async def handle_events(
-    logs: list[str], engine: Engine, profile: str = "general", chunk_lines: int = 1
+    logs: list[str], engine: Engine, profile: str = "general", chunk_events: int = 1
 ) -> AsyncIterator[str]:
     """Stream progress and cancel in-flight engine calls on client disconnect."""
-    logs = [
-        "\n".join(logs[i : i + chunk_lines]) for i in range(0, len(logs), chunk_lines)
-    ]
+
+    async def handle_records() -> AsyncGenerator[Result, None]:
+        for index in range(0, len(logs), chunk_events):
+            events = logs[index : index + chunk_events]
+            yield {
+                "log": "\n".join(events),
+                "profile": profile,
+                "chunkEvents": chunk_events,
+                "eventCount": len(events),
+                "lineCount": sum(len(event.splitlines()) for event in events),
+            }
+
+    total = (len(logs) + chunk_events - 1) // chunk_events
     clock = _ProcessingClock()
-    yield _encode({"type": "start", "total": len(logs), "engine": engine.name})
+    yield _encode({"type": "start", "total": total, "engine": engine.name})
     async with httpx.AsyncClient(timeout=engine.timeout) as client:
 
         async def handle_classify(log: str) -> Result:
@@ -197,11 +207,10 @@ async def handle_events(
 
         async with (
             aclosing(
-                classify_batch(
-                    logs,
+                classify_stream(
+                    handle_records(),
                     handle_classify,
                     engine.concurrency,
-                    metadata={"profile": profile, "chunkLines": chunk_lines},
                 )
             ) as results,
             aclosing(_timed_results(results, clock)) as events,
@@ -262,8 +271,9 @@ async def handle_classify(request: Request) -> Response:
         return _json(400, {"error": "Invalid JSON request body."})
     try:
         logs = parse_logs(body.get("text") if isinstance(body, dict) else None)
-        profile, chunk_lines = validate_settings(
-            body.get("profile", "general"), body.get("chunkLines", 1)
+        profile, chunk_events = validate_settings(
+            body.get("profile", "general"),
+            body.get("chunkEvents", body.get("chunkLines", 1)),
         )
     except (ValueError, TypeError) as error:
         return _json(400, {"error": str(error)})
@@ -277,7 +287,7 @@ async def handle_classify(request: Request) -> Response:
             {"error": "Set the JEV_API_KEY environment variable on the server."},
         )
     return StreamingResponse(
-        handle_events(logs, engine, profile, chunk_lines),
+        handle_events(logs, engine, profile, chunk_events),
         media_type="application/x-ndjson",
         headers=HEADERS,
     )

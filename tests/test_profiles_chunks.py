@@ -66,21 +66,54 @@ def test_unknown_profile() -> None:
         validate_settings("unknown", 1)
 
 
+def test_legacy_chunk_setting_is_normalized_to_events() -> None:
+    specs = parse_source_settings([{"path": "example.log", "chunkLines": 2}])
+    assert specs[0]["chunkEvents"] == 2
+    assert "chunkLines" not in specs[0]
+
+
+@pytest.mark.anyio
+async def test_chunks_count_multiline_events_separately_from_lines() -> None:
+    async def records() -> AsyncGenerator[Result, None]:
+        yield {
+            "log": "Traceback\n  frame\nValueError",
+            "source": "application.log",
+            "line": 1,
+            "lineEnd": 3,
+            "lineCount": 3,
+        }
+        yield {
+            "log": "Exception\n  frame",
+            "source": "application.log",
+            "line": 4,
+            "lineEnd": 5,
+            "lineCount": 2,
+        }
+
+    rows = [row async for row in chunk_records(records(), "application", 2)]
+    assert len(rows) == 1
+    assert rows[0]["eventCount"] == 2
+    assert rows[0]["chunkEvents"] == 2
+    assert rows[0]["lineCount"] == 5
+    assert rows[0]["line"] == 1
+    assert rows[0]["lineEnd"] == 5
+
+
 def test_overlap_settings(tmp_path: Path) -> None:
     path = tmp_path / "access.log"
     path.write_text("log\n")
     specs = parse_source_settings(
         [
-            {"path": str(path), "profile": "http_access", "chunkLines": 2},
+            {"path": str(path), "profile": "http_access", "chunkEvents": 2},
             {
                 "path": str(tmp_path / "*.log"),
                 "profile": "http_access",
-                "chunkLines": 2,
+                "chunkEvents": 2,
             },
         ]
     )
     assert len(resolve_configured_sources(specs)) == 1
-    specs[1]["chunkLines"] = 1
+    specs[1]["chunkEvents"] = 1
     with pytest.raises(ValueError, match="Conflicting"):
         resolve_configured_sources(specs)
 
@@ -90,7 +123,7 @@ async def test_batch_chunks_do_not_mix_files_and_flush_eof(tmp_path: Path) -> No
     for name in ("a.log", "b.log"):
         (tmp_path / name).write_text("one\n\ntwo\nthree\n")
     specs = parse_source_settings(
-        [{"path": str(tmp_path / "*.log"), "profile": "application", "chunkLines": 2}]
+        [{"path": str(tmp_path / "*.log"), "profile": "application", "chunkEvents": 2}]
     )
     rows = [row async for row in read_configured(resolve_configured_sources(specs))]
     for name in ("a.log", "b.log"):
@@ -155,6 +188,8 @@ async def test_paste_chunk_metadata_including_failures(
     assert sorted(seen) == [("one\ntwo", "authentication"), ("three", "authentication")]
     assert all(row["profile"] == "authentication" and row["review"] for row in results)
     assert sorted(row["lineCount"] for row in results) == [1, 2]
+    assert sorted(row["eventCount"] for row in results) == [1, 2]
+    assert all(row["chunkEvents"] == 2 for row in results)
 
 
 @pytest.mark.anyio
@@ -182,8 +217,8 @@ async def test_file_api_applies_each_source_settings(
             json={
                 "mode": "batch",
                 "sources": [
-                    {"path": str(first), "profile": "authentication", "chunkLines": 2},
-                    {"path": str(second), "profile": "http_access", "chunkLines": 1},
+                    {"path": str(first), "profile": "authentication", "chunkEvents": 2},
+                    {"path": str(second), "profile": "http_access", "chunkEvents": 1},
                 ],
             },
         )
@@ -203,7 +238,7 @@ async def test_realtime_discovers_globs_with_per_file_chunks(tmp_path: Path) -> 
     from configured_sources import follow_configured
 
     specs = parse_source_settings(
-        [{"path": str(tmp_path / "*.log"), "profile": "network", "chunkLines": 2}]
+        [{"path": str(tmp_path / "*.log"), "profile": "network", "chunkEvents": 2}]
     )
     async with aclosing(follow_configured(specs)) as records:
         pending = asyncio.create_task(anext(records))
@@ -258,15 +293,15 @@ async def test_batch_files_keep_independent_profiles_and_chunk_sizes(
     first.write_text("a\n" * 30)
     second.write_text("b\n" * 7)
     paths = {
-        first: {"profile": "general", "chunkLines": 2},
-        second: {"profile": "authentication", "chunkLines": 3},
+        first: {"profile": "general", "chunkEvents": 2},
+        second: {"profile": "authentication", "chunkEvents": 3},
     }
     rows = [row async for row in read_configured(paths)]
     assert next(i for i, row in enumerate(rows) if row["source"] == str(second)) < 15
     for path, spec in paths.items():
         selected = [row for row in rows if row["source"] == str(path)]
         assert all(row["profile"] == spec["profile"] for row in selected)
-        assert all(row["chunkLines"] == spec["chunkLines"] for row in selected)
+        assert all(row["chunkEvents"] == spec["chunkEvents"] for row in selected)
         assert [row["line"] for row in selected] == (
             list(range(1, 31, 2)) if path == first else [1, 4, 7]
         )

@@ -72,25 +72,25 @@ function profileSelect(value) {
 }
 for (const [key, label] of Object.entries(profileLabels)) $('paste-profile').append(new Option(label, key));
 $('paste-profile').value = 'general';
-$('paste-chunk-lines').value = '1';
+$('paste-chunk-events').value = '1';
 function updateSourceSettings() {
   $('source-settings').replaceChildren();
   sourceRows = [];
   for (const path of $('file-path').value.split('\n').map(s => s.trim()).filter(Boolean)) {
-    const preference = sourcePreferences.get(path) || { profile: 'general', chunkLines: 1 };
+    const preference = sourcePreferences.get(path) || { profile: 'general', chunkEvents: 1 };
     const row = element('div', '', 'source-setting');
     const name = element('span', path, 'source-path');
     const profile = profileSelect(preference.profile);
     profile.setAttribute('aria-label', `Decision profile for ${path}`);
     const size = element('input', '');
-    size.type = 'number'; size.min = '1'; size.step = '1'; size.value = String(preference.chunkLines);
-    size.setAttribute('aria-label', `Lines per chunk for ${path}`);
-    const label = element('label', 'Lines/chunk ');
+    size.type = 'number'; size.min = '1'; size.step = '1'; size.value = String(preference.chunkEvents);
+    size.setAttribute('aria-label', `Events per chunk for ${path}`);
+    const label = element('label', 'Events/chunk ');
     label.append(size);
     const criteriaLabel = element('label', 'Criteria ', 'criteria-label');
     criteriaLabel.append(profile);
     row.append(name, criteriaLabel, label);
-    const save = () => sourcePreferences.set(path, { profile: profile.value, chunkLines: Number(size.value) });
+    const save = () => sourcePreferences.set(path, { profile: profile.value, chunkEvents: Number(size.value) });
     profile.onchange = save; size.oninput = save;
     sourceRows.push({ path, profile, size });
     $('source-settings').append(row);
@@ -207,8 +207,8 @@ function render(updateList = true) {
       row.append(location);
     }
     if (result.profile) {
-      const count = result.lineCount || 1;
-      row.append(element('p', `${profileLabels[result.profile]} · ${count} ${count === 1 ? 'line' : 'lines'} (max ${result.chunkLines || 1})`, 'caption'));
+      const count = result.eventCount || 1;
+      row.append(element('p', `${profileLabels[result.profile]} · ${count} ${count === 1 ? 'event' : 'events'} (max ${result.chunkEvents || 1})`, 'caption'));
     }
     const jsonView = element('details', '', 'result-json');
     const jsonText = element('pre', '', 'json-content');
@@ -297,16 +297,16 @@ $('stop').onclick = () => {
 };
 $('classify').onclick = async () => {
   if (busy) return;
-  const sources = sourceRows.map(({ path, profile, size }) => ({ path, profile: profile.value, chunkLines: Number(size.value) }));
-  const chunkLines = Number($('paste-chunk-lines').value);
-  if ((sourceMode === 'paste' ? [chunkLines] : sources.map(s => s.chunkLines)).some(n => !Number.isInteger(n) || n < 1)) {
+  const sources = sourceRows.map(({ path, profile, size }) => ({ path, profile: profile.value, chunkEvents: Number(size.value) }));
+  const chunkEvents = Number($('paste-chunk-events').value);
+  if ((sourceMode === 'paste' ? [chunkEvents] : sources.map(s => s.chunkEvents)).some(n => !Number.isInteger(n) || n < 1)) {
     $('message').className = 'error-message';
-    $('message').textContent = 'Lines per chunk must be a positive integer.'; return;
+    $('message').textContent = 'Events per chunk must be a positive integer.'; return;
   }
   busy = true;
   for (const { profile, size } of sourceRows) { profile.disabled = true; size.disabled = true; }
   activeRequest = new AbortController();
-  for (const id of ['classify', 'sample', 'export', 'source-mode', 'file-path', 'paste-profile', 'paste-chunk-lines']) $(id).disabled = true;
+  for (const id of ['classify', 'sample', 'export', 'source-mode', 'file-path', 'paste-profile', 'paste-chunk-events']) $(id).disabled = true;
   $('stop').disabled = false;
   $('message').className = '';
   $('message').textContent = `${engineLabel} is classifying your logs…`;
@@ -315,7 +315,7 @@ $('classify').onclick = async () => {
     const response = await fetch(sourceMode === 'paste' ? '/api/classify' : '/api/file-source', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       signal: activeRequest.signal,
-      body: JSON.stringify(sourceMode === 'paste' ? { text: $('logs').value, profile: $('paste-profile').value, chunkLines } : { mode: sourceMode, sources }),
+      body: JSON.stringify(sourceMode === 'paste' ? { text: $('logs').value, profile: $('paste-profile').value, chunkEvents } : { mode: sourceMode, sources }),
     });
     if (!response.ok) throw new Error((await response.json()).error);
     await readEvents(response.body, event => {
@@ -350,7 +350,7 @@ $('classify').onclick = async () => {
       } else if (event.type === 'error') {
         throw new Error(event.error);
       }
-      $('message').textContent = total === null ? `${sourceMode === 'realtime' ? 'Realtime' : 'Batch'} · ${completed.toLocaleString('en-US')} events completed${completed ? '' : ' · Waiting for logs…'}` : `Classifying · ${completed.toLocaleString('en-US')} / ${total.toLocaleString('en-US')} chunks · ${total.toLocaleString('en-US')} ${engineLabel} requests planned`;
+      $('message').textContent = total === null ? `${sourceMode === 'realtime' ? 'Realtime' : 'Batch'} · ${completed.toLocaleString('en-US')} chunks completed${completed ? '' : ' · Waiting for logs…'}` : `Classifying · ${completed.toLocaleString('en-US')} / ${total.toLocaleString('en-US')} chunks · ${total.toLocaleString('en-US')} ${engineLabel} requests planned`;
       scheduleRender();
     });
     $('message').textContent = `Classification complete · ${results.filter(r => r.error).length} failed`;
@@ -365,7 +365,7 @@ $('classify').onclick = async () => {
     $('stop').disabled = true;
     clearTimeout(renderTimer);
     renderTimer = undefined;
-    for (const id of ['classify', 'sample', 'source-mode', 'file-path', 'paste-profile', 'paste-chunk-lines']) $(id).disabled = false;
+    for (const id of ['classify', 'sample', 'source-mode', 'file-path', 'paste-profile', 'paste-chunk-events']) $(id).disabled = false;
     if (started || completed) render(false);
     $('export').disabled = !completed;
   }

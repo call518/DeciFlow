@@ -9,10 +9,10 @@ PROFILES = {
 }
 
 
-def validate_settings(profile: object, chunk_lines: object) -> tuple[str, int]:
-    """Validate a profile and its positive nonempty-line chunk size."""
+def validate_settings(profile: object, chunk_events: object) -> tuple[str, int]:
+    """Validate a profile and its positive event-count chunk size."""
     if not isinstance(profile, str) or profile not in PROFILES:
         raise ValueError("Select a supported decision profile.")
-    if type(chunk_lines) is not int or chunk_lines < 1:
-        raise ValueError("Chunk lines must be a positive integer.")
-    return profile, chunk_lines
+    if type(chunk_events) is not int or chunk_events < 1:
+        raise ValueError("Chunk events must be a positive integer.")
+    return profile, chunk_events

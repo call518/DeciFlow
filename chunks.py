@@ -1,4 +1,4 @@
-"""Group lines from one file, preserving boundaries and bounded idle latency."""
+"""Group events from one file, preserving boundaries and bounded idle latency."""
 
 import asyncio
 from collections.abc import AsyncGenerator
@@ -10,10 +10,13 @@ def _combine(rows: list[Result], profile: str, size: int) -> Result:
     return {
         **rows[0],
         "log": "\n".join(row["log"] for row in rows),
-        "lineEnd": rows[-1]["line"],
-        "lineCount": len(rows),
+        "lineEnd": rows[-1].get("lineEnd", rows[-1]["line"]),
+        "lineCount": sum(
+            row.get("lineCount", len(row["log"].splitlines())) for row in rows
+        ),
+        "eventCount": len(rows),
         "profile": profile,
-        "chunkLines": size,
+        "chunkEvents": size,
         "incomplete": any(row.get("incomplete", False) for row in rows),
     }
 
@@ -46,7 +49,7 @@ async def chunk_records(
                     yield _combine(rows, profile, size)
                 return
             pending = None
-            if rows and row["line"] <= rows[-1]["line"]:
+            if rows and row["line"] <= rows[-1].get("lineEnd", rows[-1]["line"]):
                 yield _combine(rows, profile, size)
                 rows = []
             rows.append(row)

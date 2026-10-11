@@ -19,15 +19,18 @@ def parse_source_settings(values: object) -> list[dict[str, Any]]:
             value = {"path": value}
         if not isinstance(value, dict):
             raise TypeError(
-                "Each source must specify a path, profile, and chunk lines."
+                "Each source must specify a path, profile, and chunk events."
             )
         path = value.get("path")
         if not isinstance(path, str) or not path.strip():
             raise ValueError("Enter a source path or pattern.")
-        profile, lines = validate_settings(
-            value.get("profile", "general"), value.get("chunkLines", 1)
+        profile, events = validate_settings(
+            value.get("profile", "general"),
+            value.get("chunkEvents", value.get("chunkLines", 1)),
         )
-        sources.append({"path": path.strip(), "profile": profile, "chunkLines": lines})
+        sources.append(
+            {"path": path.strip(), "profile": profile, "chunkEvents": events}
+        )
     return sources
 
 
@@ -41,8 +44,8 @@ def resolve_configured_sources(
             path = path.resolve()
             if path in result and (
                 result[path]["profile"],
-                result[path]["chunkLines"],
-            ) != (spec["profile"], spec["chunkLines"]):
+                result[path]["chunkEvents"],
+            ) != (spec["profile"], spec["chunkEvents"]):
                 raise ValueError(f"Conflicting profile or chunk size for: {path}")
             if path not in result:
                 result[path] = {**spec, "sourcePatterns": [spec["path"]]}
