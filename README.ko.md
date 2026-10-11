@@ -31,6 +31,10 @@ DeciFlow는 로그 줄을 청크로 묶어 Laya 또는 Jev로
 access 로그, 애플리케이션 오류, 운영 이벤트에 활용하세요.
 기존 로그 파일 하나로 시작해 브라우저에서 판정 결과를 검토할 수 있습니다.
 
+## Architecture & Internal (DeepWiki)
+
+[![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue)](https://deepwiki.com/call518/DeciFlow)
+
 ## 빠른 시작
 
 아래 **Laya 또는 Jev 중 하나만 선택**해 설정하세요.

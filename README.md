@@ -32,6 +32,10 @@ selected engine and receives predictions.
 For access logs, application errors, and operational events—start with an existing
 log file and review the predictions in your browser.
 
+## Architecture & Internal (DeepWiki)
+
+[![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue)](https://deepwiki.com/call518/DeciFlow)
+
 ## Quick start
 
 Choose **Laya or Jev** below; configure only one engine.
