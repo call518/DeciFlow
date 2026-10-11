@@ -12,6 +12,12 @@ category probabilities and confidence instead of reading every line unaided.
 Choose a domain profile and chunk size per source; compare category counts in a
 live chart and pause list updates to inspect individual results.
 
+Logs are the starting point. Extending input handling and decision criteria could
+bring the same workflow to real-time `tcpdump` traffic monitoring or manufacturing
+quality decisions based on sensor and inspection data. These applications require
+additional integration and domain validation; image inspection also requires a
+vision model.
+
 **DeciFlow** runs on the node containing your logs, reads events, and displays
 results in a browser. The **Laya server** runs the decision model on a separate
 host; **Jev** is an alternative hosted decision API. DeciFlow sends events to the
