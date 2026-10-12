@@ -2,6 +2,9 @@
 
 - Keep project UI and code messages in English by default.
 
+- Write release notes in English, keeping them concise and clear and focused on
+  key changes. Provide them in a fenced `markdown` code block for copy and paste.
+
 - Update `README.md` in English and `README.ko.md` in Korean together. Keep their
   features, settings, commands, and limitations equivalent.
 
