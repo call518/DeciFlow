@@ -66,7 +66,7 @@ test -f .env || cp .env.example .env
 
 ```bash
 bash scripts/run-deciflow-laya-cuda.sh
-docker logs --follow DeciFlow-Laya
+docker logs --follow DeciFlow-Laya-CUDA
 ```
 
 최초 모델 다운로드·로딩이 끝나면 로그 보기만 `Ctrl+C`로 종료합니다.
@@ -165,8 +165,10 @@ bash scripts/run-deciflow-laya-cuda.sh
 스크립트는 **8000** 포트, `english`·`multilingual`·`typed-decisions` 사전 적재,
 `deciflow-laya-model-cache` 공유 볼륨을 사용합니다. CUDA는 컨테이너에 모든 GPU를
 노출합니다. 호스트 인터페이스·포트는 `--publish 호스트_IP:호스트_포트:8000`을
-수정하고 `LAYA_API_URL`에도 반영하세요. 두 스크립트 모두 `DeciFlow-Laya`를 사용하므로
-CPU·CUDA 전환 또는 설정 변경 전에 기존 컨테이너를 중지·제거합니다.
+수정하고 `LAYA_API_URL`에도 반영하세요. CPU 컨테이너 이름은 `DeciFlow-Laya-CPU`,
+CUDA 컨테이너 이름은 `DeciFlow-Laya-CUDA`입니다. 두 컨테이너 모두 호스트의 8000 포트를
+사용하므로 CPU·CUDA 전환 전에 기존 컨테이너를 중지하세요. 설정을 변경하려면 해당
+컨테이너를 중지·제거한 뒤 스크립트를 다시 실행하세요.
 
 > **NOTE:** Docker Compose로 구성하려면 공식
 > [Laya Docker 문서의 HTTP serving 항목](https://nandhakishorm.github.io/laya/docker/#http-serving)을 참고하세요.
@@ -189,13 +191,19 @@ DeciFlow 노드에서는 `127.0.0.1`을 서버 주소로 바꾸세요.
 잘림 메타데이터를 위해 `LAYA_JEV_STRICT=0`을 유지합니다. 최초 모델 적재에는 수 분이
 걸릴 수 있으며 시작 오류는 컨테이너 로그에서 확인하세요.
 
+아래 명령에서는 사용 중인 배포에 맞게 이름을 설정하세요:
+
+```bash
+LAYA_CONTAINER=DeciFlow-Laya-CPU  # CPU; CUDA는 DeciFlow-Laya-CUDA 사용
+```
+
 | 작업 | Docker run |
 | --- | --- |
 | 상태 | `docker ps --filter name=DeciFlow-Laya` |
-| 로그 | `docker logs --tail=100 DeciFlow-Laya` |
-| 중지 | `docker stop DeciFlow-Laya` |
-| 재시작 | `docker start DeciFlow-Laya` |
-| 제거 | 중지 후 `docker rm DeciFlow-Laya` |
+| 로그 | `docker logs --tail=100 "$LAYA_CONTAINER"` |
+| 중지 | `docker stop "$LAYA_CONTAINER"` |
+| 재시작 | `docker start "$LAYA_CONTAINER"` |
+| 제거 | 중지 후 `docker rm "$LAYA_CONTAINER"` |
 
 제거 시 모델 캐시는 유지됩니다. 배포 방법은 한 번에 하나만 사용하세요.
 

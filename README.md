@@ -67,7 +67,7 @@ test -f .env || cp .env.example .env
 
 ```bash
 bash scripts/run-deciflow-laya-cuda.sh
-docker logs --follow DeciFlow-Laya
+docker logs --follow DeciFlow-Laya-CUDA
 ```
 
 Wait for the initial model download/loading, then press `Ctrl+C` to leave the log viewer.
@@ -166,8 +166,10 @@ the same key in DeciFlow's `.env`.
 The scripts use port **8000**, preload `english`, `multilingual`, and `typed-decisions`, and share the
 `deciflow-laya-model-cache` volume. CUDA exposes all GPUs to the container.
 To change the host interface/port, edit `--publish HOST_IP:HOST_PORT:8000` and
-update `LAYA_API_URL`. Both scripts use `DeciFlow-Laya`; stop/remove the existing
-container before switching CPU/CUDA or changing settings.
+update `LAYA_API_URL`. The CPU container is named `DeciFlow-Laya-CPU`; the CUDA
+container is named `DeciFlow-Laya-CUDA`. Stop the existing container before
+switching CPU/CUDA because both use host port 8000. To change settings, stop and
+remove the corresponding container before rerunning its script.
 
 > **NOTE:** For Docker Compose deployment, see the official
 > [Laya Docker guide — HTTP serving](https://nandhakishorm.github.io/laya/docker/#http-serving).
@@ -190,13 +192,19 @@ Restrict Laya access to trusted DeciFlow nodes and use TLS over external network
 Keep `LAYA_JEV_STRICT=0` for required truncation metadata. Initial model loading
 can take several minutes; inspect container logs for startup errors.
 
+For the commands below, set the name for your deployment:
+
+```bash
+LAYA_CONTAINER=DeciFlow-Laya-CPU  # CPU; use DeciFlow-Laya-CUDA for CUDA
+```
+
 | Action | Docker run |
 | --- | --- |
 | Status | `docker ps --filter name=DeciFlow-Laya` |
-| Logs | `docker logs --tail=100 DeciFlow-Laya` |
-| Stop | `docker stop DeciFlow-Laya` |
-| Resume | `docker start DeciFlow-Laya` |
-| Remove | `docker rm DeciFlow-Laya` after stopping |
+| Logs | `docker logs --tail=100 "$LAYA_CONTAINER"` |
+| Stop | `docker stop "$LAYA_CONTAINER"` |
+| Resume | `docker start "$LAYA_CONTAINER"` |
+| Remove | `docker rm "$LAYA_CONTAINER"` after stopping |
 
 Removal preserves the model cache. Use only one deployment method at a time.
 

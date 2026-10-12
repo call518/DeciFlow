@@ -6,7 +6,7 @@
 
 
 docker run --detach \
-  --name DeciFlow-Laya \
+  --name DeciFlow-Laya-CUDA \
   --hostname DeciFlow-Laya \
   --init \
   --restart unless-stopped \

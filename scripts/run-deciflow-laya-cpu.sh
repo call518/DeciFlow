@@ -5,7 +5,7 @@
 #docker build --build-arg TORCH_INDEX=cpu --tag call518/deciflow-laya:cpu .
 
 docker run --detach \
-  --name DeciFlow-Laya \
+  --name DeciFlow-Laya-CPU \
   --hostname DeciFlow-Laya \
   --init \
   --restart unless-stopped \
