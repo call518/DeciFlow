@@ -886,29 +886,3 @@ that version's HTTP server. Set local server options through process environment
 variables. DeciFlow nodes using a separate Laya server do not need the `laya` extra.
 
 [Laya](https://github.com/NandhaKishorM/laya) · [Jev](https://docs.typesafe.ai/introduction/quickstart)
-
-## Implementation status and roadmap
-
-✅ Available · ⬜ Planned, in priority order.
-
-- ✅ **Log sources** — Batch, Realtime and Paste; multiple files, wildcards, concurrent reads and rotation tracking.
-- ✅ **Criteria** — Five profiles, per-source Events/chunk and original source metadata.
-- ✅ **Engines** — Laya/Jev with model, budget and concurrency settings in `.env`.
-- ✅ **Analysis** — Category chart, review/category/source filters, log search and source counts.
-- ✅ **Monitoring** — Throughput and timing metrics; stop processing and pause/resume updates.
-- ✅ **Results** — JSON view, copy and export; reviewer annotations.
-- ✅ **Diagnostics** — Uncertainty reasons, truncation counts and provider/request metadata.
-- ✅ **Docker** — Mounted source, `.env` reload on restart and trusted-origin checks.
-- ✅ **Verification** — Python/UI tests and labeled-case Laya evaluation.
-- ⬜ **Classification quality** — Expand labeled logs; compare profiles, models and category errors.
-- ⬜ **Question preservation** — Verify instructions and choices with the deployed tokenizer.
-- ⬜ **Persistence** — Restore runs, results and reviews; reuse reviewed labels for evaluation.
-- ⬜ **Multiline events** — Recognize variable-length stack traces and group complete events with Events/chunk.
-- ⬜ **Profile suggestions** — Validate automatic type/profile suggestions; retain manual selection.
-- ⬜ **Inference throughput** — Benchmark Laya inference batches and GPU capacity; retain cancellation and responsiveness.
-- ⬜ **Realtime recovery** — Save read positions; verify reconnects, rapid rotation and copy-truncate.
-- ⬜ **Long-running sessions** — Reduce memory/aggregation costs; load retained results incrementally and benchmark large runs.
-- ⬜ **Shared access** — Authentication, per-user file permissions and request limits.
-
-> Currently, one nonempty line is one event. Multiline recognition is planned.
-> Inference batching is separate from multi-file Batch mode; Certain does not mean verified accuracy.
