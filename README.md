@@ -225,8 +225,9 @@ and saving converts them to UI-managed code and environments.
 `/var/lib/deciflow-actions` for both Python and Docker startup. Python startup needs
 write permission there; otherwise set a writable directory such as `./action-data`.
 For Docker, keep the setting and volume destination identical. Registrations, code snapshots,
-projects, lockfiles, and venvs are stored together. Every source defaults to **None** when the page opens or reloads, including
-sources with older stored assignments. Action selections persist only during the
+projects, lockfiles, and venvs are stored together. New analysis sources default to **None**, including sources with older stored
+assignments. Reconnecting to a running job displays its original Action settings
+and continues that same job. Restored completed jobs default to **None** for a new run. Action selections persist only during the
 current page session; users must explicitly select them again after reload.
 Criteria and chunk sizes remain in browser local storage. Changing this directory does not migrate
 existing data automatically.
@@ -265,8 +266,9 @@ status, exit code, and duration; failed stderr is retained up to 4 KiB. Stdout i
 discarded, so scripts must write their own files or call their integrations.
 Actions execute sequentially per run, with a 30-second timeout and no automatic
 retry. A slow Action delays result delivery and reduces throughput; failure is
-recorded without stopping subsequent decisions. Stopping/disconnecting cancels
-the current Action process; it cannot undo external effects. Scripts must manage
+recorded without stopping subsequent decisions. **Stop** cancels the current
+Action process; browser disconnects leave UI jobs running. Cancellation cannot
+undo external effects. Scripts must manage
 any subprocesses they spawn. Execution history is retained in the UI and JSON
 export, not a durable job queue.
 
@@ -556,7 +558,7 @@ not metrics, chart, or JSON export.
 | Control | Behavior |
 | --- | --- |
 | Pause updates / Resume updates | Freeze/unfreeze the list, including before the first result; analysis, metrics, and chart continue. Filters/pages use the frozen list; the button counts pending results. |
-| Stop processing | Cancel file readers and pending engine requests; retain completed results, discard unsubmitted chunks. Remote inference already running may finish. |
+| Stop | Cancel file readers and pending engine requests; retain completed results, discard unsubmitted chunks. Remote inference already running may finish. |
 | View JSON | Expand one result, including failures, profile/chunk metadata, and reviewer edits. Expanded state survives list refreshes. Copy inside the JSON panel copies the current result, including reviewer edits. |
 | Reviewer category | Record `reviewerCategory`; does not change AI category, review status, chart, or train the model. |
 | Export JSON | After processing finishes or stops, export all received results—including those not displayed while paused. |
@@ -768,9 +770,32 @@ and Action execution is **54 ms**. `truncated=false` indicates no input truncati
 
 Jev uses the same top-level result structure; `providerResponse` varies by engine.
 
-Results and reviewer edits live **only in browser memory**. Refreshing/closing the
-page loses them; a newly started run replaces them. Export before leaving or
-starting another run. No saved history or JSON import is provided.
+### Refresh and reconnect
+
+UI runs (Batch, Realtime, and Paste) continue in **server memory** when the browser
+refreshes or disconnects. Each browser tab remembers its latest job ID in session
+storage. Refreshing the same tab restores its source settings and completed results,
+then follows new results without repeating classification or Actions. Completed and
+stopped jobs can also be restored while the same server process is running.
+**Stop** explicitly cancels the server job and retains completed results. After a
+connection failure, **Reconnect** attaches to the same job rather than starting one.
+Closing a tab does not stop its job; stop it before leaving if it should not continue.
+Reopening a closed tab is not a supported recovery mechanism.
+
+No DB or disk history is used. Server/container restart loses all jobs; the UI
+reports that the previous job is unavailable. Use one server worker. Results from
+all jobs remain in RAM until server shutdown; large batches and long Realtime runs
+increase memory use. Timing ticks keep only their latest snapshot. Reviewer edits,
+filters, pagination, and unsaved editor drafts remain browser-only and are not
+restored. Export to preserve results beyond a server restart. No job-history browser
+or JSON import is provided.
+
+API clients can send `persist: true` to `/api/classify` or `/api/file-source` to
+receive HTTP 202 with `jobId`, `state`, and validated `settings`. POST
+`/api/jobs/<jobId>` inspects the job, `/api/jobs/<jobId>/events` replays and follows
+NDJSON, and `/api/jobs/<jobId>/stop` stops it. These requests use the same origin
+checks as analysis; file jobs also require a local/trusted UI origin. Without
+`persist: true`, existing APIs retain their connection-scoped streaming behavior.
 
 ### Timing metrics
 
@@ -786,7 +811,8 @@ starting another run. No saved history or JSON import is provided.
 Active and average times include network/server wait. Active time excludes idle
 periods and stays within 0–100% of elapsed time; it is not CPU/GPU utilization or
 pure inference time. Timing refreshes once per second while waiting; stopping or
-disconnecting retains the last snapshot, which may lag by about one second.
+disconnecting freezes only the browser display; reconnecting restores server
+progress. Stopping retains the last snapshot, which may lag by about one second.
 
 ## Limits
 
@@ -814,7 +840,7 @@ disconnecting retains the last snapshot, which may lag by about one second.
   usage limits.
 
 `Ctrl+C` stops DeciFlow, waiting up to two seconds before cancelling remaining
-requests. Browser-memory results are not saved by server shutdown.
+requests and background jobs. Server-memory jobs and results are lost on shutdown.
 
 ## Development
 

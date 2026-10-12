@@ -50,6 +50,13 @@ let updatesPaused = false;
 let pausedOrder = [];
 let displayedOrder = [];
 let activeRequest;
+let activeJobId;
+let activeJobState;
+let restoringJob = false;
+const jobStorage = globalThis.sessionStorage || localStorage;
+function rememberJob(id) {
+  try { jobStorage.setItem('deciflow-job-id', id); } catch { /* Current-page processing still works. */ }
+}
 let sourceMode = 'batch';
 const filePaths = {
   batch: '/host-logs/sample-logs/access-1k.log\n/host-logs/var/log/messages\n/host-logs/var/log/nginx/access*.log',
@@ -468,12 +475,55 @@ $('source-mode').onchange = () => {
   $('file-notes').hidden = sourceMode === 'paste';
   $('classify').textContent = 'Run';
 };
-$('stop').onclick = () => {
+$('stop').onclick = async () => {
   $('stop').disabled = true;
   $('message').textContent = 'Stopping processing…';
-  activeRequest?.abort();
+  if (!activeJobId) { activeRequest?.abort(); return; }
+  const connected = busy;
+  try {
+    const response = await fetch(`/api/jobs/${activeJobId}/stop`, { method: 'POST' });
+    if (!response.ok) throw new Error((await response.json()).error);
+    activeJobState = 'stopped';
+    if (!connected) await handleRestoreJob();
+  } catch (error) {
+    $('message').className = 'error-message'; $('message').textContent = error.message;
+    $('stop').disabled = false;
+  }
 };
-$('classify').onclick = async () => {
+async function handleRestoreJob() {
+  if (busy || restoringJob) return;
+  restoringJob = true;
+  try {
+    let id;
+    try { id = activeJobId || jobStorage.getItem('deciflow-job-id'); } catch { return; }
+    if (!id) return;
+    const response = await fetch(`/api/jobs/${id}`, { method: 'POST' });
+    if (response.status === 404) {
+      activeJobId = undefined; activeJobState = undefined;
+      $('classify').textContent = 'Run'; $('stop').disabled = true;
+      try { jobStorage.removeItem('deciflow-job-id'); } catch { /* Storage may be disabled. */ }
+      $('message').textContent = 'Previous job is unavailable. The server may have restarted.';
+      return;
+    }
+    if (!response.ok) throw new Error((await response.json()).error);
+    const job = await response.json();
+    const settings = job.settings;
+    $('source-mode').value = settings.mode;
+    if (settings.mode === 'paste') {
+      $('logs').value = settings.text;
+      $('paste-profile').value = settings.profile;
+      $('paste-chunk-events').value = String(settings.chunkEvents);
+    } else {
+      filePaths[settings.mode] = settings.sources.map(source => source.path).join('\n');
+      for (const source of settings.sources) sourcePreferences.set(source.path, { profile: source.profile, chunkEvents: source.chunkEvents, action: job.state === 'running' ? source.action || '' : '' });
+    }
+    sourceMode = 'paste';
+    $('source-mode').onchange();
+    await handleProcessing(job);
+  } finally { restoringJob = false; }
+}
+$('classify').onclick = () => restoringJob ? undefined : activeJobId && activeJobState === 'running' ? handleRestoreJob().catch(error => { $('message').textContent = error.message; }) : handleProcessing();
+async function handleProcessing(job = null) {
   if (busy) return;
   const sources = sourceRows.map(({ path, profile, size, action }) => ({ path, profile: profile.value, chunkEvents: Number(size.value), action: action.value }));
   if (sourceMode !== 'paste' && (!sources.length || sources.some(source => !source.path))) {
@@ -495,12 +545,23 @@ $('classify').onclick = async () => {
   $('message').textContent = `${engineLabel} is classifying your logs…`;
   let started = false;
   try {
-    const response = await fetch(sourceMode === 'paste' ? '/api/classify' : '/api/file-source', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      signal: activeRequest.signal,
-      body: JSON.stringify(sourceMode === 'paste' ? { text: $('logs').value, profile: $('paste-profile').value, chunkEvents } : { mode: sourceMode, sources }),
-    });
-    if (!response.ok) throw new Error((await response.json()).error);
+    let response;
+    if (job) { activeJobId = job.jobId; activeJobState = job.state; }
+    else {
+      response = await fetch(sourceMode === 'paste' ? '/api/classify' : '/api/file-source', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        signal: activeRequest.signal,
+        body: JSON.stringify(sourceMode === 'paste' ? { text: $('logs').value, profile: $('paste-profile').value, chunkEvents, persist: true } : { mode: sourceMode, sources, persist: true }),
+      });
+      if (!response.ok) throw new Error((await response.json()).error);
+      if (response.status === 202) {
+        job = await response.json(); activeJobId = job.jobId; activeJobState = job.state; rememberJob(activeJobId);
+      }
+    }
+    if (job) {
+      response = await fetch(`/api/jobs/${activeJobId}/events`, { method: 'POST', signal: activeRequest.signal });
+      if (!response.ok) throw new Error((await response.json()).error);
+    }
     await readEvents(response.body, event => {
       if (event.activeProcessingMs !== undefined) activeProcessingMs = event.activeProcessingMs;
       if (event.elapsedMs !== undefined) elapsedMs = event.elapsedMs;
@@ -530,13 +591,15 @@ $('classify').onclick = async () => {
         elapsedMs = event.elapsedMs;
       } else if (event.type === 'done') {
         elapsedMs = event.elapsedMs;
+        activeJobState = event.state || 'completed';
       } else if (event.type === 'error') {
+        activeJobState = 'failed';
         throw new Error(event.error);
       }
       $('message').textContent = total === null ? `${sourceMode === 'realtime' ? 'Realtime' : 'Batch'} · ${completed.toLocaleString('en-US')} chunks completed${completed ? '' : ' · Waiting for logs…'}` : `Classifying · ${completed.toLocaleString('en-US')} / ${total.toLocaleString('en-US')} chunks · ${total.toLocaleString('en-US')} ${engineLabel} requests planned`;
       scheduleRender();
     });
-    $('message').textContent = `Classification complete · ${results.filter(r => r.error).length} failed`;
+    $('message').textContent = `${activeJobState === 'stopped' ? 'Processing stopped' : 'Classification complete'} · ${results.filter(r => r.error).length} failed`;
   } catch (error) {
     $('message').className = error.name === 'AbortError' ? '' : 'error-message';
     $('message').textContent = `${error.name === 'AbortError' ? 'Processing stopped' : error.message} · ${started ? `${completed} completed results have been retained.` : 'Previous results have been retained.'}`;
@@ -546,14 +609,18 @@ $('classify').onclick = async () => {
     $('add-source').disabled = false;
     activeRequest.abort();
     activeRequest = undefined;
-    $('stop').disabled = true;
+    $('stop').disabled = activeJobState !== 'running';
     clearTimeout(renderTimer);
     renderTimer = undefined;
     for (const id of ['classify', 'sample', 'source-mode', 'file-path', 'paste-profile', 'paste-chunk-events']) $(id).disabled = false;
     if (started || completed) render(false);
     $('export').disabled = !completed;
+    if (activeJobState === 'running') {
+      $('classify').textContent = 'Reconnect';
+      $('message').textContent += ' · Server job continues. Reconnect to receive results.';
+    }
   }
-};
+}
 function handleResultFilter() {
   page = 0;
   if (completed) render();
@@ -603,4 +670,5 @@ fetch('/api/status').then(async response => {
   const limits = data.limits;
   $('source-directory').textContent = `Absolute paths are supported. Relative paths start at: ${data.workingDirectory}`;
   $('input-limits').textContent = engine === 'laya' ? `One decision per chunk · Laya ${data.model} · ${limits.context_tokens.toLocaleString('en-US')} tokens including the question. Truncated predictions are discarded and original events retained for review.` : `One decision per chunk · ${data.model}: ${limits.context_tokens.toLocaleString('en-US')} tokens for state + question · Local preflight budget: ${limits.max_jev_input_bytes.toLocaleString('en-US')} bytes per Jev request (not a token count). Oversized events are retained for review.`;
+  handleRestoreJob().catch(error => { $('message').className = 'error-message'; $('message').textContent = error.message; });
 }).catch(error => { $('status').textContent = error.message || 'Server connection failed'; });

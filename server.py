@@ -6,7 +6,7 @@ import os
 import platform
 import socket
 from collections.abc import AsyncGenerator, AsyncIterator
-from contextlib import aclosing
+from contextlib import aclosing, asynccontextmanager
 from datetime import UTC, datetime
 from functools import partial
 from ipaddress import ip_address
@@ -34,6 +34,7 @@ from config import (
     get_jev_input_bytes,
 )
 from configured_sources import follow_configured, read_configured
+from jobs import JOBS, Job
 from profiles import PROFILES, validate_settings
 from source_settings import parse_source_settings, resolve_configured_sources
 from sources import follow_sources, read_sources
@@ -289,8 +290,19 @@ async def handle_classify(request: Request) -> Response:
             503,
             {"error": "Set the JEV_API_KEY environment variable on the server."},
         )
+    events = handle_events(logs, engine, profile, chunk_events)
+    if body.get("persist") is True:
+        return _start_job(
+            {
+                "mode": "paste",
+                "text": body["text"],
+                "profile": profile,
+                "chunkEvents": chunk_events,
+            },
+            events,
+        )
     return StreamingResponse(
-        handle_events(logs, engine, profile, chunk_events),
+        events,
         media_type="application/x-ndjson",
         headers=HEADERS,
     )
@@ -402,8 +414,11 @@ async def handle_file_source(request: Request) -> Response:
             503,
             {"error": "Set the JEV_API_KEY environment variable on the server."},
         )
+    events = handle_file_events(values, paths, mode, engine, specs, actions)
+    if body.get("persist") is True:
+        return _start_job({"mode": mode, "sources": specs}, events)
     return StreamingResponse(
-        handle_file_events(values, paths, mode, engine, specs, actions),
+        events,
         media_type="application/x-ndjson",
         headers=HEADERS,
     )
@@ -466,6 +481,43 @@ async def handle_actions(request: Request) -> Response:
     return _json(200, {"actions": actions})
 
 
+def _start_job(settings: Result, events: AsyncIterator[str]) -> Response:
+    job = Job(settings, events)
+    JOBS[job.id] = job
+    return _json(202, {"jobId": job.id, "state": job.state, "settings": settings})
+
+
+async def handle_job(request: Request) -> Response:
+    """Inspect, replay, or stop an existing job using trusted-origin checks."""
+    if not _allowed_origin(request):
+        return _json(403, {"error": "Job access requires a trusted UI origin."})
+    job = JOBS.get(request.path_params["job_id"])
+    if job is None:
+        return _json(
+            404, {"error": "Job no longer exists. The server may have restarted."}
+        )
+    if job.settings["mode"] != "paste" and not _allowed_origin(request, files=True):
+        return _json(403, {"error": "Job access requires a trusted UI origin."})
+    operation = request.url.path.rsplit("/", 1)[-1]
+    if operation == "stop":
+        await job.stop()
+    elif operation == "events":
+        return StreamingResponse(
+            job.stream(), media_type="application/x-ndjson", headers=HEADERS
+        )
+    return _json(200, {"jobId": job.id, "state": job.state, "settings": job.settings})
+
+
+@asynccontextmanager
+async def lifespan(application: Starlette) -> AsyncIterator[None]:
+    """Stop background analysis jobs when the server shuts down."""
+    try:
+        yield
+    finally:
+        await asyncio.gather(*(job.stop() for job in JOBS.values()))
+        JOBS.clear()
+
+
 async def handle_asset(request: Request) -> Response:
     """Serve only the UI assets exposed by the original server."""
     asset = ASSETS.get(request.url.path)
@@ -479,13 +531,17 @@ async def handle_asset(request: Request) -> Response:
 
 
 app = Starlette(
+    lifespan=lifespan,
     routes=[
+        Route("/api/jobs/{job_id}", handle_job, methods=["POST"]),
+        Route("/api/jobs/{job_id}/events", handle_job, methods=["POST"]),
+        Route("/api/jobs/{job_id}/stop", handle_job, methods=["POST"]),
         Route("/api/actions", handle_actions, methods=["GET", "POST", "PUT"]),
         Route("/api/status", handle_status, methods=["GET"]),
         Route("/api/classify", handle_classify, methods=["POST"]),
         Route("/api/file-source", handle_file_source, methods=["POST"]),
         Route("/{path:path}", handle_asset),
-    ]
+    ],
 )
 
 

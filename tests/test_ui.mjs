@@ -944,3 +944,89 @@ test('stored Action assignments never run by default; explicit selections last o
   vm.runInContext("registeredActions = [{name:'notify'}]; updateSourceSettings();", reloaded.context);
   assert.equal(reloaded.nodes.get('source-settings').children[0].children[3].children[0].value, '');
 });
+
+
+test('new jobs persist their ID and reload replays results without submitting another run', async () => {
+  const stored = new Map();
+  const storage = {getItem:key => stored.get(key) || null, setItem:(key,value) => stored.set(key,value), removeItem:key => stored.delete(key)};
+  const events = [{type:'start', engine:'laya', mode:'batch', total:1, sourcePatterns:['/custom/log']}, result(0), {type:'done', state:'completed', elapsedMs:100}];
+  const first = workspace(events, undefined, storage);
+  await new Promise(resolve => setImmediate(resolve));
+  let submissions = 0;
+  const settings = {mode:'batch', sources:[{path:'/custom/log', profile:'http_access', chunkEvents:2, action:'notify'}]};
+  first.context.fetch = async (path, options) => {
+    if (path === '/api/file-source') {
+      submissions++;
+      assert.equal(JSON.parse(options.body).persist, true);
+      return {ok:true, status:202, json:async () => ({jobId:'job1',state:'running',settings})};
+    }
+    assert.equal(path, '/api/jobs/job1/events');
+    return {ok:true, body:{}};
+  };
+  await first.nodes.get('classify').onclick();
+  assert.equal(stored.get('deciflow-job-id'), 'job1');
+  const reloaded = workspace(events, undefined, storage);
+  await new Promise(resolve => setImmediate(resolve));
+  reloaded.context.fetch = async path => {
+    if (path === '/api/jobs/job1') return {ok:true,json:async () => ({jobId:'job1', state:'completed', settings})};
+    assert.equal(path, '/api/jobs/job1/events');
+    return {ok:true,body:{}};
+  };
+  await vm.runInContext('handleRestoreJob()', reloaded.context);
+  assert.equal(submissions, 1);
+  assert.equal(vm.runInContext('completed', reloaded.context), 1);
+  assert.equal(vm.runInContext('sourceRows[0].path', reloaded.context), '/custom/log');
+  assert.equal(vm.runInContext('sourceRows[0].profile.value', reloaded.context), 'http_access');
+  assert.equal(vm.runInContext('sourceRows[0].action.value', reloaded.context), '');
+  assert.equal(reloaded.nodes.get('stop').disabled, true);
+  reloaded.context.fetch = async () => ({ok:false,status:404});
+  await vm.runInContext('handleRestoreJob()', reloaded.context);
+  assert.equal(stored.has('deciflow-job-id'), false);
+  assert.match(reloaded.nodes.get('message').textContent, /server may have restarted/);
+});
+
+
+test('Stop calls the server job endpoint instead of aborting the browser stream', async () => {
+  const {nodes, context} = workspace([]);
+  await new Promise(resolve => setImmediate(resolve));
+  let finish;
+  context.fetch = async path => {
+    if (path === '/api/file-source') return {ok:true,status:202,json:async () => ({jobId:'running',state:'running'})};
+    if (path.endsWith('/events')) return {ok:true,body:{}};
+    assert.equal(path, '/api/jobs/running/stop');
+    assert.equal(vm.runInContext('activeRequest.signal.aborted', context), false);
+    finish();
+    return {ok:true};
+  };
+  context.readEvents = async (body, receive) => {
+    receive({type:'start',engine:'laya',mode:'batch',total:null});
+    await new Promise(resolve => {finish=resolve;});
+    receive({type:'done',state:'stopped',elapsedMs:100});
+  };
+  const running = nodes.get('classify').onclick();
+  await new Promise(resolve => setImmediate(resolve));
+  await nodes.get('stop').onclick();
+  await running;
+  assert.match(nodes.get('message').textContent, /Processing stopped/);
+});
+
+
+test('status initialization automatically restores the remembered job after refresh', async () => {
+  const status = {host:{hostname:'node',os:'Linux',addresses:[]},engine:'laya',model:'english',configured:true,workingDirectory:'/app',limits:{context_tokens:512}};
+  const storage = {getItem:key => key === 'deciflow-job-id' ? 'remembered' : null, setItem() {}, removeItem() {}};
+  const events = [{type:'start',engine:'laya',total:1}, result(0), {type:'done',state:'completed',elapsedMs:100}];
+  const {nodes,context,requests} = workspace(events, status, storage);
+  nodes.get('source-mode').value = 'batch';
+  const paths = [];
+  context.fetch = async path => {
+    paths.push(path);
+    if (path === '/api/jobs/remembered') return {ok:true,json:async () => ({jobId:'remembered',state:'completed',settings:{mode:'paste',text:'restored log',profile:'general',chunkEvents:1}})};
+    assert.equal(path, '/api/jobs/remembered/events');
+    return {ok:true,body:{}};
+  };
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(paths, ['/api/jobs/remembered', '/api/jobs/remembered/events']);
+  assert.equal(requests.length, 0);
+  assert.equal(nodes.get('logs').value, 'restored log');
+  assert.equal(vm.runInContext('completed', context), 1);
+});

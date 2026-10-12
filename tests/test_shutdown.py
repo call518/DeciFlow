@@ -8,9 +8,11 @@ import time
 from pathlib import Path
 
 import httpx
+import pytest
 
 
-def test_sigint_stops_open_realtime_stream(tmp_path: Path) -> None:
+@pytest.mark.parametrize("persist", [False, True])
+def test_sigint_stops_open_realtime_stream(tmp_path: Path, persist: bool) -> None:
     """Stop the actual server even when a Realtime response has no end."""
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
@@ -45,11 +47,22 @@ def test_sigint_stops_open_realtime_stream(tmp_path: Path) -> None:
                         if time.monotonic() >= deadline:
                             raise
                         time.sleep(0.05)
+                endpoint = "/api/file-source"
+                payload = {"paths": str(log), "mode": "realtime"}
+                if persist:
+                    created = client.post(
+                        endpoint,
+                        headers={"Origin": base},
+                        json={**payload, "persist": True},
+                    )
+                    created.raise_for_status()
+                    endpoint = f"/api/jobs/{created.json()['jobId']}/events"
+                    payload = {}
                 with client.stream(
                     "POST",
-                    "/api/file-source",
+                    endpoint,
                     headers={"Origin": base},
-                    json={"paths": str(log), "mode": "realtime"},
+                    json=payload,
                 ) as response:
                     response.raise_for_status()
                     lines = response.iter_lines()
