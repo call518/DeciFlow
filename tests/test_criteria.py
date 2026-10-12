@@ -191,18 +191,13 @@ def test_default_criteria_storage(
     assert get_criteria_path() == Path("/var/lib/deciflow-data/criteria/criteria.json")
 
 
-def test_separate_criteria_storage(
-    criteria_storage: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_shared_criteria_and_action_storage(criteria_storage: Path) -> None:
     import actions
 
-    monkeypatch.setenv("DECIFLOW_ACTIONS_DIR", str(criteria_storage / "custom-actions"))
     save_profiles(deepcopy(PROFILES))
     assert get_criteria_path() == criteria_storage / "criteria/criteria.json"
-    assert (
-        actions.get_registry_path() == criteria_storage / "custom-actions/actions.json"
-    )
-    assert not (criteria_storage / "custom-actions").exists()
+    assert actions.get_registry_path() == criteria_storage / "actions/actions.json"
+    assert not (criteria_storage / "actions").exists()
 
 
 def test_startup_creates_criteria_and_preserves_existing_file(

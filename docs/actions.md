@@ -41,8 +41,7 @@ registrations remain executable; Actions imports their code into the editor,
 and saving converts them to UI-managed code and environments.
 
 Actions use `actions/` under the shared `DECIFLOW_DATA_DIR` root. The default is
-`/var/lib/deciflow-data/actions` for both Python and Docker. An explicit
-`DECIFLOW_ACTIONS_DIR` overrides Actions storage only. Direct host startup needs write
+`/var/lib/deciflow-data/actions` for both Python and Docker. Direct host startup needs write
 permission; set the shared root to `./data` if needed. For Docker, keep the shared data
 root and volume destination identical. Registrations, code snapshots,
 projects, lockfiles, and venvs are stored together. New analysis sources default to **None**, including sources with older stored

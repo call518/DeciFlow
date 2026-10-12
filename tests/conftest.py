@@ -10,7 +10,6 @@ def anyio_backend() -> str:
 @pytest.fixture(autouse=True)
 def engine_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep provider tests independent of developer secrets and shell settings."""
-    monkeypatch.delenv("DECIFLOW_ACTIONS_DIR", raising=False)
     monkeypatch.delenv("DECIFLOW_DATA_DIR", raising=False)
     monkeypatch.delenv("DECIFLOW_CSRF_TRUSTED_ORIGINS", raising=False)
     monkeypatch.setenv("DECISION_ENGINE", "jev")

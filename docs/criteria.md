@@ -41,8 +41,7 @@ exist, editing bundled JSON no longer changes the active criteria.
 
 The Docker launch script shares the `deciflow-data` volume with Actions; no additional
 mount is needed. Direct host startup needs write permission in the shared directory,
-or set `DECIFLOW_DATA_DIR` in `.env` to a writable directory. `DECIFLOW_ACTIONS_DIR`
-overrides only Actions storage and does not affect Criteria. Changing directories
+or set `DECIFLOW_DATA_DIR` in `.env` to a writable directory. Changing directories
 does not migrate existing data automatically.
 
 The management API reads profiles with `POST /api/criteria` and replaces the list with

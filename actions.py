@@ -32,10 +32,7 @@ MODULE_PATTERN = re.compile(
 
 
 def get_registry_path() -> Path:
-    """Use the shared data root, unless an explicit Actions directory is configured."""
-    directory = os.getenv("DECIFLOW_ACTIONS_DIR", "").strip()
-    if directory:
-        return Path(directory).expanduser().absolute() / "actions.json"
+    """Store Actions under the shared data root."""
     data_directory = os.getenv("DECIFLOW_DATA_DIR", "").strip()
     if data_directory:
         return Path(data_directory).expanduser().absolute() / "actions" / "actions.json"

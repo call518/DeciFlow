@@ -42,7 +42,6 @@ Add·Edit에서는 목록을 숨기고 입력폼만 표시합니다. 저장 또�
 Docker 실행 스크립트의 `deciflow-data` 볼륨을 Actions와 함께 사용하므로 추가 마운트가
 필요하지 않습니다. 호스트 직접 실행에서는 공통 경로에 쓰기 권한이 있어야 하며,
 필요하면 `.env`의 `DECIFLOW_DATA_DIR`을 쓰기 가능한 디렉터리로 설정하세요.
-`DECIFLOW_ACTIONS_DIR`은 Actions 경로만 재정의하며 Criteria에는 영향이 없습니다.
 경로 변경은 기존 데이터를 자동으로 이전하지 않습니다.
 
 관리 API는 `POST /api/criteria`로 목록을 읽고 `PUT /api/criteria`로 전체 목록을

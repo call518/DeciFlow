@@ -40,7 +40,6 @@ DeciFlow의 PATH에 `uv`가 있고 영구 저장 경로에 쓰기 권한이 있�
 
 Actions는 공통 `DECIFLOW_DATA_DIR` 아래 `actions/`에 저장합니다.
 기본 경로는 Python·Docker 모두 `/var/lib/deciflow-data/actions`입니다.
-`DECIFLOW_ACTIONS_DIR`을 명시하면 Actions 경로만 별도로 지정할 수 있습니다.
 Python 직접 실행에서는 쓰기 권한이 필요하며, 필요하면 공통 경로를 `./data`로 설정하세요.
 Docker에서는 공통 데이터 루트와 볼륨 목적지를 동일하게 유지합니다.
 등록 정보·코드 스냅샷·프로젝트·lockfile·venv를 Actions 디렉터리에 함께 저장합니다.
