@@ -12,6 +12,9 @@ Not checked, 이후에는 Connected·Disconnected·Timed out·API error를 표�
 
 ### 입력과 판정 기준
 
+**Reset sources**는 Add source 옆에서 현재 Batch·Realtime의 기본 샘플 경로와
+General system·Events/chunk 1·Action None을 복원합니다. 분석 중에는 비활성화합니다.
+
 기본 모드는 **Batch**이며, 각 모드에 수정 가능한 예시가 입력되어 있습니다.
 
 | 모드 | DeciFlow가 읽는 데이터 |
@@ -203,12 +206,16 @@ HTTP 202로 `jobId`·`state`·검증된 `settings`를 받습니다.
 
 | 지표 | 의미 |
 | --- | --- |
-| Success / Failed | 유효한 판정 성공 청크 / 실패 청크. 연결 오류·시간 초과·입력 거절·응답 검증 실패를 실패에 포함 |
+| Success / Failed / Total | 유효한 판정 성공 청크 / 실패 청크 / 처리 완료 전체 청크(성공 + 실패). 연결 오류·시간 초과·입력 거절·응답 검증 실패를 실패에 포함 |
+| Action Success / Failed / Total | 완료된 Action 성공 / 실패 / 전체 실행 수. Action 미할당·의사결정 실패 청크는 제외하며 의사결정 집계와 독립 |
 | Needs review | 성공 판정 중 Uncertain(낮은 확률·근접한 확률·선택지 구분 소실) 또는 Other. 실패·거절은 제외 |
 | Throughput | 최근 5초의 성공 판정 청크/초; 유휴시간 포함, 시작 후 5초 미만은 경과시간 기준; 중지·완료 시 마지막 값 유지 |
 | Total elapsed time | 실행 시작 이후 전체 경과시간; 유휴시간 포함 |
 | Active processing time | 요청이 하나 이상 진행 중인 구간을 중복 없이 합산; 전체 경과시간 대비 비율 |
 | Average processing time | 실패를 포함한 완료 요청의 평균 소요시간; 청크 기준 |
+
+Total elapsed time·Active processing time·Average processing time은 값에 따라
+ms·sec·min·hour·day로 표시합니다. JSON 시간값은 밀리초를 유지합니다.
 
 Action 실행 실패는 판정 성공·실패 집계나 엔진 연결 상태에 영향을 주지 않습니다.
 

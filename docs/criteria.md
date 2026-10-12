@@ -7,7 +7,7 @@ Manage decision profiles under **Criteria** in the sidebar. Both Laya and Jev us
 | Task | Steps |
 | --- | --- |
 | List/search | Inspect names and profile IDs; filter with Search by Name |
-| View | Inspect the current configuration, instructions, and five definitions read-only; Close dismisses it |
+| View | Inspect the current configuration, instructions, and five definitions read-only; Cancel dismisses it |
 | Add | Add profile → enter ID, name, instructions, and five definitions → Save changes |
 | Edit | Edit → change criteria → Save changes. Existing IDs stay unchanged |
 | Cancel | Cancel edit discards the current editor draft |
@@ -27,7 +27,9 @@ Manage decision profiles under **Criteria** in the sidebar. Both Laya and Jev us
   samples and validate model accuracy separately.
 
 View and Edit are never displayed together. Edit/Add closes View; viewing hides
-the editor/cancel button and disables saving. Close restores any existing draft.
+the editor/cancel button and disables saving. Cancel restores any existing draft.
+
+Add/Edit hides the list and shows only the form. Saving or Cancel edit returns to the list.
 
 ## Storage and access
 

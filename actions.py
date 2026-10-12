@@ -5,6 +5,9 @@ import os
 import re
 import shutil
 import subprocess
+from collections import Counter
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
@@ -18,6 +21,9 @@ REGISTRY_PATH = Path("/var/lib/deciflow-data/actions/actions.json")
 ACTION_TIMEOUT = 30
 PREPARE_TIMEOUT = 300
 REGISTRY_LOCK = anyio.Lock()
+ACTION_USERS: Counter[str] = Counter()
+ACTION_OPERATIONS: set[str] = set()
+PREPARING_ACTIONS: set[str] = set()
 MODULE_PATTERN = re.compile(
     r"[A-Za-z0-9][A-Za-z0-9._-]*(?:\[[A-Za-z0-9,._-]+\])?"
     r"(?:\s*(?:===|==|~=|!=|<=|>=|<|>)\s*[A-Za-z0-9.*+!_-]+"
@@ -131,27 +137,99 @@ def load_actions() -> list[Result]:
     return values
 
 
+def _action_directory(action: Result) -> Path:
+    identity = action.get("id")
+    if not isinstance(identity, str) or not re.fullmatch(r"[0-9a-f]{32}", identity):
+        raise ValueError("Select a UI-managed Action with a valid ID.")
+    return get_registry_path().parent / identity
+
+
+def ensure_actions_available(actions: list[Result]) -> None:
+    """Reject new runs while their Action environments are being rebuilt."""
+    if any(action.get("id") in ACTION_OPERATIONS for action in actions):
+        raise ValueError(
+            "Action maintenance is in progress. Try again after it finishes."
+        )
+
+
+@contextmanager
+def use_actions(actions: list[Result]) -> Iterator[None]:
+    """Protect Action data throughout analysis, including between executions."""
+    ensure_actions_available(actions)
+    identities = {action["id"] for action in actions if action.get("id")}
+    ACTION_USERS.update(identities)
+    try:
+        yield
+    finally:
+        for identity in identities:
+            ACTION_USERS[identity] -= 1
+            if not ACTION_USERS[identity]:
+                del ACTION_USERS[identity]
+
+
+def _ensure_idle(actions: list[Result]) -> None:
+    if any(ACTION_USERS[action.get("id", "")] for action in actions):
+        raise ValueError("Stop runs using this Action before resetting or deleting it.")
+
+
+@contextmanager
+def _maintain_actions(actions: list[Result]) -> Iterator[None]:
+    _ensure_idle(actions)
+    identities = {action["id"] for action in actions}
+    ACTION_OPERATIONS.update(identities)
+    try:
+        yield
+    finally:
+        ACTION_OPERATIONS.difference_update(identities)
+
+
+async def reset_action(identity: str) -> Result:
+    """Rebuild only the saved Action's venv, keeping code and locked dependencies."""
+    async with REGISTRY_LOCK:
+        action = next((a for a in load_actions() if a.get("id") == identity), None)
+        if action is None or not action.get("pythonVersion"):
+            raise ValueError("Select a registered UI-managed Action.")
+        directory = _action_directory(action)
+        project = Path(action["python"]).parent.parent.parent
+        venv = project / ".venv"
+        if not project.resolve().is_relative_to(directory.resolve()):
+            raise ValueError("Save this Action before resetting its environment.")
+        with _maintain_actions([action]):
+            (project / ".ready").unlink(missing_ok=True)
+            if venv.exists():
+                await anyio.to_thread.run_sync(shutil.rmtree, venv)
+            await prepare_action(action, action)
+        return action
+
+
 async def save_actions(values: object) -> list[Result]:
     """Prepare independent environments before atomically saving registrations."""
     actions = validate_actions(values)
     async with REGISTRY_LOCK:
         previous = {action.get("id"): action for action in load_actions()}
-        for action in actions:
-            if action.get("pythonVersion"):
-                await prepare_action(action, previous.get(action["id"]))
-        registry = get_registry_path()
-        for action in actions:
-            if "code" in action:
-                script = (
-                    registry.parent / action["id"] / "scripts" / f"{uuid4().hex}.py"
-                )
-                script.parent.mkdir(parents=True, exist_ok=True)
-                script.write_text(action["code"], encoding="utf-8")
-                action["script"] = str(script)
-        registry.parent.mkdir(parents=True, exist_ok=True)
-        temporary = registry.with_suffix(".json.tmp")
-        temporary.write_text(json.dumps(actions, indent=2) + "\n", encoding="utf-8")
-        temporary.replace(registry)
+        retained = {action.get("id") for action in actions}
+        removed = [a for key, a in previous.items() if key and key not in retained]
+        with _maintain_actions(removed):
+            for action in actions:
+                if action.get("pythonVersion"):
+                    await prepare_action(action, previous.get(action["id"]))
+            registry = get_registry_path()
+            for action in actions:
+                if "code" in action:
+                    script = (
+                        registry.parent / action["id"] / "scripts" / f"{uuid4().hex}.py"
+                    )
+                    script.parent.mkdir(parents=True, exist_ok=True)
+                    script.write_text(action["code"], encoding="utf-8")
+                    action["script"] = str(script)
+            registry.parent.mkdir(parents=True, exist_ok=True)
+            temporary = registry.with_suffix(".json.tmp")
+            temporary.write_text(json.dumps(actions, indent=2) + "\n", encoding="utf-8")
+            temporary.replace(registry)
+            for action in removed:
+                directory = _action_directory(action)
+                if directory.exists():
+                    await anyio.to_thread.run_sync(shutil.rmtree, directory)
     return actions
 
 
@@ -189,7 +267,36 @@ async def _run_uv(arguments: list[str], project: Path) -> None:
                         await anyio.sleep(0.05)
 
 
+def get_action_status(action: Result) -> str:
+    """Report readiness only after dependency sync completed successfully."""
+    if not action.get("pythonVersion"):
+        return "external"
+    if action.get("id") in PREPARING_ACTIONS | ACTION_OPERATIONS:
+        return "preparing"
+    interpreter = Path(action["python"])
+    project = interpreter.parent.parent.parent
+    return (
+        "ready"
+        if (
+            interpreter.is_file()
+            and (project / ".ready").is_file()
+            and (project / "uv.lock").is_file()
+        )
+        else "not_ready"
+    )
+
+
 async def prepare_action(action: Result, previous: Result | None = None) -> None:
+    """Track preparation until Python and all dependencies are installed."""
+    identity = action["id"]
+    PREPARING_ACTIONS.add(identity)
+    try:
+        await _prepare_action(action, previous)
+    finally:
+        PREPARING_ACTIONS.discard(identity)
+
+
+async def _prepare_action(action: Result, previous: Result | None = None) -> None:
     """Reuse unchanged environments or build a new revision without replacing one."""
     unchanged = previous is not None and all(
         previous.get(key) == action[key] for key in ("pythonVersion", "modules")
@@ -223,7 +330,14 @@ async def prepare_action(action: Result, previous: Result | None = None) -> None
             if (project / ".venv").exists():
                 shutil.rmtree(project / ".venv")
             await _run_uv(
-                ["venv", "--no-project", "--python", version, str(project / ".venv")],
+                [
+                    "venv",
+                    "--seed",
+                    "--no-project",
+                    "--python",
+                    version,
+                    str(project / ".venv"),
+                ],
                 project,
             )
         if not (project / "uv.lock").is_file():
@@ -269,6 +383,20 @@ async def _read_output(stream: ByteReceiveStream | None, limit: int = 0) -> str:
 
 
 async def run_action(action: Result, payload: Result) -> Result:
+    """Protect owned data while executing an Action, including direct callers."""
+    try:
+        with use_actions([action]):
+            return await _run_action(action, payload)
+    except ValueError as error:
+        return {
+            "name": action["name"],
+            "status": "failed",
+            "elapsedMs": 0,
+            "error": str(error),
+        }
+
+
+async def _run_action(action: Result, payload: Result) -> Result:
     """Run JSON stdin; bound error output and stop on timeout or cancellation."""
     started = perf_counter()
     if action.get("pythonVersion") and (

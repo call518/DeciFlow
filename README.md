@@ -18,6 +18,10 @@ category probabilities and confidence instead of reading every line unaided.
 Choose a domain profile and chunk size per source; compare category counts in a
 live chart and pause list updates to inspect individual results.
 
+Currently, DeciFlow uses **`choice` decisions only**. Future updates are planned to
+add **`score` for evaluation and grading** and **`noul` for yes/no probabilities,
+such as pass/fail quality checks**, with criteria and result views tailored to each use case.
+
 **DeciFlow** runs on the node containing your logs, reads events, and displays
 results in a browser. The **Laya server** runs the decision model on the same or a separate
 host; **Jev** is an alternative hosted decision API. DeciFlow sends events to the
@@ -103,7 +107,7 @@ The default key `changeme` is for trials. Change it in both the Laya script and 
 | [Usage](docs/usage.md) | Input modes, criteria, filters, human review, reconnecting, timing |
 | [Configuration](docs/configuration.md) | Environment variables, models, input budgets |
 | [Criteria](docs/criteria.md) | Manage fixed-category profiles; Default Criteria is view-only |
-| [Python Actions](docs/actions.md) | Configuration viewing, registration, source assignment, execution contract, storage/recovery |
+| [Python Actions](docs/actions.md) | Configuration viewing, environment Status, pip-enabled environments, Reset venv, deletion, source assignment |
 | [Result JSON](docs/results.md) | Real response example and field reference |
 
 Sidebar views have URLs: Main `/`, Criteria `/#criteria`, Actions `/#actions`.
@@ -112,7 +116,7 @@ Reloading, browser history, and direct links retain the selected view.
 - **Paste:** Analyze pasted text.
 - **Batch:** Analyze existing files. Docker maps host `/var/log` to `/host-logs/var/log`.
 - **Realtime:** Follow new logs; choose criteria and chunk size per source.
-- **Processing status:** Success / Failed separates classified and failed chunks. Needs review
+- **Processing status:** Success / Failed / Total shows classified, failed, and total completed chunks. Action Success / Failed / Total counts follow-up executions separately. Needs review
   counts successful classifications only. Engine connection shows the last actual request; initially Not checked.
 - **Review:** Filter Needs review, record corrections, and export JSON. Certain does not
   guarantee accuracy. Export results you need to keep: restarting the server loses jobs/results.

@@ -5,6 +5,7 @@ import json
 import sys
 from pathlib import Path
 
+import anyio
 import httpx
 import pytest
 
@@ -177,6 +178,8 @@ async def test_error_output_is_bounded(tmp_path: Path) -> None:
 @pytest.fixture
 def managed_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Use a local wheel index and installed Python without network access."""
+    import ensurepip
+    import shutil
     import zipfile
 
     monkeypatch.setattr(
@@ -189,6 +192,8 @@ def managed_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setenv("UV_PYTHON_DOWNLOADS", "never")
     wheels = tmp_path / "wheels"
     wheels.mkdir()
+    for seed_wheel in Path(ensurepip.__file__).with_name("_bundled").glob("*.whl"):
+        shutil.copyfile(seed_wheel, wheels / seed_wheel.name)
     monkeypatch.setenv("UV_FIND_LINKS", str(wheels))
     with zipfile.ZipFile(
         wheels / "deciflow_test_module-1.0.0-py3-none-any.whl", "w"
@@ -229,6 +234,9 @@ async def test_managed_environment_install_reuse_and_restore(
     )
     saved = (await actions.save_actions([action]))[0]
     assert Path(saved["python"]).is_file()
+    assert (
+        await anyio.run_process([saved["python"], "-m", "pip", "--version"])
+    ).stdout.startswith(b"pip ")
     assert not (tmp_path / "deciflow-venv").exists()
     assert Path(saved["python"]) != Path(sys.executable)
     assert (await actions.run_action(saved, {"category": "normal"}))[
@@ -243,6 +251,9 @@ async def test_managed_environment_install_reuse_and_restore(
     shutil.rmtree(project / ".venv")
     assert "missing" in (await actions.run_action(unchanged, {}))["error"]
     restored = (await actions.save_actions([unchanged]))[0]
+    assert (
+        await anyio.run_process([restored["python"], "-m", "pip", "--version"])
+    ).stdout.startswith(b"pip ")
     assert restored["python"] == unchanged["python"]
     assert (project / "uv.lock").read_bytes() == lock
     assert (await actions.run_action(restored, {}))["status"] == "success"
@@ -448,3 +459,173 @@ def test_shared_action_storage(
     assert actions.get_registry_path() == tmp_path / "data/actions/actions.json"
     monkeypatch.setenv("DECIFLOW_ACTIONS_DIR", str(tmp_path / "custom"))
     assert actions.get_registry_path() == tmp_path / "custom/actions.json"
+
+
+@pytest.mark.anyio
+async def test_reset_rebuilds_only_venv_and_delete_removes_owned_data(
+    tmp_path: Path, managed_environment: None
+) -> None:
+    action = make_action(tmp_path, "pass")
+    action.pop("python")
+    action.update(
+        pythonVersion="3.12", modules=["deciflow-test-module==1.0.0"], code="pass"
+    )
+    saved = (await actions.save_actions([action]))[0]
+    project = Path(saved["python"]).parent.parent.parent
+    lock = (project / "uv.lock").read_bytes()
+    registry = actions.get_registry_path().read_bytes()
+    script = Path(saved["script"])
+    (project / ".venv" / "old-marker").touch()
+    unused = project.parent / "old-revision"
+    unused.mkdir()
+    (unused / "unused-file").touch()
+    reset = await actions.reset_action(saved["id"])
+    assert reset["python"] == saved["python"]
+    assert not (project / ".venv" / "old-marker").exists()
+    assert (project / "uv.lock").read_bytes() == lock
+    assert script.read_text() == "pass"
+    assert actions.get_registry_path().read_bytes() == registry
+    assert (
+        await anyio.run_process([reset["python"], "-m", "pip", "--version"])
+    ).stdout.startswith(b"pip ")
+    with actions.use_actions([saved]):
+        with pytest.raises(ValueError, match="Stop runs"):
+            await actions.reset_action(saved["id"])
+        with pytest.raises(ValueError, match="Stop runs"):
+            await actions.save_actions([])
+        assert script.exists()
+        assert (project / ".ready").exists()
+    await actions.save_actions([])
+    assert not script.parent.parent.exists()
+    assert actions.load_actions() == []
+    assert (tmp_path / "action.py").exists()
+
+
+@pytest.mark.anyio
+async def test_reset_failure_keeps_action_unready_and_can_be_retried(
+    tmp_path: Path, managed_environment: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    action = make_action(tmp_path, "pass")
+    action.pop("python")
+    action.update(pythonVersion="3.12", modules=[])
+    saved = (await actions.save_actions([action]))[0]
+    original = actions._run_uv
+
+    async def handle_failure(arguments: list[str], project: Path) -> None:
+        raise ValueError("test preparation failure")
+
+    monkeypatch.setattr(actions, "_run_uv", handle_failure)
+    with pytest.raises(ValueError, match="test preparation failure"):
+        await actions.reset_action(saved["id"])
+    assert saved["id"] not in actions.ACTION_OPERATIONS
+    assert actions.load_actions()[0]["id"] == saved["id"]
+    assert (await actions.run_action(saved, {}))["status"] == "failed"
+    monkeypatch.setattr(actions, "_run_uv", original)
+    await actions.reset_action(saved["id"])
+    assert (await actions.run_action(saved, {}))["status"] == "success"
+
+
+@pytest.mark.anyio
+async def test_reset_api_requires_trusted_origin(
+    tmp_path: Path, managed_environment: None
+) -> None:
+    action = make_action(tmp_path, "pass")
+    action.pop("python")
+    action.update(pythonVersion="3.12", modules=[])
+    saved = (await actions.save_actions([action]))[0]
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=server.app), base_url="http://localhost"
+    ) as client:
+        endpoint = f"/api/actions/{saved['id']}/reset"
+        assert (await client.post(endpoint)).status_code == 403
+        headers = {"Origin": "http://localhost"}
+        response = await client.post(endpoint, headers=headers)
+        assert response.status_code == 200
+        assert response.json()["action"]["id"] == saved["id"]
+        assert (
+            await client.post("/api/actions/unknown/reset", headers=headers)
+        ).status_code == 400
+
+
+@pytest.mark.anyio
+async def test_file_run_protects_action_before_first_execution(
+    tmp_path: Path, managed_environment: None
+) -> None:
+    from contextlib import aclosing
+
+    action = make_action(tmp_path, "pass")
+    action.pop("python")
+    action.update(pythonVersion="3.12", modules=[], code="pass")
+    saved = (await actions.save_actions([action]))[0]
+    source = tmp_path / "events.log"
+    source.write_text("event\n")
+    async with aclosing(
+        server.handle_file_events(
+            [str(source)], [source], "batch", get_engine(), actions=[saved]
+        )
+    ) as events:
+        assert json.loads(await anext(events))["type"] == "start"
+        with pytest.raises(ValueError, match="Stop runs"):
+            await actions.reset_action(saved["id"])
+        with pytest.raises(ValueError, match="Stop runs"):
+            await actions.save_actions([])
+    assert saved["id"] not in actions.ACTION_USERS
+    await actions.reset_action(saved["id"])
+    await actions.save_actions([])
+
+
+@pytest.mark.anyio
+async def test_action_maintenance_rejects_new_users(
+    tmp_path: Path, managed_environment: None
+) -> None:
+    action = make_action(tmp_path, "pass")
+    action.pop("python")
+    action.update(pythonVersion="3.12", modules=[], code="pass")
+    saved = (await actions.save_actions([action]))[0]
+    with (
+        actions._maintain_actions([saved]),
+        pytest.raises(ValueError, match="maintenance"),
+        actions.use_actions([saved]),
+    ):
+        pytest.fail("Maintenance must reject a new user.")
+    assert saved["id"] not in actions.ACTION_OPERATIONS
+
+
+@pytest.mark.anyio
+async def test_action_ready_requires_completed_dependency_sync(
+    tmp_path: Path, managed_environment: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    action = make_action(tmp_path, "pass")
+    action.pop("python")
+    action.update(pythonVersion="3.12", modules=[], code="pass")
+    saved = (await actions.save_actions([action]))[0]
+    assert actions.get_action_status(saved) == "ready"
+    original = actions._run_uv
+    syncing = asyncio.Event()
+    finish = asyncio.Event()
+
+    async def handle_sync(arguments: list[str], project: Path) -> None:
+        if arguments[0] == "sync":
+            syncing.set()
+            await finish.wait()
+        await original(arguments, project)
+
+    monkeypatch.setattr(actions, "_run_uv", handle_sync)
+    reset = asyncio.create_task(actions.reset_action(saved["id"]))
+    try:
+        await asyncio.wait_for(syncing.wait(), timeout=5)
+        assert Path(saved["python"]).is_file()
+        assert actions.get_action_status(saved) == "preparing"
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=server.app), base_url="http://localhost"
+        ) as client:
+            response = await client.get("/api/actions")
+            assert response.json()["actions"][0]["environmentStatus"] == "preparing"
+    finally:
+        finish.set()
+        await reset
+    assert actions.get_action_status(saved) == "ready"
+    project = Path(saved["python"]).parent.parent.parent
+    (project / ".ready").unlink()
+    assert actions.get_action_status(saved) == "not_ready"
+    assert actions.get_action_status(make_action(tmp_path, "pass")) == "external"

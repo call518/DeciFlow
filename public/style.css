@@ -198,7 +198,7 @@ textarea: focus {
 
 .summary {
   display: grid;
-  grid-template-columns: repeat(6,minmax(0,1fr));
+  grid-template-columns: repeat(7,minmax(0,1fr));
   gap: 10px;
   margin: 10px 0
 }
@@ -234,11 +234,6 @@ textarea: focus {
 .empty {
   text-align: center;
   padding: 72px 10px
-}
-
-.empty span {
-  font-size: 40px;
-  color: #a4c5af
 }
 
 .empty h3 {
@@ -1222,3 +1217,17 @@ footer {
 .engine-connection.connected { color: #24634a; }
 .engine-connection.disconnected, .engine-connection.timeout, .engine-connection.api_error { color: #9a443c; }
 .engine-connection.not_checked { color: #607d80; }
+
+.reviewer-category { font-size: 12px; color: #61766a; }
+
+.action-status { font-size: 12px; font-weight: 600; white-space: nowrap; }
+.action-status.ready { color: #24634a; }
+.action-status.preparing { color: #9a6a16; }
+.action-status.not_ready { color: #9a443c; }
+.action-status.external { color: #607d80; }
+
+.count-success { color: #429665; }
+.count-failed { color: #9a443c; }
+.count-total { color: #0057ff; }
+
+#reset-sources { width: auto; margin: 4px 0 0 8px; padding: 7px 10px; }

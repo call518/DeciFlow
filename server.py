@@ -25,7 +25,15 @@ from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
-from actions import load_actions, run_action, save_actions
+from actions import (
+    ensure_actions_available,
+    get_action_status,
+    load_actions,
+    reset_action,
+    run_action,
+    save_actions,
+    use_actions,
+)
 from classifier import Result, classify_log, classify_stream, parse_logs
 from config import (
     JEV_CONTEXT_TOKENS,
@@ -340,69 +348,76 @@ async def handle_file_events(
     specs: list[Result] | None = None,
     actions: list[Result] | None = None,
     profile_snapshot: dict[str, Result] | None = None,
-) -> AsyncIterator[str]:
+) -> AsyncGenerator[str, None]:
     """Stream classifications from a file without buffering its full contents."""
-    snapshot = profile_snapshot if profile_snapshot is not None else deepcopy(PROFILES)
-    clock = _ProcessingClock()
-    yield _encode(
-        {
-            "type": "start",
-            "total": None,
-            "mode": mode,
-            "engine": engine.name,
-            "sources": [str(path) for path in paths],
-            "sourcePatterns": [spec["path"] for spec in specs] if specs else values,
-        }
-    )
-    if specs is not None and mode == "realtime":
-        records = follow_configured(specs)
-    elif isinstance(paths, dict):
-        records = read_configured(paths)
-    else:
-        records = follow_sources(values) if mode == "realtime" else read_sources(paths)
-    try:
-        async with httpx.AsyncClient(timeout=engine.timeout) as client:
+    with use_actions(actions or []):
+        snapshot = (
+            profile_snapshot if profile_snapshot is not None else deepcopy(PROFILES)
+        )
+        clock = _ProcessingClock()
+        yield _encode(
+            {
+                "type": "start",
+                "total": None,
+                "mode": mode,
+                "engine": engine.name,
+                "sources": [str(path) for path in paths],
+                "sourcePatterns": [spec["path"] for spec in specs] if specs else values,
+            }
+        )
+        if specs is not None and mode == "realtime":
+            records = follow_configured(specs)
+        elif isinstance(paths, dict):
+            records = read_configured(paths)
+        else:
+            records = (
+                follow_sources(values) if mode == "realtime" else read_sources(paths)
+            )
+        try:
+            async with httpx.AsyncClient(timeout=engine.timeout) as client:
 
-            async def handle_classify(log: str) -> Result:
-                clock.begin()
-                try:
-                    with use_profile_snapshot(snapshot):
-                        return await classify_log(log, engine, client)
-                finally:
-                    clock.end()
+                async def handle_classify(log: str) -> Result:
+                    clock.begin()
+                    try:
+                        with use_profile_snapshot(snapshot):
+                            return await classify_log(log, engine, client)
+                    finally:
+                        clock.end()
 
-            async def handle_record(record: Result) -> Result:
-                clock.begin()
-                try:
-                    with use_profile_snapshot(snapshot):
-                        profile = record.get("profile", "general")
-                        if profile == "general":
-                            return await classify_log(record["log"], engine, client)
-                        return await classify_log(
-                            record["log"], engine, client, profile
+                async def handle_record(record: Result) -> Result:
+                    clock.begin()
+                    try:
+                        with use_profile_snapshot(snapshot):
+                            profile = record.get("profile", "general")
+                            if profile == "general":
+                                return await classify_log(record["log"], engine, client)
+                            return await classify_log(
+                                record["log"], engine, client, profile
+                            )
+                    finally:
+                        clock.end()
+
+                async with (
+                    aclosing(
+                        classify_stream(
+                            records,
+                            handle_classify,
+                            engine.concurrency,
+                            classify_record=handle_record,
                         )
-                finally:
-                    clock.end()
-
-            async with (
-                aclosing(
-                    classify_stream(
-                        records,
-                        handle_classify,
-                        engine.concurrency,
-                        classify_record=handle_record,
-                    )
-                ) as results,
-                aclosing(_action_results(results, actions or [], engine.name)) as acted,
-                aclosing(_timed_results(acted, clock)) as events,
-            ):
-                async for event in events:
-                    yield event
-    except (OSError, UnicodeError, ValueError) as error:
-        yield _encode({"type": "error", "error": f"File source stopped: {error}"})
-    finally:
-        await records.aclose()
-    yield _encode({"type": "done", **clock.snapshot()})
+                    ) as results,
+                    aclosing(
+                        _action_results(results, actions or [], engine.name)
+                    ) as acted,
+                    aclosing(_timed_results(acted, clock)) as events,
+                ):
+                    async for event in events:
+                        yield event
+        except (OSError, UnicodeError, ValueError) as error:
+            yield _encode({"type": "error", "error": f"File source stopped: {error}"})
+        finally:
+            await records.aclose()
+        yield _encode({"type": "done", **clock.snapshot()})
 
 
 async def handle_file_source(request: Request) -> Response:
@@ -430,10 +445,14 @@ async def handle_file_source(request: Request) -> Response:
         names = {action["name"] for action in actions}
         if any(spec.get("action") and spec["action"] not in names for spec in specs):
             raise ValueError("Select a registered action or None.")
+        selected = {spec.get("action") for spec in specs}
+        actions = [action for action in actions if action["name"] in selected]
+        ensure_actions_available(actions)
         paths = await anyio.to_thread.run_sync(
             partial(resolve_configured_sources, specs, follow=mode == "realtime"),
             abandon_on_cancel=True,
         )
+        ensure_actions_available(actions)
     except (ValueError, TypeError, OSError) as error:
         return _json(400, {"error": str(error)})
     try:
@@ -495,6 +514,19 @@ async def handle_criteria(request: Request) -> Response:
     return _json(200, {"profiles": profiles})
 
 
+async def handle_reset_action(request: Request) -> Response:
+    """Reset a saved environment using the same trusted-origin checks as Actions."""
+    if not _allowed_origin(request, files=True):
+        return _json(403, {"error": "Action reset requires a trusted UI origin."})
+    try:
+        action = await reset_action(request.path_params["action_id"])
+    except (ValueError, TypeError, OSError) as error:
+        return _json(400, {"error": str(error)})
+    return _json(
+        200, {"action": {**action, "environmentStatus": get_action_status(action)}}
+    )
+
+
 async def handle_actions(request: Request) -> Response:
     """List or replace local action registrations using file-access origin checks."""
     if request.method != "GET" and not _allowed_origin(request, files=True):
@@ -504,6 +536,8 @@ async def handle_actions(request: Request) -> Response:
     try:
         if request.method in {"GET", "POST"}:
             actions = load_actions()
+            for action in actions:
+                action["environmentStatus"] = get_action_status(action)
             if request.method == "GET":
                 return _json(
                     200,
@@ -528,7 +562,15 @@ async def handle_actions(request: Request) -> Response:
             actions = await save_actions(await request.json())
     except (ValueError, TypeError, OSError) as error:
         return _json(400, {"error": str(error)})
-    return _json(200, {"actions": actions})
+    return _json(
+        200,
+        {
+            "actions": [
+                {**action, "environmentStatus": get_action_status(action)}
+                for action in actions
+            ]
+        },
+    )
 
 
 def _start_job(settings: Result, events: AsyncIterator[str]) -> Response:
@@ -588,6 +630,7 @@ app = Starlette(
         Route("/api/jobs/{job_id}/events", handle_job, methods=["POST"]),
         Route("/api/jobs/{job_id}/stop", handle_job, methods=["POST"]),
         Route("/api/criteria", handle_criteria, methods=["POST", "PUT"]),
+        Route("/api/actions/{action_id}/reset", handle_reset_action, methods=["POST"]),
         Route("/api/actions", handle_actions, methods=["GET", "POST", "PUT"]),
         Route("/api/status", handle_status, methods=["GET"]),
         Route("/api/classify", handle_classify, methods=["POST"]),

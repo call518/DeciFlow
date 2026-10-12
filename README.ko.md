@@ -19,6 +19,10 @@ DeciFlow는 로그 이벤트를 청크로 묶어 Laya 또는 Jev로
 소스별 프로필·청크 크기를 지정하고, 실시간 차트로 분포를 보거나 목록 갱신을
 일시정지해 개별 결과를 살펴보세요.
 
+현재는 **`choice` 판정만 사용**합니다. 향후 활용 사례에 맞춰
+**`score` 기반 평가·등급 산정**과 **`noul` 기반 양품·불량 등 예/아니오 확률 판정**을
+추가하고, 각 유형에 맞는 판정 기준과 결과 화면을 업데이트할 예정입니다.
+
 **DeciFlow**는 로그가 있는 노드에서 실행해 이벤트를 읽고 브라우저에 결과를 표시합니다.
 **Laya 서버**는 같은 호스트 또는 별도 호스트에서 판정 모델을 실행하며, **Jev 서비스**는 대신 선택할 수
 있는 외부 판정 API입니다. DeciFlow는 선택한 엔진에 이벤트를 보내고 판정 결과를 받습니다.
@@ -102,7 +106,7 @@ GPU가 없다면 [Laya CPU](#laya-docker), 유료 API를 사용하려면 [Jev](#
 | [사용법](docs/usage.ko.md) | 입력 모드·판정 기준·필터·수동 검토·재접속·시간 지표 |
 | [설정](docs/configuration.ko.md) | 환경변수·모델·입력 예산 |
 | [Criteria](docs/criteria.ko.md) | 고정 5개 범주 프로필 관리; Default Criteria는 보기 전용 |
-| [Python Actions](docs/actions.ko.md) | 구성 보기·등록·소스 할당·실행 규약·저장과 복구 |
+| [Python Actions](docs/actions.ko.md) | 구성 보기·환경 Status·pip 포함 환경·Reset venv·삭제·소스 할당 |
 | [결과 JSON](docs/results.ko.md) | 실제 응답 예시·필드 설명 |
 
 사이드바 화면은 URL에 반영됩니다: Main `/`, Criteria `/#criteria`, Actions `/#actions`.
@@ -111,7 +115,7 @@ GPU가 없다면 [Laya CPU](#laya-docker), 유료 API를 사용하려면 [Jev](#
 - **Paste:** 텍스트를 붙여 넣어 분석합니다.
 - **Batch:** 기존 파일을 분석합니다. Docker에서 호스트 `/var/log`는 `/host-logs/var/log`입니다.
 - **Realtime:** 새 로그를 감시합니다. 소스별 판정 기준과 청크 크기를 선택합니다.
-- **처리 지표:** Success / Failed로 성공·실패 청크를 구분합니다. Needs review는 성공 판정만 집계합니다.
+- **처리 지표:** Success / Failed / Total로 성공·실패·처리 완료 전체 청크를 표시합니다. Action Success / Failed / Total은 후속 작업을 별도 집계합니다. Needs review는 성공 판정만 집계합니다.
   엔진·모델 옆 연결 상태는 마지막 실제 요청 기준이며 요청 전에는 Not checked입니다.
 - **검토:** Needs review로 결과를 추리고 수동 정정·JSON 내보내기를 사용합니다.
   Certain은 정확도 보장이 아닙니다. 서버 재시작 시 작업·결과가 사라지므로 필요하면 내보내세요.

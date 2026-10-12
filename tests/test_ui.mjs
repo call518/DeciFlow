@@ -94,16 +94,16 @@ test('average request duration includes failures, ignores filters, and resets', 
   const { nodes, context } = workspace(events);
   const average = () => nodes.get('summary').children[5].children[0].textContent;
   vm.runInContext('render()', context);
-  assert.equal(average(), '0.0ms');
+  assert.equal(average(), '0 ms');
   await nodes.get('classify').onclick();
-  assert.equal(average(), '200.0ms');
+  assert.equal(average(), '200 ms');
   nodes.get('review-filter').value = 'needs-review';
   nodes.get('review-filter').onchange();
-  assert.equal(average(), '200.0ms');
+  assert.equal(average(), '200 ms');
   assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
   events.splice(0, events.length, { type: 'start', engine: 'jev', total: 1 }, result(0));
   await nodes.get('classify').onclick();
-  assert.equal(average(), '1.0ms');
+  assert.equal(average(), '1 ms');
 });
 
 test('review filters exclude failures without changing success and failure totals', async () => {
@@ -122,8 +122,8 @@ test('review filters exclude failures without changing success and failure total
     nodes.get('review-filter').value = filter;
     nodes.get('review-filter').onchange();
     assert.deepEqual(logs(nodes), expected);
-    assert.equal(nodes.get('summary').children[0].children[0].textContent, '2 / 1');
-    assert.equal(nodes.get('summary').children[1].children[0].textContent, '1');
+    assert.equal(nodes.get('summary').children[0].children[0].children.map(node => node.textContent).join(''), '2 / 1 / 3');
+    assert.equal(nodes.get('summary').children[2].children[0].textContent, '1');
   }
   nodes.get('review-filter').value = 'no-review';
   events.splice(0, events.length, { type: 'start', engine: 'jev', total: 1 }, result(0));
@@ -171,19 +171,19 @@ test('active time uses server intervals, updates while idle, and resets', async 
   const { nodes, context } = workspace(events);
   const active = () => nodes.get('summary').children[4].children[0].textContent;
   vm.runInContext('render()', context);
-  assert.equal(active(), '0ms (N/A)');
+  assert.equal(active(), '0 ms (N/A)');
   await nodes.get('classify').onclick();
-  assert.equal(active(), '150ms (15.0%)');
+  assert.equal(active(), '150 ms (15.0%)');
   assert.ok(nodes.get('summary').children[4].title.includes('not CPU utilization'));
   nodes.get('review-filter').value = 'no-review';
   nodes.get('review-filter').onchange();
-  assert.equal(active(), '150ms (15.0%)');
+  assert.equal(active(), '150 ms (15.0%)');
   events.at(-1).elapsedMs = 200;
   await nodes.get('classify').onclick();
-  assert.equal(active(), '150ms (75.0%)');
+  assert.equal(active(), '150 ms (75.0%)');
   events.splice(0, events.length, { type: 'start', engine: 'jev', total: 1 }, result(0));
   await nodes.get('classify').onclick();
-  assert.equal(active(), '0ms (N/A)');
+  assert.equal(active(), '0 ms (N/A)');
 });
 
 test('connection status shares the title row without a breadcrumb header', () => {
@@ -327,7 +327,7 @@ test('pause freezes rows while analysis continues; resume includes pending resul
   vm.runInContext('render(false)', context);
   assert.equal(nodes.get('results').children[0], original);
   assert.equal(details.open, true);
-  assert.equal(nodes.get('summary').children[0].children[0].textContent, '3 / 0');
+  assert.equal(nodes.get('summary').children[0].children[0].children.map(node => node.textContent).join(''), '3 / 0 / 3');
   assert.equal(nodes.get('pause-updates').textContent, 'Resume updates (2 new)');
   nodes.get('review-filter').value = 'needs-review';
   nodes.get('review-filter').onchange();
@@ -511,7 +511,7 @@ test('category, review and literal log search combine and retain full aggregates
   assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
   nodes.get('review-filter').value = 'all'; nodes.get('review-filter').onchange();
   assert.deepEqual(logs(nodes), ['Service request failed']);
-  assert.equal(nodes.get('summary').children[0].children[0].textContent, '2 / 1');
+  assert.equal(nodes.get('summary').children[0].children[0].children.map(node => node.textContent).join(''), '2 / 1 / 3');
   nodes.get('category-filter').value = 'all'; nodes.get('category-filter').onchange();
   nodes.get('review-filter').value = 'all'; nodes.get('review-filter').onchange();
   assert.equal(logs(nodes).length, 3);
@@ -541,7 +541,7 @@ test('chart certainty groups partition classified results without treating failu
   assert.deepEqual(options(), ['All · 3', 'Certain · 2 (66.7%)', 'Uncertain · 1 (33.3%)']);
   nodes.get('chart-certain').onclick();
   assert.deepEqual(values(), ['1 (50.0%)', '0 (0.0%)', '0 (0.0%)', '0 (0.0%)', '1 (50.0%)']);
-  assert.equal(nodes.get('summary').children[0].children[0].textContent, '3 / 1');
+  assert.equal(nodes.get('summary').children[0].children[0].children.map(node => node.textContent).join(''), '3 / 1 / 4');
   assert.equal(nodes.get('results').children.length, 4);
   nodes.get('chart-all').onclick();
   assert.equal(nodes.get('chart-totals').textContent, '3 classified chunks · 1 failed request');
@@ -717,7 +717,7 @@ test('throughput tracks a rolling five-second window and resets between runs', a
     success(0, 1000), success(1, 2000), success(2, 5500), failed,
     { type: 'timing', elapsedMs: 7000 }];
   const { nodes } = workspace(events);
-  const rate = () => nodes.get('summary').children[2].children[0].textContent;
+  const rate = () => nodes.get('summary').children[6].children[0].textContent;
   await nodes.get('classify').onclick();
   assert.equal(rate(), '0.2 chunks/s');
   nodes.get('review-filter').value = 'no-review';
@@ -753,7 +753,7 @@ test('source filtering uses input patterns with counts and combines with other f
   nodes.get('category-filter').value = 'all';
   nodes.get('log-search').value = 'failed'; nodes.get('log-search').oninput();
   assert.deepEqual(logs(nodes), ['service failed']);
-  assert.equal(nodes.get('summary').children[0].children[0].textContent, '2 / 0');
+  assert.equal(nodes.get('summary').children[0].children[0].children.map(node => node.textContent).join(''), '2 / 0 / 2');
   select.value = '/logs/*'; select.onchange();
   assert.deepEqual(logs(nodes), ['service failed']);
   events.splice(0, events.length, { type: 'start', engine: 'laya', total: null,
@@ -840,12 +840,12 @@ test('Action list edits one handler, cancels drafts, and saves deletion without 
   const table = () => nodes.get('action-registry').children[0];
   assert.equal(table().children.length, 3);
   assert.equal(table().children[2].children[0].textContent, 'Second');
-  table().children[2].children[3].children[1].onclick();
+  table().children[2].children[4].children[1].onclick();
   assert.equal(nodes.get('action-editor').children.length, 1);
   nodes.get('action-editor').children[0].children[0].children[0].value = 'Discard';
   nodes.get('cancel-action').onclick();
   assert.equal(table().children[2].children[0].textContent, 'Second');
-  table().children[2].children[3].children[1].onclick();
+  table().children[2].children[4].children[1].onclick();
   nodes.get('action-editor').children[0].children[0].children[0].value = 'Edited';
   let sent;
   context.fetch = async (path, options) => {
@@ -857,7 +857,7 @@ test('Action list edits one handler, cancels drafts, and saves deletion without 
   assert.equal(sent[0].name, 'First');
   assert.equal(sent[1].name, 'Edited');
   assert.equal(nodes.get('action-editor').hidden, true);
-  table().children[1].children[3].children[2].onclick();
+  table().children[1].children[4].children[3].onclick();
   await nodes.get('save-actions').onclick();
   assert.equal(sent.length, 1);
   assert.equal(sent[0].name, 'Edited');
@@ -876,10 +876,10 @@ test('Action name search ignores case and retains original edit and delete targe
   const table = nodes.get('action-registry').children[0];
   assert.equal(table.children.length, 2);
   assert.equal(table.children[1].children[0].textContent, 'Notify admin');
-  table.children[1].children[3].children[1].onclick();
+  table.children[1].children[4].children[1].onclick();
   assert.equal(nodes.get('action-editor').children[0].children[0].children[0].value, 'Notify admin');
   nodes.get('cancel-action').onclick();
-  nodes.get('action-registry').children[0].children[1].children[3].children[2].onclick();
+  nodes.get('action-registry').children[0].children[1].children[4].children[3].onclick();
   assert.equal(nodes.get('action-registry').children[0].textContent, 'No Actions match your search.');
   search.value = ''; search.oninput();
   assert.equal(nodes.get('action-registry').children[0].children.length, 3);
@@ -1119,8 +1119,8 @@ test('View shows read-only Action configuration without editing or losing drafts
   const { nodes, context, requests } = workspace([]);
   await new Promise(resolve => setImmediate(resolve));
   vm.runInContext("registeredActions=[{id:'notify', name:'Notify', pythonVersion:'3.12', modules:['httpx'], code:'print(1)'}]; renderActions();", context);
-  const controls = () => nodes.get('action-registry').children[0].children[1].children[3].children;
-  assert.deepEqual(controls().map(button => button.textContent), ['View', 'Edit', 'Delete']);
+  const controls = () => nodes.get('action-registry').children[0].children[1].children[4].children;
+  assert.deepEqual(controls().map(button => button.textContent), ['View', 'Edit', 'Reset venv', 'Delete']);
   controls()[0].onclick();
   const values = () => nodes.get('action-view').children[1].children.map(label => label.children[0]);
   assert.equal(nodes.get('action-view').hidden, false);
@@ -1139,7 +1139,8 @@ test('View shows read-only Action configuration without editing or losing drafts
   assert.equal(nodes.get('action-editor').hidden, true);
   assert.equal(nodes.get('save-actions').disabled, true);
   assert.equal(vm.runInContext('actionRows[0].code.value', context), 'Unsaved draft');
-  nodes.get('action-view').children.at(-1).onclick();
+  assert.equal(nodes.get('action-view').children[0].children[1].textContent, 'Cancel');
+  nodes.get('action-view').children[0].children[1].onclick();
   assert.equal(nodes.get('action-view').hidden, true);
   assert.equal(nodes.get('action-editor').hidden, false);
   assert.equal(nodes.get('save-actions').disabled, false);
@@ -1167,7 +1168,8 @@ test('View shows all Criteria definitions and preserves the edit draft', async (
   assert.equal(values()[2].value, 'Saved instructions');
   assert.equal(nodes.get('criteria-editor').hidden, true);
   assert.equal(nodes.get('save-criteria').disabled, true);
-  nodes.get('criteria-view').children.at(-1).onclick();
+  assert.equal(nodes.get('criteria-view').children[0].children[1].textContent, 'Cancel');
+  nodes.get('criteria-view').children[0].children[1].onclick();
   assert.equal(nodes.get('criteria-view').hidden, true);
   assert.equal(nodes.get('criteria-editor').hidden, false);
   assert.equal(nodes.get('save-criteria').disabled, false);
@@ -1181,7 +1183,7 @@ test('Add closes View in both managers and enables the new editor', async () => 
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await new Promise(resolve => setImmediate(resolve));
   vm.runInContext("registeredActions=[{name:'Notify', code:'pass'}]; renderActions();", context);
-  nodes.get('action-registry').children[0].children[1].children[3].children[0].onclick();
+  nodes.get('action-registry').children[0].children[1].children[4].children[0].onclick();
   nodes.get('add-action').onclick();
   assert.equal(nodes.get('action-view').hidden, true);
   assert.equal(nodes.get('action-editor').hidden, false);
@@ -1246,9 +1248,9 @@ test('engine connection follows actual requests for both providers without local
       receive({ type: 'done', elapsedMs: 100 });
     };
     await nodes.get('classify').onclick();
-    assert.equal(nodes.get('summary').children[0].textContent, 'Success / Failed');
-    assert.equal(nodes.get('summary').children[0].children[0].textContent, '2 / 4');
-    assert.equal(nodes.get('summary').children[1].children[0].textContent, '2');
+    assert.equal(nodes.get('summary').children[0].textContent, 'Success / Failed / Total');
+    assert.equal(nodes.get('summary').children[0].children[0].children.map(node => node.textContent).join(''), '2 / 4 / 6');
+    assert.equal(nodes.get('summary').children[2].children[0].textContent, '2');
     nodes.get('review-filter').value = 'needs-review'; nodes.get('review-filter').onchange();
     assert.deepEqual(logs(nodes), ['event-5', 'event-0']);
     assert.equal(connection.className, 'engine-connection connected');
@@ -1274,4 +1276,186 @@ test('Default Criteria stays above search with View only and outside the editabl
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   assert.ok(html.indexOf('id="criteria-default"') < html.indexOf('id="additional-criteria-title"'));
   assert.ok(html.indexOf('id="additional-criteria-title"') < html.indexOf('id="criteria-search"'));
+});
+
+
+test('Add and Edit show only the form and restore each manager list on cancel or save', async () => {
+  const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
+  const profiles = { general: { label: 'General', instructions: 'Default', criteria: definitions }, custom: { label: 'Custom', instructions: 'Custom', criteria: definitions } };
+  const { nodes, context } = workspace([], undefined, undefined, profiles);
+  await new Promise(resolve => setImmediate(resolve));
+  vm.runInContext("registeredActions=[{name:'Notify', code:'pass'}]; renderActions();", context);
+  nodes.get('add-action').onclick();
+  assert.equal(nodes.get('action-list').hidden, true);
+  assert.equal(nodes.get('action-editor').hidden, false);
+  nodes.get('cancel-action').onclick();
+  assert.equal(nodes.get('action-list').hidden, false);
+  vm.runInContext('handleEditAction(0)', context);
+  assert.equal(nodes.get('action-list').hidden, true);
+  context.fetch = async (path, options) => ({ ok: true, json: async () => path === '/api/actions' ? { actions: JSON.parse(options.body) } : { profiles: options.method === 'PUT' ? JSON.parse(options.body) : profiles } });
+  await nodes.get('save-actions').onclick();
+  assert.equal(nodes.get('action-list').hidden, false);
+  assert.equal(nodes.get('action-editor').hidden, true);
+  await nodes.get('nav-criteria').onclick();
+  nodes.get('criteria-default').children[0].children[1].children[2].children[0].onclick();
+  nodes.get('add-criteria').onclick();
+  assert.equal(nodes.get('criteria-list').hidden, true);
+  assert.equal(nodes.get('criteria-view').hidden, true);
+  assert.equal(nodes.get('criteria-editor').hidden, false);
+  nodes.get('cancel-criteria').onclick();
+  assert.equal(nodes.get('criteria-list').hidden, false);
+  vm.runInContext("handleEditCriteria('custom')", context);
+  assert.equal(nodes.get('criteria-list').hidden, true);
+  await nodes.get('save-criteria').onclick();
+  assert.equal(nodes.get('criteria-list').hidden, false);
+  assert.equal(nodes.get('criteria-editor').hidden, true);
+});
+
+
+test('edit cancel buttons precede the forms in both managers', () => {
+  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  for (const kind of ['action', 'criteria']) {
+    assert.ok(html.indexOf(`id="cancel-${kind}"`) < html.indexOf(`id="${kind}-editor"`));
+  }
+});
+
+
+test('Reset venv rebuilds a saved managed Action and reports maintenance errors', async () => {
+  const { nodes, context } = workspace([]);
+  await new Promise(resolve => setImmediate(resolve));
+  vm.runInContext("registeredActions=[{id:'a'.repeat(32), name:'Notify', pythonVersion:'3.12', modules:[], code:'pass'}]; renderActions();", context);
+  const controls = () => nodes.get('action-registry').children[0].children[1].children[4].children;
+  let finish;
+  let requested;
+  context.fetch = (path, options) => {
+    requested = { path, options };
+    return new Promise(resolve => { finish = resolve; });
+  };
+  const resetting = controls()[2].onclick();
+  assert.equal(requested.path, `/api/actions/${'a'.repeat(32)}/reset`);
+  assert.equal(requested.options.method, 'POST');
+  assert.ok(controls().every(button => button.disabled));
+  assert.equal(nodes.get('save-actions').disabled, true);
+  finish({ ok: true, json: async () => ({ action: { id:'a'.repeat(32), name:'Notify', pythonVersion:'3.12', modules:[], code:'pass' } }) });
+  await resetting;
+  assert.match(nodes.get('action-message').textContent, /rebuilt with pip/);
+  context.fetch = async () => ({ ok: false, json: async () => ({ error: 'Stop runs using this Action' }) });
+  await controls()[2].onclick();
+  assert.match(nodes.get('action-message').textContent, /Stop runs/);
+  assert.equal(controls()[2].disabled, false);
+  vm.runInContext("registeredActions=[{name:'External', python:'/usr/bin/python', script:'/tmp/script.py'}]; renderActions();", context);
+  assert.equal(controls()[2].disabled, true);
+});
+
+
+test('Action status distinguishes saved readiness, reset progress, and other Actions', async () => {
+  const { nodes, context } = workspace([]);
+  await new Promise(resolve => setImmediate(resolve));
+  vm.runInContext("registeredActions=[{id:'a'.repeat(32), name:'Ready action', pythonVersion:'3.12', environmentStatus:'ready'}, {id:'b'.repeat(32), name:'Missing action', pythonVersion:'3.12', environmentStatus:'not_ready'}, {name:'External'}]; renderActions();", context);
+  const statuses = () => nodes.get('action-registry').children[0].children.slice(1).map(row => row.children[3].children[0].textContent);
+  assert.deepEqual(statuses(), ['Ready', 'Not ready', 'External']);
+  let finish;
+  context.fetch = () => new Promise(resolve => { finish = resolve; });
+  const resetting = nodes.get('action-registry').children[0].children[1].children[4].children[2].onclick();
+  assert.deepEqual(statuses(), ['Preparing...', 'Not ready', 'External']);
+  finish({ok:true, json:async () => ({action:{id:'a'.repeat(32), name:'Ready action', pythonVersion:'3.12', environmentStatus:'ready'}})});
+  await resetting;
+  assert.deepEqual(statuses(), ['Ready', 'Not ready', 'External']);
+  context.fetch = async () => ({ok:true, json:async () => ({actions:[{id:'a'.repeat(32), environmentStatus:'ready'},{id:'b'.repeat(32), environmentStatus:'ready'}]})});
+  await vm.runInContext('handleRefreshActionStatus()', context);
+  assert.deepEqual(statuses(), ['Ready', 'Ready', 'External']);
+  nodes.get('add-action').onclick();
+  assert.equal(nodes.get('action-environment-status').hidden, false);
+  assert.equal(nodes.get('action-environment-status').textContent, 'Not ready');
+  vm.runInContext('preparingActions=true; renderActions()', context);
+  assert.equal(nodes.get('action-environment-status').textContent, 'Preparing...');
+});
+
+
+test('success failure and total counts use green red and blue respectively', () => {
+  const { nodes, context } = workspace([]);
+  vm.runInContext('render()', context);
+  const counts = nodes.get('summary').children[0].children[0].children;
+  assert.deepEqual([counts[0].className, counts[2].className, counts[4].className], ['count-success', 'count-failed', 'count-total']);
+  const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8').replace(/\s*([{}:;])\s*/g, '$1');
+  for (const [name, color] of [['success', '#429665'], ['failed', '#9a443c'], ['total', '#0057ff']]) assert.ok(css.includes(`.count-${name}{color:${color};}`));
+});
+
+
+test('duration metrics use readable units without changing millisecond data', () => {
+  const { nodes, context } = workspace([]);
+  for (const [milliseconds, expected] of [
+    [0, '0 ms'], [0.5, '0.5 ms'], [999, '999 ms'], [1000, '1 sec'],
+    [1500, '1.5 sec'], [59000, '59 sec'], [60000, '1 min'],
+    [65000, '1 min 5 sec'], [3599000, '59 min 59 sec'],
+    [3600000, '1 hour'], [3720000, '1 hour 2 min'],
+    [86400000, '1 day'], [176400000, '2 days 1 hour'],
+  ]) assert.equal(vm.runInContext(`formatDuration(${milliseconds})`, context), expected);
+  vm.runInContext("elapsedMs=3720000; activeProcessingMs=65000; results=[{elapsedMs:1500, log:'event', category:'normal', probabilities:{normal:1}}]; completionOrder=[0]; completed=1; render();", context);
+  assert.equal(nodes.get('summary').children[3].children[0].textContent, '1 hour 2 min');
+  assert.equal(nodes.get('summary').children[4].children[0].textContent, '1 min 5 sec (1.7%)');
+  assert.equal(nodes.get('summary').children[5].children[0].textContent, '1.5 sec');
+  assert.equal(vm.runInContext('elapsedMs', context), 3720000);
+  assert.equal(vm.runInContext('activeProcessingMs', context), 65000);
+  assert.equal(vm.runInContext('orderedResult(results[0]).elapsedMs', context), 1500);
+});
+
+
+test('Reset sources restores current mode samples and clears Action assignments', () => {
+  const values = new Map();
+  const storage = { getItem: key => values.get(key) || null, setItem: (key, value) => values.set(key, value) };
+  const { nodes, context } = workspace([], undefined, storage);
+  vm.runInContext("sourcePreferences.set('/host-logs/var/log/messages', {profile:'network', chunkEvents:9, action:'Notify'}); filePaths.realtime='/my/live.log';", context);
+  nodes.get('file-path').value = '/custom.log'; nodes.get('file-path').oninput();
+  nodes.get('reset-sources').onclick();
+  assert.equal(nodes.get('file-path').value, vm.runInContext('defaultFilePaths.batch', context));
+  assert.equal(nodes.get('source-settings').children.length, 3);
+  assert.equal(vm.runInContext('filePaths.realtime', context), '/my/live.log');
+  assert.equal(vm.runInContext("sourceRows.every(row => row.profile.value==='general' && row.size.value==='1' && row.action.value==='')", context), true);
+  const stored = new Map(JSON.parse(values.get('deciflow-source-preferences')));
+  assert.deepEqual(stored.get('/host-logs/var/log/messages'), { profile:'general', chunkEvents:1 });
+  nodes.get('source-mode').value = 'realtime'; nodes.get('source-mode').onchange();
+  assert.equal(nodes.get('file-path').value, '/my/live.log');
+  nodes.get('reset-sources').onclick();
+  assert.equal(nodes.get('file-path').value, vm.runInContext('defaultFilePaths.realtime', context));
+  vm.runInContext('busy=true', context);
+  nodes.get('file-path').value = '/keep.log';
+  nodes.get('reset-sources').onclick();
+  assert.equal(nodes.get('file-path').value, '/keep.log');
+  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.ok(html.includes('Add source</button><button id="reset-sources"'));
+});
+
+
+test('Action metrics count completed executions separately from decision outcomes', async () => {
+  const success = result(0, false);
+  success.result.actionExecution = {name:'Notify', status:'success', elapsedMs:1};
+  const failure = result(1, false);
+  failure.result.actionExecution = {name:'Notify', status:'failed', exitCode:1, elapsedMs:1};
+  const decisionFailure = {type:'result', index:3, elapsedMs:4, result:{log:'failed decision', error:'Could not connect', review:false, elapsedMs:1}};
+  const events = [{type:'start', engine:'laya', total:4}, success, failure, result(2, false), decisionFailure];
+  const { nodes, context } = workspace(events);
+  const counts = index => nodes.get('summary').children[index].children[0].children.map(node => node.textContent).join('');
+  vm.runInContext('render()', context);
+  assert.equal(counts(1), '0 / 0 / 0');
+  await nodes.get('classify').onclick();
+  assert.equal(nodes.get('summary').children[1].textContent, 'Action Success / Failed / Total');
+  assert.equal(counts(0), '3 / 1 / 4');
+  assert.equal(counts(1), '1 / 1 / 2');
+  assert.equal(nodes.get('summary').children[2].children[0].textContent, '0');
+  nodes.get('review-filter').value='needs-review'; nodes.get('review-filter').onchange();
+  assert.equal(counts(1), '1 / 1 / 2');
+  nodes.get('pause-updates').onclick();
+  vm.runInContext("results.push({log:'timeout', category:'normal', review:false, elapsedMs:1, actionExecution:{name:'Notify',status:'failed',error:'timeout',elapsedMs:30000}}); completionOrder.push(4); completed++; render(false);", context);
+  assert.equal(counts(0), '4 / 1 / 5');
+  assert.equal(counts(1), '1 / 2 / 3');
+  const colors = nodes.get('summary').children[1].children[0].children;
+  assert.deepEqual([colors[0].className,colors[2].className,colors[4].className], ['count-success','count-failed','count-total']);
+});
+
+
+test('Throughput follows all other classification metrics', () => {
+  const { nodes, context } = workspace([]);
+  vm.runInContext('render()', context);
+  assert.equal(nodes.get('summary').children.at(-1).textContent, 'Throughput');
 });

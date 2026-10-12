@@ -58,10 +58,11 @@ function rememberJob(id) {
   try { jobStorage.setItem('deciflow-job-id', id); } catch { /* Current-page processing still works. */ }
 }
 let sourceMode = 'batch';
-const filePaths = {
+const defaultFilePaths = Object.freeze({
   batch: '/host-logs/sample-logs/access-1k.log\n/host-logs/var/log/messages\n/host-logs/var/log/nginx/access*.log',
   realtime: '/host-logs/var/log/secure\n/host-logs/var/log/messages\n/host-logs/var/log/nginx/access*.log',
-};
+});
+const filePaths = { ...defaultFilePaths };
 $('logs').value = samples.join('\n');
 $('file-path').value = filePaths[sourceMode];
 let engine = 'laya';
@@ -92,6 +93,7 @@ function handleCloseConfiguration(id) {
   if (id === 'action-view') {
     $('action-editor').hidden = editingAction === null;
     $('cancel-action').hidden = editingAction === null;
+    $('action-environment-status').hidden = editingAction === null;
     $('save-actions').disabled = preparingActions;
   } else {
     $('criteria-editor').hidden = editingCriteria === null;
@@ -103,6 +105,7 @@ function handleViewConfiguration(id, title, fields) {
   const container = $(id);
   if (id === 'action-view') {
     $('action-editor').hidden = true; $('cancel-action').hidden = true;
+    $('action-environment-status').hidden = true;
     $('save-actions').disabled = true;
   } else {
     $('criteria-editor').hidden = true; $('cancel-criteria').hidden = true;
@@ -119,9 +122,11 @@ function handleViewConfiguration(id, title, fields) {
     if (caption === 'Python code') { input.className = 'action-code'; input.spellcheck = false; }
     label.append(input); row.append(label);
   }
-  const close = element('button', 'Close', 'quiet');
+  const close = element('button', 'Cancel', 'quiet');
   close.type = 'button'; close.onclick = () => handleCloseConfiguration(id);
-  container.replaceChildren(); container.append(element('h3', title), row, close);
+  const header = element('div', '', 'card-title');
+  header.append(element('h3', title), close);
+  container.replaceChildren(); container.append(header, row);
   container.hidden = false; container.scrollIntoView?.({ block: 'nearest' });
 }
 let currentView = null;
@@ -150,18 +155,25 @@ const profileLabels = { general: 'General system', authentication: 'Authenticati
 let registeredActions = [];
 let actionRows = [];
 let preparingActions = false;
+let preparingActionIndex = null;
+let actionStatusTimer;
 const sourcePreferences = new Map();
 try {
   for (const [path, preference] of JSON.parse(localStorage.getItem('deciflow-source-preferences') || '[]')) sourcePreferences.set(path, { profile: preference.profile, chunkEvents: preference.chunkEvents });
 } catch { /* Keep the UI usable when browser storage is unavailable or invalid. */ }
 let editingAction = null;
 function renderActions() {
+  $('action-list').hidden = editingAction !== null;
+  const editorStatus = preparingActions ? 'preparing' : registeredActions[editingAction]?.environmentStatus || 'not_ready';
+  $('action-environment-status').hidden = editingAction === null || $('action-editor').hidden === true;
+  $('action-environment-status').textContent = { ready: 'Ready', preparing: 'Preparing...', not_ready: 'Not ready', external: 'External' }[editorStatus];
+  $('action-environment-status').className = `action-status ${editorStatus}`;
   $('action-registry').replaceChildren();
   const query = $('action-search').value.trim().toLowerCase();
   let matches = 0;
   const table = element('table', '', 'action-list');
   const header = element('tr', '');
-  for (const title of ['Name', 'Python', 'Modules', 'Manage']) header.append(element('th', title));
+  for (const title of ['Name', 'Python', 'Modules', 'Status', 'Manage']) header.append(element('th', title));
   table.append(header);
   registeredActions.forEach((action, index) => {
     if (!action.name.toLowerCase().includes(query)) return;
@@ -169,20 +181,59 @@ function renderActions() {
     const row = element('tr', '');
     const modules = Array.isArray(action.modules) ? action.modules.join(', ') : action.modules;
     for (const value of [action.name, action.pythonVersion || 'External', modules || 'Standard library']) row.append(element('td', value));
+    const state = action.pythonVersion && preparingActions && (index === preparingActionIndex || (preparingActionIndex === null && action.environmentStatus === 'not_ready')) ? 'preparing' : action.environmentStatus || (action.pythonVersion ? 'not_ready' : 'external');
+    const status = element('td', '', 'action-status-cell');
+    const badge = element('span', { ready: 'Ready', preparing: 'Preparing...', not_ready: 'Not ready', external: 'External' }[state], `action-status ${state}`);
+    badge.setAttribute('role', 'status'); status.append(badge); row.append(status);
     const controls = element('td', '', 'action-list-controls');
     for (const [caption, handler] of [
       ['View', () => handleViewConfiguration('action-view', action.name, [['Name', action.name], ['ID', action.id], ['Python version', action.pythonVersion], ['Modules', action.modules || []], ['Python executable', action.python], ['Script path', action.script], ['Python code', action.code]])],
       ['Edit', () => handleEditAction(index)],
+      ['Reset venv', () => handleResetAction(index)],
       ['Delete', () => { registeredActions.splice(index, 1); handleCloseConfiguration('action-view'); renderActions(); $('action-message').textContent = 'Deletion pending. Save changes to apply.'; }],
     ]) {
       const button = element('button', caption, 'quiet');
-      button.type = 'button'; button.disabled = preparingActions || (caption !== 'View' && editingAction !== null);
+      button.type = 'button'; button.disabled = preparingActions || (caption !== 'View' && editingAction !== null) || (caption === 'Reset venv' && (!action.id || !action.pythonVersion));
       button.onclick = handler; controls.append(button);
     }
     row.append(controls); table.append(row);
   });
   $('action-registry').append(matches ? table : element('p', registeredActions.length ? 'No Actions match your search.' : 'No Actions registered. Click Add action to create one.', 'caption'));
   $('add-action').disabled = preparingActions || editingAction !== null;
+}
+function scheduleActionStatus() {
+  if (actionStatusTimer) return;
+  if (registeredActions.some(action => action.environmentStatus === 'preparing')) actionStatusTimer = setTimeout(handleRefreshActionStatus, 2000);
+}
+async function handleRefreshActionStatus() {
+  clearTimeout(actionStatusTimer); actionStatusTimer = undefined;
+  try {
+    const response = await fetch('/api/actions');
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    const states = new Map(data.actions.map(action => [action.id, action.environmentStatus]));
+    for (const action of registeredActions) {
+      if (states.has(action.id)) action.environmentStatus = states.get(action.id);
+      else if (action.pythonVersion) action.environmentStatus = 'not_ready';
+    }
+    renderActions();
+  } catch { /* Keep the last known status; the operation error is shown separately. */ }
+  scheduleActionStatus();
+}
+async function handleResetAction(index) {
+  preparingActionIndex = index;
+  preparingActions = true; $('save-actions').disabled = true;
+  renderActions();
+  $('action-message').textContent = 'Rebuilding the saved Action environment…';
+  try {
+    const response = await fetch(`/api/actions/${registeredActions[index].id}/reset`, { method: 'POST' });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    registeredActions[index] = data.action;
+    handleCloseConfiguration('action-view');
+    $('action-message').textContent = 'Action environment rebuilt with pip and locked dependencies.';
+  } catch (error) { await handleRefreshActionStatus(); $('action-message').textContent = error.message; }
+  finally { preparingActionIndex = null; preparingActions = false; $('save-actions').disabled = $('action-view').hidden === false; renderActions(); }
 }
 $('action-search').oninput = renderActions;
 function handleEditAction(index) {
@@ -216,6 +267,7 @@ function handleCloseAction() {
 $('cancel-action').onclick = handleCloseAction;
 $('add-action').onclick = () => handleEditAction(registeredActions.length);
 $('save-actions').onclick = async () => {
+  preparingActionIndex = editingAction;
   preparingActions = true;
   $('save-actions').disabled = true;
   $('add-action').disabled = true; $('cancel-action').disabled = true;
@@ -233,7 +285,7 @@ $('save-actions').onclick = async () => {
     $('action-message').textContent = 'Actions saved and environments ready. Changes apply to the next run.';
   } catch (error) { $('action-message').textContent = error.message; }
   finally {
-    preparingActions = false;
+    preparingActionIndex = null; preparingActions = false;
     $('save-actions').disabled = false; $('add-action').disabled = false;
     for (const fields of actionRows) for (const input of Object.values(fields)) input.disabled = false;
     $('cancel-action').disabled = false; renderActions();
@@ -242,7 +294,7 @@ $('save-actions').onclick = async () => {
 fetch('/api/actions', { method: 'POST' }).then(async response => {
   const data = await response.json();
   if (!response.ok) throw new Error(data.error);
-  registeredActions = data.actions; renderActions(); updateSourceSettings();
+  registeredActions = data.actions; renderActions(); updateSourceSettings(); scheduleActionStatus();
 }).catch(error => { $('action-message').textContent = error.message; });
 let criteriaProfiles = {};
 let criteriaLoaded = false;
@@ -254,6 +306,7 @@ function handleViewCriteria(id) {
   handleViewConfiguration('criteria-view', profile.label, [['Profile ID', id], ['Name', profile.label], ['Decision instructions', profile.instructions], ...Object.entries(labels).map(([key, label]) => [label, profile.criteria[key]]), ['Normalization', profile.normalization]]);
 }
 function renderCriteria() {
+  $('criteria-list').hidden = editingCriteria !== null;
   const defaultTable = element('table', '', 'action-list');
   const defaultHeader = element('tr', '');
   for (const title of ['Name', 'Profile ID', 'Manage']) defaultHeader.append(element('th', title));
@@ -445,6 +498,14 @@ $('add-source').onclick = () => {
   updateSourceSettings([...sourceRows.map(item => item.path), '']);
   sourceRows.at(-1).name.focus?.();
 };
+$('reset-sources').onclick = () => {
+  if (busy || sourceMode === 'paste') return;
+  const defaults = defaultFilePaths[sourceMode];
+  for (const path of defaults.split('\n')) sourcePreferences.set(path, { profile: 'general', chunkEvents: 1, action: '' });
+  try { localStorage.setItem('deciflow-source-preferences', JSON.stringify([...sourcePreferences].map(([path, { profile, chunkEvents }]) => [path, { profile, chunkEvents }]))); } catch { /* The current page still uses the reset defaults. */ }
+  filePaths[sourceMode] = defaults; $('file-path').value = defaults;
+  updateSourceSettings();
+};
 updateSourceSettings();
 let chartCertainty = 'all';
 function renderCategoryChart() {
@@ -515,6 +576,17 @@ function renderSourceFilter() {
   select.value = counts.has(selected) ? selected : 'all';
   select.disabled = !counts.size;
 }
+function formatDuration(milliseconds) {
+  if (milliseconds < 1000) return `${Number(milliseconds.toFixed(1))} ms`;
+  if (milliseconds < 60000) return `${Number((milliseconds / 1000).toFixed(1))} sec`;
+  const minutes = Math.floor(milliseconds / 60000);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  if (days) return `${days} day${days === 1 ? '' : 's'}${hours % 24 ? ` ${hours % 24} hour${hours % 24 === 1 ? '' : 's'}` : ''}`;
+  if (hours) return `${hours} hour${hours === 1 ? '' : 's'}${minutes % 60 ? ` ${minutes % 60} min` : ''}`;
+  const seconds = Math.floor(milliseconds / 1000) % 60;
+  return `${minutes} min${seconds ? ` ${seconds} sec` : ''}`;
+}
 function render(updateList = true) {
   renderSourceFilter();
   renderCategoryChart();
@@ -523,15 +595,25 @@ function render(updateList = true) {
   const averageMs = completed ? processingMs / completed : 0;
   recentCompletions = recentCompletions.filter(time => time > elapsedMs - 5000);
   const throughput = elapsedMs > 0 ? recentCompletions.length * 1000 / Math.min(elapsedMs, 5000) : 0;
+  const actionSuccess = results.filter(result => result.actionExecution?.status === 'success').length;
+  const actionFailed = results.filter(result => result.actionExecution?.status === 'failed').length;
   const processingPercent = elapsedMs > 0 ? `${(activeProcessingMs / elapsedMs * 100).toFixed(1)}%` : 'N/A';
-  for (const [label, value] of [['Success / Failed', `${results.filter(r => !r.error).length} / ${results.filter(r => r.error).length}`], ['Needs review', results.filter(needsReview).length], ['Throughput', `${throughput.toFixed(1)} chunks/s`], ['Total elapsed time', `${elapsedMs}ms`], ['Active processing time', `${activeProcessingMs}ms (${processingPercent})`], ['Average processing time', `${averageMs.toFixed(1)}ms`]]) {
+  for (const [label, value] of [['Success / Failed / Total', `${results.filter(r => !r.error).length} / ${results.filter(r => r.error).length} / ${results.filter(Boolean).length}`], ['Action Success / Failed / Total', `${actionSuccess} / ${actionFailed} / ${actionSuccess + actionFailed}`], ['Needs review', results.filter(needsReview).length], ['Total elapsed time', formatDuration(elapsedMs)], ['Active processing time', `${formatDuration(activeProcessingMs)} (${processingPercent})`], ['Average processing time', formatDuration(averageMs)], ['Throughput', `${throughput.toFixed(1)} chunks/s`]]) {
     const metric = element('div', label, 'metric');
-    if (label === 'Success / Failed') metric.title = 'Successfully classified / failed chunks. Failures include connection errors, timeouts, rejected inputs, and invalid responses. Action failures do not change classification counts.';
+    if (label === 'Success / Failed / Total') metric.title = 'Successfully classified / failed / total completed chunks. Total is success plus failure, not planned requests. Failures include connection errors, timeouts, rejected inputs, and invalid responses. Action failures do not change classification counts.';
+    if (label === 'Action Success / Failed / Total') metric.title = 'Completed Action executions: success / failed / total. Unassigned sources and failed decisions do not run Actions. Action failures do not change decision counts.';
     if (label === 'Throughput') metric.title = 'Successfully classified chunks per second over the last 5 seconds, including idle time. Uses elapsed time until 5 seconds; freezes when stopped or completed.';
     if (label === 'Needs review') metric.title = 'Successful classifications only: selected category probability below 70%, top-two probability gap below 10 percentage points, collapsed options, or Other category. Failed requests are excluded.';
     if (label === 'Average processing time') metric.title = 'Mean request duration, including network/server wait and failed requests; excludes waiting for new file lines.';
     if (label === 'Active processing time') metric.title = 'Time with at least one request in flight, counting overlapping requests once. Includes network/server wait, excludes idle time; not CPU utilization.';
-    metric.append(element('strong', String(value)));
+    const number = element('strong', label.endsWith('Success / Failed / Total') ? '' : String(value));
+    if (label.endsWith('Success / Failed / Total')) {
+      String(value).split(' / ').forEach((count, index) => {
+        if (index) number.append(element('span', ' / '));
+        number.append(element('span', count, ['count-success', 'count-failed', 'count-total'][index]));
+      });
+    }
+    metric.append(number);
     $('summary').append(metric);
   }
   const pendingCount = updatesPaused ? completionOrder.length - pausedOrder.length : 0;
@@ -616,7 +698,7 @@ function render(updateList = true) {
     if (result.error) row.append(element('p', result.error, 'error-message'));
     else {
       row.append(element('div', Object.entries(result.probabilities).map(([key, value]) => `${labels[key]} ${Math.round(value * 100)}%`).join(' · '), 'probabilities'));
-      const label = element('label', 'Reviewer category: ');
+      const label = element('label', 'Reviewer category: ', 'reviewer-category');
       const select = element('select', '', 'correction');
       select.setAttribute('aria-label', `Reviewer category: ${result.log}`);
       select.append(new Option('Not reviewed', ''));
@@ -724,7 +806,7 @@ async function handleProcessing(job = null) {
   }
   busy = true;
   for (const { name, profile, size, action, remove } of sourceRows) { name.disabled = true; profile.disabled = true; size.disabled = true; action.disabled = true; remove.disabled = true; }
-  $('add-source').disabled = true;
+  $('add-source').disabled = true; $('reset-sources').disabled = true;
   activeRequest = new AbortController();
   for (const id of ['classify', 'sample', 'export', 'source-mode', 'file-path', 'paste-profile', 'paste-chunk-events']) $(id).disabled = true;
   $('stop').disabled = false;
@@ -795,7 +877,7 @@ async function handleProcessing(job = null) {
   } finally {
     busy = false;
     for (const { name, profile, size, action, remove } of sourceRows) { name.disabled = false; profile.disabled = false; size.disabled = false; action.disabled = false; remove.disabled = false; }
-    $('add-source').disabled = false;
+    $('add-source').disabled = false; $('reset-sources').disabled = false;
     activeRequest.abort();
     activeRequest = undefined;
     $('stop').disabled = activeJobState !== 'running';

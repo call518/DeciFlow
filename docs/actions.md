@@ -2,16 +2,18 @@
 
 [English](actions.md) | [한국어](actions.ko.md) | [README](../README.md)
 
+Add/Edit hides the list and shows only the form. Saving or Cancel edit returns to the list.
+
 **View** shows the current name, Python version, modules, code, and stored paths
-read-only. **Close** dismisses it without changing editor drafts or preparing
-environments. List controls appear as **View / Edit / Delete**. Edit/Add closes View. Viewing
-hides the editor and disables saving; Close restores any existing draft.
+read-only. **Cancel** dismisses it without changing editor drafts or preparing
+environments. List controls appear as **View / Edit / Reset venv / Delete**. Edit/Add closes View. Viewing
+hides the editor and disables saving; Cancel restores any existing draft.
 
 Open **Actions** in the left sidebar to create, edit, or remove handlers. Click
 **Add action**, enter a name, Python version (e.g. `3.12`), modules, and Python
 code directly in the editor, then **Save & prepare environments**. No script path
 or separate file upload is needed. The list shows one row per Action with its
-name, Python version, modules, and **View**/**Edit**/**Delete** buttons.
+name, Python version, modules, environment Status, and **View**/**Edit**/**Reset venv**/**Delete** buttons.
 **Search by Name** filters names by a case-insensitive partial match.
 **Edit** opens one handler;
 **Cancel edit** discards its draft. Removal takes effect when you save. Return to
@@ -25,7 +27,13 @@ and environment markers are not supported. Leave modules empty for code using
 only the standard library. Each handler reads the decision with
 `result = json.load(sys.stdin)`; the initial editor includes a runnable template.
 
-DeciFlow needs `uv` on its PATH and writable persistent storage. It uses `uv venv`,
+**Status** shows environment readiness: Ready after Python/dependency installation,
+Preparing... during preparation, or Not ready for missing/incomplete environments.
+Legacy Actions using external Python show External. Saving/resetting displays
+Preparing...; pending statuses refresh automatically until preparation ends.
+The editor also displays preparation status.
+
+DeciFlow needs `uv` on its PATH and writable persistent storage. It uses `uv venv --seed`,
 `uv add`, and `uv sync` to prepare an independent environment. Python/package
 installation may require network access. Preparation allows five minutes per uv
 command; failure preserves the previous registrations. Existing file-based
@@ -56,6 +64,18 @@ runs keep their original scripts and environments; saved changes apply to the ne
 run. Old code and environment revisions are retained: remove unused revisions
 only after their runs have stopped. After renaming/removing an Action, check its
 source assignments.
+
+**Reset venv** deletes the saved Action's current `.venv` and rebuilds it from its
+Python/module settings and `uv.lock`, including pip. Code, registrations, and lockfiles
+stay intact. It uses saved settings, not editor drafts. A failed reset leaves the
+environment unready; retry with Reset venv. Legacy Actions using external Python
+cannot be reset.
+
+**Delete → Save & prepare environments** removes the Action's UUID folder, including
+code snapshots, all environment revisions, lockfiles, and data. External scripts/Python
+outside DeciFlow-managed storage are not deleted. Reset/deletion is rejected while
+analysis uses the Action; click **Stop** first. New runs using it cannot start during
+maintenance.
 
 To restore a deleted venv, save Actions again. Keep the project and `uv.lock` to
 restore resolved package versions; deleting them requires resolving again. Log

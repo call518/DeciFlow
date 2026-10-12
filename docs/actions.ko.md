@@ -2,16 +2,18 @@
 
 [English](actions.md) | [한국어](actions.ko.md) | [README](../README.ko.md)
 
+Add·Edit에서는 목록을 숨기고 입력폼만 표시합니다. 저장 또는 Cancel edit 후 목록으로 돌아옵니다.
+
 **View**는 현재 이름·Python 버전·모듈·코드와 저장된 경로를 읽기 전용으로 표시합니다.
-**Close**로 닫으며 편집 초안을 바꾸거나 환경을 준비하지 않습니다.
-목록 버튼 순서는 **View / Edit / Delete**입니다. Edit·Add는 View를 닫습니다.
-View 중에는 편집 영역을 숨기고 저장을 막으며 Close로 기존 초안을 다시 표시합니다.
+**Cancel**로 닫으며 편집 초안을 바꾸거나 환경을 준비하지 않습니다.
+목록 버튼 순서는 **View / Edit / Reset venv / Delete**입니다. Edit·Add는 View를 닫습니다.
+View 중에는 편집 영역을 숨기고 저장을 막으며 Cancel로 기존 초안을 다시 표시합니다.
 
 좌측 사이드바의 **Actions**에서 핸들러를 생성·수정·삭제합니다.
 **Add action**을 누르고 이름, Python 버전(예: `3.12`), 모듈 목록,
 Python 코드를 편집기에 직접 입력한 뒤 **Save & prepare environments**를
 누릅니다. 스크립트 경로나 별도 파일 업로드는 필요하지 않습니다.
-목록은 Action별 이름·Python 버전·모듈과 **View**/**Edit**/**Delete** 버튼을 한 줄에
+목록은 Action별 이름·Python 버전·모듈·환경 Status와 **View**/**Edit**/**Reset venv**/**Delete** 버튼을 한 줄에
 표시합니다. **Search by Name**에서 대소문자 구분 없이 이름의 일부로 검색합니다.
 **Edit**으로 하나의 편집기를 열고 **Cancel edit**으로 변경을 취소합니다.
 삭제도 저장하면 반영됩니다. **Main**으로 돌아가 로그 파일·패턴마다 Action 또는
@@ -24,8 +26,13 @@ Python 코드를 편집기에 직접 입력한 뒤 **Save & prepare environments
 코드에서는 `result = json.load(sys.stdin)`으로 판정을 받습니다.
 새 편집기에는 실행 가능한 기본 템플릿이 제공됩니다.
 
+**Status**는 환경 상태를 표시합니다. Ready는 Python·모듈 설치까지 완료,
+Preparing...은 준비 중, Not ready는 환경 누락·불완전 상태입니다. 외부 Python을
+사용하는 기존 Action은 External입니다. 저장·Reset 중에는 Preparing...을 표시하며,
+준비 중인 상태가 있으면 완료될 때까지 자동 갱신합니다. 편집 화면에도 상태를 표시합니다.
+
 DeciFlow의 PATH에 `uv`가 있고 영구 저장 경로에 쓰기 권한이 있어야 합니다.
-`uv venv`, `uv add`, `uv sync`로 독립 환경을 준비합니다. Python·패키지
+`uv venv --seed`, `uv add`, `uv sync`로 독립 환경을 준비합니다. Python·패키지
 설치에는 네트워크 접근이 필요할 수 있습니다. 준비는 uv 명령마다 최대 5분이며
 실패하면 기존 등록 정보를 유지합니다. 기존 파일 기반 등록도 계속 실행할 수
 있습니다. Actions 화면에서 기존 코드를 불러오며, 저장하면 UI에서 관리하는
@@ -55,6 +62,17 @@ Docker에서는 공통 데이터 루트와 볼륨 목적지를 동일하게 유�
 진행 중인 실행은 기존 코드와 환경을 유지하고 저장한 변경은 다음 실행부터
 적용됩니다. 이전 코드와 환경은 보관되며, 해당 실행이 끝난 뒤 사용하지 않는
 버전을 직접 정리합니다. Action 이름을 바꾸거나 삭제했다면 소스별 할당을 확인하세요.
+
+목록의 **Reset venv**는 저장된 Action의 현재 `.venv`를 삭제하고 Python·모듈 설정과
+`uv.lock`을 기준으로 다시 생성합니다. pip도 포함하며 코드·등록 정보·lockfile은 유지합니다.
+초안에는 적용하지 않고 저장된 설정을 사용합니다. 실패하면 불완전한 환경을 실행하지 않으며
+Reset venv를 다시 눌러 재시도할 수 있습니다. 외부 Python을 지정한 기존 Action은 대상이 아닙니다.
+
+**Delete → Save & prepare environments**로 삭제를 확정하면 해당 Action의 UUID 폴더를
+제거합니다. 코드 스냅샷·모든 환경 리비전·lockfile·데이터가 함께 삭제됩니다.
+DeciFlow가 관리하지 않는 외부 스크립트·Python은 삭제하지 않습니다.
+사용 중인 분석이 있으면 Reset·삭제를 거부합니다. 먼저 **Stop**을 누르세요.
+재생성 중에는 해당 Action을 사용하는 새 분석도 시작할 수 없습니다.
 
 venv가 삭제됐다면 Actions를 다시 저장하여 복구합니다. 해석된 패키지 버전을
 복원하려면 프로젝트와 `uv.lock`을 유지해야 합니다. 삭제하면 다시 해석해야 합니다.

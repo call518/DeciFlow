@@ -12,6 +12,10 @@ a continuous health check; local input rejections do not change the status.
 
 ### Input and criteria
 
+**Reset sources**, beside Add source, restores the current Batch/Realtime sample
+paths, General system criteria, one event per chunk, and Action None. It is disabled
+during processing.
+
 **Batch** is selected by default. Each mode starts with editable examples.
 
 | Mode | What DeciFlow reads |
@@ -213,12 +217,16 @@ checks as analysis; file jobs also require a local/trusted UI origin. Without
 
 | Metric | Meaning |
 | --- | --- |
-| Success / Failed | Valid classifications / failed chunks; failures include connection errors, timeouts, rejected inputs, and invalid responses |
+| Success / Failed / Total | Valid classifications / failed chunks / total completed chunks (success + failure); failures include connection errors, timeouts, rejected inputs, and invalid responses |
+| Action Success / Failed / Total | Completed Action successes / failures / total; excludes unassigned sources and failed decisions; independent of decision counts |
 | Needs review | Successful Uncertain (low probability, close probabilities, or collapsed options) or Other classifications; excludes failed/rejected requests |
 | Throughput | Successfully classified chunks/s over the last 5 seconds, including idle time; uses elapsed time during the first 5 seconds; freezes when stopped/completed |
 | Total elapsed time | Time since the run started, including idle periods |
 | Active processing time | Time with at least one request in flight, counting overlap once; percentage of total elapsed time |
 | Average processing time | Mean completed request duration, including failures; per chunk |
+
+Total elapsed time, Active processing time, and Average processing time use
+ms, sec, min, hour, or day as appropriate. JSON duration values remain milliseconds.
 
 Action execution failures do not affect classification counts or engine connection status.
 
