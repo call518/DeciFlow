@@ -7,11 +7,11 @@ docker run --detach \
   --hostname DeciFlow-UI \
   --init \
   --restart unless-stopped \
-  --env DECIFLOW_ACTIONS_DIR=/var/lib/deciflow-actions \
+  --env DECIFLOW_DATA_DIR=/var/lib/deciflow-data \
   --publish 0.0.0.0:4000:4000 \
   --mount "type=bind,src=$(pwd),dst=/app,readonly" \
   --mount "type=volume,src=deciflow-venv,dst=/opt/deciflow-venv" \
   --mount "type=bind,src=/var/log,dst=/host-logs/var/log,readonly" \
   --mount "type=bind,src=$(pwd)/sample-logs,dst=/host-logs/sample-logs,readonly" \
-  --mount "type=volume,src=deciflow-actions,dst=/var/lib/deciflow-actions" \
+  --mount "type=volume,src=deciflow-data,dst=/var/lib/deciflow-data" \
   call518/deciflow-ui:0.0.1

@@ -7,6 +7,7 @@ import platform
 import socket
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import aclosing, asynccontextmanager
+from copy import deepcopy
 from datetime import UTC, datetime
 from functools import partial
 from ipaddress import ip_address
@@ -35,7 +36,13 @@ from config import (
 )
 from configured_sources import follow_configured, read_configured
 from jobs import JOBS, Job
-from profiles import PROFILES, validate_settings
+from profiles import (
+    PROFILES,
+    load_profiles,
+    save_profiles,
+    use_profile_snapshot,
+    validate_settings,
+)
 from source_settings import parse_source_settings, resolve_configured_sources
 from sources import follow_sources, read_sources
 
@@ -187,9 +194,15 @@ async def _timed_results(
 
 
 async def handle_events(
-    logs: list[str], engine: Engine, profile: str = "general", chunk_events: int = 1
+    logs: list[str],
+    engine: Engine,
+    profile: str = "general",
+    chunk_events: int = 1,
+    profile_snapshot: dict[str, Result] | None = None,
 ) -> AsyncIterator[str]:
     """Stream progress and cancel in-flight engine calls on client disconnect."""
+
+    snapshot = profile_snapshot if profile_snapshot is not None else deepcopy(PROFILES)
 
     async def handle_records() -> AsyncGenerator[Result, None]:
         for index in range(0, len(logs), chunk_events):
@@ -210,12 +223,13 @@ async def handle_events(
         async def handle_classify(log: str) -> Result:
             clock.begin()
             try:
-                decision = (
-                    await classify_log(log, engine, client)
-                    if profile == "general"
-                    else await classify_log(log, engine, client, profile)
-                )
-                return decision
+                with use_profile_snapshot(snapshot):
+                    decision = (
+                        await classify_log(log, engine, client)
+                        if profile == "general"
+                        else await classify_log(log, engine, client, profile)
+                    )
+                    return decision
             finally:
                 clock.end()
 
@@ -300,7 +314,7 @@ async def handle_classify(request: Request) -> Response:
             503,
             {"error": "Set the JEV_API_KEY environment variable on the server."},
         )
-    events = handle_events(logs, engine, profile, chunk_events)
+    events = handle_events(logs, engine, profile, chunk_events, deepcopy(PROFILES))
     if body.get("persist") is True:
         return _start_job(
             {
@@ -325,8 +339,10 @@ async def handle_file_events(
     engine: Engine,
     specs: list[Result] | None = None,
     actions: list[Result] | None = None,
+    profile_snapshot: dict[str, Result] | None = None,
 ) -> AsyncIterator[str]:
     """Stream classifications from a file without buffering its full contents."""
+    snapshot = profile_snapshot if profile_snapshot is not None else deepcopy(PROFILES)
     clock = _ProcessingClock()
     yield _encode(
         {
@@ -350,17 +366,21 @@ async def handle_file_events(
             async def handle_classify(log: str) -> Result:
                 clock.begin()
                 try:
-                    return await classify_log(log, engine, client)
+                    with use_profile_snapshot(snapshot):
+                        return await classify_log(log, engine, client)
                 finally:
                     clock.end()
 
             async def handle_record(record: Result) -> Result:
                 clock.begin()
                 try:
-                    profile = record.get("profile", "general")
-                    if profile == "general":
-                        return await classify_log(record["log"], engine, client)
-                    return await classify_log(record["log"], engine, client, profile)
+                    with use_profile_snapshot(snapshot):
+                        profile = record.get("profile", "general")
+                        if profile == "general":
+                            return await classify_log(record["log"], engine, client)
+                        return await classify_log(
+                            record["log"], engine, client, profile
+                        )
                 finally:
                     clock.end()
 
@@ -405,6 +425,7 @@ async def handle_file_source(request: Request) -> Response:
         mode = "realtime" if body["mode"] == "follow" else body["mode"]
         values = body.get("sources", body.get("paths", body.get("path")))
         specs = parse_source_settings(values)
+        profile_snapshot = deepcopy(PROFILES)
         actions = load_actions() if any(spec.get("action") for spec in specs) else []
         names = {action["name"] for action in actions}
         if any(spec.get("action") and spec["action"] not in names for spec in specs):
@@ -424,7 +445,9 @@ async def handle_file_source(request: Request) -> Response:
             503,
             {"error": "Set the JEV_API_KEY environment variable on the server."},
         )
-    events = handle_file_events(values, paths, mode, engine, specs, actions)
+    events = handle_file_events(
+        values, paths, mode, engine, specs, actions, profile_snapshot
+    )
     if body.get("persist") is True:
         return _start_job({"mode": mode, "sources": specs}, events)
     return StreamingResponse(
@@ -453,6 +476,23 @@ async def _action_results(
             )
             result["actionExecution"] = await run_action(registered[name], result)
         yield index, result
+
+
+async def handle_criteria(request: Request) -> Response:
+    """Manage fixed-category profiles with the same trusted-origin rules as Actions."""
+    if not _allowed_origin(request, files=True):
+        return _json(
+            403, {"error": "Criteria management requires a trusted UI origin."}
+        )
+    try:
+        profiles = (
+            save_profiles(await request.json())
+            if request.method == "PUT"
+            else deepcopy(PROFILES)
+        )
+    except (ValueError, TypeError, OSError) as error:
+        return _json(400, {"error": str(error)})
+    return _json(200, {"profiles": profiles})
 
 
 async def handle_actions(request: Request) -> Response:
@@ -521,6 +561,7 @@ async def handle_job(request: Request) -> Response:
 @asynccontextmanager
 async def lifespan(application: Starlette) -> AsyncIterator[None]:
     """Stop background analysis jobs when the server shuts down."""
+    load_profiles()
     try:
         yield
     finally:
@@ -546,6 +587,7 @@ app = Starlette(
         Route("/api/jobs/{job_id}", handle_job, methods=["POST"]),
         Route("/api/jobs/{job_id}/events", handle_job, methods=["POST"]),
         Route("/api/jobs/{job_id}/stop", handle_job, methods=["POST"]),
+        Route("/api/criteria", handle_criteria, methods=["POST", "PUT"]),
         Route("/api/actions", handle_actions, methods=["GET", "POST", "PUT"]),
         Route("/api/status", handle_status, methods=["GET"]),
         Route("/api/classify", handle_classify, methods=["POST"]),

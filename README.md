@@ -102,8 +102,12 @@ The default key `changeme` is for trials. Change it in both the Laya script and 
 | --- | --- |
 | [Usage](docs/usage.md) | Input modes, criteria, filters, human review, reconnecting, timing |
 | [Configuration](docs/configuration.md) | Environment variables, models, input budgets |
-| [Python Actions](docs/actions.md) | Registration, source assignment, execution contract, storage/recovery |
+| [Criteria](docs/criteria.md) | List, view, add, edit, and delete fixed-category profiles |
+| [Python Actions](docs/actions.md) | Configuration viewing, registration, source assignment, execution contract, storage/recovery |
 | [Result JSON](docs/results.md) | Real response example and field reference |
+
+Sidebar views have URLs: Main `/`, Criteria `/#criteria`, Actions `/#actions`.
+Reloading, browser history, and direct links retain the selected view.
 
 - **Paste:** Analyze pasted text.
 - **Batch:** Analyze existing files. Docker maps host `/var/log` to `/host-logs/var/log`.
@@ -231,9 +235,10 @@ docker build --tag call518/deciflow-ui:0.0.1 .
 bash scripts/run-deciflow-ui.sh
 ```
 
-The launch script publishes the UI on `0.0.0.0:4000` and also mounts sample logs
-and persistent Actions storage. For local-only access, change its publish address
-to `127.0.0.1:4000:4000`. Edit ports/mounts in the script and recreate the container.
+The launch script publishes the UI on `0.0.0.0:4000` and mounts sample logs.
+The `deciflow-data` volume mounts at `/var/lib/deciflow-data`; Actions use `actions/`
+and Criteria use `criteria/`. For local-only access, change the publish address to
+`127.0.0.1:4000:4000`. Recreate the container after changing ports/mounts.
 
 Open **http://127.0.0.1:4000**. Host `/var/log` is available as `/host-logs/var/log` in
 Batch/Realtime (e.g. `/host-logs/var/log/messages`); mount other directories read-only as needed. If `.env` uses
@@ -338,8 +343,8 @@ uv sync
 uv run python server.py
 ```
 
-Open **http://127.0.0.1:4000**. Actions need writable storage. If the default
-`/var/lib/deciflow-actions` is not writable, set `DECIFLOW_ACTIONS_DIR=./action-data`
+Open **http://127.0.0.1:4000**. Actions and Criteria need writable shared storage. If the default
+`/var/lib/deciflow-data` is not writable, set `DECIFLOW_DATA_DIR=./data`
 in `.env`. Restart DeciFlow after configuration changes.
 
 ## Appendix — Custom Docker run images (optional)

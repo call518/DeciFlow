@@ -50,10 +50,11 @@ differ. Laya and Jev use the same selected profile. Type detection is manual;
 | Application | Application operations, exceptions, and dependencies |
 | Network / tcpdump text | Connection/packet evidence in text; binary PCAP is unsupported |
 
-Edit/add a JSON file in [`profiles/`](../profiles/) and restart DeciFlow to update the
-selector. Keep `label`, `instructions`, `criteria`, and the existing five category
-keys. Describe event outcomes and evidence; keep specific log strings in evaluation
-samples rather than adding message-by-message exceptions to production criteria.
+Use **Criteria** in the sidebar to add, edit, or delete profiles.
+Result categories remain Normal, Warning, Error, Security, and Other; `general` cannot
+be deleted. **Save changes** applies to new runs; running jobs keep their original
+criteria. See [Criteria management](criteria.md) for storage and source reassignment.
+Describe outcomes and evidence; keep specific log strings in evaluation samples.
 
 Chunks never mix files. Batch flushes remaining events at EOF; Realtime flushes at
 the configured size or after one second without a new event, and separates
@@ -175,6 +176,10 @@ Laya name: inspect `providerResponse.routing` for the actual checkpoint.
 [Result JSON example and field reference](results.md)
 
 ### Refresh and reconnect
+
+Sidebar routes are Main `/`, Criteria `/#criteria`, and Actions `/#actions`.
+Reloading opens the view specified by the URL; browser back/forward also switches
+views. Unsaved editor drafts do not survive a reload.
 
 UI runs (Batch, Realtime, and Paste) continue in **server memory** when the browser
 refreshes or disconnects. Each browser tab remembers its latest job ID in session

@@ -18,7 +18,8 @@ RUN printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d \
 
 WORKDIR /app
 ENV UV_PROJECT_ENVIRONMENT=/opt/deciflow-venv \
-    DECIFLOW_ACTIONS_DIR=/var/lib/deciflow-actions \
+    DECIFLOW_DATA_DIR=/var/lib/deciflow-data \
     PYTHONUNBUFFERED=1
+RUN mkdir -p /var/lib/deciflow-data/actions /var/lib/deciflow-data/criteria
 EXPOSE 4000
 CMD ["sh", "-c", "uv sync --frozen --no-dev --no-install-project --no-cache && exec /opt/deciflow-venv/bin/python -c \"import server; server.main(host='0.0.0.0')\""]

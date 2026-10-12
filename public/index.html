@@ -8,7 +8,7 @@
   <title>DeciFlow · Log decisions</title><link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <aside><a class="brand" href="/"><img src="/logo.png" alt="DeciFlow" width="2172" height="724"></a><p class="caption">DECISION WORKSPACE</p><nav class="sidebar-nav" aria-label="Workspace"><button id="nav-main" class="nav" type="button" aria-current="page">Main</button><button id="nav-actions" class="nav" type="button">Actions</button></nav><section class="host-info" aria-label="Log source host"><div class="host-label">LOG SOURCE HOST</div><strong id="host-name">Loading…</strong><div id="host-addresses">—</div><div id="host-os">—</div></section><div class="aside-bottom"><span id="powered-by">Loading engine…</span><br><span>Small decisions. Faster flow.</span></div></aside>
+  <aside><a class="brand" href="/"><img src="/logo.png" alt="DeciFlow" width="2172" height="724"></a><p class="caption">DECISION WORKSPACE</p><nav class="sidebar-nav" aria-label="Workspace"><button id="nav-main" class="nav" type="button" aria-current="page">Main</button><button id="nav-criteria" class="nav" type="button">Criteria</button><button id="nav-actions" class="nav" type="button">Actions</button></nav><section class="host-info" aria-label="Log source host"><div class="host-label">LOG SOURCE HOST</div><strong id="host-name">Loading…</strong><div id="host-addresses">—</div><div id="host-os">—</div></section><div class="aside-bottom"><span id="powered-by">Loading engine…</span><br><span>Small decisions. Faster flow.</span></div></aside>
   <main>
     <div id="main-page">
     <section class="intro"><p class="eyebrow">LOG INTELLIGENCE</p><div class="intro-title"><h1>Turn logs into decisions.</h1><span id="status" class="pill" role="status">Checking connection</span></div><p>Classify complex events and focus on what needs your attention.</p></section>
@@ -21,6 +21,20 @@
     </div>
     <footer>Results below 70% selected category probability, with a top-two probability gap below 10 percentage points, or classified as Other need review. Uncertain categories are provisional. Category probability is a model estimate, not measured accuracy.</footer>
     </div>
+    <section id="criteria-page" hidden aria-labelledby="criteria-title">
+      <section class="intro"><p class="eyebrow">DECISION CRITERIA</p><h1 id="criteria-title">Criteria</h1><p>Manage profiles with fixed Normal, Warning, Error, Security and Other categories. Saved changes apply to new runs.</p></section>
+      <section class="card actions-manager">
+        <div class="card-title"><h2>Criteria profiles</h2><button id="add-criteria" type="button" class="quiet" disabled>Add profile</button></div>
+        <p class="caption">The general profile is required and cannot be deleted. Deleting other profiles requires selecting a replacement in Main. Running jobs keep their original criteria.</p>
+        <div class="action-search-row"><label for="criteria-search">Search by Name</label><input id="criteria-search" type="search" placeholder="Profile name…"></div>
+        <div id="criteria-registry"></div>
+        <section id="criteria-view" class="configuration-view" hidden aria-label="Criteria configuration"></section>
+        <div id="criteria-editor" hidden></div>
+        <button id="cancel-criteria" type="button" class="quiet" hidden>Cancel edit</button>
+        <button id="save-criteria" type="button" class="primary" disabled>Save changes</button>
+        <p id="criteria-message" role="status" class="caption"></p>
+      </section>
+    </section>
     <section id="actions-page" hidden aria-labelledby="actions-title">
       <section class="intro"><p class="eyebrow">FLOW AUTOMATION</p><h1 id="actions-title">Actions</h1><p>Create and edit Python handlers, prepare their environments, then assign them to log sources in Main.</p></section>
       <section class="card actions-manager">
@@ -28,6 +42,7 @@
         <p class="caption">Each handler receives one successful decision JSON on stdin. Add or edit an Action, then save to prepare its environment. Deletions apply when you save. Scripts run with DeciFlow permissions. Timeout: 30 seconds; no automatic retries.</p>
         <div class="action-search-row"><label for="action-search">Search by Name</label><input id="action-search" type="search" placeholder="Action name…"></div>
         <div id="action-registry"></div>
+        <section id="action-view" class="configuration-view" hidden aria-label="Action configuration"></section>
         <div id="action-editor" hidden></div>
         <button id="cancel-action" type="button" class="quiet" hidden>Cancel edit</button>
         <button id="save-actions" type="button" class="primary">Save &amp; prepare environments</button>

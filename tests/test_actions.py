@@ -398,7 +398,9 @@ def test_default_action_storage(
         monkeypatch.delenv("DECIFLOW_ACTIONS_DIR", raising=False)
     else:
         monkeypatch.setenv("DECIFLOW_ACTIONS_DIR", directory)
-    assert actions.get_registry_path() == Path("/var/lib/deciflow-actions/actions.json")
+    assert actions.get_registry_path() == Path(
+        "/var/lib/deciflow-data/actions/actions.json"
+    )
 
 
 @pytest.mark.anyio
@@ -434,3 +436,15 @@ async def test_save_legacy_layout_preserves_lock_and_old_files(
     assert Path(saved["python"]).is_file()
     assert Path(restored["script"]).parent.parent.name == saved["id"]
     assert (await actions.run_action(restored, {}))["status"] == "success"
+
+
+@pytest.mark.parametrize("directory", [None, "", "   "])
+def test_shared_action_storage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, directory: str | None
+) -> None:
+    monkeypatch.setenv("DECIFLOW_DATA_DIR", str(tmp_path / "data"))
+    if directory is not None:
+        monkeypatch.setenv("DECIFLOW_ACTIONS_DIR", directory)
+    assert actions.get_registry_path() == tmp_path / "data/actions/actions.json"
+    monkeypatch.setenv("DECIFLOW_ACTIONS_DIR", str(tmp_path / "custom"))
+    assert actions.get_registry_path() == tmp_path / "custom/actions.json"

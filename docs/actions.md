@@ -2,11 +2,16 @@
 
 [English](actions.md) | [한국어](actions.ko.md) | [README](../README.md)
 
+**View** shows the current name, Python version, modules, code, and stored paths
+read-only. **Close** dismisses it without changing editor drafts or preparing
+environments. List controls appear as **View / Edit / Delete**. Edit/Add closes View. Viewing
+hides the editor and disables saving; Close restores any existing draft.
+
 Open **Actions** in the left sidebar to create, edit, or remove handlers. Click
 **Add action**, enter a name, Python version (e.g. `3.12`), modules, and Python
 code directly in the editor, then **Save & prepare environments**. No script path
 or separate file upload is needed. The list shows one row per Action with its
-name, Python version, modules, and **Edit**/**Delete** buttons.
+name, Python version, modules, and **View**/**Edit**/**Delete** buttons.
 **Search by Name** filters names by a case-insensitive partial match.
 **Edit** opens one handler;
 **Cancel edit** discards its draft. Removal takes effect when you save. Return to
@@ -27,10 +32,11 @@ command; failure preserves the previous registrations. Existing file-based
 registrations remain executable; Actions imports their code into the editor,
 and saving converts them to UI-managed code and environments.
 
-`DECIFLOW_ACTIONS_DIR` selects the storage directory. Unset or blank defaults to
-`/var/lib/deciflow-actions` for both Python and Docker startup. Python startup needs
-write permission there; otherwise set a writable directory such as `./action-data`.
-For Docker, keep the setting and volume destination identical. Registrations, code snapshots,
+Actions use `actions/` under the shared `DECIFLOW_DATA_DIR` root. The default is
+`/var/lib/deciflow-data/actions` for both Python and Docker. An explicit
+`DECIFLOW_ACTIONS_DIR` overrides Actions storage only. Direct host startup needs write
+permission; set the shared root to `./data` if needed. For Docker, keep the shared data
+root and volume destination identical. Registrations, code snapshots,
 projects, lockfiles, and venvs are stored together. New analysis sources default to **None**, including sources with older stored
 assignments. Reconnecting to a running job displays its original Action settings
 and continues that same job. Restored completed jobs default to **None** for a new run. Action selections persist only during the
@@ -87,13 +93,11 @@ store, and avoid printing them to stderr.
 For Docker, use the following options together (also supported by the launch script):
 
 ```bash
---env DECIFLOW_ACTIONS_DIR=/var/lib/deciflow-actions \
---mount type=volume,src=deciflow-actions,dst=/var/lib/deciflow-actions
+--env DECIFLOW_DATA_DIR=/var/lib/deciflow-data \
+--mount type=volume,src=deciflow-data,dst=/var/lib/deciflow-data
 ```
 
-The volume is outside read-only `/app`; no host `action-data` directory is needed.
-This is also the application default. Existing containers using this volume
-destination can restart with the updated mounted source; no explicit setting or
-image rebuild is required for this default-path change. An explicitly configured
-path still takes precedence.
-
+The volume is outside read-only `/app`; no separate host data directory is needed.
+When switching from the old volume/mount, rebuild the Docker image and recreate the
+container. Existing Actions require data migration and environment preparation at
+the new path.

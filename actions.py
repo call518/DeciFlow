@@ -14,7 +14,7 @@ from anyio.abc import ByteReceiveStream
 
 from classifier import Result
 
-REGISTRY_PATH = Path("/var/lib/deciflow-actions/actions.json")
+REGISTRY_PATH = Path("/var/lib/deciflow-data/actions/actions.json")
 ACTION_TIMEOUT = 30
 PREPARE_TIMEOUT = 300
 REGISTRY_LOCK = anyio.Lock()
@@ -26,13 +26,14 @@ MODULE_PATTERN = re.compile(
 
 
 def get_registry_path() -> Path:
-    """Use configurable persistent storage, defaulting to /var/lib/deciflow-actions."""
+    """Use the shared data root, unless an explicit Actions directory is configured."""
     directory = os.getenv("DECIFLOW_ACTIONS_DIR", "").strip()
-    return (
-        Path(directory).expanduser().absolute() / "actions.json"
-        if directory
-        else REGISTRY_PATH
-    )
+    if directory:
+        return Path(directory).expanduser().absolute() / "actions.json"
+    data_directory = os.getenv("DECIFLOW_DATA_DIR", "").strip()
+    if data_directory:
+        return Path(data_directory).expanduser().absolute() / "actions" / "actions.json"
+    return REGISTRY_PATH
 
 
 def validate_actions(values: object) -> list[Result]:

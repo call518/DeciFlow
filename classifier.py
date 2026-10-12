@@ -12,7 +12,7 @@ from typing import Any
 import httpx
 
 from config import Engine, get_jev_input_bytes
-from profiles import PROFILES
+from profiles import PROFILES, get_profile
 
 CRITERIA = PROFILES["general"]["criteria"]
 Result = dict[str, Any]
@@ -50,7 +50,7 @@ def _is_probability(value: object) -> bool:
 def _decision_input(log: str, profile: str) -> str:
     # Multiline timestamps can carry evidence about event frequency; keep them.
     if (
-        PROFILES[profile].get("normalization") != "single_line_syslog_header"
+        get_profile(profile).get("normalization") != "single_line_syslog_header"
         or "\n" in log
     ):
         return log
@@ -67,7 +67,7 @@ async def classify_log(
     log: str, engine: Engine, client: httpx.AsyncClient, profile: str = "general"
 ) -> Result:
     """Apply the same question and validation to either provider's typed answer."""
-    selected = PROFILES[profile]
+    selected = get_profile(profile)
     decision_input = _decision_input(log, profile)
     label = "Laya" if engine.name == "laya" else "Jev"
     payload = {

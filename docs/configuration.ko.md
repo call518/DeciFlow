@@ -8,6 +8,8 @@ Laya 서버 설정은 Laya 호스트에서 별도로 관리합니다.
 | 환경변수 | 기본값 | 역할 |
 | --- | --- | --- |
 | `DECISION_ENGINE` | `laya` | `laya` 또는 `jev` |
+| `DECIFLOW_DATA_DIR` | `/var/lib/deciflow-data` | Actions·Criteria 공통 저장 루트; 쓰기 권한 필요 |
+| `DECIFLOW_ACTIONS_DIR` | `DECIFLOW_DATA_DIR/actions` | Actions 경로만 개별 재정의; Criteria에는 영향 없음 |
 | `PORT` | `4000` | DeciFlow 웹 포트 |
 | `LAYA_API_URL` | `http://127.0.0.1:8000/v1/systemone` | 프록시 접두사를 포함한 전체 Laya URL |
 | `LAYA_API_KEY` | `changeme` | Laya 서버와 동일한 키 |

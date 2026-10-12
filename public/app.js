@@ -74,9 +74,52 @@ function element(tag, text, className = '') {
   node.className = className;
   return node;
 }
+function handleCloseConfiguration(id) {
+  $(id).replaceChildren(); $(id).hidden = true;
+  if (id === 'action-view') {
+    $('action-editor').hidden = editingAction === null;
+    $('cancel-action').hidden = editingAction === null;
+    $('save-actions').disabled = preparingActions;
+  } else {
+    $('criteria-editor').hidden = editingCriteria === null;
+    $('cancel-criteria').hidden = editingCriteria === null;
+    $('save-criteria').disabled = !criteriaLoaded || savingCriteria;
+  }
+}
+function handleViewConfiguration(id, title, fields) {
+  const container = $(id);
+  if (id === 'action-view') {
+    $('action-editor').hidden = true; $('cancel-action').hidden = true;
+    $('save-actions').disabled = true;
+  } else {
+    $('criteria-editor').hidden = true; $('cancel-criteria').hidden = true;
+    $('save-criteria').disabled = true;
+  }
+  const row = element('div', '', 'action-registration');
+  for (const [caption, value] of fields) {
+    if (value === undefined) continue;
+    const label = element('label', caption, 'action-code-label');
+    const input = element('textarea', '');
+    input.value = Array.isArray(value) ? value.join('\n') : String(value);
+    input.readOnly = true; input.rows = caption === 'Python code' ? 14 : 3;
+    input.setAttribute('aria-label', caption);
+    if (caption === 'Python code') { input.className = 'action-code'; input.spellcheck = false; }
+    label.append(input); row.append(label);
+  }
+  const close = element('button', 'Close', 'quiet');
+  close.type = 'button'; close.onclick = () => handleCloseConfiguration(id);
+  container.replaceChildren(); container.append(element('h3', title), row, close);
+  container.hidden = false; container.scrollIntoView?.({ block: 'nearest' });
+}
+let currentView = null;
 function handleNavigation(view) {
+  currentView = view;
+  const hash = view === 'main' ? '' : `#${view}`;
+  if (globalThis.location && globalThis.location.hash !== hash) globalThis.location.hash = hash;
   $('main-page').hidden = view !== 'main';
   $('actions-page').hidden = view !== 'actions';
+  $('criteria-page').hidden = view !== 'criteria';
+  $('nav-criteria').setAttribute('aria-current', view === 'criteria' ? 'page' : 'false');
   $('nav-main').setAttribute('aria-current', view === 'main' ? 'page' : 'false');
   $('nav-actions').setAttribute('aria-current', view === 'actions' ? 'page' : 'false');
 }
@@ -115,11 +158,12 @@ function renderActions() {
     for (const value of [action.name, action.pythonVersion || 'External', modules || 'Standard library']) row.append(element('td', value));
     const controls = element('td', '', 'action-list-controls');
     for (const [caption, handler] of [
+      ['View', () => handleViewConfiguration('action-view', action.name, [['Name', action.name], ['ID', action.id], ['Python version', action.pythonVersion], ['Modules', action.modules || []], ['Python executable', action.python], ['Script path', action.script], ['Python code', action.code]])],
       ['Edit', () => handleEditAction(index)],
-      ['Delete', () => { registeredActions.splice(index, 1); renderActions(); $('action-message').textContent = 'Deletion pending. Save changes to apply.'; }],
+      ['Delete', () => { registeredActions.splice(index, 1); handleCloseConfiguration('action-view'); renderActions(); $('action-message').textContent = 'Deletion pending. Save changes to apply.'; }],
     ]) {
       const button = element('button', caption, 'quiet');
-      button.type = 'button'; button.disabled = preparingActions || editingAction !== null;
+      button.type = 'button'; button.disabled = preparingActions || (caption !== 'View' && editingAction !== null);
       button.onclick = handler; controls.append(button);
     }
     row.append(controls); table.append(row);
@@ -129,6 +173,7 @@ function renderActions() {
 }
 $('action-search').oninput = renderActions;
 function handleEditAction(index) {
+  handleCloseConfiguration('action-view');
   editingAction = index;
   const action = registeredActions[index] || { pythonVersion: '3.12', code: defaultActionCode };
   const row = element('div', '', 'action-registration');
@@ -171,7 +216,7 @@ $('save-actions').onclick = async () => {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error);
     registeredActions = data.actions;
-    handleCloseAction(); updateSourceSettings();
+    handleCloseConfiguration('action-view'); handleCloseAction(); updateSourceSettings();
     $('action-message').textContent = 'Actions saved and environments ready. Changes apply to the next run.';
   } catch (error) { $('action-message').textContent = error.message; }
   finally {
@@ -186,12 +231,124 @@ fetch('/api/actions', { method: 'POST' }).then(async response => {
   if (!response.ok) throw new Error(data.error);
   registeredActions = data.actions; renderActions(); updateSourceSettings();
 }).catch(error => { $('action-message').textContent = error.message; });
+let criteriaProfiles = {};
+let criteriaLoaded = false;
+let savingCriteria = false;
+let editingCriteria = null;
+let criteriaFields = {};
+function renderCriteria() {
+  const table = element('table', '', 'action-list');
+  const header = element('tr', '');
+  for (const title of ['Name', 'Profile ID', 'Manage']) header.append(element('th', title));
+  table.append(header);
+  const query = $('criteria-search').value.trim().toLowerCase();
+  let matches = 0;
+  for (const [id, profile] of Object.entries(criteriaProfiles)) {
+    if (!profile.label.toLowerCase().includes(query)) continue;
+    matches++;
+    const row = element('tr', '');
+    row.append(element('td', profile.label), element('td', id));
+    const controls = element('td', '', 'action-list-controls');
+    for (const [caption, handler] of [
+      ['View', () => handleViewConfiguration('criteria-view', profile.label, [['Profile ID', id], ['Name', profile.label], ['Decision instructions', profile.instructions], ...Object.entries(labels).map(([key, label]) => [label, profile.criteria[key]]), ['Normalization', profile.normalization]])],
+      ['Edit', () => handleEditCriteria(id)],
+      ['Delete', () => { delete criteriaProfiles[id]; handleCloseConfiguration('criteria-view'); renderCriteria(); $('criteria-message').textContent = 'Deletion pending. Save changes to apply.'; }],
+    ]) {
+      const button = element('button', caption, 'quiet');
+      button.type = 'button';
+      button.disabled = savingCriteria || (caption !== 'View' && editingCriteria !== null) || (caption === 'Delete' && id === 'general');
+      button.onclick = handler; controls.append(button);
+    }
+    row.append(controls); table.append(row);
+  }
+  $('criteria-registry').replaceChildren();
+  $('criteria-registry').append(matches ? table : element('p', 'No profiles match your search.', 'caption'));
+  $('add-criteria').disabled = !criteriaLoaded || savingCriteria || editingCriteria !== null;
+}
+function handleEditCriteria(id) {
+  handleCloseConfiguration('criteria-view');
+  editingCriteria = id;
+  const profile = criteriaProfiles[id] || { label: '', instructions: '', criteria: { ...criteriaProfiles.general.criteria } };
+  const row = element('div', '', 'action-registration');
+  criteriaFields = {};
+  for (const [key, caption] of [['id', 'Profile ID (lowercase letters, digits, _ or -)'], ['label', 'Name'], ['instructions', 'Decision instructions'], ...Object.entries(labels)]) {
+    const label = element('label', caption);
+    const input = element(['id', 'label'].includes(key) ? 'input' : 'textarea', '');
+    input.value = key === 'id' ? id : (profile[key] ?? profile.criteria[key] ?? '');
+    if (key === 'id') input.readOnly = Boolean(criteriaProfiles[id]);
+    input.setAttribute('aria-label', caption);
+    if (key !== 'id' && key !== 'label') { input.rows = 3; label.className = 'action-code-label'; }
+    label.append(input); row.append(label); criteriaFields[key] = input;
+  }
+  $('criteria-editor').replaceChildren(); $('criteria-editor').append(row);
+  $('criteria-editor').hidden = false; $('cancel-criteria').hidden = false;
+  renderCriteria();
+}
+function handleCloseCriteria() {
+  editingCriteria = null; criteriaFields = {};
+  $('criteria-editor').replaceChildren(); $('criteria-editor').hidden = true;
+  $('cancel-criteria').hidden = true; renderCriteria();
+}
+function handleCriteriaLabels(profiles) {
+  for (const key of Object.keys(profileLabels)) delete profileLabels[key];
+  for (const [id, profile] of Object.entries(profiles)) profileLabels[id] = profile.label;
+  let missing = false;
+  for (const select of [$('paste-profile'), ...sourceRows.map(row => row.profile)]) {
+    const selected = select.value;
+    select.replaceChildren();
+    if (!profileLabels[selected]) { select.append(new Option('Select a criteria profile', '')); missing = true; }
+    for (const [id, label] of Object.entries(profileLabels)) select.append(new Option(label, id));
+    select.value = profileLabels[selected] ? selected : '';
+  }
+  return missing;
+}
+$('nav-criteria').onclick = async () => {
+  handleNavigation('criteria');
+  if (criteriaLoaded) return;
+  $('criteria-message').textContent = 'Loading criteria…';
+  try {
+    const response = await fetch('/api/criteria', { method: 'POST' });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    criteriaProfiles = data.profiles; criteriaLoaded = true;
+    $('save-criteria').disabled = false; renderCriteria();
+    $('criteria-message').textContent = '';
+  } catch (error) { $('criteria-message').textContent = error.message; }
+};
+$('criteria-search').oninput = renderCriteria;
+$('add-criteria').onclick = () => handleEditCriteria('');
+$('cancel-criteria').onclick = handleCloseCriteria;
+$('save-criteria').onclick = async () => {
+  savingCriteria = true; $('save-criteria').disabled = true; $('cancel-criteria').disabled = true;
+  renderCriteria();
+  for (const input of Object.values(criteriaFields)) input.disabled = true;
+  try {
+    const values = { ...criteriaProfiles };
+    if (editingCriteria !== null) {
+      const id = criteriaFields.id.value.trim();
+      if (!editingCriteria && Object.hasOwn(values, id)) throw new Error('Profile ID already exists.');
+      values[id] = { ...criteriaProfiles[editingCriteria], label: criteriaFields.label.value, instructions: criteriaFields.instructions.value, criteria: Object.fromEntries(Object.keys(labels).map(key => [key, criteriaFields[key].value])) };
+    }
+    const response = await fetch('/api/criteria', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values) });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    criteriaProfiles = data.profiles; handleCloseConfiguration('criteria-view'); handleCloseCriteria();
+    const missing = handleCriteriaLabels(criteriaProfiles);
+    $('criteria-message').textContent = 'Criteria saved. Changes apply to new runs.' + (missing ? ' Select replacements for deleted profiles in Main.' : '');
+  } catch (error) { $('criteria-message').textContent = error.message; }
+  finally {
+    savingCriteria = false; $('save-criteria').disabled = false; $('cancel-criteria').disabled = false;
+    for (const input of Object.values(criteriaFields)) input.disabled = false;
+    renderCriteria();
+  }
+};
 let sourceRows = [];
 let runSourcePatterns = [];
 function profileSelect(value) {
   const select = element('select', '');
   for (const [key, label] of Object.entries(profileLabels)) select.append(new Option(label, key));
-  select.value = value;
+  if (!profileLabels[value]) select.append(new Option('Select a criteria profile', ''));
+  select.value = profileLabels[value] ? value : '';
   return select;
 }
 for (const [key, label] of Object.entries(profileLabels)) $('paste-profile').append(new Option(label, key));
@@ -673,3 +830,15 @@ fetch('/api/status').then(async response => {
   $('input-limits').textContent = engine === 'laya' ? `One decision per chunk · Laya ${data.model} · ${limits.context_tokens.toLocaleString('en-US')} tokens including the question. Truncated predictions are discarded and original events retained for review.` : `One decision per chunk · ${data.model}: ${limits.context_tokens.toLocaleString('en-US')} tokens for state + question · Local preflight budget: ${limits.max_jev_input_bytes.toLocaleString('en-US')} bytes per Jev request (not a token count). Oversized events are retained for review.`;
   handleRestoreJob().catch(error => { $('message').className = 'error-message'; $('message').textContent = error.message; });
 }).catch(error => { $('status').textContent = error.message || 'Server connection failed'; });
+
+function handleRoute() {
+  const hash = globalThis.location?.hash;
+  const view = hash === '#criteria' ? 'criteria' : hash === '#actions' ? 'actions' : 'main';
+  if (view === currentView) return;
+  if (view === 'criteria') return $('nav-criteria').onclick();
+  handleNavigation(view);
+}
+if (globalThis.location) {
+  globalThis.addEventListener('hashchange', handleRoute);
+  handleRoute();
+}

@@ -1202,7 +1202,7 @@ footer {
 .action-search-row { display: flex; align-items: center; gap: 8px; margin: 6px 0 10px; }
 .action-search-row label { margin: 0; }
 #action-search { width: 320px; max-width: 100%; min-width: 0; margin: 0; }
-#cancel-action { margin-bottom: 12px; }
+#cancel-action, #cancel-criteria { margin-bottom: 12px; }
 
 .input-column .source-setting .source-path-input { width: 100%; flex: 1 1 auto; min-width: 0; box-sizing: border-box; font: 13px monospace; padding: 8px; }
 .source-setting .source-path { display: flex; flex-direction: row; gap: 8px; }
@@ -1212,3 +1212,9 @@ footer {
 #add-source:hover:not(:disabled) { background: #cce5d5; border-color: #9cc5ad; }
 
 .input-column .source-setting>.source-path { align-items: center; white-space: nowrap; }
+
+#criteria-editor textarea { height: auto; }
+
+.configuration-view { margin: 16px 0; }
+.configuration-view textarea:not(.action-code) { height: auto; }
+.configuration-view textarea { background: #f4f7f5; }

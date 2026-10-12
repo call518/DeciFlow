@@ -3,9 +3,10 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { test } from 'node:test';
 
-function workspace(events, status, storage = { getItem: () => null, setItem() {} }) {
+function workspace(events, status, storage = { getItem: () => null, setItem() {} }, criteria = null, navigation = null) {
   const nodes = new Map();
   const requests = [];
+  const listeners = new Map();
   const node = () => ({
     children: [], value: '', checked: false, attributes: {},
     append(...children) { this.children.push(...children); },
@@ -13,6 +14,7 @@ function workspace(events, status, storage = { getItem: () => null, setItem() {}
     setAttribute(name, value) { this.attributes[name] = value; },
   });
   const context = vm.createContext({
+    ...(navigation ? { location: navigation, addEventListener: (name, handler) => listeners.set(name, handler) } : {}),
     document: {
       getElementById(id) {
         if (!nodes.has(id)) nodes.set(id, node());
@@ -26,6 +28,10 @@ function workspace(events, status, storage = { getItem: () => null, setItem() {}
     setTimeout: () => 1,
     clearTimeout() {},
     fetch: async (path, options) => {
+      if (path === '/api/criteria') {
+        if (!criteria) return { ok: false, json: async () => ({ error: 'Unavailable' }) };
+        return { ok: true, json: async () => ({ profiles: options.method === 'PUT' ? JSON.parse(options.body) : criteria }) };
+      }
       if (path === '/api/actions') return { ok: true, json: async () => ({ actions: [] }) };
       if (path === '/api/status') return status ? { ok: true, json: async () => status } : new Promise(() => {});
       requests.push(JSON.parse(options.body));
@@ -37,7 +43,7 @@ function workspace(events, status, storage = { getItem: () => null, setItem() {}
   context.document.getElementById('category-filter').value = 'all';
   const source = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
   vm.runInContext(source.replace(/^import .*;\n/, ''), context);
-  return { nodes, context, requests };
+  return { nodes, context, requests, listeners };
 }
 
 function result(index, review = true) {
@@ -830,12 +836,12 @@ test('Action list edits one handler, cancels drafts, and saves deletion without 
   const table = () => nodes.get('action-registry').children[0];
   assert.equal(table().children.length, 3);
   assert.equal(table().children[2].children[0].textContent, 'Second');
-  table().children[2].children[3].children[0].onclick();
+  table().children[2].children[3].children[1].onclick();
   assert.equal(nodes.get('action-editor').children.length, 1);
   nodes.get('action-editor').children[0].children[0].children[0].value = 'Discard';
   nodes.get('cancel-action').onclick();
   assert.equal(table().children[2].children[0].textContent, 'Second');
-  table().children[2].children[3].children[0].onclick();
+  table().children[2].children[3].children[1].onclick();
   nodes.get('action-editor').children[0].children[0].children[0].value = 'Edited';
   let sent;
   context.fetch = async (path, options) => {
@@ -847,7 +853,7 @@ test('Action list edits one handler, cancels drafts, and saves deletion without 
   assert.equal(sent[0].name, 'First');
   assert.equal(sent[1].name, 'Edited');
   assert.equal(nodes.get('action-editor').hidden, true);
-  table().children[1].children[3].children[1].onclick();
+  table().children[1].children[3].children[2].onclick();
   await nodes.get('save-actions').onclick();
   assert.equal(sent.length, 1);
   assert.equal(sent[0].name, 'Edited');
@@ -866,10 +872,10 @@ test('Action name search ignores case and retains original edit and delete targe
   const table = nodes.get('action-registry').children[0];
   assert.equal(table.children.length, 2);
   assert.equal(table.children[1].children[0].textContent, 'Notify admin');
-  table.children[1].children[3].children[0].onclick();
+  table.children[1].children[3].children[1].onclick();
   assert.equal(nodes.get('action-editor').children[0].children[0].children[0].value, 'Notify admin');
   nodes.get('cancel-action').onclick();
-  nodes.get('action-registry').children[0].children[1].children[3].children[1].onclick();
+  nodes.get('action-registry').children[0].children[1].children[3].children[2].onclick();
   assert.equal(nodes.get('action-registry').children[0].textContent, 'No Actions match your search.');
   search.value = ''; search.oninput();
   assert.equal(nodes.get('action-registry').children[0].children.length, 3);
@@ -1048,4 +1054,167 @@ test('Export stays visibly disabled during processing and enables only with down
   assert.equal(nodes.get('export').disabled, true);
   const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
   assert.match(css, /button:disabled\s*\{\s*opacity:\s*\.5;/);
+});
+
+
+test('Criteria management preserves drafts, saves edits, and clears deleted source selections', async () => {
+  const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, `${key} evidence`]));
+  const profiles = {
+    general: { label: 'General system', instructions: 'General instructions', criteria: definitions },
+    custom: { label: 'Custom', instructions: 'Custom instructions', criteria: definitions },
+  };
+  const { nodes, context } = workspace([], undefined, undefined, profiles);
+  await nodes.get('nav-criteria').onclick();
+  assert.equal(nodes.get('criteria-page').hidden, false);
+  assert.equal(nodes.get('main-page').hidden, true);
+  assert.equal(nodes.get('save-criteria').disabled, false);
+  const generalControls = nodes.get('criteria-registry').children[0].children[1].children[2].children;
+  assert.equal(generalControls[2].disabled, true);
+  nodes.get('add-criteria').onclick();
+  vm.runInContext("criteriaFields.id.value='new_profile'; criteriaFields.label.value='New profile'; criteriaFields.instructions.value='New instructions';", context);
+  nodes.get('nav-main').onclick();
+  await nodes.get('nav-criteria').onclick();
+  assert.equal(vm.runInContext('criteriaFields.label.value', context), 'New profile');
+  await nodes.get('save-criteria').onclick();
+  assert.equal(vm.runInContext("profileLabels.new_profile", context), 'New profile');
+  vm.runInContext("handleEditCriteria('general'); criteriaFields.instructions.value='Edited general';", context);
+  assert.equal(vm.runInContext('criteriaFields.id.readOnly', context), true);
+  await nodes.get('save-criteria').onclick();
+  assert.equal(vm.runInContext('criteriaProfiles.general.instructions', context), 'Edited general');
+  vm.runInContext("sourceRows[0].profile.value='custom';", context);
+  nodes.get('paste-profile').value = 'custom';
+  vm.runInContext("delete criteriaProfiles.custom; renderCriteria();", context);
+  await nodes.get('save-criteria').onclick();
+  assert.equal(vm.runInContext('sourceRows[0].profile.value', context), '');
+  assert.equal(nodes.get('paste-profile').value, '');
+  assert.match(nodes.get('criteria-message').textContent, /Select replacements/);
+  assert.equal(nodes.get('criteria-editor').hidden, true);
+});
+
+test('Criteria search, cancel, and duplicate IDs leave saved profiles unchanged', async () => {
+  const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
+  const profiles = { general: { label: 'General system', instructions: 'Original', criteria: definitions } };
+  const { nodes, context } = workspace([], undefined, undefined, profiles);
+  await nodes.get('nav-criteria').onclick();
+  nodes.get('criteria-search').value = 'missing';
+  nodes.get('criteria-search').oninput();
+  assert.match(nodes.get('criteria-registry').children[0].textContent, /No profiles/);
+  nodes.get('criteria-search').value = '';
+  vm.runInContext("handleEditCriteria('general'); criteriaFields.instructions.value='Unsaved';", context);
+  nodes.get('cancel-criteria').onclick();
+  assert.equal(vm.runInContext('criteriaProfiles.general.instructions', context), 'Original');
+  nodes.get('add-criteria').onclick();
+  vm.runInContext("criteriaFields.id.value='general';", context);
+  await nodes.get('save-criteria').onclick();
+  assert.match(nodes.get('criteria-message').textContent, /already exists/);
+  assert.equal(nodes.get('save-criteria').disabled, false);
+});
+
+
+test('View shows read-only Action configuration without editing or losing drafts', async () => {
+  const { nodes, context, requests } = workspace([]);
+  await new Promise(resolve => setImmediate(resolve));
+  vm.runInContext("registeredActions=[{id:'notify', name:'Notify', pythonVersion:'3.12', modules:['httpx'], code:'print(1)'}]; renderActions();", context);
+  const controls = () => nodes.get('action-registry').children[0].children[1].children[3].children;
+  assert.deepEqual(controls().map(button => button.textContent), ['View', 'Edit', 'Delete']);
+  controls()[0].onclick();
+  const values = () => nodes.get('action-view').children[1].children.map(label => label.children[0]);
+  assert.equal(nodes.get('action-view').hidden, false);
+  assert.ok(values().every(input => input.readOnly));
+  assert.equal(values().at(-1).value, 'print(1)');
+  assert.equal(vm.runInContext('editingAction', context), null);
+  assert.equal(vm.runInContext('actionRows.length', context), 0);
+  assert.equal(requests.length, 0);
+  controls()[1].onclick();
+  assert.equal(nodes.get('action-view').hidden, true);
+  assert.equal(nodes.get('action-view').children.length, 0);
+  assert.equal(nodes.get('action-editor').hidden, false);
+  vm.runInContext("actionRows[0].code.value='Unsaved draft';", context);
+  controls()[0].onclick();
+  assert.equal(values().at(-1).value, 'print(1)');
+  assert.equal(nodes.get('action-editor').hidden, true);
+  assert.equal(nodes.get('save-actions').disabled, true);
+  assert.equal(vm.runInContext('actionRows[0].code.value', context), 'Unsaved draft');
+  nodes.get('action-view').children.at(-1).onclick();
+  assert.equal(nodes.get('action-view').hidden, true);
+  assert.equal(nodes.get('action-editor').hidden, false);
+  assert.equal(nodes.get('save-actions').disabled, false);
+  assert.equal(vm.runInContext('editingAction', context), 0);
+});
+
+test('View shows all Criteria definitions and preserves the edit draft', async () => {
+  const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, `${key} evidence`]));
+  const profiles = { general: { label: 'General system', instructions: 'Saved instructions', criteria: definitions } };
+  const { nodes, context } = workspace([], undefined, undefined, profiles);
+  await nodes.get('nav-criteria').onclick();
+  const controls = () => nodes.get('criteria-registry').children[0].children[1].children[2].children;
+  assert.deepEqual(controls().map(button => button.textContent), ['View', 'Edit', 'Delete']);
+  controls()[0].onclick();
+  const values = () => nodes.get('criteria-view').children[1].children.map(label => label.children[0]);
+  assert.ok(values().every(input => input.readOnly));
+  assert.deepEqual(values().slice(3).map(input => input.value), Object.values(definitions));
+  assert.equal(vm.runInContext('editingCriteria', context), null);
+  controls()[1].onclick();
+  assert.equal(nodes.get('criteria-view').hidden, true);
+  assert.equal(nodes.get('criteria-view').children.length, 0);
+  assert.equal(nodes.get('criteria-editor').hidden, false);
+  vm.runInContext("criteriaFields.instructions.value='Draft instructions';", context);
+  controls()[0].onclick();
+  assert.equal(values()[2].value, 'Saved instructions');
+  assert.equal(nodes.get('criteria-editor').hidden, true);
+  assert.equal(nodes.get('save-criteria').disabled, true);
+  nodes.get('criteria-view').children.at(-1).onclick();
+  assert.equal(nodes.get('criteria-view').hidden, true);
+  assert.equal(nodes.get('criteria-editor').hidden, false);
+  assert.equal(nodes.get('save-criteria').disabled, false);
+  assert.equal(vm.runInContext('criteriaFields.instructions.value', context), 'Draft instructions');
+});
+
+
+test('Add closes View in both managers and enables the new editor', async () => {
+  const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
+  const profiles = { general: { label: 'General', instructions: 'Instructions', criteria: definitions } };
+  const { nodes, context } = workspace([], undefined, undefined, profiles);
+  await new Promise(resolve => setImmediate(resolve));
+  vm.runInContext("registeredActions=[{name:'Notify', code:'pass'}]; renderActions();", context);
+  nodes.get('action-registry').children[0].children[1].children[3].children[0].onclick();
+  nodes.get('add-action').onclick();
+  assert.equal(nodes.get('action-view').hidden, true);
+  assert.equal(nodes.get('action-editor').hidden, false);
+  assert.equal(nodes.get('save-actions').disabled, false);
+  await nodes.get('nav-criteria').onclick();
+  nodes.get('criteria-registry').children[0].children[1].children[2].children[0].onclick();
+  nodes.get('add-criteria').onclick();
+  assert.equal(nodes.get('criteria-view').hidden, true);
+  assert.equal(nodes.get('criteria-editor').hidden, false);
+  assert.equal(nodes.get('save-criteria').disabled, false);
+});
+
+
+test('URL routes restore Actions and Criteria on reload and support browser history', async () => {
+  const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
+  const profiles = { general: { label: 'General', instructions: 'Instructions', criteria: definitions } };
+  for (const view of ['actions', 'criteria']) {
+    const navigation = { hash: `#${view}` };
+    const { nodes, context, listeners } = workspace([], undefined, undefined, profiles, navigation);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(nodes.get(`${view}-page`).hidden, false);
+    assert.equal(nodes.get('main-page').hidden, true);
+    assert.equal(nodes.get(`nav-${view}`).attributes['aria-current'], 'page');
+    if (view === 'criteria') assert.equal(vm.runInContext('criteriaLoaded', context), true);
+    nodes.get('nav-main').onclick();
+    assert.equal(navigation.hash, '');
+    assert.equal(nodes.get('main-page').hidden, false);
+    navigation.hash = `#${view}`;
+    await listeners.get('hashchange')();
+    assert.equal(nodes.get(`${view}-page`).hidden, false);
+    navigation.hash = '#unknown';
+    await listeners.get('hashchange')();
+    assert.equal(nodes.get('main-page').hidden, false);
+    assert.equal(navigation.hash, '');
+    nodes.get('nav-actions').onclick();
+    assert.equal(navigation.hash, '#actions');
+    await nodes.get('nav-criteria').onclick();
+    assert.equal(navigation.hash, '#criteria');
+  }
 });

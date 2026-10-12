@@ -101,8 +101,12 @@ GPU가 없다면 [Laya CPU](#laya-docker), 유료 API를 사용하려면 [Jev](#
 | --- | --- |
 | [사용법](docs/usage.ko.md) | 입력 모드·판정 기준·필터·수동 검토·재접속·시간 지표 |
 | [설정](docs/configuration.ko.md) | 환경변수·모델·입력 예산 |
-| [Python Actions](docs/actions.ko.md) | 등록·소스 할당·실행 규약·저장과 복구 |
+| [Criteria](docs/criteria.ko.md) | 고정 5개 범주의 프로필 목록·보기·추가·수정·삭제 |
+| [Python Actions](docs/actions.ko.md) | 구성 보기·등록·소스 할당·실행 규약·저장과 복구 |
 | [결과 JSON](docs/results.ko.md) | 실제 응답 예시·필드 설명 |
+
+사이드바 화면은 URL에 반영됩니다: Main `/`, Criteria `/#criteria`, Actions `/#actions`.
+새로고침·뒤로가기·직접 링크에서도 해당 화면을 유지합니다.
 
 - **Paste:** 텍스트를 붙여 넣어 분석합니다.
 - **Batch:** 기존 파일을 분석합니다. Docker에서 호스트 `/var/log`는 `/host-logs/var/log`입니다.
@@ -230,9 +234,10 @@ docker build --tag call518/deciflow-ui:0.0.1 .
 bash scripts/run-deciflow-ui.sh
 ```
 
-실행 스크립트는 UI를 `0.0.0.0:4000`에 공개하고 샘플 로그와 Actions 영구 볼륨도 마운트합니다.
-로컬 체험만 허용하려면 스크립트의 publish 주소를 `127.0.0.1:4000:4000`으로 변경하세요.
-포트·마운트 변경은 스크립트에서 적용하고 컨테이너를 다시 생성합니다.
+실행 스크립트는 UI를 `0.0.0.0:4000`에 공개하고 샘플 로그도 마운트합니다.
+`deciflow-data` 볼륨은 `/var/lib/deciflow-data`에 연결하며 Actions는 `actions/`,
+Criteria는 `criteria/`에 저장합니다. 로컬 체험만 허용하려면 publish 주소를
+`127.0.0.1:4000:4000`으로 변경하세요. 포트·마운트 변경 후에는 컨테이너를 다시 생성합니다.
 
 **http://127.0.0.1:4000**에 접속하세요. 호스트의 `/var/log`는 Batch·Realtime에서
 `/host-logs/var/log/messages` 같은 `/host-logs/var/log` 경로로 사용합니다. 다른 디렉토리도 필요하면 읽기 전용으로 마운트하세요.
@@ -331,9 +336,9 @@ uv sync
 uv run python server.py
 ```
 
-**http://127.0.0.1:4000**을 엽니다. Actions를 사용하려면 저장 경로에 쓰기 권한이
-필요합니다. 기본 `/var/lib/deciflow-actions`에 쓸 수 없다면 `.env`에서
-`DECIFLOW_ACTIONS_DIR=./action-data`를 설정하세요. 설정 변경 후 DeciFlow를 재시작합니다.
+**http://127.0.0.1:4000**을 엽니다. Actions·Criteria를 저장하려면 공통 데이터 경로에 쓰기 권한이
+필요합니다. 기본 `/var/lib/deciflow-data`에 쓸 수 없다면 `.env`에서
+`DECIFLOW_DATA_DIR=./data`를 설정하세요. 설정 변경 후 DeciFlow를 재시작합니다.
 
 ## Appendix — Docker run 커스텀 이미지(선택)
 

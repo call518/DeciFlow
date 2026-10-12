@@ -225,8 +225,9 @@ __marimo__/
 /.aws/
 /.codex/
 
-# Local action registrations
+# Local application data
 /action-data/
+/data/
 
 # Vim swap files
 *.swp

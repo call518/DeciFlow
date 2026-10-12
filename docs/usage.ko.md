@@ -50,10 +50,11 @@ Batch는 선택한 파일을 동시에 읽고 준비된 청크를 교차 공급�
 | Application | 애플리케이션 작업, 예외, 의존 서비스 |
 | Network / tcpdump text | 텍스트의 연결·패킷 증거; 바이너리 PCAP 미지원 |
 
-[`profiles/`](../profiles/)의 JSON을 수정·추가하고 재시작하면 선택 항목에 반영됩니다.
-`label`, `instructions`, `criteria`와 기존 5개 분류 키를 유지하세요. 기준에는 사건의
-결과와 증거를 설명하고, 특정 로그 문자열은 검증 샘플에서 다룹니다. 운영 기준에
-메시지별 예외를 계속 추가하는 방식은 피합니다.
+프로필은 사이드바의 **Criteria**에서 추가·수정·삭제합니다.
+결과 범주는 Normal·Warning·Error·Security·Other로 고정하며 `general`은 삭제할 수 없습니다.
+**Save changes** 후 다음 분석부터 적용하고, 실행 중인 작업은 기존 기준을 유지합니다.
+저장 위치와 삭제 후 소스 재선택은 [Criteria 관리](criteria.ko.md)를 참고하세요.
+기준에는 사건의 결과와 증거를 설명하고 특정 로그 문자열은 검증 샘플에서 다룹니다.
 
 서로 다른 파일의 이벤트는 섞지 않습니다. Batch는 EOF 잔여분을, Realtime은 설정한
 이벤트 수가 차거나 새 이벤트가 1초 동안 없으면 제출하며 파일 회전 경계도 분리합니다.
@@ -166,6 +167,10 @@ DeciFlow는 예측을 유지하면서 검토 표시를 붙입니다. 정식 reje
 [결과 JSON 예시와 필드 설명](results.ko.md)
 
 ### 새로고침과 재접속
+
+사이드바는 Main `/`, Criteria `/#criteria`, Actions `/#actions`를 사용합니다.
+새로고침하면 URL에 해당하는 화면을 열며 브라우저 뒤로가기·앞으로가기도 지원합니다.
+저장하지 않은 편집 초안은 새로고침 시 보존하지 않습니다.
 
 UI의 Batch·Realtime·Paste 작업은 새로고침하거나 연결이 끊겨도 **서버 메모리**에서
 계속 실행합니다. 브라우저 탭별 session storage에 최근 작업 ID를 보관합니다.

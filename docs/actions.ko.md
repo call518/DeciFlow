@@ -2,11 +2,16 @@
 
 [English](actions.md) | [한국어](actions.ko.md) | [README](../README.ko.md)
 
+**View**는 현재 이름·Python 버전·모듈·코드와 저장된 경로를 읽기 전용으로 표시합니다.
+**Close**로 닫으며 편집 초안을 바꾸거나 환경을 준비하지 않습니다.
+목록 버튼 순서는 **View / Edit / Delete**입니다. Edit·Add는 View를 닫습니다.
+View 중에는 편집 영역을 숨기고 저장을 막으며 Close로 기존 초안을 다시 표시합니다.
+
 좌측 사이드바의 **Actions**에서 핸들러를 생성·수정·삭제합니다.
 **Add action**을 누르고 이름, Python 버전(예: `3.12`), 모듈 목록,
 Python 코드를 편집기에 직접 입력한 뒤 **Save & prepare environments**를
 누릅니다. 스크립트 경로나 별도 파일 업로드는 필요하지 않습니다.
-목록은 Action별 이름·Python 버전·모듈과 **Edit**/**Delete** 버튼을 한 줄에
+목록은 Action별 이름·Python 버전·모듈과 **View**/**Edit**/**Delete** 버튼을 한 줄에
 표시합니다. **Search by Name**에서 대소문자 구분 없이 이름의 일부로 검색합니다.
 **Edit**으로 하나의 편집기를 열고 **Cancel edit**으로 변경을 취소합니다.
 삭제도 저장하면 반영됩니다. **Main**으로 돌아가 로그 파일·패턴마다 Action 또는
@@ -26,11 +31,12 @@ DeciFlow의 PATH에 `uv`가 있고 영구 저장 경로에 쓰기 권한이 있�
 있습니다. Actions 화면에서 기존 코드를 불러오며, 저장하면 UI에서 관리하는
 코드와 실행 환경으로 전환됩니다.
 
-`DECIFLOW_ACTIONS_DIR`로 저장 디렉터리를 선택합니다. 미설정 또는 빈 값이면
-Python·Docker 모두 `/var/lib/deciflow-actions`를 사용합니다. Python 직접 실행은
-해당 경로의 쓰기 권한이 필요합니다. 권한이 없다면 `./action-data` 같은 쓰기 가능한
-경로를 지정하세요. Docker에서는 설정값과 볼륨 목적지가 같아야 합니다.
-등록 정보, 코드 스냅샷, 프로젝트, lockfile, venv를 함께 저장합니다.
+Actions는 공통 `DECIFLOW_DATA_DIR` 아래 `actions/`에 저장합니다.
+기본 경로는 Python·Docker 모두 `/var/lib/deciflow-data/actions`입니다.
+`DECIFLOW_ACTIONS_DIR`을 명시하면 Actions 경로만 별도로 지정할 수 있습니다.
+Python 직접 실행에서는 쓰기 권한이 필요하며, 필요하면 공통 경로를 `./data`로 설정하세요.
+Docker에서는 공통 데이터 루트와 볼륨 목적지를 동일하게 유지합니다.
+등록 정보·코드 스냅샷·프로젝트·lockfile·venv를 Actions 디렉터리에 함께 저장합니다.
 새 분석의 Action 기본값은 **None**이며 이전에 저장된 할당도 자동 복원하지
 않습니다. 실행 중인 작업에 재접속할 때는 원래 Action 설정을 표시하고 같은
 작업을 이어갑니다. 완료된 작업을 복원하면 새 실행을 위한 Action은 **None**입니다. 사용자가 직접 선택한 Action은 현재
@@ -82,12 +88,10 @@ Action은 실행 단위별로 순차 처리하며 시간 제한은 30초이고 �
 Docker에서는 다음 옵션을 함께 사용합니다. 실행 스크립트에도 적용되어 있습니다.
 
 ```bash
---env DECIFLOW_ACTIONS_DIR=/var/lib/deciflow-actions \
---mount type=volume,src=deciflow-actions,dst=/var/lib/deciflow-actions
+--env DECIFLOW_DATA_DIR=/var/lib/deciflow-data \
+--mount type=volume,src=deciflow-data,dst=/var/lib/deciflow-data
 ```
 
-볼륨이 읽기 전용 `/app` 밖에 있으므로 호스트에 `action-data`를 만들 필요가 없습니다.
-애플리케이션의 기본 경로도 동일합니다. 이미 이 볼륨 목적지를 사용하는 컨테이너는
-마운트된 소스를 업데이트하고 재시작하면 됩니다. 이번 기본 경로 변경에는 명시적인
-설정이나 이미지 재빌드가 필요하지 않습니다. 별도로 설정한 경로는 우선 적용됩니다.
-
+볼륨이 읽기 전용 `/app` 밖에 있으므로 호스트에 별도 데이터 디렉터리를 만들 필요가 없습니다.
+기존 볼륨·마운트에서 변경하려면 Docker 이미지를 다시 빌드하고 컨테이너를 다시 생성하세요.
+Actions가 있다면 데이터 이전과 새 경로에서의 가상환경 재준비가 필요합니다.
