@@ -351,7 +351,7 @@ function render(updateList = true) {
   $('pause-updates').textContent = updatesPaused ? `Resume updates${pendingCount ? ` (${pendingCount} new)` : ''}` : 'Pause updates';
   $('pause-updates').setAttribute('aria-pressed', String(updatesPaused));
   $('pause-updates').disabled = !busy && !completed && !updatesPaused;
-  $('export').disabled = !completed || busy;
+  $('export').disabled = !completed || busy || activeJobState === 'running';
   if (updatesPaused && !updateList) return;
   if (!updatesPaused) displayedOrder = completionOrder.slice();
   $('results').replaceChildren();
@@ -446,7 +446,7 @@ function render(updateList = true) {
     $('results').append(row);
   }
   if (!visible.length) $('results').append(element('p', 'No results to display.'));
-  $('export').disabled = !completed || busy;
+  $('export').disabled = !completed || busy || activeJobState === 'running';
 }
 function scheduleRender() {
   if (renderTimer) return;
@@ -614,7 +614,7 @@ async function handleProcessing(job = null) {
     renderTimer = undefined;
     for (const id of ['classify', 'sample', 'source-mode', 'file-path', 'paste-profile', 'paste-chunk-events']) $(id).disabled = false;
     if (started || completed) render(false);
-    $('export').disabled = !completed;
+    $('export').disabled = !completed || activeJobState === 'running';
     if (activeJobState === 'running') {
       $('classify').textContent = 'Reconnect';
       $('message').textContent += ' · Server job continues. Reconnect to receive results.';
@@ -632,6 +632,7 @@ $('source-filter').onchange = handleResultFilter;
 $('previous').onclick = () => { page--; render(); };
 $('next').onclick = () => { page++; render(); };
 $('export').onclick = () => {
+  if (!completed || busy || activeJobState === 'running') return;
   const blob = new Blob([JSON.stringify({ mode: resultEngine, sourceMode: resultSourceMode, total, completed, elapsedMs, activeProcessingMs, results: results.filter(Boolean).map(orderedResult) }, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

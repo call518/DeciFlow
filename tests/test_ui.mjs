@@ -1030,3 +1030,22 @@ test('status initialization automatically restores the remembered job after refr
   assert.equal(nodes.get('logs').value, 'restored log');
   assert.equal(vm.runInContext('completed', context), 1);
 });
+
+
+test('Export stays visibly disabled during processing and enables only with downloadable results', () => {
+  const { nodes, context } = workspace([]);
+  vm.runInContext("results=[{log:'one', category:'normal', probabilities:{normal:1}, elapsedMs:1}]; completionOrder=[0]; completed=1; busy=true; render();", context);
+  assert.equal(nodes.get('export').disabled, true);
+  nodes.get('export').onclick();
+  vm.runInContext("busy=false; activeJobState='running'; render();", context);
+  assert.equal(nodes.get('export').disabled, true);
+  nodes.get('export').onclick();
+  for (const state of ['completed', 'stopped']) {
+    vm.runInContext(`activeJobState='${state}'; render();`, context);
+    assert.equal(nodes.get('export').disabled, false);
+  }
+  vm.runInContext('completed=0; render();', context);
+  assert.equal(nodes.get('export').disabled, true);
+  const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
+  assert.match(css, /button:disabled\s*\{\s*opacity:\s*\.5;/);
+});
