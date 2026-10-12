@@ -227,3 +227,9 @@ __marimo__/
 
 # Local action registrations
 /action-data/
+
+# Vim swap files
+*.swp
+*.swo
+*.swn
+*.swm
