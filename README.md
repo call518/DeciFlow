@@ -134,6 +134,9 @@ The instructions below use Docker run on the Laya host. Docker Compose is an
 alternative; see the official guide linked below and choose only one method.
 
 This guide uses Docker to simplify Laya server setup for both CPU and CUDA.
+CPU is a practical option even without CUDA. Performance varies with
+hardware and workload.
+
 CUDA additionally requires an NVIDIA driver and
 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
 Check the GPU and driver with `nvidia-smi`: its `CUDA Version` describes driver

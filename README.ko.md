@@ -133,6 +133,9 @@ GPU가 없다면 [Laya CPU](#laya-docker), 유료 API를 사용하려면 [Jev](#
 사용하려면 아래 공식 문서 링크를 참고하고 **둘 중 하나만 선택**하세요.
 
 이 문서는 CPU·CUDA 모두 Docker로 Laya 서버를 간편하게 실행하는 절차를 안내합니다.
+CUDA가 없는 환경에서도 CPU로 충분히 사용할 수 있습니다. 실제 성능은
+하드웨어와 작업량에 따라 달라집니다.
+
 CUDA 실행에는 NVIDIA 드라이버와
 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)도
 필요합니다. `nvidia-smi`로 GPU·드라이버를 확인하세요. `CUDA Version`은 드라이버의
