@@ -13,7 +13,15 @@ Not checked, 이후에는 Connected·Disconnected·Timed out·API error를 표�
 ### 입력과 판정 기준
 
 **Reset sources**는 Add source 옆에서 현재 Batch·Realtime의 기본 샘플 경로와
-General system·Events/chunk 1·Action None을 복원합니다. 분석 중에는 비활성화합니다.
+각 경로의 Criteria·Events/chunk 1·Action None을 복원합니다. 분석 중에는 비활성화합니다.
+
+Batch와 Realtime은 다음 기본값을 함께 사용합니다.
+
+| 경로 | Criteria |
+| --- | --- |
+| `/host-logs/var/log/messages` | General system |
+| `/host-logs/sample-logs/access-1k.log` | HTTP access |
+| `/host-logs/sample-logs/SSH_2k.log` | Authentication |
 
 기본 모드는 **Batch**이며, 각 모드에 수정 가능한 예시가 입력되어 있습니다.
 

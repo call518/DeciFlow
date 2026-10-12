@@ -244,9 +244,9 @@ async def test_managed_environment_install_reuse_and_restore(
     ] == "success"
     assert json.loads(output.read_text())["module"] == "isolated module"
     project = Path(saved["python"]).parent.parent.parent
-    assert project.parent.parent == actions.REGISTRY_PATH.parent / saved["id"]
+    assert project.parent.parent == actions.REGISTRY_PATH.parent / saved["directory"]
     lock = (project / "uv.lock").read_bytes()
-    unchanged = (await actions.save_actions([{**saved, "name": "renamed"}]))[0]
+    unchanged = (await actions.save_actions([saved]))[0]
     assert unchanged["python"] == saved["python"]
     shutil.rmtree(project / ".venv")
     assert "missing" in (await actions.run_action(unchanged, {}))["error"]
@@ -360,7 +360,7 @@ async def test_inline_code_save_edit_and_api(
         assert response.status_code == 200
         saved = response.json()["actions"][0]
         assert Path(saved["script"]).parent == (
-            actions.REGISTRY_PATH.parent / saved["id"] / "scripts"
+            actions.REGISTRY_PATH.parent / saved["directory"] / "scripts"
         )
         assert Path(saved["script"]).read_text() == code
         assert (await actions.run_action(saved, {"category": "normal"}))[
@@ -445,7 +445,7 @@ async def test_save_legacy_layout_preserves_lock_and_old_files(
     assert (project / "uv.lock").read_bytes() == (old_project / "uv.lock").read_bytes()
     assert old_script.is_file()
     assert Path(saved["python"]).is_file()
-    assert Path(restored["script"]).parent.parent.name == saved["id"]
+    assert Path(restored["script"]).parent.parent.name == saved["directory"]
     assert (await actions.run_action(restored, {}))["status"] == "success"
 
 
@@ -617,3 +617,134 @@ async def test_action_ready_requires_completed_dependency_sync(
     (project / ".ready").unlink()
     assert actions.get_action_status(saved) == "not_ready"
     assert actions.get_action_status(make_action(tmp_path, "pass")) == "external"
+
+
+@pytest.mark.anyio
+async def test_named_directories_and_independent_revision_history(
+    managed_environment: None,
+) -> None:
+    action = {
+        "name": "Elastic/search ..",
+        "pythonVersion": "3.12",
+        "modules": [],
+        "code": "pass\n",
+    }
+    saved = (await actions.save_actions([action]))[0]
+    assert saved["directory"] == f"Elastic-search-{saved['id']}"
+    assert saved["revision"].startswith("Rev-1-")
+    assert Path(saved["script"]).name.startswith("Rev-1-")
+    assert saved["history"]["environments"][0]["createdAt"]
+    assert saved["history"]["scripts"][0]["createdAt"]
+    unchanged = (await actions.save_actions([saved]))[0]
+    assert unchanged["directory"] == saved["directory"]
+    assert unchanged["script"] == saved["script"]
+    assert unchanged["history"] == saved["history"]
+    edited = (await actions.save_actions([{**unchanged, "code": "print('new')\n"}]))[0]
+    assert edited["python"] == saved["python"]
+    assert Path(edited["script"]).name.startswith("Rev-2-")
+    changed = (
+        await actions.save_actions(
+            [{**edited, "modules": ["deciflow-test-module==1.0.0"]}]
+        )
+    )[0]
+    assert changed["revision"].startswith("Rev-2-")
+    assert changed["script"] == edited["script"]
+    assert len(changed["history"]["environments"]) == 2
+    assert len(changed["history"]["scripts"]) == 2
+    reset = await actions.reset_action(changed["id"])
+    assert reset["history"] == changed["history"]
+    await actions.save_actions([])
+    assert not (actions.REGISTRY_PATH.parent / saved["directory"]).exists()
+
+
+@pytest.mark.anyio
+async def test_failed_revision_is_not_recorded_or_reused(
+    managed_environment: None,
+) -> None:
+    saved = (
+        await actions.save_actions(
+            [{"name": "probe", "pythonVersion": "3.12", "modules": [], "code": "pass"}]
+        )
+    )[0]
+    with pytest.raises(ValueError):
+        await actions.save_actions([{**saved, "modules": ["missing-module==9.9"]}])
+    assert actions.load_actions()[0]["history"] == saved["history"]
+    changed = (
+        await actions.save_actions(
+            [{**saved, "modules": ["deciflow-test-module==1.0.0"]}]
+        )
+    )[0]
+    assert changed["revision"].startswith("Rev-3-")
+    assert [entry["number"] for entry in changed["history"]["environments"]] == [1, 3]
+
+
+@pytest.mark.anyio
+async def test_legacy_uuid_paths_remain_and_gain_history(
+    managed_environment: None,
+) -> None:
+    saved = (
+        await actions.save_actions(
+            [{"name": "legacy", "pythonVersion": "3.12", "modules": [], "code": "pass"}]
+        )
+    )[0]
+    old_directory = actions.REGISTRY_PATH.parent / saved["directory"]
+    legacy_directory = actions.REGISTRY_PATH.parent / saved["id"]
+    old_directory.rename(legacy_directory)
+    for key in ("python", "script"):
+        saved[key] = str(legacy_directory / Path(saved[key]).relative_to(old_directory))
+    saved.pop("directory")
+    saved.pop("history")
+    actions.REGISTRY_PATH.write_text(json.dumps([saved]))
+    restored = (await actions.save_actions([saved]))[0]
+    assert restored["directory"] == saved["id"]
+    assert restored["python"] == saved["python"]
+    assert restored["script"] == saved["script"]
+    assert restored["history"]["environments"][0]["createdAt"] is None
+    assert restored["history"]["scripts"][0]["createdAt"] is None
+
+
+@pytest.mark.anyio
+async def test_concurrent_saves_keep_distinct_script_revisions(
+    managed_environment: None,
+) -> None:
+    saved = (
+        await actions.save_actions(
+            [{"name": "probe", "pythonVersion": "3.12", "modules": [], "code": "pass"}]
+        )
+    )[0]
+
+    async def handle_save(code: str) -> None:
+        await actions.save_actions([{**saved, "code": code}])
+
+    async with anyio.create_task_group() as tasks:
+        tasks.start_soon(handle_save, "print(1)")
+        tasks.start_soon(handle_save, "print(2)")
+    history = actions.load_actions()[0]["history"]["scripts"]
+    assert [entry["number"] for entry in history] == [1, 2, 3]
+    assert len({entry["path"] for entry in history}) == 3
+    assert all(Path(entry["path"]).is_file() for entry in history)
+
+
+@pytest.mark.anyio
+async def test_action_rename_is_rejected_without_writes(
+    managed_environment: None,
+) -> None:
+    saved = (
+        await actions.save_actions(
+            [
+                {
+                    "name": "Original",
+                    "pythonVersion": "3.12",
+                    "modules": [],
+                    "code": "pass",
+                }
+            ]
+        )
+    )[0]
+    registry = actions.REGISTRY_PATH.read_bytes()
+    with pytest.raises(ValueError, match="names cannot be changed"):
+        await actions.save_actions([{**saved, "name": "Renamed"}])
+    assert actions.REGISTRY_PATH.read_bytes() == registry
+    assert list(
+        (actions.REGISTRY_PATH.parent / saved["directory"] / "environments").iterdir()
+    ) == [Path(saved["python"]).parent.parent.parent]

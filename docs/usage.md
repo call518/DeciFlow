@@ -13,8 +13,16 @@ a continuous health check; local input rejections do not change the status.
 ### Input and criteria
 
 **Reset sources**, beside Add source, restores the current Batch/Realtime sample
-paths, General system criteria, one event per chunk, and Action None. It is disabled
+paths and their criteria, one event per chunk, and Action None. It is disabled
 during processing.
+
+Batch and Realtime share these defaults:
+
+| Path | Criteria |
+| --- | --- |
+| `/host-logs/var/log/messages` | General system |
+| `/host-logs/sample-logs/access-1k.log` | HTTP access |
+| `/host-logs/sample-logs/SSH_2k.log` | Authentication |
 
 **Batch** is selected by default. Each mode starts with editable examples.
 

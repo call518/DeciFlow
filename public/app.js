@@ -58,9 +58,14 @@ function rememberJob(id) {
   try { jobStorage.setItem('deciflow-job-id', id); } catch { /* Current-page processing still works. */ }
 }
 let sourceMode = 'batch';
+const defaultSourceProfiles = Object.freeze({
+  '/host-logs/var/log/messages': 'general',
+  '/host-logs/sample-logs/access-1k.log': 'http_access',
+  '/host-logs/sample-logs/SSH_2k.log': 'authentication',
+});
 const defaultFilePaths = Object.freeze({
-  batch: '/host-logs/sample-logs/access-1k.log\n/host-logs/var/log/messages\n/host-logs/var/log/nginx/access*.log',
-  realtime: '/host-logs/var/log/secure\n/host-logs/var/log/messages\n/host-logs/var/log/nginx/access*.log',
+  batch: Object.keys(defaultSourceProfiles).join('\n'),
+  realtime: Object.keys(defaultSourceProfiles).join('\n'),
 });
 const filePaths = { ...defaultFilePaths };
 $('logs').value = samples.join('\n');
@@ -246,10 +251,24 @@ function handleEditAction(index) {
     const label = element('label', caption);
     const input = element(['modules', 'code'].includes(key) ? 'textarea' : 'input', '');
     input.value = key === 'modules' && Array.isArray(action.modules) ? action.modules.join('\n') : action[key] || (key === 'pythonVersion' ? '3.12' : '');
+    if (key === 'name') input.readOnly = index < registeredActions.length;
     if (key === 'modules') input.rows = 3;
     if (key === 'code') { input.rows = 14; input.spellcheck = false; input.className = 'action-code'; label.className = 'action-code-label'; }
     input.setAttribute('aria-label', caption);
-    label.append(input); row.append(label); fields[key] = input;
+    label.append(input);
+    if (key === 'name' && !input.readOnly) {
+      const note = element('span', 'Name cannot be changed after creation.', 'caption error-message');
+      note.id = 'action-name-note';
+      input.setAttribute('aria-describedby', note.id);
+      label.append(note);
+    }
+    if (['pythonVersion', 'modules'].includes(key) && index < registeredActions.length) {
+      const note = element('span', 'Changing Python version or modules creates a new environment. The current environment is retained.', 'caption');
+      note.id = `action-${key}-note`;
+      input.setAttribute('aria-describedby', note.id);
+      label.append(note);
+    }
+    row.append(label); fields[key] = input;
   }
   actionRows = [fields];
   $('action-editor').replaceChildren(); $('action-editor').append(row);
@@ -277,6 +296,7 @@ $('save-actions').onclick = async () => {
   try {
     const values = registeredActions.slice();
     if (editingAction !== null) values[editingAction] = { ...registeredActions[editingAction], ...Object.fromEntries(Object.entries(actionRows[0]).map(([key, input]) => [key, input.value])) };
+    if (editingAction !== null && registeredActions[editingAction]) values[editingAction].name = registeredActions[editingAction].name;
     const response = await fetch('/api/actions', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values) });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error);
@@ -440,7 +460,7 @@ function updateSourceSettings(paths = $('file-path').value.split('\n').map(s => 
   $('source-settings').replaceChildren();
   sourceRows = [];
   for (const path of paths) {
-    const preference = sourcePreferences.get(path) || { profile: 'general', chunkEvents: 1 };
+    const preference = sourcePreferences.get(path) || { profile: defaultSourceProfiles[path] || 'general', chunkEvents: 1 };
     const row = element('div', '', 'source-setting');
     const name = element('input', '', 'source-path-input');
     name.type = 'text'; name.value = path; name.disabled = busy;
@@ -501,7 +521,7 @@ $('add-source').onclick = () => {
 $('reset-sources').onclick = () => {
   if (busy || sourceMode === 'paste') return;
   const defaults = defaultFilePaths[sourceMode];
-  for (const path of defaults.split('\n')) sourcePreferences.set(path, { profile: 'general', chunkEvents: 1, action: '' });
+  for (const path of defaults.split('\n')) sourcePreferences.set(path, { profile: defaultSourceProfiles[path], chunkEvents: 1, action: '' });
   try { localStorage.setItem('deciflow-source-preferences', JSON.stringify([...sourcePreferences].map(([path, { profile, chunkEvents }]) => [path, { profile, chunkEvents }]))); } catch { /* The current page still uses the reset defaults. */ }
   filePaths[sourceMode] = defaults; $('file-path').value = defaults;
   updateSourceSettings();

@@ -8,6 +8,8 @@ import subprocess
 from collections import Counter
 from collections.abc import Iterator
 from contextlib import contextmanager
+from copy import deepcopy
+from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
@@ -138,7 +140,67 @@ def _action_directory(action: Result) -> Path:
     identity = action.get("id")
     if not isinstance(identity, str) or not re.fullmatch(r"[0-9a-f]{32}", identity):
         raise ValueError("Select a UI-managed Action with a valid ID.")
-    return get_registry_path().parent / identity
+    directory = action.get("directory", identity)
+    if (
+        not isinstance(directory, str)
+        or directory in (".", "..")
+        or "/" in directory
+        or "\\" in directory
+        or not (directory == identity or directory.endswith(f"-{identity}"))
+    ):
+        raise ValueError("Invalid Action directory.")
+    return get_registry_path().parent / directory
+
+
+def _initialize_history(action: Result, previous: Result | None) -> None:
+    if previous:
+        action["directory"] = previous.get("directory", action["id"])
+        action["history"] = deepcopy(previous.get("history", {}))
+    else:
+        name = re.sub(r"[^\w.-]+", "-", action["name"]).strip(".-")[:40]
+        action["directory"] = f"{name or 'Action'}-{action['id']}"
+        action["history"] = {}
+    history = action["history"]
+    for kind in ("environments", "scripts"):
+        history.setdefault(kind, [])
+    if previous:
+        if not history["environments"]:
+            history["environments"].append(
+                {
+                    "number": 1,
+                    "id": previous["revision"],
+                    "createdAt": None,
+                    "path": str(Path(previous["python"]).parent.parent.parent),
+                    "pythonVersion": previous["pythonVersion"],
+                    "modules": previous["modules"],
+                }
+            )
+        if not history["scripts"]:
+            history["scripts"].append(
+                {
+                    "number": 1,
+                    "id": Path(previous["script"]).stem,
+                    "createdAt": None,
+                    "path": previous["script"],
+                }
+            )
+
+
+def _new_revision(action: Result, kind: str) -> tuple[str, Result]:
+    directory = _action_directory(action) / kind
+    numbers = [entry["number"] for entry in action["history"][kind]]
+    if directory.exists():
+        for path in directory.iterdir():
+            match = re.match(r"Rev-(\d+)-", path.name)
+            if match:
+                numbers.append(int(match[1]))
+    number = max(numbers, default=0) + 1
+    identity = uuid4().hex
+    return f"Rev-{number}-{identity}", {
+        "number": number,
+        "id": identity,
+        "createdAt": datetime.now(UTC).isoformat(),
+    }
 
 
 def ensure_actions_available(actions: list[Result]) -> None:
@@ -203,22 +265,63 @@ async def save_actions(values: object) -> list[Result]:
     """Prepare independent environments before atomically saving registrations."""
     actions = validate_actions(values)
     async with REGISTRY_LOCK:
-        previous = {action.get("id"): action for action in load_actions()}
+        saved = load_actions()
+        previous = {action.get("id"): action for action in saved}
+        for action in actions:
+            old = (
+                previous.get(action["id"])
+                if action.get("id")
+                else next(
+                    (
+                        item
+                        for item in saved
+                        if not item.get("id")
+                        and item["python"] == action["python"]
+                        and item["script"] == action["script"]
+                    ),
+                    None,
+                )
+            )
+            if old and old["name"] != action["name"]:
+                raise ValueError("Action names cannot be changed after creation.")
         retained = {action.get("id") for action in actions}
         removed = [a for key, a in previous.items() if key and key not in retained]
         with _maintain_actions(removed):
             for action in actions:
                 if action.get("pythonVersion"):
+                    _initialize_history(action, previous.get(action["id"]))
                     await prepare_action(action, previous.get(action["id"]))
             registry = get_registry_path()
             for action in actions:
                 if "code" in action:
-                    script = (
-                        registry.parent / action["id"] / "scripts" / f"{uuid4().hex}.py"
-                    )
+                    old = previous.get(action["id"])
+                    if (
+                        old
+                        and Path(old["script"]).is_file()
+                        and Path(old["script"]).parent
+                        == _action_directory(action) / "scripts"
+                        and Path(old["script"]).read_text(encoding="utf-8")
+                        == action["code"]
+                    ):
+                        action["script"] = old["script"]
+                        continue
+                    revision, entry = _new_revision(action, "scripts")
+                    script = _action_directory(action) / "scripts" / f"{revision}.py"
                     script.parent.mkdir(parents=True, exist_ok=True)
-                    script.write_text(action["code"], encoding="utf-8")
+                    with script.open("x", encoding="utf-8") as file:
+                        file.write(action["code"])
                     action["script"] = str(script)
+                    entry["path"] = str(script)
+                    action["history"]["scripts"].append(entry)
+                if action.get("pythonVersion") and not action["history"]["scripts"]:
+                    action["history"]["scripts"].append(
+                        {
+                            "number": 1,
+                            "id": Path(action["script"]).stem,
+                            "createdAt": None,
+                            "path": action["script"],
+                        }
+                    )
             registry.parent.mkdir(parents=True, exist_ok=True)
             temporary = registry.with_suffix(".json.tmp")
             temporary.write_text(json.dumps(actions, indent=2) + "\n", encoding="utf-8")
@@ -298,8 +401,14 @@ async def _prepare_action(action: Result, previous: Result | None = None) -> Non
     unchanged = previous is not None and all(
         previous.get(key) == action[key] for key in ("pythonVersion", "modules")
     )
-    revision = previous["revision"] if unchanged and previous else uuid4().hex
-    project = get_registry_path().parent / action["id"] / "environments" / revision
+    if "history" not in action:
+        _initialize_history(action, previous)
+    entry = None
+    if unchanged and previous:
+        revision = previous["revision"]
+    else:
+        revision, entry = _new_revision(action, "environments")
+    project = _action_directory(action) / "environments" / revision
     interpreter = (
         project / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     )
@@ -368,6 +477,15 @@ async def _prepare_action(action: Result, previous: Result | None = None) -> Non
             f"Could not prepare action {action['name']}. {error}"
         ) from error
     ready.touch()
+    if entry is not None:
+        entry.update(
+            {
+                "path": str(project),
+                "pythonVersion": action["pythonVersion"],
+                "modules": list(action["modules"]),
+            }
+        )
+        action["history"]["environments"].append(entry)
 
 
 async def _read_output(stream: ByteReceiveStream | None, limit: int = 0) -> str:

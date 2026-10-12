@@ -51,17 +51,32 @@ current page session; users must explicitly select them again after reload.
 Criteria and chunk sizes remain in browser local storage. Changing this directory does not migrate
 existing data automatically.
 
-`actions.json` remains at the storage root. Each Action groups its code under
-`<UUID>/scripts/` and environments under `<UUID>/environments/<revision>/`.
-Saving older registrations prepares this layout using the existing lockfile;
-old directories remain available for running processes. Venvs are rebuilt rather
-than moved because installed entry points contain absolute paths.
+`actions.json` remains at the storage root. New Actions use
+`<initial-name>-<Action UUID>/`, with unsafe name characters replaced by hyphens.
+Action names are fixed after creation; Edit keeps Name read-only. Environments use
+`environments/Rev-<number>-<UUID>/`; script snapshots use
+`scripts/Rev-<number>-<UUID>.py`. Each has its own sequence.
+
+The registry's `history.environments` and `history.scripts` record successful saved
+revisions with their number, UUID, UTC creation time, and path. Environment entries
+also include Python version and modules. Unchanged code/environments and Reset venv
+reuse the current revision. Failed saves do not update the registry; leftover
+revision paths are skipped when allocating numbers. Numbers may have gaps.
+
+Existing per-Action UUID directories are retained. On the next save, current legacy
+revisions gain history entries with unknown creation times (`null`); older unrecorded
+revisions are not reconstructed. Registrations predating per-Action directories
+retain the existing migration behavior: environments are rebuilt using their
+lockfiles rather than moved, and old paths remain available for running processes.
+History is stored in JSON; this does not add a history or rollback UI.
+Saving is serialized within one DeciFlow process; multiple writers sharing a volume
+are not supported.
 
 Unchanged ready environments are reused. Python/module changes create a new
 revision; code edits save a new script snapshot and reuse the environment. Existing
 runs keep their original scripts and environments; saved changes apply to the next
 run. Old code and environment revisions are retained: remove unused revisions
-only after their runs have stopped. After renaming/removing an Action, check its
+only after their runs have stopped. After removing an Action, check its
 source assignments.
 
 **Reset venv** deletes the saved Action's current `.venv` and rebuilds it from its
@@ -70,7 +85,7 @@ stay intact. It uses saved settings, not editor drafts. A failed reset leaves th
 environment unready; retry with Reset venv. Legacy Actions using external Python
 cannot be reset.
 
-**Delete → Save & prepare environments** removes the Action's UUID folder, including
+**Delete → Save & prepare environments** removes the Action's data folder, including
 code snapshots, all environment revisions, lockfiles, and data. External scripts/Python
 outside DeciFlow-managed storage are not deleted. Reset/deletion is rejected while
 analysis uses the Action; click **Stop** first. New runs using it cannot start during

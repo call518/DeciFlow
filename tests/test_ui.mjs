@@ -206,16 +206,17 @@ test('Batch is the default mode before server status loads', () => {
 });
 
 test('each mode has editable sample input and retains its own edits', () => {
-  const { nodes } = workspace([]);
-  assert.equal(nodes.get('file-path').value, '/host-logs/sample-logs/access-1k.log\n/host-logs/var/log/messages\n/host-logs/var/log/nginx/access*.log');
+  const { nodes, context } = workspace([]);
+  assert.equal(vm.runInContext("sourceRows.map(row => row.profile.value).join(',')", context), 'general,http_access,authentication');
+  assert.equal(nodes.get('file-path').value, '/host-logs/var/log/messages\n/host-logs/sample-logs/access-1k.log\n/host-logs/sample-logs/SSH_2k.log');
   nodes.get('source-mode').value = 'realtime';
   nodes.get('source-mode').onchange();
-  assert.equal(nodes.get('file-path').value, '/host-logs/var/log/secure\n/host-logs/var/log/messages\n/host-logs/var/log/nginx/access*.log');
+  assert.equal(nodes.get('file-path').value, '/host-logs/var/log/messages\n/host-logs/sample-logs/access-1k.log\n/host-logs/sample-logs/SSH_2k.log');
   assert.equal(nodes.get('logs').value.split('\n').length, 5);
   nodes.get('file-path').value = '/custom/live.log';
   nodes.get('source-mode').value = 'batch';
   nodes.get('source-mode').onchange();
-  assert.equal(nodes.get('file-path').value, '/host-logs/sample-logs/access-1k.log\n/host-logs/var/log/messages\n/host-logs/var/log/nginx/access*.log');
+  assert.equal(nodes.get('file-path').value, '/host-logs/var/log/messages\n/host-logs/sample-logs/access-1k.log\n/host-logs/sample-logs/SSH_2k.log');
   nodes.get('file-path').value = '/custom/batch.log';
   nodes.get('source-mode').value = 'paste';
   nodes.get('source-mode').onchange();
@@ -786,6 +787,8 @@ test('Action editor sends Python versions and module lists and recovers from pre
   nodes.get('add-action').onclick();
   const row = nodes.get('action-editor').children[0];
   const inputs = row.children.slice(0, 4).map(label => label.children[0]);
+  assert.equal(inputs[0].readOnly, false);
+  assert.equal(row.children[0].children[1].textContent, 'Name cannot be changed after creation.');
   assert.equal(inputs[1].value, '3.12');
   inputs[0].value = 'notify'; inputs[3].value = 'import json, sys\nresult = json.load(sys.stdin)\n';
   inputs[2].value = 'httpx==0.28.1\nrequests';
@@ -846,6 +849,7 @@ test('Action list edits one handler, cancels drafts, and saves deletion without 
   nodes.get('cancel-action').onclick();
   assert.equal(table().children[2].children[0].textContent, 'Second');
   table().children[2].children[4].children[1].onclick();
+  assert.equal(nodes.get('action-editor').children[0].children[0].children[0].readOnly, true);
   nodes.get('action-editor').children[0].children[0].children[0].value = 'Edited';
   let sent;
   context.fetch = async (path, options) => {
@@ -855,12 +859,12 @@ test('Action list edits one handler, cancels drafts, and saves deletion without 
   await nodes.get('save-actions').onclick();
   assert.equal(sent.length, 2);
   assert.equal(sent[0].name, 'First');
-  assert.equal(sent[1].name, 'Edited');
+  assert.equal(sent[1].name, 'Second');
   assert.equal(nodes.get('action-editor').hidden, true);
   table().children[1].children[4].children[3].onclick();
   await nodes.get('save-actions').onclick();
   assert.equal(sent.length, 1);
-  assert.equal(sent[0].name, 'Edited');
+  assert.equal(sent[0].name, 'Second');
   nodes.get('add-action').onclick();
   nodes.get('cancel-action').onclick();
   assert.equal(table().children.length, 2);
@@ -892,7 +896,7 @@ test('source rows edit paths, remove samples, add sources, and retain settings a
   assert.equal(nodes.get('source-settings').children.length, 3);
   const first = nodes.get('source-settings').children[0];
   const path = first.children[0].children[0];
-  assert.equal(path.value, '/host-logs/sample-logs/access-1k.log');
+  assert.equal(path.value, '/host-logs/var/log/messages');
   path.value = '/custom/access*.log'; path.oninput();
   const profile = first.children[1].children[0];
   profile.value = 'http_access'; profile.onchange();
@@ -932,7 +936,7 @@ test('result JSON puts metadata first and preserves UTC ISO 8601 timestamps and 
 test('stored Action assignments never run by default; explicit selections last only for this page', async () => {
   let saved;
   const storage = {
-    getItem: () => JSON.stringify([['/host-logs/sample-logs/access-1k.log', {profile:'http_access', chunkEvents:3, action:'notify'}]]),
+    getItem: () => JSON.stringify([['/host-logs/var/log/messages', {profile:'http_access', chunkEvents:3, action:'notify'}]]),
     setItem: (_, value) => { saved = JSON.parse(value); },
   };
   const {nodes, context, requests} = workspace([], undefined, storage);
@@ -1411,7 +1415,7 @@ test('Reset sources restores current mode samples and clears Action assignments'
   assert.equal(nodes.get('file-path').value, vm.runInContext('defaultFilePaths.batch', context));
   assert.equal(nodes.get('source-settings').children.length, 3);
   assert.equal(vm.runInContext('filePaths.realtime', context), '/my/live.log');
-  assert.equal(vm.runInContext("sourceRows.every(row => row.profile.value==='general' && row.size.value==='1' && row.action.value==='')", context), true);
+  assert.equal(vm.runInContext("sourceRows.every(row => row.profile.value===defaultSourceProfiles[row.path] && row.size.value==='1' && row.action.value==='')", context), true);
   const stored = new Map(JSON.parse(values.get('deciflow-source-preferences')));
   assert.deepEqual(stored.get('/host-logs/var/log/messages'), { profile:'general', chunkEvents:1 });
   nodes.get('source-mode').value = 'realtime'; nodes.get('source-mode').onchange();
@@ -1458,4 +1462,17 @@ test('Throughput follows all other classification metrics', () => {
   const { nodes, context } = workspace([]);
   vm.runInContext('render()', context);
   assert.equal(nodes.get('summary').children.at(-1).textContent, 'Throughput');
+});
+
+
+test('Action edit explains environment revisions and reset behavior', () => {
+  const {nodes, context} = workspace([]);
+  vm.runInContext("registeredActions=[{id:'a'.repeat(32), name:'Notify', pythonVersion:'3.12', modules:[], code:'pass'}]; handleEditAction(0);", context);
+  const row = nodes.get('action-editor').children[0];
+  for (const index of [1, 2]) {
+    assert.equal(row.children[index].children[0].readOnly, undefined);
+    assert.equal(row.children[index].children[1].textContent, 'Changing Python version or modules creates a new environment. The current environment is retained.');
+  }
+  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.ok(html.includes('Reset venv deletes the current virtual environment and rebuilds it using saved settings and locked dependencies.'));
 });
