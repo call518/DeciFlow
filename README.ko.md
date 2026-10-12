@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="images/DeciFlow-Logo.png" alt="DeciFlow" width="480">
+</p>
+
 # DeciFlow
 
 [English](README.md) | [한국어](README.ko.md)

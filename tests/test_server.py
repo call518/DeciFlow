@@ -34,7 +34,16 @@ async def test_assets_and_status(monkeypatch: pytest.MonkeyPatch) -> None:
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=server.app), base_url="http://test"
     ) as client:
-        for path in ["/", "/app.js", "/stream.js", "/style.css"]:
+        for path in [
+            "/",
+            "/app.js",
+            "/stream.js",
+            "/style.css",
+            "/logo.png",
+            "/favicon.ico",
+            "/icons/deciflow-icon-16.png",
+            "/icons/deciflow-icon-32.png",
+        ]:
             response = await client.get(path)
             assert response.status_code == 200
             assert response.headers["cache-control"] == "no-store"
@@ -42,6 +51,28 @@ async def test_assets_and_status(monkeypatch: pytest.MonkeyPatch) -> None:
             if path == "/":
                 assert '<html lang="en">' in response.text
                 assert 'id="powered-by"' in response.text
+                assert 'src="/logo.png" alt="DeciFlow"' in response.text
+                assert 'href="/favicon.ico?v=deciflow-1"' in response.text
+                assert (
+                    'sizes="32x32" href="/icons/deciflow-icon-32.png?v=deciflow-1"'
+                    in response.text
+                )
+            if path == "/logo.png":
+                assert response.headers["content-type"] == "image/png"
+                assert (
+                    response.content
+                    == (server.ROOT / "images" / "DeciFlow-Logo.png").read_bytes()
+                )
+            if path == "/favicon.ico" or path.startswith("/icons/"):
+                name, media_type = server.ASSETS[path]
+                assert response.headers["content-type"] == media_type
+                assert response.content == (server.ROOT / "public" / name).read_bytes()
+        response = await client.get("/icons/deciflow-icon-32.png?v=deciflow-1")
+        assert response.status_code == 200
+        assert (
+            response.content
+            == (server.ROOT / "images/icons/deciflow-icon-32.png").read_bytes()
+        )
         status = (await client.get("/api/status")).json()
         assert status["configured"] is False
         assert status["limits"]["context_tokens"] == 32000

@@ -46,6 +46,16 @@ ASSETS = {
     "/app.js": ("app.js", "text/javascript"),
     "/stream.js": ("stream.js", "text/javascript"),
     "/style.css": ("style.css", "text/css"),
+    "/favicon.ico": ("../images/icons/favicon.ico", "image/vnd.microsoft.icon"),
+    "/icons/deciflow-icon-16.png": (
+        "../images/icons/deciflow-icon-16.png",
+        "image/png",
+    ),
+    "/icons/deciflow-icon-32.png": (
+        "../images/icons/deciflow-icon-32.png",
+        "image/png",
+    ),
+    "/logo.png": ("../images/DeciFlow-Logo.png", "image/png"),
 }
 
 
