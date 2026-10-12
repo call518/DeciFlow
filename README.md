@@ -145,7 +145,7 @@ and [driver 580 or newer](https://docs.nvidia.com/deploy/cuda-compatibility/mino
 
 Use **`call518/deciflow-laya-cpu:0.0.1`** or **`call518/deciflow-laya-cuda:0.0.1`**.
 No clone or build is needed. Copy the required script to the Laya host and run
-**only one** of the CPU/CUDA commands below.
+the CPU and/or CUDA commands below. Both containers can run simultaneously.
 
 CPU: [run-deciflow-laya-cpu.sh](scripts/run-deciflow-laya-cpu.sh)
 
@@ -163,12 +163,12 @@ The scripts explicitly set `--env LAYA_API_KEY=changeme`; exporting a different
 key does not override this argument. For deployment, change this argument and set
 the same key in DeciFlow's `.env`.
 
-The scripts use port **8000**, preload `english`, `multilingual`, and `typed-decisions`, and share the
+The scripts publish host port **8001 for CPU** and **8000 for CUDA**, preload `english`, `multilingual`, and `typed-decisions`, and share the
 `deciflow-laya-model-cache` volume. CUDA exposes all GPUs to the container.
 To change the host interface/port, edit `--publish HOST_IP:HOST_PORT:8000` and
 update `LAYA_API_URL`. The CPU container is named `DeciFlow-Laya-CPU`; the CUDA
-container is named `DeciFlow-Laya-CUDA`. Stop the existing container before
-switching CPU/CUDA because both use host port 8000. To change settings, stop and
+container is named `DeciFlow-Laya-CUDA`. Both containers listen on port 8000
+internally. To change settings, stop and
 remove the corresponding container before rerunning its script.
 
 > **NOTE:** For Docker Compose deployment, see the official
@@ -179,11 +179,13 @@ remove the corresponding container before rerunning its script.
 #### Check and manage
 
 Use the server's key in `LAYA_API_KEY` for the health request (default: `changeme`).
+Set `LAYA_HOST_PORT` to 8001 for CPU or 8000 for CUDA.
 
 ```bash
+LAYA_HOST_PORT=8001
 curl --fail --silent --show-error \
   --header "Authorization: Bearer ${LAYA_API_KEY:-changeme}" \
-  http://127.0.0.1:8000/health
+  "http://127.0.0.1:${LAYA_HOST_PORT}/health"
 ```
 
 On the DeciFlow node, replace `127.0.0.1` with the server address. Inspect
@@ -206,11 +208,13 @@ LAYA_CONTAINER=DeciFlow-Laya-CPU  # CPU; use DeciFlow-Laya-CUDA for CUDA
 | Resume | `docker start "$LAYA_CONTAINER"` |
 | Remove | `docker rm "$LAYA_CONTAINER"` after stopping |
 
-Removal preserves the model cache. Use only one deployment method at a time.
+Removal preserves the model cache. Choose either native execution or Docker;
+the CPU and CUDA Docker containers can run together.
 
 #### DeciFlow connection
 
-On the DeciFlow node, set the shared Laya server URL and matching API key in `.env`:
+On the DeciFlow node, set the shared Laya server URL and matching API key in `.env`.
+Use port 8001 for the CPU container or 8000 for CUDA (shown below) or native execution:
 
 ```dotenv
 DECISION_ENGINE=laya

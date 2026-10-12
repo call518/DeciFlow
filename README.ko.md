@@ -144,7 +144,7 @@ CUDA 실행에는 NVIDIA 드라이버와
 
 **`call518/deciflow-laya-cpu:0.0.1`** 또는 **`call518/deciflow-laya-cuda:0.0.1`**를 사용합니다.
 복제·빌드는 필요하지 않습니다. 사용할 스크립트를 Laya 호스트로 복사하고
-아래 CPU·CUDA 명령 중 **하나만** 실행하세요.
+아래 CPU·CUDA 명령 중 필요한 것을 실행하세요. 두 컨테이너를 동시에 실행할 수 있습니다.
 
 CPU: [run-deciflow-laya-cpu.sh](scripts/run-deciflow-laya-cpu.sh)
 
@@ -162,12 +162,12 @@ bash scripts/run-deciflow-laya-cuda.sh
 덮어쓰지 않습니다. 실제 배포에는 이 인자를 강한 키로 변경하고 DeciFlow의 `.env`에도
 같은 값을 설정하세요.
 
-스크립트는 **8000** 포트, `english`·`multilingual`·`typed-decisions` 사전 적재,
+스크립트는 호스트의 **CPU 8001**, **CUDA 8000** 포트, `english`·`multilingual`·`typed-decisions` 사전 적재,
 `deciflow-laya-model-cache` 공유 볼륨을 사용합니다. CUDA는 컨테이너에 모든 GPU를
 노출합니다. 호스트 인터페이스·포트는 `--publish 호스트_IP:호스트_포트:8000`을
 수정하고 `LAYA_API_URL`에도 반영하세요. CPU 컨테이너 이름은 `DeciFlow-Laya-CPU`,
-CUDA 컨테이너 이름은 `DeciFlow-Laya-CUDA`입니다. 두 컨테이너 모두 호스트의 8000 포트를
-사용하므로 CPU·CUDA 전환 전에 기존 컨테이너를 중지하세요. 설정을 변경하려면 해당
+CUDA 컨테이너 이름은 `DeciFlow-Laya-CUDA`입니다. 두 컨테이너의 내부 포트는 모두
+8000입니다. 설정을 변경하려면 해당
 컨테이너를 중지·제거한 뒤 스크립트를 다시 실행하세요.
 
 > **NOTE:** Docker Compose로 구성하려면 공식
@@ -178,11 +178,13 @@ CUDA 컨테이너 이름은 `DeciFlow-Laya-CUDA`입니다. 두 컨테이너 모�
 #### 상태 확인과 관리
 
 상태 확인 시 `LAYA_API_KEY`에 서버와 동일한 키를 사용하세요(기본값: `changeme`).
+`LAYA_HOST_PORT`는 CPU의 경우 8001, CUDA의 경우 8000으로 설정하세요.
 
 ```bash
+LAYA_HOST_PORT=8001
 curl --fail --silent --show-error \
   --header "Authorization: Bearer ${LAYA_API_KEY:-changeme}" \
-  http://127.0.0.1:8000/health
+  "http://127.0.0.1:${LAYA_HOST_PORT}/health"
 ```
 
 DeciFlow 노드에서는 `127.0.0.1`을 서버 주소로 바꾸세요.
@@ -205,11 +207,13 @@ LAYA_CONTAINER=DeciFlow-Laya-CPU  # CPU; CUDA는 DeciFlow-Laya-CUDA 사용
 | 재시작 | `docker start "$LAYA_CONTAINER"` |
 | 제거 | 중지 후 `docker rm "$LAYA_CONTAINER"` |
 
-제거 시 모델 캐시는 유지됩니다. 배포 방법은 한 번에 하나만 사용하세요.
+제거 시 모델 캐시는 유지됩니다. 네이티브 실행과 Docker 중 하나를 선택하세요.
+CPU·CUDA Docker 컨테이너는 함께 실행할 수 있습니다.
 
 #### DeciFlow 연결 설정
 
-DeciFlow 실행 노드의 `.env`에 공용 Laya 서버 URL과 서버와 동일한 API 키를 설정하세요:
+DeciFlow 실행 노드의 `.env`에 공용 Laya 서버 URL과 서버와 동일한 API 키를 설정하세요.
+CPU 컨테이너는 8001, CUDA(아래 예시) 또는 네이티브 실행은 8000 포트를 사용합니다:
 
 ```dotenv
 DECISION_ENGINE=laya

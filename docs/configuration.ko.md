@@ -10,7 +10,7 @@ Laya 서버 설정은 Laya 호스트에서 별도로 관리합니다.
 | `DECISION_ENGINE` | `laya` | `laya` 또는 `jev` |
 | `DECIFLOW_DATA_DIR` | `/var/lib/deciflow-data` | Actions·Criteria 공통 저장 루트; 쓰기 권한 필요 |
 | `PORT` | `4000` | DeciFlow 웹 포트 |
-| `LAYA_API_URL` | `http://127.0.0.1:8000/v1/systemone` | 프록시 접두사를 포함한 전체 Laya URL |
+| `LAYA_API_URL` | `http://127.0.0.1:8000/v1/systemone` | 프록시 접두사를 포함한 전체 Laya URL. Docker CPU는 8001, CUDA는 8000 포트 사용 |
 | `LAYA_API_KEY` | `changeme` | Laya 서버와 동일한 키 |
 | `LAYA_MODEL` | `multilingual` | 내장 모델 또는 등록한 사용자 체크포인트 이름; 서버에 모델 필요 |
 | `LAYA_MAX_TOKENS` | 빈 값 | `max_len`으로 전달; 빈 값은 내장 모델 기본값 유지, 사용자 모델은 필수 |

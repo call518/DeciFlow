@@ -9,7 +9,7 @@ docker run --detach \
   --hostname DeciFlow-Laya \
   --init \
   --restart unless-stopped \
-  --publish 0.0.0.0:8000:8000 \
+  --publish 0.0.0.0:8001:8000 \
   --volume deciflow-laya-model-cache:/home/laya/.cache/huggingface \
   --env LAYA_HOST=0.0.0.0 \
   --env LAYA_PORT=8000 \
