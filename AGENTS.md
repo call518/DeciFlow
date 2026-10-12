@@ -1,5 +1,9 @@
 # Documentation and environment maintenance
 
+- When creating or updating `AGENTS.md`, never include secrets, credentials,
+  sensitive internal information, or personal data. Use placeholders when
+  examples are needed.
+
 - Keep project UI and code messages in English by default.
 
 - Write release notes in English, keeping them concise and clear and focused on
