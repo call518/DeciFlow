@@ -135,7 +135,11 @@ async def test_stop_preserves_results_and_closes_producer() -> None:
 
 
 @pytest.mark.anyio
-async def test_job_access_denied_and_server_restart_forgets_jobs() -> None:
+async def test_job_access_denied_and_server_restart_forgets_jobs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DECIFLOW_DATA_DIR", str(tmp_path / "data"))
+
     async def handle_events() -> AsyncIterator[str]:
         yield server._encode({"type": "start"})
         await asyncio.Event().wait()

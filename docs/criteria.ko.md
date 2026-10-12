@@ -17,7 +17,8 @@
   `choice` 판정만 사용하며 다른 판정 유형·임의 범주는 지원하지 않습니다.
 - ID는 소문자로 시작하며 소문자·숫자·`_`·`-`로 최대 64자입니다.
   이름·지시문·모든 범주 정의는 비워둘 수 없습니다.
-- `general`은 API 기본 프로필이므로 수정할 수 있지만 삭제할 수 없습니다.
+- `general`은 API 기본 프로필입니다. 목록 상단 **Default Criteria**에 별도로 표시하며
+  **View**만 제공합니다. Edit·Delete 버튼은 표시하지 않습니다.
 - 저장한 변경은 다음 분석부터 적용합니다. 실행 중인 작업은 수정·삭제 전 기준을
   유지하며 결과 JSON의 `question`에 실제 사용한 기준을 남깁니다.
 - 삭제한 프로필이 선택된 소스에는 대체 프로필을 직접 선택하세요. 페이지를 새로고침하면
@@ -30,8 +31,9 @@ View와 Edit는 동시에 표시하지 않습니다. Edit·Add는 View를 닫고
 
 ## 저장과 접근
 
-초기 프로필은 [`profiles/`](../profiles/)의 JSON에서 읽습니다. 첫 저장 이후에는
-`DECIFLOW_DATA_DIR/criteria/criteria.json`이 전체 목록을 대체하며 삭제도 유지합니다.
+기동 시 `DECIFLOW_DATA_DIR/criteria/criteria.json`이 없으면 [`profiles/`](../profiles/)에서
+읽은 기본 프로필을 파일로 저장합니다. UI에서 Save changes를 누를 필요가 없습니다.
+파일이 있으면 해당 전체 목록을 읽으며 기존 수정·삭제 내역을 덮어쓰지 않습니다.
 기본 경로는 `/var/lib/deciflow-data/criteria/criteria.json`입니다.
 저장 파일이 있으면 번들 JSON을 수정해도 운영 기준이 바뀌지 않습니다.
 

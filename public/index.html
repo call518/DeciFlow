@@ -24,8 +24,10 @@
     <section id="criteria-page" hidden aria-labelledby="criteria-title">
       <section class="intro"><p class="eyebrow">DECISION CRITERIA</p><h1 id="criteria-title">Criteria</h1><p>Manage profiles with fixed Normal, Warning, Error, Security and Other categories. Saved changes apply to new runs.</p></section>
       <section class="card actions-manager">
-        <div class="card-title"><h2>Criteria profiles</h2><button id="add-criteria" type="button" class="quiet" disabled>Add profile</button></div>
-        <p class="caption">The general profile is required and cannot be deleted. Deleting other profiles requires selecting a replacement in Main. Running jobs keep their original criteria.</p>
+        <div class="card-title"><h2>Criteria profiles</h2></div>
+        <p class="caption">The default profile is shown separately with View only. Deleting other profiles requires selecting a replacement in Main. Running jobs keep their original criteria.</p>
+        <section aria-labelledby="default-criteria-title"><h3 id="default-criteria-title">Default Criteria</h3><div id="criteria-default"></div></section>
+        <div class="card-title"><h3 id="additional-criteria-title">Additional Criteria</h3><button id="add-criteria" type="button" class="quiet" disabled>Add profile</button></div>
         <div class="action-search-row"><label for="criteria-search">Search by Name</label><input id="criteria-search" type="search" placeholder="Profile name…"></div>
         <div id="criteria-registry"></div>
         <section id="criteria-view" class="configuration-view" hidden aria-label="Criteria configuration"></section>

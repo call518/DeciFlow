@@ -141,6 +141,7 @@ and Action execution is **54 ms**. `truncated=false` indicates no input truncati
 | `profile` | Selected criteria profile ID, such as general. |
 | `incomplete` | Whether the chunk includes an unfinished line retained during rotation. |
 | `engine` | Selected provider: laya or jev. |
+| `engineConnection` | Actual request status: connected, disconnected, timeout, or api_error; absent for local input rejection. |
 | `requestedModel` | Model name sent in the request; differs from the returned model identifier. |
 | `requestedAt` | Request preparation timestamp in UTC, not the log event time. |
 | `requestBytes` | UTF-8 JSON request-body size in bytes, not tokens. |
@@ -170,7 +171,7 @@ and Action execution is **54 ms**. `truncated=false` indicates no input truncati
 | `providerResponse.routing.detection` / `workflow` | Language detection and workflow routing metadata; null when not used. |
 | `uncertaintyBasis` | Scale used for uncertainty checks: selected_category_probability. |
 | `uncertain` | DeciFlow flag for probability below 70%, top-two gap below 10 percentage points, or collapsed options. |
-| `review` | Review required; also true for Other and failed/rejected predictions. |
+| `review` | Review required for successful Uncertain/Other classifications; false for failures/rejections. |
 | `reviewReasons` | Reason codes: low_answer_probability, close_probabilities, collapsed_options or other_category. |
 | `probabilityMargin` | Top probability minus second-highest, on a 0–1 scale; 0.0181 means 1.81 percentage points. |
 | `candidates` | Two highest-probability categories, in descending order. |

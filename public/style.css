@@ -1134,12 +1134,12 @@ footer {
 }
 
 .selected-engine {
-  color: #a23e34;
+  color: #0057ff;
   font-weight: 700
 }
 
 .selected-model {
-  color: #a23e34;
+  color: #0057ff;
   font-weight: 700;
 }
 
@@ -1218,3 +1218,7 @@ footer {
 .configuration-view { margin: 16px 0; }
 .configuration-view textarea:not(.action-code) { height: auto; }
 .configuration-view textarea { background: #f4f7f5; }
+
+.engine-connection.connected { color: #24634a; }
+.engine-connection.disconnected, .engine-connection.timeout, .engine-connection.api_error { color: #9a443c; }
+.engine-connection.not_checked { color: #607d80; }

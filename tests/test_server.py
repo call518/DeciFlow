@@ -151,7 +151,7 @@ async def test_stream_contract_and_partial_failure(
     assert events[-1]["type"] == "done"
     results = {event["index"]: event["result"] for event in events[1:-1]}
     assert results[0]["log"] == "\uc815\uc0c1 \ub85c\uadf8"
-    assert results[1]["review"] is True
+    assert results[1]["review"] is False
     assert "429" in results[1]["error"]
     assert [event["completed"] for event in events[1:-1]] == [1, 2]
 

@@ -203,3 +203,34 @@ def test_separate_criteria_storage(
         actions.get_registry_path() == criteria_storage / "custom-actions/actions.json"
     )
     assert not (criteria_storage / "custom-actions").exists()
+
+
+def test_startup_creates_criteria_and_preserves_existing_file(
+    criteria_storage: Path,
+) -> None:
+    expected = deepcopy(PROFILES)
+    path = get_criteria_path()
+    assert not path.exists()
+    load_profiles()
+    assert json.loads(path.read_text()) == expected
+    assert PROFILES == expected
+
+    expected["general"]["label"] = "Saved custom name"
+    expected.pop("network")
+    path.write_text(json.dumps(expected))
+    saved = path.read_bytes()
+    load_profiles()
+    assert PROFILES == expected
+    assert path.read_bytes() == saved
+    assert "network" not in PROFILES
+
+
+def test_startup_does_not_replace_invalid_existing_criteria(
+    criteria_storage: Path,
+) -> None:
+    path = get_criteria_path()
+    path.parent.mkdir(parents=True)
+    path.write_text("invalid JSON")
+    with pytest.raises(ValueError):
+        load_profiles()
+    assert path.read_text() == "invalid JSON"

@@ -130,7 +130,7 @@ async def test_laya_truncation_keeps_original_and_continues(
             ]
         )
     assert results[0]["log"] == "too long"
-    assert results[0]["review"] is True
+    assert results[0]["review"] is False
     assert "partial prediction was discarded" in results[0]["error"]
     assert "category" not in results[0]
     assert results[1]["category"] == "normal"

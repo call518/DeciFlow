@@ -181,7 +181,7 @@ async def test_batch_concurrency_order_and_failures() -> None:
     assert peak == 4
     assert [results[index]["log"] for index in range(9)] == logs
     assert results[3]["error"] == "rate limited"
-    assert results[3]["review"] is True
+    assert results[3]["review"] is False
     assert results[8]["category"] == "normal"
 
 

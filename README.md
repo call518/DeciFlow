@@ -102,7 +102,7 @@ The default key `changeme` is for trials. Change it in both the Laya script and 
 | --- | --- |
 | [Usage](docs/usage.md) | Input modes, criteria, filters, human review, reconnecting, timing |
 | [Configuration](docs/configuration.md) | Environment variables, models, input budgets |
-| [Criteria](docs/criteria.md) | List, view, add, edit, and delete fixed-category profiles |
+| [Criteria](docs/criteria.md) | Manage fixed-category profiles; Default Criteria is view-only |
 | [Python Actions](docs/actions.md) | Configuration viewing, registration, source assignment, execution contract, storage/recovery |
 | [Result JSON](docs/results.md) | Real response example and field reference |
 
@@ -112,6 +112,8 @@ Reloading, browser history, and direct links retain the selected view.
 - **Paste:** Analyze pasted text.
 - **Batch:** Analyze existing files. Docker maps host `/var/log` to `/host-logs/var/log`.
 - **Realtime:** Follow new logs; choose criteria and chunk size per source.
+- **Processing status:** Success / Failed separates classified and failed chunks. Needs review
+  counts successful classifications only. Engine connection shows the last actual request; initially Not checked.
 - **Review:** Filter Needs review, record corrections, and export JSON. Certain does not
   guarantee accuracy. Export results you need to keep: restarting the server loses jobs/results.
 
@@ -343,7 +345,7 @@ uv sync
 uv run python server.py
 ```
 
-Open **http://127.0.0.1:4000**. Actions and Criteria need writable shared storage. If the default
+Open **http://127.0.0.1:4000**. Startup creates the default Criteria file, so shared storage must be writable. If the default
 `/var/lib/deciflow-data` is not writable, set `DECIFLOW_DATA_DIR=./data`
 in `.env`. Restart DeciFlow after configuration changes.
 

@@ -127,11 +127,16 @@ async def classify_log(
                 content=content,
             )
     except (TimeoutError, httpx.TimeoutException) as error:
+        metadata["engineConnection"] = "timeout"
         raise DecisionError(
             f"{label} request timed out after {engine.timeout} seconds.", metadata
         ) from error
     except httpx.RequestError as error:
+        metadata["engineConnection"] = "disconnected"
         raise DecisionError(f"Could not connect to {label}.", metadata) from error
+    metadata["engineConnection"] = (
+        "connected" if 200 <= response.status_code < 300 else "api_error"
+    )
     metadata["httpStatus"] = response.status_code
     metadata["responseHeaders"] = {
         key: response.headers[key]
@@ -252,7 +257,7 @@ async def classify_batch(
         try:
             result: Result = {"log": logs[index], **await classify(logs[index])}
         except Exception as error:  # noqa: BLE001 - retain individual failures in results
-            result = {"log": logs[index], "error": str(error), "review": True}
+            result = {"log": logs[index], "error": str(error), "review": False}
             if isinstance(error, DecisionError):
                 result.update(error.metadata)
         if metadata is not None:
@@ -301,7 +306,7 @@ async def classify_stream(
             )
             result = {**record, **decision}
         except Exception as error:  # noqa: BLE001 - keep per-event failures
-            result = {**record, "error": str(error), "review": True}
+            result = {**record, "error": str(error), "review": False}
             if isinstance(error, DecisionError):
                 result.update(error.metadata)
         result["elapsedMs"] = int((perf_counter() - start) * 1000 + 0.5)

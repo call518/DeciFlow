@@ -88,12 +88,14 @@ def validate_profiles(values: object) -> ProfileMap:
 
 
 def load_profiles() -> None:
-    """Load saved criteria at startup; bundled JSON supplies initial defaults."""
+    """Load saved criteria, persisting current defaults on the first startup."""
     path = get_criteria_path()
-    if path.is_file():
-        values = validate_profiles(json.loads(path.read_text(encoding="utf-8")))
-        PROFILES.clear()
-        PROFILES.update(values)
+    if not path.exists():
+        save_profiles(PROFILES)
+        return
+    values = validate_profiles(json.loads(path.read_text(encoding="utf-8")))
+    PROFILES.clear()
+    PROFILES.update(values)
 
 
 def save_profiles(values: object) -> ProfileMap:

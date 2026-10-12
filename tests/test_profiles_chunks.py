@@ -186,7 +186,9 @@ async def test_paste_chunk_metadata_including_failures(
     assert events[0]["total"] == 2
     results = [event["result"] for event in events if event["type"] == "result"]
     assert sorted(seen) == [("one\ntwo", "authentication"), ("three", "authentication")]
-    assert all(row["profile"] == "authentication" and row["review"] for row in results)
+    assert all(
+        row["profile"] == "authentication" and row["review"] is False for row in results
+    )
     assert sorted(row["lineCount"] for row in results) == [1, 2]
     assert sorted(row["eventCount"] for row in results) == [1, 2]
     assert all(row["chunkEvents"] == 2 for row in results)

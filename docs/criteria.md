@@ -17,7 +17,8 @@ Manage decision profiles under **Criteria** in the sidebar. Both Laya and Jev us
   Only `choice` decisions are supported; other decision types/custom categories are unavailable.
 - IDs start with a lowercase letter and use lowercase letters, digits, `_`, or `-`,
   up to 64 characters. Names, instructions, and every definition must be nonempty.
-- `general` is the default API profile. It can be edited but cannot be deleted.
+- `general` is the default API profile. It appears separately under **Default Criteria**
+  above the list, with **View** only. Edit/Delete controls are omitted.
 - Saved changes apply to new runs. Running jobs retain their original criteria even
   after edits/deletion; result JSON `question` records the criteria actually used.
 - Select replacement profiles for sources assigned to deleted profiles. Refresh the
@@ -30,8 +31,9 @@ the editor/cancel button and disables saving. Close restores any existing draft.
 
 ## Storage and access
 
-Initial profiles come from JSON in [`profiles/`](../profiles/). After the first save,
-`DECIFLOW_DATA_DIR/criteria/criteria.json` replaces the complete list, preserving deletions.
+At startup, if `DECIFLOW_DATA_DIR/criteria/criteria.json` is missing, DeciFlow writes
+the defaults loaded from [`profiles/`](../profiles/). No UI save is needed. If the file
+exists, DeciFlow loads its complete list without overwriting edits or deletions.
 The default path is `/var/lib/deciflow-data/criteria/criteria.json`. Once saved criteria
 exist, editing bundled JSON no longer changes the active criteria.
 

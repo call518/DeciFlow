@@ -6,8 +6,9 @@ On wide screens, the left **40%** shows **Classification overview → Log input*
 the right **60%** shows **Classification results**. Narrow screens stack the panels.
 The sidebar identifies the DeciFlow log source host by hostname, detected IPs, and
 OS/version. In WSL or containers, these identify that environment, not its host OS;
-IPs are not a full interface inventory. **Ready to connect** reports configuration,
-not a successful connection to the decision engine.
+IPs are not a full interface inventory. The status in parentheses after the engine name, e.g. **Laya (Connected)**, reports the last actual request: Not checked
+before a request, then Connected, Disconnected, Timed out, or API error. It is not
+a continuous health check; local input rejections do not change the status.
 
 ### Input and criteria
 
@@ -123,13 +124,15 @@ choice, not a confirmed normal event. The original choice and probabilities are
 preserved. The UI shows provisional candidates; JSON records `candidates`,
 `probabilityMargin`, and `reviewReasons`.
 
-**Needs review** is broader: all Uncertain results, Other choices, and failed or
-rejected requests require review. Other alone does not set Uncertain. **Certain**
+**Needs review** includes only successfully classified Uncertain or Other chunks.
+Failed/rejected requests count as Failed and are excluded from review metrics/filters. Other alone does not set Uncertain. **Certain**
 means no Uncertain flag, not verified accuracy. Use labeled logs to evaluate
 misclassifications and review workload before treating the thresholds as an
 operating policy.
 
-Filter **All results / Needs review / No review needed**. Category filtering
+Filter **All results / Needs review / No review needed**. Both review groups include
+only successful classifications. To inspect failures, choose All results and the
+Request failed category. Category filtering
 and case-insensitive literal search of original log text combine with the review
 filter. **Source**, after Search logs, filters by an entered path/pattern and shows
 completed counts, including failures. Overlapping patterns retain all matches in
@@ -210,12 +213,14 @@ checks as analysis; file jobs also require a local/trusted UI origin. Without
 
 | Metric | Meaning |
 | --- | --- |
-| Processed chunks | Completed results, including failed requests |
-| Needs review | Uncertain (low probability, close probabilities, or collapsed options), Other, or failed/rejected request; not an error count |
+| Success / Failed | Valid classifications / failed chunks; failures include connection errors, timeouts, rejected inputs, and invalid responses |
+| Needs review | Successful Uncertain (low probability, close probabilities, or collapsed options) or Other classifications; excludes failed/rejected requests |
 | Throughput | Successfully classified chunks/s over the last 5 seconds, including idle time; uses elapsed time during the first 5 seconds; freezes when stopped/completed |
 | Total elapsed time | Time since the run started, including idle periods |
 | Active processing time | Time with at least one request in flight, counting overlap once; percentage of total elapsed time |
 | Average processing time | Mean completed request duration, including failures; per chunk |
+
+Action execution failures do not affect classification counts or engine connection status.
 
 Active and average times include network/server wait. Active time excludes idle
 periods and stays within 0–100% of elapsed time; it is not CPU/GPU utilization or

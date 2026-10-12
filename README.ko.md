@@ -101,7 +101,7 @@ GPU가 없다면 [Laya CPU](#laya-docker), 유료 API를 사용하려면 [Jev](#
 | --- | --- |
 | [사용법](docs/usage.ko.md) | 입력 모드·판정 기준·필터·수동 검토·재접속·시간 지표 |
 | [설정](docs/configuration.ko.md) | 환경변수·모델·입력 예산 |
-| [Criteria](docs/criteria.ko.md) | 고정 5개 범주의 프로필 목록·보기·추가·수정·삭제 |
+| [Criteria](docs/criteria.ko.md) | 고정 5개 범주 프로필 관리; Default Criteria는 보기 전용 |
 | [Python Actions](docs/actions.ko.md) | 구성 보기·등록·소스 할당·실행 규약·저장과 복구 |
 | [결과 JSON](docs/results.ko.md) | 실제 응답 예시·필드 설명 |
 
@@ -111,6 +111,8 @@ GPU가 없다면 [Laya CPU](#laya-docker), 유료 API를 사용하려면 [Jev](#
 - **Paste:** 텍스트를 붙여 넣어 분석합니다.
 - **Batch:** 기존 파일을 분석합니다. Docker에서 호스트 `/var/log`는 `/host-logs/var/log`입니다.
 - **Realtime:** 새 로그를 감시합니다. 소스별 판정 기준과 청크 크기를 선택합니다.
+- **처리 지표:** Success / Failed로 성공·실패 청크를 구분합니다. Needs review는 성공 판정만 집계합니다.
+  엔진·모델 옆 연결 상태는 마지막 실제 요청 기준이며 요청 전에는 Not checked입니다.
 - **검토:** Needs review로 결과를 추리고 수동 정정·JSON 내보내기를 사용합니다.
   Certain은 정확도 보장이 아닙니다. 서버 재시작 시 작업·결과가 사라지므로 필요하면 내보내세요.
 
@@ -336,7 +338,7 @@ uv sync
 uv run python server.py
 ```
 
-**http://127.0.0.1:4000**을 엽니다. Actions·Criteria를 저장하려면 공통 데이터 경로에 쓰기 권한이
+**http://127.0.0.1:4000**을 엽니다. 첫 기동에 기본 Criteria 파일을 생성하므로 공통 데이터 경로에 쓰기 권한이
 필요합니다. 기본 `/var/lib/deciflow-data`에 쓸 수 없다면 `.env`에서
 `DECIFLOW_DATA_DIR=./data`를 설정하세요. 설정 변경 후 DeciFlow를 재시작합니다.
 

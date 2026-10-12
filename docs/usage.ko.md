@@ -6,8 +6,9 @@
 **60%**에 **Classification results**를 배치합니다. 좁은 화면은 세로로 표시합니다.
 사이드바에는 DeciFlow 로그 소스 노드의 hostname, 확인된 IP, OS·버전을 표시합니다.
 WSL·컨테이너에서는 해당 환경의 정보이며 호스트 OS 정보가 아닙니다. IP는 전체
-인터페이스 목록이 아닙니다. **Ready to connect**는 설정 상태이며 실제 엔진 연결
-성공을 확인한 표시가 아닙니다.
+인터페이스 목록이 아닙니다. 엔진명 뒤 괄호의 상태는 마지막 실제 엔진 요청 결과입니다. 예: **Laya (Connected)**. 요청 전에는
+Not checked, 이후에는 Connected·Disconnected·Timed out·API error를 표시합니다.
+지속적인 상태 검사는 아니며 로컬 입력 거절은 연결 상태를 바꾸지 않습니다.
 
 ### 입력과 판정 기준
 
@@ -118,12 +119,14 @@ DeciFlow는 예측을 유지하면서 검토 표시를 붙입니다. 정식 reje
 원래 범주·확률은 유지하며, 화면에는 잠정 후보를, JSON에는 `candidates`,
 `probabilityMargin`, `reviewReasons`를 기록합니다.
 
-**Needs review**는 더 넓은 개념입니다. 모든 Uncertain 결과에 더해 Other 판정과
-요청 실패·거절도 검토 대상입니다. Other라는 이유만으로 Uncertain이 되지는 않습니다.
+**Needs review**는 판정에 성공한 청크 중 Uncertain 또는 Other인 결과입니다.
+요청 실패·거절은 Failed에만 포함하고 검토 지표·필터에서는 제외합니다. Other라는 이유만으로 Uncertain이 되지는 않습니다.
 **Certain**은 Uncertain 표시가 없다는 뜻이며 검증된 정확도를 뜻하지 않습니다.
 임계값을 운영 정책으로 사용하기 전에 정답이 있는 로그로 오분류와 검토량을 평가하세요.
 
 **All results / Needs review / No review needed**로 필터링합니다.
+Needs review와 No review needed는 성공 판정만 표시합니다. 실패는 All results와
+범주 필터 Request failed를 함께 선택해 확인하세요.
 범주 필터와 원본 로그의 대소문자 구분 없는 문자열 검색을 함께 적용할 수 있습니다.
 목록에만 적용하며 지표·차트·JSON 내보내기는 전체 결과 기준입니다.
 
@@ -200,12 +203,14 @@ HTTP 202로 `jobId`·`state`·검증된 `settings`를 받습니다.
 
 | 지표 | 의미 |
 | --- | --- |
-| Processed chunks | 요청 실패를 포함한 완료 결과 수 |
-| Needs review | Uncertain(낮은 확률·근접한 확률·선택지 구분 소실), Other, 요청 실패·거절; 오류 개수가 아님 |
+| Success / Failed | 유효한 판정 성공 청크 / 실패 청크. 연결 오류·시간 초과·입력 거절·응답 검증 실패를 실패에 포함 |
+| Needs review | 성공 판정 중 Uncertain(낮은 확률·근접한 확률·선택지 구분 소실) 또는 Other. 실패·거절은 제외 |
 | Throughput | 최근 5초의 성공 판정 청크/초; 유휴시간 포함, 시작 후 5초 미만은 경과시간 기준; 중지·완료 시 마지막 값 유지 |
 | Total elapsed time | 실행 시작 이후 전체 경과시간; 유휴시간 포함 |
 | Active processing time | 요청이 하나 이상 진행 중인 구간을 중복 없이 합산; 전체 경과시간 대비 비율 |
 | Average processing time | 실패를 포함한 완료 요청의 평균 소요시간; 청크 기준 |
+
+Action 실행 실패는 판정 성공·실패 집계나 엔진 연결 상태에 영향을 주지 않습니다.
 
 Active·Average에는 네트워크·서버 대기가 포함됩니다. Active는 유휴시간을 제외하며
 전체 경과시간 대비 0~100%입니다. CPU·GPU 가동률이나 순수 추론시간이 아닙니다.

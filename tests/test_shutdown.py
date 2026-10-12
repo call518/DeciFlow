@@ -23,6 +23,7 @@ def test_sigint_stops_open_realtime_stream(tmp_path: Path, persist: bool) -> Non
     env = {
         **os.environ,
         "PORT": str(port),
+        "DECIFLOW_DATA_DIR": str(tmp_path / "data"),
         "DECISION_ENGINE": "laya",
         "LAYA_CONCURRENCY": "4",
         "LAYA_API_URL": "http://127.0.0.1:1/v1/systemone",

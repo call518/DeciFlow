@@ -140,6 +140,7 @@ Action 실행은 **54 ms**입니다. `truncated=false`는 입력이 잘리지 �
 | `profile` | 선택한 판정 기준 프로필 ID. 예: general. |
 | `incomplete` | 로테이션 시 보존한 미완성 줄이 청크에 포함됐는지 여부. |
 | `engine` | 선택한 제공자: laya 또는 jev. |
+| `engineConnection` | 마지막 실제 요청 상태: connected, disconnected, timeout, api_error. 로컬 입력 거절에는 없음. |
 | `requestedModel` | 요청에 보낸 모델 이름. 응답 모델 식별자와 구분. |
 | `requestedAt` | 요청 준비 시점의 UTC 시각. 로그 발생 시각이 아님. |
 | `requestBytes` | UTF-8 JSON 요청 본문 크기(바이트). 토큰 수가 아님. |
@@ -169,7 +170,7 @@ Action 실행은 **54 ms**입니다. `truncated=false`는 입력이 잘리지 �
 | `providerResponse.routing.detection` / `workflow` | 언어 감지·업무 라우팅 정보. 사용하지 않으면 null. |
 | `uncertaintyBasis` | 불확실성 검사에 사용하는 척도: 선택 범주 확률. |
 | `uncertain` | 선택 확률 70% 미만, 상위 두 확률 차이 10%p 미만, 선택지 구분 손실 시 DeciFlow가 설정. |
-| `review` | 검토 필요 여부. Other·실패·거절 판정도 검토 대상으로 표시. |
+| `review` | 성공 판정 중 Uncertain·Other의 검토 필요 여부. 실패·거절은 false. |
 | `reviewReasons` | 사유 코드: 낮은 선택 확률, 근접 확률, 선택지 구분 손실 또는 Other 범주. |
 | `probabilityMargin` | 상위 1·2위 확률 차이(0~1). 0.0181은 1.81%p. |
 | `candidates` | 확률 상위 두 범주. 확률 내림차순. |

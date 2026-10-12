@@ -11,7 +11,7 @@ const samples = [
 ];
 const expandedJson = new WeakSet();
 function orderedResult(result) {
-  const metadata = ['requestedAt', 'decidedAt', 'schemaVersion', 'eventId', 'engine', 'requestedModel', 'source', 'sourcePatterns', 'line', 'lineEnd', 'lineCount', 'eventCount', 'profile', 'chunkEvents', 'incomplete', 'elapsedMs', 'requestBytes', 'inputBudget', 'httpStatus', 'responseHeaders', 'action', 'actionExecution'];
+  const metadata = ['requestedAt', 'decidedAt', 'schemaVersion', 'eventId', 'engine', 'engineConnection', 'requestedModel', 'source', 'sourcePatterns', 'line', 'lineEnd', 'lineCount', 'eventCount', 'profile', 'chunkEvents', 'incomplete', 'elapsedMs', 'requestBytes', 'inputBudget', 'httpStatus', 'responseHeaders', 'action', 'actionExecution'];
   return Object.fromEntries([
     ...metadata.filter(key => Object.hasOwn(result, key)).map(key => [key, result[key]]),
     ...Object.entries(result).filter(([key]) => !metadata.includes(key)),
@@ -68,6 +68,19 @@ let engine = 'laya';
 let resultEngine = engine;
 let resultSourceMode = sourceMode;
 let engineLabel = 'Laya';
+let engineConnection = 'not_checked';
+let engineConnectionNode;
+function handleEngineConnection(state) {
+  engineConnection = state;
+  if (!engineConnectionNode) return;
+  const captions = { not_checked: 'Not checked', connected: 'Connected', disconnected: 'Disconnected', timeout: 'Timed out', api_error: 'API error' };
+  engineConnectionNode.textContent = ` (${captions[state]})`;
+  engineConnectionNode.className = `engine-connection ${state}`;
+  engineConnectionNode.title = 'Last actual engine request; not a continuous health check. Local input rejections do not change this status.';
+}
+function needsReview(result) {
+  return !result.error && Boolean(result.review);
+}
 function element(tag, text, className = '') {
   const node = document.createElement(tag);
   node.textContent = text;
@@ -236,7 +249,23 @@ let criteriaLoaded = false;
 let savingCriteria = false;
 let editingCriteria = null;
 let criteriaFields = {};
+function handleViewCriteria(id) {
+  const profile = criteriaProfiles[id];
+  handleViewConfiguration('criteria-view', profile.label, [['Profile ID', id], ['Name', profile.label], ['Decision instructions', profile.instructions], ...Object.entries(labels).map(([key, label]) => [label, profile.criteria[key]]), ['Normalization', profile.normalization]]);
+}
 function renderCriteria() {
+  const defaultTable = element('table', '', 'action-list');
+  const defaultHeader = element('tr', '');
+  for (const title of ['Name', 'Profile ID', 'Manage']) defaultHeader.append(element('th', title));
+  const defaultRow = element('tr', '');
+  defaultRow.append(element('td', criteriaProfiles.general.label), element('td', 'general'));
+  const defaultControls = element('td', '', 'action-list-controls');
+  const viewDefault = element('button', 'View', 'quiet');
+  viewDefault.type = 'button'; viewDefault.disabled = savingCriteria;
+  viewDefault.onclick = () => handleViewCriteria('general');
+  defaultControls.append(viewDefault); defaultRow.append(defaultControls);
+  defaultTable.append(defaultHeader, defaultRow);
+  $('criteria-default').replaceChildren(); $('criteria-default').append(defaultTable);
   const table = element('table', '', 'action-list');
   const header = element('tr', '');
   for (const title of ['Name', 'Profile ID', 'Manage']) header.append(element('th', title));
@@ -244,19 +273,19 @@ function renderCriteria() {
   const query = $('criteria-search').value.trim().toLowerCase();
   let matches = 0;
   for (const [id, profile] of Object.entries(criteriaProfiles)) {
-    if (!profile.label.toLowerCase().includes(query)) continue;
+    if (id === 'general' || !profile.label.toLowerCase().includes(query)) continue;
     matches++;
     const row = element('tr', '');
     row.append(element('td', profile.label), element('td', id));
     const controls = element('td', '', 'action-list-controls');
     for (const [caption, handler] of [
-      ['View', () => handleViewConfiguration('criteria-view', profile.label, [['Profile ID', id], ['Name', profile.label], ['Decision instructions', profile.instructions], ...Object.entries(labels).map(([key, label]) => [label, profile.criteria[key]]), ['Normalization', profile.normalization]])],
+      ['View', () => handleViewCriteria(id)],
       ['Edit', () => handleEditCriteria(id)],
       ['Delete', () => { delete criteriaProfiles[id]; handleCloseConfiguration('criteria-view'); renderCriteria(); $('criteria-message').textContent = 'Deletion pending. Save changes to apply.'; }],
     ]) {
       const button = element('button', caption, 'quiet');
       button.type = 'button';
-      button.disabled = savingCriteria || (caption !== 'View' && editingCriteria !== null) || (caption === 'Delete' && id === 'general');
+      button.disabled = savingCriteria || (caption !== 'View' && editingCriteria !== null);
       button.onclick = handler; controls.append(button);
     }
     row.append(controls); table.append(row);
@@ -495,10 +524,11 @@ function render(updateList = true) {
   recentCompletions = recentCompletions.filter(time => time > elapsedMs - 5000);
   const throughput = elapsedMs > 0 ? recentCompletions.length * 1000 / Math.min(elapsedMs, 5000) : 0;
   const processingPercent = elapsedMs > 0 ? `${(activeProcessingMs / elapsedMs * 100).toFixed(1)}%` : 'N/A';
-  for (const [label, value] of [['Processed chunks', completed], ['Needs review', results.filter(r => r.review).length], ['Throughput', `${throughput.toFixed(1)} chunks/s`], ['Total elapsed time', `${elapsedMs}ms`], ['Active processing time', `${activeProcessingMs}ms (${processingPercent})`], ['Average processing time', `${averageMs.toFixed(1)}ms`]]) {
+  for (const [label, value] of [['Success / Failed', `${results.filter(r => !r.error).length} / ${results.filter(r => r.error).length}`], ['Needs review', results.filter(needsReview).length], ['Throughput', `${throughput.toFixed(1)} chunks/s`], ['Total elapsed time', `${elapsedMs}ms`], ['Active processing time', `${activeProcessingMs}ms (${processingPercent})`], ['Average processing time', `${averageMs.toFixed(1)}ms`]]) {
     const metric = element('div', label, 'metric');
+    if (label === 'Success / Failed') metric.title = 'Successfully classified / failed chunks. Failures include connection errors, timeouts, rejected inputs, and invalid responses. Action failures do not change classification counts.';
     if (label === 'Throughput') metric.title = 'Successfully classified chunks per second over the last 5 seconds, including idle time. Uses elapsed time until 5 seconds; freezes when stopped or completed.';
-    if (label === 'Needs review') metric.title = 'Selected category probability below 70%, top-two probability gap below 10 percentage points, Other category, or failed request; not an error count.';
+    if (label === 'Needs review') metric.title = 'Successful classifications only: selected category probability below 70%, top-two probability gap below 10 percentage points, collapsed options, or Other category. Failed requests are excluded.';
     if (label === 'Average processing time') metric.title = 'Mean request duration, including network/server wait and failed requests; excludes waiting for new file lines.';
     if (label === 'Active processing time') metric.title = 'Time with at least one request in flight, counting overlapping requests once. Includes network/server wait, excludes idle time; not CPU utilization.';
     metric.append(element('strong', String(value)));
@@ -517,7 +547,7 @@ function render(updateList = true) {
     const category = $('category-filter').value;
     const search = $('log-search').value.toLowerCase();
     const source = $('source-filter').value || 'all';
-    return (review === 'all' || (review === 'needs-review' ? r.review : !r.review))
+    return (review === 'all' || (review === 'needs-review' ? needsReview(r) : !r.error && !needsReview(r)))
       && (category === 'all' || (category === 'failed' ? Boolean(r.error) : !r.error && r.category === category))
       && r.log.toLowerCase().includes(search)
       && (source === 'all' || r.sourcePatterns?.includes(source) || r.source === source);
@@ -533,7 +563,7 @@ function render(updateList = true) {
     top.append(element('span', result.error ? 'Request failed' : `${result.uncertain ? 'Uncertain · ' : ''}${labels[result.category]}`, `badge ${result.error ? 'error' : result.category || 'other'}${result.uncertain ? ' uncertain' : ''}`));
     top.append(element('span', result.error ? `${result.elapsedMs}ms` : `${((result.answerProbability ?? result.probabilities?.[result.category] ?? 0) * 100).toFixed(1)}% category probability · ${result.elapsedMs}ms`));
     if (result.uncertain) top.title = `Provisional model choice. ${result.candidates?.map(key => `${labels[key]} ${(result.probabilities[key] * 100).toFixed(1)}%`).join(' vs ') || 'Low confidence'}. Not a confirmed incident.`;
-    if (result.review) top.append(element('span', 'Needs review', 'review'));
+    if (needsReview(result)) top.append(element('span', 'Needs review', 'review'));
     row.append(top, element('p', result.log, 'log'));
     if (result.actionExecution) {
       const execution = result.actionExecution;
@@ -744,6 +774,8 @@ async function handleProcessing(job = null) {
         results[event.index] = event.result;
         completionOrder.push(event.index);
         completed++;
+        if (event.result.engineConnection) handleEngineConnection(event.result.engineConnection);
+        else if (!event.result.error) handleEngineConnection('connected');
         if (!event.result.error) recentCompletions.push(event.elapsedMs);
         elapsedMs = event.elapsedMs;
       } else if (event.type === 'done') {
@@ -818,6 +850,10 @@ fetch('/api/status').then(async response => {
   engineLabel = engine === 'laya' ? 'Laya' : 'Jev';
   $('status').textContent = 'Decision Engine: ';
   $('status').append(element('strong', engineLabel, 'selected-engine'));
+  engineConnectionNode = element('strong', '');
+  engineConnectionNode.setAttribute('role', 'status');
+  $('status').append(engineConnectionNode);
+  handleEngineConnection(engineConnection);
   $('status').append(element('span', ' · Model: '));
   $('status').append(element('strong', data.model, 'selected-model'));
   if (!data.configured) $('status').append(element('span', ' · API key required'));

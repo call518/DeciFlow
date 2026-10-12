@@ -100,13 +100,13 @@ test('average request duration includes failures, ignores filters, and resets', 
   nodes.get('review-filter').value = 'needs-review';
   nodes.get('review-filter').onchange();
   assert.equal(average(), '200.0ms');
-  assert.equal(logs(nodes).length, 1);
+  assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
   events.splice(0, events.length, { type: 'start', engine: 'jev', total: 1 }, result(0));
   await nodes.get('classify').onclick();
   assert.equal(average(), '1.0ms');
 });
 
-test('three review filters partition results without changing totals', async () => {
+test('review filters exclude failures without changing success and failure totals', async () => {
   const events = [{ type: 'start', engine: 'laya', total: 3 },
     result(0, false), result(1),
     { type: 'result', index: 2, elapsedMs: 2,
@@ -115,15 +115,15 @@ test('three review filters partition results without changing totals', async () 
   await nodes.get('classify').onclick();
   assert.deepEqual(logs(nodes), ['failed-log', 'log-1', 'log-0']);
   for (const [filter, expected] of [
-    ['needs-review', ['failed-log', 'log-1']],
+    ['needs-review', ['log-1']],
     ['no-review', ['log-0']],
     ['all', ['failed-log', 'log-1', 'log-0']],
   ]) {
     nodes.get('review-filter').value = filter;
     nodes.get('review-filter').onchange();
     assert.deepEqual(logs(nodes), expected);
-    assert.equal(nodes.get('summary').children[0].children[0].textContent, '3');
-    assert.equal(nodes.get('summary').children[1].children[0].textContent, '2');
+    assert.equal(nodes.get('summary').children[0].children[0].textContent, '2 / 1');
+    assert.equal(nodes.get('summary').children[1].children[0].textContent, '1');
   }
   nodes.get('review-filter').value = 'no-review';
   events.splice(0, events.length, { type: 'start', engine: 'jev', total: 1 }, result(0));
@@ -327,7 +327,7 @@ test('pause freezes rows while analysis continues; resume includes pending resul
   vm.runInContext('render(false)', context);
   assert.equal(nodes.get('results').children[0], original);
   assert.equal(details.open, true);
-  assert.equal(nodes.get('summary').children[0].children[0].textContent, '3');
+  assert.equal(nodes.get('summary').children[0].children[0].textContent, '3 / 0');
   assert.equal(nodes.get('pause-updates').textContent, 'Resume updates (2 new)');
   nodes.get('review-filter').value = 'needs-review';
   nodes.get('review-filter').onchange();
@@ -508,8 +508,10 @@ test('category, review and literal log search combine and retain full aggregates
   assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
   nodes.get('log-search').value = ''; nodes.get('log-search').oninput();
   nodes.get('category-filter').value = 'failed'; nodes.get('category-filter').onchange();
+  assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
+  nodes.get('review-filter').value = 'all'; nodes.get('review-filter').onchange();
   assert.deepEqual(logs(nodes), ['Service request failed']);
-  assert.equal(nodes.get('summary').children[0].children[0].textContent, '3');
+  assert.equal(nodes.get('summary').children[0].children[0].textContent, '2 / 1');
   nodes.get('category-filter').value = 'all'; nodes.get('category-filter').onchange();
   nodes.get('review-filter').value = 'all'; nodes.get('review-filter').onchange();
   assert.equal(logs(nodes).length, 3);
@@ -539,7 +541,7 @@ test('chart certainty groups partition classified results without treating failu
   assert.deepEqual(options(), ['All · 3', 'Certain · 2 (66.7%)', 'Uncertain · 1 (33.3%)']);
   nodes.get('chart-certain').onclick();
   assert.deepEqual(values(), ['1 (50.0%)', '0 (0.0%)', '0 (0.0%)', '0 (0.0%)', '1 (50.0%)']);
-  assert.equal(nodes.get('summary').children[0].children[0].textContent, '4');
+  assert.equal(nodes.get('summary').children[0].children[0].textContent, '3 / 1');
   assert.equal(nodes.get('results').children.length, 4);
   nodes.get('chart-all').onclick();
   assert.equal(nodes.get('chart-totals').textContent, '3 classified chunks · 1 failed request');
@@ -660,15 +662,17 @@ test('selected engine is explicitly named and emphasized for both engines', asyn
       assert.equal(status.textContent, 'Decision Engine: ');
       assert.equal(status.children[0].textContent, engine === 'laya' ? 'Laya' : 'Jev');
       assert.equal(status.children[0].className, 'selected-engine');
-      assert.equal(status.children[1].textContent, ' · Model: ');
-      assert.equal(status.children[2].textContent, 'test');
-      assert.equal(status.children[2].className, 'selected-model');
-      assert.equal(status.children.length, configured ? 3 : 4);
-      if (!configured) assert.equal(status.children[3].textContent, ' · API key required');
+      assert.equal(status.children[2].textContent, ' · Model: ');
+      assert.equal(status.children[3].textContent, 'test');
+      assert.equal(status.children[3].className, 'selected-model');
+      assert.equal(status.children.length, configured ? 4 : 5);
+      assert.equal(status.children[1].textContent, ' (Not checked)');
+      if (!configured) assert.equal(status.children[4].textContent, ' · API key required');
     }
   }
   const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8').replace(/\s*([{}:;])\s*/g, '$1');
-  assert.ok(css.includes('.selected-engine{color:#a23e34;font-weight:700}'));
+  assert.ok(css.includes('.selected-engine{color:#0057ff;font-weight:700}'));
+  assert.ok(css.includes('.selected-model{color:#0057ff;font-weight:700;}'));
 });
 
 
@@ -749,7 +753,7 @@ test('source filtering uses input patterns with counts and combines with other f
   nodes.get('category-filter').value = 'all';
   nodes.get('log-search').value = 'failed'; nodes.get('log-search').oninput();
   assert.deepEqual(logs(nodes), ['service failed']);
-  assert.equal(nodes.get('summary').children[0].children[0].textContent, '2');
+  assert.equal(nodes.get('summary').children[0].children[0].textContent, '2 / 0');
   select.value = '/logs/*'; select.onchange();
   assert.deepEqual(logs(nodes), ['service failed']);
   events.splice(0, events.length, { type: 'start', engine: 'laya', total: null,
@@ -1068,8 +1072,8 @@ test('Criteria management preserves drafts, saves edits, and clears deleted sour
   assert.equal(nodes.get('criteria-page').hidden, false);
   assert.equal(nodes.get('main-page').hidden, true);
   assert.equal(nodes.get('save-criteria').disabled, false);
-  const generalControls = nodes.get('criteria-registry').children[0].children[1].children[2].children;
-  assert.equal(generalControls[2].disabled, true);
+  assert.equal(nodes.get('criteria-default').children[0].children[1].children[2].children[0].textContent, 'View');
+  assert.equal(nodes.get('criteria-registry').children[0].children[1].children[0].textContent, 'Custom');
   nodes.get('add-criteria').onclick();
   vm.runInContext("criteriaFields.id.value='new_profile'; criteriaFields.label.value='New profile'; criteriaFields.instructions.value='New instructions';", context);
   nodes.get('nav-main').onclick();
@@ -1077,10 +1081,10 @@ test('Criteria management preserves drafts, saves edits, and clears deleted sour
   assert.equal(vm.runInContext('criteriaFields.label.value', context), 'New profile');
   await nodes.get('save-criteria').onclick();
   assert.equal(vm.runInContext("profileLabels.new_profile", context), 'New profile');
-  vm.runInContext("handleEditCriteria('general'); criteriaFields.instructions.value='Edited general';", context);
+  vm.runInContext("handleEditCriteria('custom'); criteriaFields.instructions.value='Edited custom';", context);
   assert.equal(vm.runInContext('criteriaFields.id.readOnly', context), true);
   await nodes.get('save-criteria').onclick();
-  assert.equal(vm.runInContext('criteriaProfiles.general.instructions', context), 'Edited general');
+  assert.equal(vm.runInContext('criteriaProfiles.custom.instructions', context), 'Edited custom');
   vm.runInContext("sourceRows[0].profile.value='custom';", context);
   nodes.get('paste-profile').value = 'custom';
   vm.runInContext("delete criteriaProfiles.custom; renderCriteria();", context);
@@ -1093,16 +1097,16 @@ test('Criteria management preserves drafts, saves edits, and clears deleted sour
 
 test('Criteria search, cancel, and duplicate IDs leave saved profiles unchanged', async () => {
   const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
-  const profiles = { general: { label: 'General system', instructions: 'Original', criteria: definitions } };
+  const profiles = { general: { label: 'General system', instructions: 'Original', criteria: definitions }, custom: { label: 'Custom', instructions: 'Original', criteria: definitions } };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await nodes.get('nav-criteria').onclick();
   nodes.get('criteria-search').value = 'missing';
   nodes.get('criteria-search').oninput();
   assert.match(nodes.get('criteria-registry').children[0].textContent, /No profiles/);
   nodes.get('criteria-search').value = '';
-  vm.runInContext("handleEditCriteria('general'); criteriaFields.instructions.value='Unsaved';", context);
+  vm.runInContext("handleEditCriteria('custom'); criteriaFields.instructions.value='Unsaved';", context);
   nodes.get('cancel-criteria').onclick();
-  assert.equal(vm.runInContext('criteriaProfiles.general.instructions', context), 'Original');
+  assert.equal(vm.runInContext('criteriaProfiles.custom.instructions', context), 'Original');
   nodes.get('add-criteria').onclick();
   vm.runInContext("criteriaFields.id.value='general';", context);
   await nodes.get('save-criteria').onclick();
@@ -1144,7 +1148,7 @@ test('View shows read-only Action configuration without editing or losing drafts
 
 test('View shows all Criteria definitions and preserves the edit draft', async () => {
   const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, `${key} evidence`]));
-  const profiles = { general: { label: 'General system', instructions: 'Saved instructions', criteria: definitions } };
+  const profiles = { general: { label: 'General system', instructions: 'Saved instructions', criteria: definitions }, custom: { label: 'Custom', instructions: 'Saved instructions', criteria: definitions } };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await nodes.get('nav-criteria').onclick();
   const controls = () => nodes.get('criteria-registry').children[0].children[1].children[2].children;
@@ -1183,7 +1187,7 @@ test('Add closes View in both managers and enables the new editor', async () => 
   assert.equal(nodes.get('action-editor').hidden, false);
   assert.equal(nodes.get('save-actions').disabled, false);
   await nodes.get('nav-criteria').onclick();
-  nodes.get('criteria-registry').children[0].children[1].children[2].children[0].onclick();
+  nodes.get('criteria-default').children[0].children[1].children[2].children[0].onclick();
   nodes.get('add-criteria').onclick();
   assert.equal(nodes.get('criteria-view').hidden, true);
   assert.equal(nodes.get('criteria-editor').hidden, false);
@@ -1217,4 +1221,57 @@ test('URL routes restore Actions and Criteria on reload and support browser hist
     await nodes.get('nav-criteria').onclick();
     assert.equal(navigation.hash, '#criteria');
   }
+});
+
+
+test('engine connection follows actual requests for both providers without local rejection changes', async () => {
+  for (const engine of ['laya', 'jev']) {
+    const status = { host: { hostname: 'host', addresses: [], os: 'Linux' }, engine, configured: true, model: 'test', workingDirectory: '/app', limits: { context_tokens: 8192, max_jev_input_bytes: 30000 } };
+    const events = [{ type: 'start', engine, total: 6 }];
+    const { nodes, context } = workspace(events, status);
+    await new Promise(resolve => setImmediate(resolve));
+    const connection = nodes.get('status').children[1];
+    assert.equal(connection.textContent, ' (Not checked)');
+    const states = [
+      ['connected', 'Connected'], ['disconnected', 'Disconnected'],
+      [undefined, 'Disconnected'], ['timeout', 'Timed out'],
+      ['api_error', 'API error'], ['connected', 'Connected'],
+    ];
+    context.readEvents = async (_, receive) => {
+      receive(events[0]);
+      states.forEach(([state, caption], index) => {
+        receive({ type: 'result', index, elapsedMs: index + 1, result: { log: `event-${index}`, elapsedMs: 1, ...(index === 0 || index === 5 ? { category: 'normal', review: true, probabilities: { normal: 1 } } : { error: 'failed', review: true }), ...(state ? { engineConnection: state } : {}) } });
+        assert.equal(connection.textContent, ` (${caption})`);
+      });
+      receive({ type: 'done', elapsedMs: 100 });
+    };
+    await nodes.get('classify').onclick();
+    assert.equal(nodes.get('summary').children[0].textContent, 'Success / Failed');
+    assert.equal(nodes.get('summary').children[0].children[0].textContent, '2 / 4');
+    assert.equal(nodes.get('summary').children[1].children[0].textContent, '2');
+    nodes.get('review-filter').value = 'needs-review'; nodes.get('review-filter').onchange();
+    assert.deepEqual(logs(nodes), ['event-5', 'event-0']);
+    assert.equal(connection.className, 'engine-connection connected');
+  }
+});
+
+
+test('Default Criteria stays above search with View only and outside the editable list', async () => {
+  const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
+  const profiles = { general: { label: 'General system', instructions: 'Default instructions', criteria: definitions }, custom: { label: 'Custom', instructions: 'Custom instructions', criteria: definitions } };
+  const { nodes } = workspace([], undefined, undefined, profiles);
+  await nodes.get('nav-criteria').onclick();
+  const defaultRow = () => nodes.get('criteria-default').children[0].children[1];
+  assert.deepEqual(nodes.get('criteria-default').children[0].children[0].children.map(cell => cell.textContent), ['Name', 'Profile ID', 'Manage']);
+  assert.equal(defaultRow().children[0].textContent, 'General system');
+  assert.equal(defaultRow().children[1].textContent, 'general');
+  assert.deepEqual(defaultRow().children[2].children.map(button => button.textContent), ['View']);
+  assert.equal(nodes.get('criteria-registry').children[0].children.length, 2);
+  nodes.get('criteria-search').value = 'missing'; nodes.get('criteria-search').oninput();
+  assert.equal(defaultRow().children[0].textContent, 'General system');
+  defaultRow().children[2].children[0].onclick();
+  assert.equal(nodes.get('criteria-view').children[1].children[0].children[0].value, 'general');
+  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.ok(html.indexOf('id="criteria-default"') < html.indexOf('id="additional-criteria-title"'));
+  assert.ok(html.indexOf('id="additional-criteria-title"') < html.indexOf('id="criteria-search"'));
 });
