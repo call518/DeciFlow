@@ -198,17 +198,20 @@ textarea: focus {
 
 .summary {
   display: grid;
-  grid-template-columns: repeat(7,minmax(0,1fr));
+  grid-template-columns: repeat(auto-fit,minmax(min(100%,220px),1fr));
   gap: 10px;
   margin: 10px 0
 }
 
 .metric {
+  min-width: 0;
   background: #f5f8f5;
   padding: 10px 12px;
   border-radius: 9px;
   font-size: 11px;
-  color: #738179
+  color: #738179;
+  line-height: 1.5;
+  overflow-wrap: anywhere
 }
 
 .metric strong {
@@ -216,7 +219,7 @@ textarea: focus {
   font-size: 20px;
   color: #244735;
   margin-top: 4px;
-  white-space: nowrap;
+  white-space: normal;
   font-variant-numeric: tabular-nums
 }
 
@@ -453,33 +456,6 @@ footer {
 .mode-help strong {
   color: #284438;
   font-weight: 600
-}
-
-@container(max-width:900px) {
-  .summary {
-    grid-template-columns: repeat(6,minmax(0,1fr))
-  }
-
-  .metric {
-    grid-column: span 2
-  }
-
-}
-
-@container(max-width:650px) {
-  .metric:nth-child(n+4) {
-    grid-column: 1/-1;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px
-  }
-
-  .metric:nth-child(n+4) strong {
-    margin-top: 0;
-    font-size: 18px
-  }
-
 }
 
 .intro p {
