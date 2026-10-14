@@ -428,3 +428,13 @@ DeciFlow의 `LAYA_API_URL`을 루프백으로 설정하고 다른 터미널에�
 별도 Laya 서버를 사용하는 DeciFlow 실행 노드에는 `laya` 추가 의존성이 필요하지 않습니다.
 
 [Laya](https://github.com/NandhaKishorM/laya) · [Jev](https://docs.typesafe.ai/introduction/quickstart)
+
+### DeciFlow HTTP 로그
+
+`.env`에 `DECIFLOW_LOG_DIR=/var/log/deciflow`를 설정하고 DeciFlow를 재시작하면 시간 정보가 포함된
+`server.log`(시작·서버 오류)와 `access.log`(클라이언트·요청·HTTP 상태)를 기록하며
+콘솔 로그도 유지합니다. 기본값은 `/var/log/deciflow`이며, 없는 디렉터리는 상위
+경로까지 자동 생성합니다. 생성·기록하려면 쓰기 권한이 필요합니다. 상대 경로는 프로젝트 디렉터리 기준입니다. 각 파일은
+10 MiB마다 회전하고 백업 5개를 유지합니다. 빈 값이면 파일 기록을 끕니다.
+브라우저 조작이나 분류 결과는 기록하지 않습니다. Docker에서는 쓰기 가능한
+컨테이너 경로를 사용하고 호스트에 로그를 보관하려면 해당 경로를 바인드 마운트하세요.

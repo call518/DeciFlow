@@ -24,6 +24,7 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
+from uvicorn.config import LOGGING_CONFIG
 
 from actions import (
     ensure_actions_available,
@@ -55,6 +56,7 @@ from source_settings import parse_source_settings, resolve_configured_sources
 from sources import follow_sources, read_sources
 
 ROOT = Path(__file__).resolve().parent
+DEFAULT_LOG_DIR = "/var/log/deciflow"
 HEADERS = {"X-Content-Type-Options": "nosniff", "Cache-Control": "no-store"}
 ASSETS = {
     "/": ("index.html", "text/html"),
@@ -640,13 +642,53 @@ app = Starlette(
 )
 
 
+def get_log_config() -> Result:
+    """Keep console logs and optionally rotate server/access files separately."""
+    config = deepcopy(LOGGING_CONFIG)
+    directory = os.getenv("DECIFLOW_LOG_DIR", DEFAULT_LOG_DIR).strip()
+    if not directory:
+        return config
+    path = Path(directory)
+    if not path.is_absolute():
+        path = ROOT / path
+    path.mkdir(parents=True, exist_ok=True)
+    config["formatters"]["server_file"] = {
+        "format": "%(asctime)s %(levelname)s %(name)s: %(message)s",
+    }
+    config["formatters"]["access_file"] = {
+        "()": "uvicorn.logging.AccessFormatter",
+        "fmt": '%(asctime)s %(client_addr)s - "%(request_line)s" %(status_code)s',
+        "use_colors": False,
+    }
+    for name, filename, logger in (
+        ("server_file", "server.log", "uvicorn"),
+        ("access_file", "access.log", "uvicorn.access"),
+    ):
+        config["handlers"][name] = {
+            "class": "logging.handlers.RotatingFileHandler",
+            "formatter": name,
+            "filename": str(path / filename),
+            "maxBytes": 10 * 1024 * 1024,
+            "backupCount": 5,
+            "encoding": "utf-8",
+        }
+        config["loggers"][logger]["handlers"].append(name)
+    return config
+
+
 def main(*, host: str = "127.0.0.1") -> None:
     """Read local settings at startup; bind to loopback unless specified."""
     load_dotenv(ROOT / ".env")
     get_engine()
     port = int(os.getenv("PORT") or "4000")
     print(f"DeciFlow: http://{host}:{port}", flush=True)
-    uvicorn.run(app, host=host, port=port, timeout_graceful_shutdown=2)
+    uvicorn.run(
+        app,
+        host=host,
+        port=port,
+        timeout_graceful_shutdown=2,
+        log_config=get_log_config(),
+    )
 
 
 if __name__ == "__main__":

@@ -234,3 +234,6 @@ __marimo__/
 *.swo
 *.swn
 *.swm
+
+# Rotated HTTP/server logs
+*.log.[0-9]*

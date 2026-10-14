@@ -14,4 +14,5 @@ docker run --detach \
   --mount "type=bind,src=/var/log,dst=/host-logs/var/log,readonly" \
   --mount "type=bind,src=$(pwd)/sample-logs,dst=/host-logs/sample-logs,readonly" \
   --mount "type=volume,src=deciflow-data,dst=/var/lib/deciflow-data" \
+  --mount "type=volume,src=deciflow-logs,dst=/var/log/deciflow" \
   call518/deciflow-ui:0.0.1

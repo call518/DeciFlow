@@ -436,3 +436,13 @@ that version's HTTP server. Set local server options through process environment
 variables. DeciFlow nodes using a separate Laya server do not need the `laya` extra.
 
 [Laya](https://github.com/NandhaKishorM/laya) · [Jev](https://docs.typesafe.ai/introduction/quickstart)
+
+### DeciFlow HTTP logs
+
+Set `DECIFLOW_LOG_DIR=/var/log/deciflow` in `.env` and restart DeciFlow to write timestamped
+`server.log` (startup and server errors) and `access.log` (client, request, HTTP status),
+while retaining console logs. The default is `/var/log/deciflow`; missing directories
+are created automatically with parent directories, requiring write permission. Relative paths start at the project directory. Each
+file rotates at 10 MiB with 5 backups. Empty disables file logging. This does not
+record browser interactions or classification results. For Docker, use a writable
+container path and bind-mount it to retain logs on the host.
