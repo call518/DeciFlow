@@ -1,4 +1,18 @@
+from typing import Any
+
 import pytest
+
+from classifier import URGENCY_CRITERIA
+
+DECISION_ANSWERS: dict[str, Any] = {
+    "urgency": {
+        "type": "score",
+        "score": 2.0,
+        "legend": {str(i): text for i, text in enumerate(URGENCY_CRITERIA)},
+        "probabilities": {"0": 0.0, "1": 0.0, "2": 1.0, "3": 0.0},
+    },
+    "ticket": {"type": "noul", "noul": 0.9},
+}
 
 
 @pytest.fixture

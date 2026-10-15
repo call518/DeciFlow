@@ -667,6 +667,9 @@ function render(updateList = true) {
     if (result.uncertain) top.title = `Provisional model choice. ${result.candidates?.map(key => `${labels[key]} ${(result.probabilities[key] * 100).toFixed(1)}%`).join(' vs ') || 'Low confidence'}. Not a confirmed incident.`;
     if (needsReview(result)) top.append(element('span', 'Needs review', 'review'));
     row.append(top, element('p', result.log, 'log'));
+    if (!result.error && result.urgency != null && result.ticketProbability != null) {
+      row.append(element('p', `Urgency: ${result.urgency.toFixed(2)} / 3 (Low → Critical) · Work ticket: ${(result.ticketProbability * 100).toFixed(1)}% Yes probability`, 'caption'));
+    }
     if (result.actionExecution) {
       const execution = result.actionExecution;
       row.append(element('p', `Action: ${execution.name} · ${execution.status} · ${execution.elapsedMs}ms${execution.exitCode != null ? ` · exit ${execution.exitCode}` : ''}${execution.error ? ` · ${execution.error}` : ''}`, execution.status === 'failed' ? 'error-message' : 'caption'));
@@ -965,7 +968,7 @@ fetch('/api/status').then(async response => {
   $('data-notice').textContent = engine === 'laya' ? 'Classification sends logs to your configured Laya server. Laya inference has no Jev API usage fees. Remove passwords, tokens, and sensitive data before sending logs to a remote server.' : 'Classification sends your logs to the TypeSafe API and may incur usage charges. Remove passwords, tokens, and sensitive data first.';
   const limits = data.limits;
   $('source-directory').textContent = `Absolute paths are supported. Relative paths start at: ${data.workingDirectory}`;
-  $('input-limits').textContent = engine === 'laya' ? `One decision per chunk · Laya ${data.model} · ${limits.context_tokens.toLocaleString('en-US')} tokens including the question. Truncated predictions are discarded and original events retained for review.` : `One decision per chunk · ${data.model}: ${limits.context_tokens.toLocaleString('en-US')} tokens for state + question · Local preflight budget: ${limits.max_jev_input_bytes.toLocaleString('en-US')} bytes per Jev request (not a token count). Oversized events are retained for review.`;
+  $('input-limits').textContent = engine === 'laya' ? `Three decisions per chunk · Laya ${data.model} · ${limits.context_tokens.toLocaleString('en-US')} tokens including each question. Truncated predictions are discarded and original events retained for review.` : `Three decisions per chunk · ${data.model}: ${limits.context_tokens.toLocaleString('en-US')} tokens for state + questions · Local preflight budget: ${limits.max_jev_input_bytes.toLocaleString('en-US')} bytes per Jev request (not a token count). Oversized events are retained for review.`;
   handleRestoreJob().catch(error => { $('message').className = 'error-message'; $('message').textContent = error.message; });
 }).catch(error => { $('status').textContent = error.message || 'Server connection failed'; });
 

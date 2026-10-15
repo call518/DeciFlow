@@ -1476,3 +1476,17 @@ test('Action edit explains environment revisions and reset behavior', () => {
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   assert.ok(html.includes('Reset venv deletes the current virtual environment and rebuilds it using saved settings and locked dependencies.'));
 });
+
+test('results display urgency and ticket need probability', async () => {
+  const event = result(0, false);
+  event.result.urgency = 2.37;
+  event.result.ticketProbability = 0.91;
+  const { nodes } = workspace([
+    { type: 'start', engine: 'laya', total: 1 }, event,
+    { type: 'done', elapsedMs: 10 },
+  ]);
+  await nodes.get('classify').onclick();
+  const row = nodes.get('results').children[0];
+  assert.ok(row.children.some(child => child.textContent ===
+    'Urgency: 2.37 / 3 (Low → Critical) · Work ticket: 91.0% Yes probability'));
+});

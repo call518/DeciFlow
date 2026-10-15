@@ -62,3 +62,37 @@ def test_exact_event_budget_before_inference(
         assert router.calls == [
             {"model": "multilingual", "max_len": 8192, "head_max_len": head_tokens}
         ]
+
+
+@pytest.mark.parametrize("overflow_type", [None, "choice", "score", "noul"])
+def test_all_question_types_checked_before_inference(
+    monkeypatch: pytest.MonkeyPatch, overflow_type: str | None
+) -> None:
+    from classifier import OPERATIONAL_QUESTIONS
+
+    checked = []
+
+    def build_empty(*args: Any) -> tuple[list[int], list[int]]:
+        question = args[2]
+        checked.append(question["t"])
+        assert question["crit"] == questions_by_type[question["t"]].get("criteria")
+        return list(range(101 if question["t"] == overflow_type else 100)), []
+
+    monkeypatch.setattr(
+        laya_server,
+        "import_module",
+        lambda name: SimpleNamespace(build_sequence=build_empty),
+    )
+    questions = {
+        "category": {"type": "choice", "instructions": "Classify.", "criteria": {}},
+        **OPERATIONAL_QUESTIONS,
+    }
+    questions_by_type = {question["type"]: question for question in questions.values()}
+    router = Router()
+    result = laya_server.LogRouter(router).predict(
+        "x" * (LAYA_CONTEXT_TOKENS - 100), questions, model="multilingual"
+    )
+    assert result["usage"]["truncated"] is (overflow_type is not None)
+    assert len(router.calls) == (0 if overflow_type else 1)
+    if overflow_type is None:
+        assert checked == ["choice", "score", "noul"]

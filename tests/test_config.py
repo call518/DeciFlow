@@ -3,6 +3,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from conftest import DECISION_ANSWERS
 from dotenv import dotenv_values
 
 from classifier import Result, classify_batch, classify_log, parse_logs
@@ -59,6 +60,7 @@ async def test_oversized_event_does_not_abort_batch(log: str) -> None:
             json={
                 "model": "jev-1.13.0",
                 "answers": {
+                    **DECISION_ANSWERS,
                     "category": {
                         "choice": "normal",
                         "confidence": 1,
@@ -69,7 +71,7 @@ async def test_oversized_event_does_not_abort_batch(log: str) -> None:
                             "security": 0,
                             "other": 0,
                         },
-                    }
+                    },
                 },
             },
         )
@@ -162,6 +164,7 @@ async def test_response_metadata_survives_exportable_results(
         "routing": {"model": model, "repo": "checkpoint"},
         "usage": {"truncated": False, "input_tokens": 100},
         "answers": {
+            **DECISION_ANSWERS,
             "category": {
                 "choice": "normal",
                 "confidence": 0.9,
@@ -174,7 +177,7 @@ async def test_response_metadata_survives_exportable_results(
                     "security": 0,
                     "other": 0,
                 },
-            }
+            },
         },
     }
 
@@ -210,7 +213,7 @@ async def test_response_metadata_survives_exportable_results(
         "x-request-id": "request-123",
         "x-inference-time-ms": "12.5",
     }
-    assert "criteria" in result["question"]
+    assert "criteria" in result["questions"]["category"]
     assert result["requestBytes"] > 0
     assert result["requestedAt"].endswith("+00:00")
     assert ("error" in result) == (status == 429)
@@ -325,6 +328,7 @@ async def test_custom_model_requires_server_routing_confirmation(
         "routing": routing,
         "usage": {"truncated": False},
         "answers": {
+            **DECISION_ANSWERS,
             "category": {
                 "choice": "normal",
                 "confidence": 1,
@@ -335,7 +339,7 @@ async def test_custom_model_requires_server_routing_confirmation(
                     "security": 0,
                     "other": 0,
                 },
-            }
+            },
         },
     }
     async with httpx.AsyncClient(

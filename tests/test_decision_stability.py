@@ -2,6 +2,7 @@ import json
 
 import httpx
 import pytest
+from conftest import DECISION_ANSWERS
 
 from classifier import Result, _decision_input, classify_batch, classify_log
 from config import get_engine
@@ -41,6 +42,7 @@ async def test_auth_messages_share_input_but_preserve_original_logs(
             json={
                 "usage": {"truncated": False},
                 "answers": {
+                    **DECISION_ANSWERS,
                     "category": {
                         "choice": "warning",
                         "confidence": 0.9,
@@ -48,7 +50,7 @@ async def test_auth_messages_share_input_but_preserve_original_logs(
                             key: float(key == "warning")
                             for key in PROFILES["general"]["criteria"]
                         },
-                    }
+                    },
                 },
             },
         )
@@ -125,11 +127,12 @@ async def test_uncertainty_preserves_model_choice(
             json={
                 "usage": {"truncated": False},
                 "answers": {
+                    **DECISION_ANSWERS,
                     "category": {
                         "choice": choice,
                         "confidence": confidence,
                         "probabilities": distribution,
-                    }
+                    },
                 },
             },
         )

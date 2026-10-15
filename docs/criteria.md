@@ -14,13 +14,14 @@ Manage decision profiles under **Criteria** in the sidebar. Both Laya and Jev us
 | Delete | Delete → Save changes. Deletion is pending until saved |
 
 - Categories stay fixed at **Normal, Warning, Error, Security, and Other**.
-  Only `choice` decisions are supported; other decision types/custom categories are unavailable.
+  Profiles customize `choice` only; urgency (`score`) and work-ticket need (`noul`)
+  use fixed shared questions. Custom categories are unavailable.
 - IDs start with a lowercase letter and use lowercase letters, digits, `_`, or `-`,
   up to 64 characters. Names, instructions, and every definition must be nonempty.
 - `general` is the default API profile. It appears separately under **Default Criteria**
   above the list, with **View** only. Edit/Delete controls are omitted.
 - Saved changes apply to new runs. Running jobs retain their original criteria even
-  after edits/deletion; result JSON `question` records the criteria actually used.
+  after edits/deletion; result JSON `questions.category` records the criteria actually used.
 - Select replacement profiles for sources assigned to deleted profiles. Refresh the
   page to load changes saved in another browser. Switching views preserves editor drafts.
 - Describe observed outcomes and evidence. Keep specific log strings in evaluation

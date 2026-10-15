@@ -53,7 +53,11 @@ Defaults: **General system**, **1 event per chunk**. Currently, each nonempty li
 is one event; multiline boundaries are not yet detected. Every profile uses `choice` with
 **Normal, Warning, Error, Security, Other**; only the descriptions and instructions
 differ. Laya and Jev use the same selected profile. Type detection is manual;
-`score` and `noul` are not used.
+`score` also evaluates urgency (0–3: Low, Medium, High, Critical), and `noul`
+returns the probability that a work ticket is needed, in the same request.
+These shared operational questions are fixed across profiles and engines.
+The UI shows the continuous urgency score and ticket Yes probability; no ticket
+is created automatically. Missing or invalid answers fail the whole decision.
 
 | Criteria profile | Focus |
 | --- | --- |

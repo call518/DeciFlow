@@ -7,7 +7,8 @@ Docker Hub 이미지의 설치 버전과 적재한 체크포인트 리비전은 
 
 ## 현재 요청 구성
 
-DeciFlow는 `/v1/systemone`에 청크 하나와 5개 범주의 `choice` 질문 하나를 보내며
+DeciFlow는 `/v1/systemone`에 청크 하나와 `choice` 분류·`score` 긴급도·
+`noul` 작업 티켓 필요성 질문 세 개를 보내며
 모델과 토큰 예산을 명시합니다. 파일 Batch는 개별 요청을 동시에 전송하며
 `/v1/systemone/batch`를 사용하지 않습니다. Jev는 동일한 분류·검증·UI 경로를
 사용하되 Laya 전용 옵션은 전송하지 않습니다.

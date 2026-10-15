@@ -5,6 +5,7 @@ from typing import Any
 import anyio
 import httpx
 import pytest
+from conftest import DECISION_ANSWERS
 
 from classifier import CRITERIA, Result, classify_batch, classify_log, parse_logs
 from config import get_engine
@@ -33,7 +34,7 @@ async def test_collapsed_options_require_review_only_for_laya(
             "truncated": False,
             "options": {"category": {"total": 5, "distinct": 3}},
         },
-        "answers": {"category": ANSWER},
+        "answers": {**DECISION_ANSWERS, "category": ANSWER},
     }
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(lambda _: httpx.Response(200, json=data))
@@ -58,7 +59,7 @@ async def test_invalid_option_integrity_metadata_is_rejected(
     monkeypatch.setenv("DECISION_ENGINE", "laya")
     data = {
         "usage": {"truncated": False, "options": {"category": options}},
-        "answers": {"category": ANSWER},
+        "answers": {**DECISION_ANSWERS, "category": ANSWER},
     }
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(lambda _: httpx.Response(200, json=data))
@@ -90,7 +91,11 @@ async def test_jev_contract() -> None:
         assert body["questions"]["category"]["type"] == "choice"
         assert body["questions"]["category"]["criteria"] == CRITERIA
         return httpx.Response(
-            200, json={"model": "jev-test", "answers": {"category": ANSWER}}
+            200,
+            json={
+                "model": "jev-test",
+                "answers": {**DECISION_ANSWERS, "category": ANSWER},
+            },
         )
 
     async with httpx.AsyncClient(
@@ -129,7 +134,10 @@ async def test_invalid_response(
         return httpx.Response(
             200,
             content=json.dumps(
-                {"answers": {"category": answer}, "usage": {"truncated": False}}
+                {
+                    "answers": {**DECISION_ANSWERS, "category": answer},
+                    "usage": {"truncated": False},
+                }
             ),
         )
 
@@ -227,3 +235,102 @@ async def test_stream_closure_cancels_workers() -> None:
         assert index == 0
     assert calls == 4
     assert cancelled == 3
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("engine_name", ["laya", "jev"])
+@pytest.mark.parametrize(
+    "score,levels,ticket",
+    [
+        (0.0, [1.0, 0.0, 0.0, 0.0], 0.0),
+        (2.37, [0.0, 0.0, 0.63, 0.37], 0.91),
+        (3.0, [0.0, 0.0, 0.0, 1.0], 1.0),
+    ],
+)
+async def test_three_questions_share_one_request(
+    monkeypatch: pytest.MonkeyPatch,
+    engine_name: str,
+    score: float,
+    levels: list[float],
+    ticket: float,
+) -> None:
+    import json
+
+    from classifier import OPERATIONAL_QUESTIONS
+
+    monkeypatch.setenv("DECISION_ENGINE", engine_name)
+    calls = []
+    answers = {
+        "category": ANSWER,
+        "urgency": {
+            **DECISION_ANSWERS["urgency"],
+            "score": score,
+            "probabilities": {str(i): value for i, value in enumerate(levels)},
+        },
+        "ticket": {"type": "noul", "noul": ticket},
+    }
+
+    def handle_request(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        calls.append(body)
+        assert body["state"] == "checkout failed"
+        assert set(body["questions"]) == {"category", "urgency", "ticket"}
+        for name, question in OPERATIONAL_QUESTIONS.items():
+            assert body["questions"][name] == question
+        return httpx.Response(
+            200,
+            json={
+                "usage": {"truncated": False},
+                "answers": answers,
+            },
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handle_request)
+    ) as client:
+        result = await classify_log("checkout failed", get_engine(), client)
+    assert len(calls) == 1
+    assert result["urgency"] == score
+    assert result["ticketProbability"] == ticket
+    assert result["questions"] == calls[0]["questions"]
+    assert "question" not in result
+    assert result["urgencyProbabilities"] == answers["urgency"]["probabilities"]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("engine_name", ["laya", "jev"])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("urgency", None),
+        ("ticket", None),
+        ("urgency", {**DECISION_ANSWERS["urgency"], "score": True}),
+        ("urgency", {**DECISION_ANSWERS["urgency"], "score": 4}),
+        ("urgency", {**DECISION_ANSWERS["urgency"], "score": float("nan")}),
+        ("urgency", {**DECISION_ANSWERS["urgency"], "score": 1}),
+        ("urgency", {**DECISION_ANSWERS["urgency"], "legend": {}}),
+        ("urgency", {**DECISION_ANSWERS["urgency"], "probabilities": {}}),
+        ("ticket", {"type": "noul", "noul": True}),
+        ("ticket", {"type": "noul", "noul": -0.1}),
+        ("ticket", {"type": "choice", "noul": 0.5}),
+    ],
+)
+async def test_invalid_operational_answers_fail_decision(
+    monkeypatch: pytest.MonkeyPatch, engine_name: str, field: str, value: Any
+) -> None:
+    import json
+
+    monkeypatch.setenv("DECISION_ENGINE", engine_name)
+    answers = {**DECISION_ANSWERS, "category": ANSWER}
+    if value is None:
+        del answers[field]
+    else:
+        answers[field] = value
+    data = {"usage": {"truncated": False}, "answers": answers}
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, content=json.dumps(data))
+        )
+    ) as client:
+        with pytest.raises(ValueError, match="response format"):
+            await classify_log("checkout failed", get_engine(), client)

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from conftest import DECISION_ANSWERS
 
 import server
 from classifier import Result, classify_log
@@ -118,13 +119,14 @@ async def test_custom_criteria_snapshot_reaches_both_engines(
             json={
                 "usage": {"truncated": False},
                 "answers": {
+                    **DECISION_ANSWERS,
                     "category": {
                         "choice": "normal",
                         "confidence": 1,
                         "probabilities": {
                             key: int(key == "normal") for key in question["criteria"]
                         },
-                    }
+                    },
                 },
             },
         )

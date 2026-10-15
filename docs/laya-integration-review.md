@@ -7,7 +7,8 @@ checked separately; repository documentation does not establish image contents.
 
 ## Current request contract
 
-DeciFlow sends one chunk and one five-category `choice` question to
+DeciFlow sends one chunk and three questions (five-category `choice`, urgency
+`score`, and work-ticket need `noul`) to
 `/v1/systemone`, with an explicit model and token budgets. File Batch mode sends
 individual requests concurrently; it does not call `/v1/systemone/batch`.
 Jev uses the shared classification/validation/UI path without Laya-only controls.

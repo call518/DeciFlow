@@ -37,12 +37,12 @@ class LogRouter:
         )["input_ids"]
         build_sequence = import_module("laya.common").build_sequence
         for question in questions.values():
-            if question.get("type") != "choice":
-                raise ValueError("DeciFlow Laya supports choice questions only.")
+            if question.get("type") not in {"choice", "score", "noul"}:
+                raise ValueError("Unsupported DeciFlow question type.")
             internal = {
-                "t": "choice",
+                "t": question["type"],
                 "ins": question.get("instructions", ""),
-                "crit": question["criteria"],
+                "crit": question.get("criteria"),
             }
             empty, _ = build_sequence(
                 tokenizer,

@@ -2,6 +2,7 @@
 
 import httpx
 import pytest
+from conftest import DECISION_ANSWERS
 
 from config import Engine
 from scripts.evaluate_laya import evaluate, summarize
@@ -24,6 +25,7 @@ async def test_evaluation_records_mismatches_and_provider_metadata(
                 "routing": {"model": "english"},
                 "usage": {"truncated": False},
                 "answers": {
+                    **DECISION_ANSWERS,
                     "category": {
                         "choice": "normal",
                         "confidence": 0.2,
@@ -34,7 +36,7 @@ async def test_evaluation_records_mismatches_and_provider_metadata(
                             "security": 0.025,
                             "other": 0.025,
                         },
-                    }
+                    },
                 },
             },
         )

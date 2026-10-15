@@ -6,6 +6,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from conftest import DECISION_ANSWERS
 
 import server
 from chunks import chunk_records
@@ -37,13 +38,14 @@ async def test_profiles_reach_both_engines(
             json={
                 "usage": {"truncated": False},
                 "answers": {
+                    **DECISION_ANSWERS,
                     "category": {
                         "choice": "normal",
                         "confidence": 1,
                         "probabilities": {
                             key: int(key == "normal") for key in question["criteria"]
                         },
-                    }
+                    },
                 },
             },
         )

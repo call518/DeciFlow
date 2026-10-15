@@ -18,9 +18,11 @@ category probabilities and confidence instead of reading every line unaided.
 Choose a domain profile and chunk size per source; compare category counts in a
 live chart and pause list updates to inspect individual results.
 
-Currently, DeciFlow uses **`choice` decisions only**. Future updates are planned to
-add **`score` for evaluation and grading** and **`noul` for yes/no probabilities,
-such as pass/fail quality checks**, with criteria and result views tailored to each use case.
+Each chunk receives three decisions in one Laya or Jev request: **`choice` for category**,
+**`score` for urgency** (0–3: Low, Medium, High, Critical), and **`noul` for the
+probability that a work ticket is needed**. Urgency is a probability-weighted score,
+not a rounded grade. Results show both values and retain all answers in JSON.
+DeciFlow does not create tickets automatically.
 
 **DeciFlow** runs on the node containing your logs, reads events, and displays
 results in a browser. The **Laya server** runs the decision model on the same or a separate

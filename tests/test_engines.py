@@ -4,6 +4,7 @@ import json
 
 import httpx
 import pytest
+from conftest import DECISION_ANSWERS
 
 from classifier import CRITERIA, Result, classify_batch, classify_log
 from config import get_engine
@@ -67,13 +68,14 @@ async def test_provider_contract(
                 "model": engine.model,
                 "usage": {"truncated": False},
                 "answers": {
+                    **DECISION_ANSWERS,
                     "category": {
                         "choice": "error",
                         "confidence": 0.9,
                         "probabilities": {
                             name: (1 if name == "error" else 0) for name in CRITERIA
                         },
-                    }
+                    },
                 },
             },
         )
@@ -105,13 +107,14 @@ async def test_laya_truncation_keeps_original_and_continues(
             json={
                 "usage": {"truncated": log == "too long"},
                 "answers": {
+                    **DECISION_ANSWERS,
                     "category": {
                         "choice": "normal",
                         "confidence": 1,
                         "probabilities": {
                             name: (1 if name == "normal" else 0) for name in CRITERIA
                         },
-                    }
+                    },
                 },
             },
         )
@@ -190,13 +193,14 @@ async def test_remote_laya_uses_client_settings_only(
             json={
                 "usage": {"truncated": False},
                 "answers": {
+                    **DECISION_ANSWERS,
                     "category": {
                         "choice": "normal",
                         "confidence": 1,
                         "probabilities": {
                             name: (1 if name == "normal" else 0) for name in CRITERIA
                         },
-                    }
+                    },
                 },
             },
         )
