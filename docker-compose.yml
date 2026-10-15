@@ -1,0 +1,76 @@
+name: deciflow
+
+x-laya: &laya
+  hostname: DeciFlow-Laya
+  init: true
+  restart: unless-stopped
+  command: laya-serve
+  ports:
+    - "8000:8000"
+  environment: &laya-env
+    LAYA_HOST: 0.0.0.0
+    LAYA_PORT: "8000"
+    LAYA_PRELOAD: "1"
+    LAYA_MODELS: english,multilingual,typed-decisions
+    LAYA_API_KEY: ${LAYA_API_KEY-changeme}
+  volumes:
+    - laya-model-cache:/home/laya/.cache/huggingface
+  networks:
+    default:
+      aliases:
+        - laya
+
+services:
+  ui:
+    image: call518/deciflow-ui:0.0.1
+    container_name: DeciFlow-UI
+    hostname: DeciFlow-UI
+    init: true
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DECIFLOW_DATA_DIR: ${DECIFLOW_DATA_DIR:-/var/lib/deciflow-data}
+    ports:
+      - "${PORT:-4000}:${PORT:-4000}"
+    volumes:
+      - .:/app:ro
+      - venv:/opt/deciflow-venv
+      - /var/log:/host-logs/var/log:ro
+      - ./sample-logs:/host-logs/sample-logs:ro
+      - data:${DECIFLOW_DATA_DIR:-/var/lib/deciflow-data}
+      - logs:${DECIFLOW_LOG_DIR:-/var/log/deciflow}
+
+  laya-cpu:
+    <<: *laya
+    image: call518/deciflow-laya-cpu:0.0.1
+    container_name: DeciFlow-Laya-CPU
+    profiles: [cpu]
+    environment:
+      <<: *laya-env
+      LAYA_DEVICE: cpu
+
+  laya-cuda:
+    <<: *laya
+    image: call518/deciflow-laya-cuda:0.0.1
+    container_name: DeciFlow-Laya-CUDA
+    profiles: [cuda]
+    environment:
+      <<: *laya-env
+      LAYA_DEVICE: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  venv:
+    name: deciflow-venv
+  data:
+    name: deciflow-data
+  logs:
+    name: deciflow-logs
+  laya-model-cache:
+    name: deciflow-laya-model-cache

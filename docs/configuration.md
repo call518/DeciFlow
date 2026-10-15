@@ -3,14 +3,15 @@
 [English](configuration.md) | [한국어](configuration.ko.md) | [README](../README.md)
 
 DeciFlow settings live in `.env`; process environment variables take precedence.
-Laya server settings are managed separately on the Laya host.
+Laya server settings are managed on the Laya host; Compose shares `LAYA_API_KEY`
+with DeciFlow. `COMPOSE_PROFILES` selects `cpu` or `cuda`; empty starts only the UI.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `DECISION_ENGINE` | `laya` | `laya` or `jev` |
 | `DECIFLOW_DATA_DIR` | `/var/lib/deciflow-data` | Shared Actions/Criteria storage root; must be writable |
 | `PORT` | `4000` | DeciFlow web port |
-| `LAYA_API_URL` | `http://127.0.0.1:8000/v1/systemone` | Full Laya URL, including any proxy prefix. Docker CPU uses port 8001; CUDA uses 8000 |
+| `LAYA_API_URL` | `http://127.0.0.1:8000/v1/systemone` | Full Laya URL, including any proxy prefix. Compose CPU/CUDA both use `http://laya:8000/v1/systemone`; native execution uses loopback |
 | `LAYA_API_KEY` | `changeme` | Key matching the Laya server |
 | `LAYA_MODEL` | `multilingual` | Built-in or registered custom checkpoint name; server must provide it |
 | `LAYA_MAX_TOKENS` | Blank | Sent as `max_len`; blank keeps built-in defaults; required for custom models |

@@ -50,7 +50,7 @@ access 로그, 애플리케이션 오류, 운영 이벤트에 활용하세요.
 
 ## 빠른 시작 — Docker + Laya CPU
 
-**전제:** 같은 Linux 호스트에 Git과 Docker가 준비되어 있어야 합니다.
+**전제:** 같은 Linux 호스트에 Git과 Docker(Compose 플러그인 포함)가 준비되어 있어야 합니다.
 호환 NVIDIA GPU가 있으면 [GPU로 실행하기(CUDA)](#laya-gpu)를 참고해
 Laya의 추론 성능을 높일 수 있습니다. 이 빠른 시작은
 다양한 환경에서 DeciFlow를 테스트할 수 있도록 CPU 기준으로 안내합니다.
@@ -65,33 +65,29 @@ cd DeciFlow
 test -f .env || cp .env.example .env
 ```
 
-### 2. Laya CPU 컨테이너 실행
+### 2. CPU 실행 설정
+
+`.env`에서 아래 값을 설정합니다. `laya` 호스트 이름은 CPU·CUDA 모두 Compose
+네트워크 안에서 사용할 수 있습니다. 기존 API 키는 유지하세요. Compose가 두 컨테이너에
+같은 키를 전달합니다.
+
+```dotenv
+COMPOSE_PROFILES=cpu
+DECISION_ENGINE=laya
+LAYA_MODEL=multilingual
+LAYA_API_URL=http://laya:8000/v1/systemone
+PORT=4000
+```
+
+### 3. 컨테이너 실행
 
 ```bash
-bash scripts/run-deciflow-laya-cpu.sh
-docker logs --follow DeciFlow-Laya-CPU
+docker compose up -d
+docker compose logs --follow laya-cpu
 ```
 
 최초 모델 다운로드·로딩이 끝나면 로그 보기만 `Ctrl+C`로 종료합니다.
 [준비 상태 확인](#laya-health) 후 다음 단계로 진행하세요.
-
-### 3. DeciFlow 설정 및 컨테이너 실행
-
-`.env`에서 아래 값을 설정합니다. `<HOST_IP>`는 두 컨테이너를 실행하는 호스트의
-접근 가능한 IP로 바꾸세요. 컨테이너 안의 `127.0.0.1`은 Laya 호스트 주소가 아닙니다.
-
-```dotenv
-DECISION_ENGINE=laya
-LAYA_MODEL=multilingual
-LAYA_API_URL=http://<HOST_IP>:8001/v1/systemone
-LAYA_API_KEY=changeme
-PORT=4000
-```
-
-```bash
-docker build --tag call518/deciflow-ui:0.0.1 .
-bash scripts/run-deciflow-ui.sh
-```
 
 ### 4. 샘플 로그 분석
 
@@ -101,7 +97,7 @@ bash scripts/run-deciflow-ui.sh
 
 선택 사항인 GPU 가속은 [Docker 배포 상세](#laya-docker),
 유료 API를 사용하려면 [Jev](#jev)를 참고하세요.
-기본 키 `changeme`는 체험용입니다. 운영 전 Laya 스크립트와 `.env`의 키를 함께 변경하세요.
+기본 키 `changeme`는 체험용입니다. 운영 전 `.env`의 키를 변경하세요.
 
 ## 사용법과 설정
 
@@ -133,98 +129,82 @@ bash scripts/run-deciflow-ui.sh
 기존 공용 Laya 서버에 연결하거나 아래 절차로 원격 노드에 서버를 구성하세요.
 이미 서버가 있다면 구성 절차를 건너뛰고 DeciFlow 연결 설정만 적용합니다.
 
-아래는 Laya 호스트에서 Docker run으로 실행하는 절차입니다. Docker Compose를
-사용하려면 아래 공식 문서 링크를 참고하고 **둘 중 하나만 선택**하세요.
+Laya 호스트의 복제한 저장소에서 [docker-compose.yml](docker-compose.yml)을 사용합니다.
+`.env.example`의 기본값은 CPU이며, 호환 NVIDIA GPU가 있으면 추론 성능을 높일 수 있습니다.
+실제 성능은 하드웨어와 작업량에 따라 달라집니다.
 
-이 문서는 CPU·CUDA 모두 Docker로 Laya 서버를 간편하게 실행하는 절차를 안내합니다.
-이 가이드의 기본 실행 방식은 CPU입니다. 호환 NVIDIA GPU가 있다면 CUDA로
-추론 성능을 높일 수 있으며, 실제 성능은 하드웨어와 작업량에 따라 달라집니다.
+#### CPU 실행
 
-#### Docker run
-
-**`call518/deciflow-laya-cpu:0.0.1`** 또는 **`call518/deciflow-laya-cuda:0.0.1`**를 사용합니다.
-복제·빌드는 필요하지 않습니다. 사용할 스크립트를 Laya 호스트로 복사하고
-아래 CPU·CUDA 명령 중 필요한 것을 실행하세요. 두 컨테이너를 동시에 실행할 수 있습니다.
-
-CPU: [run-deciflow-laya-cpu.sh](scripts/run-deciflow-laya-cpu.sh)
+`.env`에서 `COMPOSE_PROFILES=cpu`를 설정한 뒤 실행하세요:
 
 ```bash
-bash scripts/run-deciflow-laya-cpu.sh
+docker compose up -d laya-cpu
 ```
+
+Laya와 DeciFlow를 함께 실행하려면 대신 `docker compose up -d`를 사용합니다.
+두 Laya 방식 모두 호스트 포트 **8000**, `deciflow-laya-model-cache` 공유 볼륨,
+`english`·`multilingual`·`typed-decisions` 사전 적재를 사용합니다.
+프로필은 하나만 선택하세요. 이 구성에서 CPU·CUDA를 동시에 실행할 수 없습니다.
+`.env`의 `LAYA_API_KEY`를 Laya와 DeciFlow가 함께 사용하며, 빈 키는 인증을 비활성화합니다.
 
 <a id="laya-gpu"></a>
 
-**선택 사항: GPU 가속(CUDA)**
+#### 선택 사항: GPU 가속(CUDA)
 
-CUDA 실행에는 NVIDIA 드라이버와
-[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)도
-필요합니다. `nvidia-smi`로 GPU·드라이버를 확인하세요. `CUDA Version`은 드라이버의
-지원 버전이며 설치된 Toolkit 버전이 아닙니다. 로컬 Toolkit은 `nvcc --version`으로
-확인하며 이 컨테이너에는 설치가 필요하지 않습니다. CUDA 13.0 이미지에는 호환 GPU와
-[580 이상 드라이버](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html)가 필요합니다.
+CUDA 실행에는 호환 NVIDIA GPU·드라이버와
+[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)이 필요합니다.
+`nvidia-smi`로 GPU·드라이버를 확인하세요. `CUDA Version`은 드라이버의 지원 버전이며
+설치된 Toolkit 버전이 아닙니다. 이 컨테이너에는 로컬 CUDA Toolkit이 필요하지 않습니다.
+CUDA 13.0 이미지에는 [580 이상 드라이버](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html)가 필요합니다.
+CUDA 서비스는 모든 GPU를 사용하도록 요청하며 CPU 서비스는 GPU를 요청하지 않습니다.
 
-CUDA: [run-deciflow-laya-cuda.sh](scripts/run-deciflow-laya-cuda.sh)
+기존 배포를 전환하려면 필요한 결과를 내보낸 뒤 **프로필을 수정하기 전에** 현재 구성을 종료하세요:
 
 ```bash
-bash scripts/run-deciflow-laya-cuda.sh
+docker compose down
 ```
 
-스크립트는 `--env LAYA_API_KEY=changeme`를 직접 지정하므로 다른 키를 export해도
-덮어쓰지 않습니다. 실제 배포에는 이 인자를 강한 키로 변경하고 DeciFlow의 `.env`에도
-같은 값을 설정하세요.
+`.env`에서 `COMPOSE_PROFILES=cuda`로 변경하고 실행하세요:
 
-스크립트는 호스트의 **CPU 8001**, **CUDA 8000** 포트, `english`·`multilingual`·`typed-decisions` 사전 적재,
-`deciflow-laya-model-cache` 공유 볼륨을 사용합니다. CUDA는 컨테이너에 모든 GPU를
-노출합니다. 호스트 인터페이스·포트는 `--publish 호스트_IP:호스트_포트:8000`을
-수정하고 `LAYA_API_URL`에도 반영하세요. CPU 컨테이너 이름은 `DeciFlow-Laya-CPU`,
-CUDA 컨테이너 이름은 `DeciFlow-Laya-CUDA`입니다. 두 컨테이너의 내부 포트는 모두
-8000입니다. 설정을 변경하려면 해당
-컨테이너를 중지·제거한 뒤 스크립트를 다시 실행하세요.
+```bash
+docker compose up -d
+docker compose logs --follow laya-cuda
+```
 
-> **NOTE:** Docker Compose로 구성하려면 공식
-> [Laya Docker 문서의 HTTP serving 항목](https://nandhakishorm.github.io/laya/docker/#http-serving)을 참고하세요.
+CPU로 돌아가려면 같은 절차에서 `COMPOSE_PROFILES=cpu`를 사용합니다.
+내부 URL `http://laya:8000/v1/systemone`은 그대로 유지합니다.
 
 <a id="laya-health"></a>
 
 #### 상태 확인과 관리
 
-상태 확인 시 `LAYA_API_KEY`에 서버와 동일한 키를 사용하세요(기본값: `changeme`).
-`LAYA_HOST_PORT`는 CPU의 경우 8001, CUDA의 경우 8000으로 설정하세요.
+아래 명령은 선택한 컨테이너 안에서 서버 키를 출력 없이 읽어 상태를 확인합니다.
+CUDA를 사용하면 `laya-cpu`를 `laya-cuda`로 바꾸세요:
 
 ```bash
-LAYA_HOST_PORT=8001
-curl --fail --silent --show-error \
-  --header "Authorization: Bearer ${LAYA_API_KEY:-changeme}" \
-  "http://127.0.0.1:${LAYA_HOST_PORT}/health"
+docker compose exec laya-cpu python -c 'import os, urllib.request; r = urllib.request.Request("http://127.0.0.1:8000/health", headers={"Authorization": "Bearer " + os.environ["LAYA_API_KEY"]}); print(urllib.request.urlopen(r).read().decode())'
 ```
 
-DeciFlow 노드에서는 `127.0.0.1`을 서버 주소로 바꾸세요.
 CUDA 사용 시 `checkpoint_devices`·`device`와 `cpu_fallbacks`로 실제 GPU 사용을 확인합니다.
 신뢰할 수 있는 DeciFlow 노드만 Laya에 접근하도록 제한하고 외부 네트워크에는 TLS를 사용하세요.
 잘림 메타데이터를 위해 `LAYA_JEV_STRICT=0`을 유지합니다. 최초 모델 적재에는 수 분이
 걸릴 수 있으며 시작 오류는 컨테이너 로그에서 확인하세요.
 
-아래 명령에서는 사용 중인 배포에 맞게 이름을 설정하세요:
-
-```bash
-LAYA_CONTAINER=DeciFlow-Laya-CPU  # CPU; CUDA는 DeciFlow-Laya-CUDA 사용
-```
-
-| 작업 | Docker run |
+| 작업 | 명령 |
 | --- | --- |
-| 상태 | `docker ps --filter name=DeciFlow-Laya` |
-| 로그 | `docker logs --tail=100 "$LAYA_CONTAINER"` |
-| 중지 | `docker stop "$LAYA_CONTAINER"` |
-| 재시작 | `docker start "$LAYA_CONTAINER"` |
-| 제거 | 중지 후 `docker rm "$LAYA_CONTAINER"` |
+| 상태 | `docker compose ps` |
+| 로그 | `docker compose logs --tail=100` |
+| 중지 | `docker compose stop` |
+| 재개 | `docker compose start` |
+| 컨테이너 제거 | `docker compose down` |
 
-제거 시 모델 캐시는 유지됩니다. 네이티브 실행과 Docker 중 하나를 선택하세요.
-CPU·CUDA Docker 컨테이너는 함께 실행할 수 있습니다.
+`down`은 이름 있는 볼륨을 유지합니다. 데이터를 보존하려면 `--volumes`를 추가하지 마세요.
+네이티브 실행과 Docker 중 하나를 선택하세요.
 
 #### DeciFlow 연결 설정
 
-DeciFlow 실행 노드의 `.env`에 공용 Laya 서버 URL과 서버와 동일한 API 키를 설정하세요.
-CPU 컨테이너는 8001, CUDA(아래 예시) 또는 네이티브 실행은 8000 포트를 사용합니다:
+같은 Compose 구성에서는 `LAYA_API_URL=http://laya:8000/v1/systemone`을 사용합니다.
+외부 Laya 서버에 연결하려면 `.env`에 접근 가능한 URL과 서버와 동일한 API 키를 설정하세요:
 
 ```dotenv
 DECISION_ENGINE=laya
@@ -233,6 +213,9 @@ LAYA_API_URL=http://laya-server.example:8000/v1/systemone
 LAYA_API_KEY=changeme
 PORT=4000
 ```
+
+`docker compose up -d ui`로 UI만 실행하면 로컬 Laya는 시작하지 않습니다.
+Laya 호스트에서 DeciFlow를 네이티브로 실행하면 대신 `http://127.0.0.1:8000/v1/systemone`을 사용하세요.
 
 <a id="jev"></a>
 
@@ -250,73 +233,72 @@ PORT=4000
 
 ### DeciFlow Docker
 
-부록의 **Python 직접 실행 대신 이 방식을 선택**합니다. DeciFlow 호스트에는 Docker만
-필요하며 로컬 Python·uv·CUDA는 필요하지 않습니다. 먼저 `.env`에 Laya 또는 Jev를
-설정하세요. Laya 추론은 기존의 별도 Laya 서버가 처리합니다.
-
-Git clone한 DeciFlow 디렉토리에서 아래 명령을 실행하세요. 이미지는 Python·uv와 운영 유틸리티를 제공하며, 저장소는 `/app`에 읽기 전용으로 마운트합니다. 시작할 때
-`uv sync --frozen`이 현재 버전의 의존성을 별도 Docker 볼륨에 설치합니다.
-최초 실행에는 패키지 다운로드를 위한 네트워크 연결이 필요합니다.
+부록의 **Python 직접 실행 대신 이 방식을 선택**합니다. DeciFlow 호스트에는
+Compose가 포함된 Docker가 필요하며 로컬 Python·uv·CUDA는 필요하지 않습니다.
+먼저 `.env`에 Laya 또는 Jev를 설정하세요. 외부 Laya 또는 Jev를 사용하면
+`COMPOSE_PROFILES=`로 두고 UI만 실행합니다:
 
 ```bash
-docker build --tag call518/deciflow-ui:0.0.1 .
-bash scripts/run-deciflow-ui.sh
+docker compose up -d ui
 ```
 
-실행 스크립트는 UI를 `0.0.0.0:4000`에 공개하고 샘플 로그도 마운트합니다.
-`deciflow-data` 볼륨은 `/var/lib/deciflow-data`에 연결하며 Actions는 `actions/`,
-Criteria는 `criteria/`에 저장합니다. 로컬 체험만 허용하려면 publish 주소를
-`127.0.0.1:4000:4000`으로 변경하세요. 포트·마운트 변경 후에는 컨테이너를 다시 생성합니다.
+Compose는 Docker Hub에 공개된 `call518/deciflow-ui:0.0.1` 이미지를 사용합니다.
+이미지는 Python·uv와 운영 유틸리티를 제공합니다. 저장소는 `/app`에 읽기 전용으로
+마운트하며, 시작할 때 `uv sync --frozen`으로 `deciflow-venv` 볼륨에 의존성을 설치합니다.
+최초 실행에는 네트워크 연결이 필요합니다. Compose가 `.env`를 UI에 전달하며
+`PORT`로 호스트·컨테이너 포트를 함께 지정합니다(기본값: 4000).
 
-**http://127.0.0.1:4000**에 접속하세요. 호스트의 `/var/log`는 Batch·Realtime에서
-`/host-logs/var/log/messages` 같은 `/host-logs/var/log` 경로로 사용합니다. 다른 디렉토리도 필요하면 읽기 전용으로 마운트하세요.
-`.env`의 `PORT`가 다르면 실행 스크립트의 호스트·컨테이너 포트를 모두 변경합니다.
-원격 접속은 DeciFlow 호스트 IP를 사용하며 파일 접근 출처 설정도 아래 안내를 따릅니다.
+UI는 호스트의 모든 인터페이스에 공개합니다. 로컬 접속만 허용하려면 Compose의
+UI 포트 매핑을 `127.0.0.1:${PORT:-4000}:${PORT:-4000}`으로 변경하세요.
+기본 포트에서는 **http://127.0.0.1:4000**, 원격에서는 DeciFlow 호스트 IP로 접속합니다.
+`deciflow-data` 볼륨은 `DECIFLOW_DATA_DIR`(기본값: `/var/lib/deciflow-data`)에
+Actions·Criteria를 저장하고, `deciflow-logs`는 서버 로그를 저장합니다.
+사용자 지정 데이터·로그 디렉터리는 컨테이너 안의 절대 경로로 설정하세요.
 
 #### 호스트 로그 디렉터리 연결
 
-DeciFlow 컨테이너가 호스트의 로그를 읽으려면 해당 디렉터리를 읽기 전용으로
-마운트해야 합니다. 실행 스크립트는 `/var/log`와 저장소의 `sample-logs`를 이미
-연결합니다. 다른 로그 디렉터리는 `scripts/run-deciflow-ui.sh`의 `docker run` 옵션에
-아래 항목을 추가하세요. `/your/logs`는 분석할 호스트 로그 디렉터리로 바꿉니다.
+호스트 `/var/log`와 저장소의 `sample-logs`를 `/host-logs/var/log`,
+`/host-logs/sample-logs`에 읽기 전용으로 연결합니다. 다른 로그를 읽으려면
+`docker-compose.yml`의 `services.ui.volumes`에 추가하세요:
 
-```bash
---mount type=bind,src=/your/logs,dst=/host-logs/custom,readonly \
+```yaml
+      - /your/logs:/host-logs/custom:ro
 ```
 
-마운트 변경 후 기존 컨테이너를 중지·제거하고 스크립트를 다시 실행합니다.
-서버 메모리의 작업·결과는 사라지므로 필요한 결과는 먼저 내보내세요.
-
-```bash
-docker stop DeciFlow-UI
-docker rm DeciFlow-UI
-bash scripts/run-deciflow-ui.sh
-```
-
-UI에는 호스트 경로 `/your/logs/app.log` 대신 **컨테이너 경로
-`/host-logs/custom/app.log`**를 입력합니다. `readonly`는 컨테이너에서 호스트 로그를
-수정하지 못하게 하며, DeciFlow 프로세스에는 해당 파일을 읽을 권한이 필요합니다.
+`docker compose up -d ui`로 마운트 변경을 적용합니다. UI 재생성 시 서버 메모리의
+작업·결과가 사라지므로 필요한 결과는 먼저 내보내세요. UI에서는 컨테이너 경로
+`/host-logs/custom/app.log`를 사용합니다. 프로세스에는 호스트 파일을 읽을 권한이 필요합니다.
 
 #### 연결 설정과 재시작
 
-Laya URL은 컨테이너에서 접근 가능한 주소를 사용하세요. `127.0.0.1`은 호스트나
-원격 Laya 서버가 아닌 컨테이너 자신입니다. 사이드바의 호스트·OS·IP 정보는
-컨테이너를 나타냅니다. DeciFlow가 시작할 때마다 마운트된 `/app/.env`를 읽습니다.
-Docker `--env`로 지정한 값은 `.env`보다 우선합니다. `.env` 수정 후 재시작하세요:
+Compose Laya 주소는 `http://laya:8000/v1/systemone`입니다. 외부 서버는 컨테이너에서
+접근 가능한 주소를 사용하세요. `127.0.0.1`은 UI 컨테이너 자신입니다.
+사이드바의 호스트·OS·IP 정보도 컨테이너를 나타냅니다.
+`.env` 변경 후 `docker compose up -d`로 영향을 받는 컨테이너를 재생성하세요.
+`restart`만으로는 Compose가 전달한 환경변수가 갱신되지 않습니다.
+소스 변경은 `docker compose restart ui`로 적용하고 UI 변경 후 브라우저를 새로고침하세요.
+Dockerfile을 수정한 경우에만 `docker build --tag call518/deciflow-ui:0.0.1 .`로
+UI 이미지를 직접 빌드한 뒤 `docker compose up -d --force-recreate ui`로 적용합니다.
+소스 버전 전환 전에는 DeciFlow를 중지하세요.
+
+#### 기존 실행 스크립트에서 전환
+
+필요한 결과를 내보낸 뒤 Compose를 시작하기 전에 기존 컨테이너를 한 번 중지·제거하세요.
+아래 명령은 이름 있는 볼륨을 유지합니다:
 
 ```bash
-docker restart DeciFlow-UI
+docker stop DeciFlow-UI DeciFlow-Laya-CPU DeciFlow-Laya-CUDA
+docker rm DeciFlow-UI DeciFlow-Laya-CPU DeciFlow-Laya-CUDA
 ```
 
-기존 `--env-file .env` 방식의 컨테이너는 새 이미지를 빌드하고 위 명령으로
-한 번만 재생성해야 합니다. 포트 매핑·마운트 변경 시에는 여전히 재생성이 필요합니다.
-소스 수정이나 Git 버전 변경은 `docker restart DeciFlow-UI`로 적용하며 이미지 재빌드는
-필요하지 않습니다. UI 변경 후에는 브라우저도 새로고침하세요. Dockerfile의 실행 환경을
-바꿀 때만 이미지를 다시 빌드합니다. 버전 전환 전에는 DeciFlow를 중지하세요.
+실제로 존재하는 컨테이너 이름만 포함하세요. Compose는 기존 데이터·로그·venv·모델 캐시
+볼륨을 재사용합니다. `.env`에 `COMPOSE_PROFILES=cpu` 또는 `cuda`를 지정하고,
+로컬 구성이면 `LAYA_API_URL=http://laya:8000/v1/systemone`으로 설정한 뒤 시작하세요.
+CPU의 공개 포트가 8001에서 8000으로 바뀌므로 외부 DeciFlow의 연결 설정도 갱신하세요.
 
 ngrok·리버스 프록시로 파일을 처리하려면 `DECIFLOW_CSRF_TRUSTED_ORIGINS`에
 정확한 UI 출처 또는 랜덤 ngrok 주소용 `https://*.ngrok-free.app`을 지정하고
-컨테이너를 재시작하세요(끝에 `/` 제외). 빈 값은 localhost 파일 접근만 허용합니다.
+`docker compose up -d ui`로 적용하세요(끝에 `/` 제외). 빈 값은 localhost 파일 접근만 허용합니다.
 이 설정은 CSRF Origin 검사에 사용하며 CORS·로그인 인증·CSRF 토큰 검증은 아닙니다.
 와일드카드는 다른 사용자의 하위 도메인도 신뢰하므로 공개 접속에는 프록시 인증을 적용하세요.
 
@@ -365,11 +347,15 @@ uv sync
 uv run python server.py
 ```
 
+네이티브 DeciFlow에서는 실행 전에 `.env`의 `LAYA_API_URL`을 접근 가능한 Laya 서버
+주소로 설정하세요(같은 호스트: `http://127.0.0.1:8000/v1/systemone`).
+Compose 전용 호스트 이름 `laya`는 Docker 네트워크 밖에서는 사용할 수 없습니다.
+
 **http://127.0.0.1:4000**을 엽니다. 첫 기동에 기본 Criteria 파일을 생성하므로 공통 데이터 경로에 쓰기 권한이
 필요합니다. 기본 `/var/lib/deciflow-data`에 쓸 수 없다면 `.env`에서
 `DECIFLOW_DATA_DIR=./data`를 설정하세요. 설정 변경 후 DeciFlow를 재시작합니다.
 
-## Appendix — Docker run 커스텀 이미지(선택)
+## Appendix — Docker 커스텀 이미지(선택)
 
 직접 만든 이미지가 필요한 경우에만 Laya **v0.4.1**에서 대상에 맞는
 CPU **또는** CUDA 빌드 명령을 실행합니다:
@@ -387,7 +373,7 @@ docker build \
   --tag my-laya:cuda .
 ```
 
-선택한 Docker run 스크립트의 이미지를 커스텀 태그로 바꾸세요.
+`docker-compose.yml`에서 선택한 Laya 서비스의 이미지를 커스텀 태그로 바꾸세요.
 `cpu`는 CPU 전용 PyTorch, `cu130`은 CUDA **13.0**을 뜻합니다. GPU·드라이버와
 Dockerfile의 `TORCH_VERSION`에 맞는 CUDA 빌드를
 [PyTorch 설치 목록](https://pytorch.org/get-started/previous-versions/)에서 선택하세요.
