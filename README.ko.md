@@ -48,10 +48,12 @@ access 로그, 애플리케이션 오류, 운영 이벤트에 활용하세요.
 
 ![DeciFlow architecture](images/DeciFlow-Architecture.png)
 
-## 빠른 시작 — Docker + Laya GPU
+## 빠른 시작 — Docker + Laya CPU
 
-**전제:** 같은 Linux 호스트에서 실행하며 Git, Docker, 호환 NVIDIA GPU·드라이버와
-[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)이 준비되어 있어야 합니다.
+**전제:** 같은 Linux 호스트에 Git과 Docker가 준비되어 있어야 합니다.
+호환 NVIDIA GPU가 있으면 [GPU로 실행하기(CUDA)](#laya-gpu)를 참고해
+Laya의 추론 성능을 높일 수 있습니다. 이 빠른 시작은
+다양한 환경에서 DeciFlow를 테스트할 수 있도록 CPU 기준으로 안내합니다.
 Laya는 판정 엔진 컨테이너, DeciFlow는 로그 분석·웹 UI 컨테이너입니다.
 
 ### 1. 저장소 준비
@@ -63,11 +65,11 @@ cd DeciFlow
 test -f .env || cp .env.example .env
 ```
 
-### 2. Laya GPU 컨테이너 실행
+### 2. Laya CPU 컨테이너 실행
 
 ```bash
-bash scripts/run-deciflow-laya-cuda.sh
-docker logs --follow DeciFlow-Laya-CUDA
+bash scripts/run-deciflow-laya-cpu.sh
+docker logs --follow DeciFlow-Laya-CPU
 ```
 
 최초 모델 다운로드·로딩이 끝나면 로그 보기만 `Ctrl+C`로 종료합니다.
@@ -81,7 +83,7 @@ docker logs --follow DeciFlow-Laya-CUDA
 ```dotenv
 DECISION_ENGINE=laya
 LAYA_MODEL=multilingual
-LAYA_API_URL=http://<HOST_IP>:8000/v1/systemone
+LAYA_API_URL=http://<HOST_IP>:8001/v1/systemone
 LAYA_API_KEY=changeme
 PORT=4000
 ```
@@ -97,7 +99,8 @@ bash scripts/run-deciflow-ui.sh
 소스는 `/host-logs/sample-logs/access-100.log` 하나만 남기고 **HTTP access** 기준,
 **Events/chunk: 1**, **Action: None**으로 분석을 시작하세요.
 
-GPU가 없다면 [Laya CPU](#laya-docker), 유료 API를 사용하려면 [Jev](#jev)를 참고하세요.
+선택 사항인 GPU 가속은 [Docker 배포 상세](#laya-docker),
+유료 API를 사용하려면 [Jev](#jev)를 참고하세요.
 기본 키 `changeme`는 체험용입니다. 운영 전 Laya 스크립트와 `.env`의 키를 함께 변경하세요.
 
 ## 사용법과 설정
@@ -134,15 +137,8 @@ GPU가 없다면 [Laya CPU](#laya-docker), 유료 API를 사용하려면 [Jev](#
 사용하려면 아래 공식 문서 링크를 참고하고 **둘 중 하나만 선택**하세요.
 
 이 문서는 CPU·CUDA 모두 Docker로 Laya 서버를 간편하게 실행하는 절차를 안내합니다.
-CUDA가 없는 환경에서도 CPU로 충분히 사용할 수 있습니다. 실제 성능은
-하드웨어와 작업량에 따라 달라집니다.
-
-CUDA 실행에는 NVIDIA 드라이버와
-[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)도
-필요합니다. `nvidia-smi`로 GPU·드라이버를 확인하세요. `CUDA Version`은 드라이버의
-지원 버전이며 설치된 Toolkit 버전이 아닙니다. 로컬 Toolkit은 `nvcc --version`으로
-확인하며 이 컨테이너에는 설치가 필요하지 않습니다. CUDA 13.0 이미지에는 호환 GPU와
-[580 이상 드라이버](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html)가 필요합니다.
+이 가이드의 기본 실행 방식은 CPU입니다. 호환 NVIDIA GPU가 있다면 CUDA로
+추론 성능을 높일 수 있으며, 실제 성능은 하드웨어와 작업량에 따라 달라집니다.
 
 #### Docker run
 
@@ -155,6 +151,17 @@ CPU: [run-deciflow-laya-cpu.sh](scripts/run-deciflow-laya-cpu.sh)
 ```bash
 bash scripts/run-deciflow-laya-cpu.sh
 ```
+
+<a id="laya-gpu"></a>
+
+**선택 사항: GPU 가속(CUDA)**
+
+CUDA 실행에는 NVIDIA 드라이버와
+[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)도
+필요합니다. `nvidia-smi`로 GPU·드라이버를 확인하세요. `CUDA Version`은 드라이버의
+지원 버전이며 설치된 Toolkit 버전이 아닙니다. 로컬 Toolkit은 `nvcc --version`으로
+확인하며 이 컨테이너에는 설치가 필요하지 않습니다. CUDA 13.0 이미지에는 호환 GPU와
+[580 이상 드라이버](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html)가 필요합니다.
 
 CUDA: [run-deciflow-laya-cuda.sh](scripts/run-deciflow-laya-cuda.sh)
 
@@ -192,7 +199,7 @@ curl --fail --silent --show-error \
 ```
 
 DeciFlow 노드에서는 `127.0.0.1`을 서버 주소로 바꾸세요.
-`checkpoint_devices`·`device`와 `cpu_fallbacks`로 실제 GPU 사용을 확인합니다.
+CUDA 사용 시 `checkpoint_devices`·`device`와 `cpu_fallbacks`로 실제 GPU 사용을 확인합니다.
 신뢰할 수 있는 DeciFlow 노드만 Laya에 접근하도록 제한하고 외부 네트워크에는 TLS를 사용하세요.
 잘림 메타데이터를 위해 `LAYA_JEV_STRICT=0`을 유지합니다. 최초 모델 적재에는 수 분이
 걸릴 수 있으며 시작 오류는 컨테이너 로그에서 확인하세요.

@@ -50,10 +50,12 @@ log file and review the predictions in your browser.
 
 ![DeciFlow architecture](images/DeciFlow-Architecture.png)
 
-## Quick start — Docker + Laya GPU
+## Quick start — Docker + Laya CPU
 
-**Requires:** Git, Docker, a compatible NVIDIA GPU/driver, and
-[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) on one Linux host.
+**Requires:** Git and Docker on one Linux host.
+A compatible NVIDIA GPU can improve Laya's inference performance; see
+[Run with GPU (CUDA)](#laya-gpu). This quick start
+uses CPU so you can try DeciFlow across a wider range of environments.
 Laya runs the decision engine; DeciFlow runs log analysis and the web UI in a second container.
 
 ### 1. Prepare the repository
@@ -65,11 +67,11 @@ cd DeciFlow
 test -f .env || cp .env.example .env
 ```
 
-### 2. Start the Laya GPU container
+### 2. Start the Laya CPU container
 
 ```bash
-bash scripts/run-deciflow-laya-cuda.sh
-docker logs --follow DeciFlow-Laya-CUDA
+bash scripts/run-deciflow-laya-cpu.sh
+docker logs --follow DeciFlow-Laya-CPU
 ```
 
 Wait for the initial model download/loading, then press `Ctrl+C` to leave the log viewer.
@@ -83,7 +85,7 @@ running both containers. Inside DeciFlow, `127.0.0.1` does not address the Laya 
 ```dotenv
 DECISION_ENGINE=laya
 LAYA_MODEL=multilingual
-LAYA_API_URL=http://<HOST_IP>:8000/v1/systemone
+LAYA_API_URL=http://<HOST_IP>:8001/v1/systemone
 LAYA_API_KEY=changeme
 PORT=4000
 ```
@@ -99,7 +101,8 @@ Open **http://127.0.0.1:4000** on the same host and select **Batch**.
 Keep only `/host-logs/sample-logs/access-100.log`, select **HTTP access** criteria,
 **Events/chunk: 1**, and **Action: None**, then start analysis.
 
-Without a GPU, see [Laya CPU](#laya-docker); for a paid API, see [Jev](#jev).
+For optional GPU acceleration, see [Docker deployment details](#laya-docker);
+for a paid API, see [Jev](#jev).
 The default key `changeme` is for trials. Change it in both the Laya script and `.env` before deployment.
 
 ## Usage and configuration
@@ -136,15 +139,8 @@ The instructions below use Docker run on the Laya host. Docker Compose is an
 alternative; see the official guide linked below and choose only one method.
 
 This guide uses Docker to simplify Laya server setup for both CPU and CUDA.
-CPU is a practical option even without CUDA. Performance varies with
-hardware and workload.
-
-CUDA additionally requires an NVIDIA driver and
-[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
-Check the GPU and driver with `nvidia-smi`: its `CUDA Version` describes driver
-support, not the installed Toolkit. `nvcc --version` checks a local Toolkit,
-which these containers do not require. A CUDA 13.0 image requires a compatible GPU
-and [driver 580 or newer](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html).
+CPU is the default for this guide. A compatible NVIDIA GPU can improve inference
+performance with CUDA; actual performance varies with hardware and workload.
 
 #### Docker run
 
@@ -157,6 +153,17 @@ CPU: [run-deciflow-laya-cpu.sh](scripts/run-deciflow-laya-cpu.sh)
 ```bash
 bash scripts/run-deciflow-laya-cpu.sh
 ```
+
+<a id="laya-gpu"></a>
+
+**Optional: GPU acceleration (CUDA)**
+
+CUDA additionally requires an NVIDIA driver and
+[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+Check the GPU and driver with `nvidia-smi`: its `CUDA Version` describes driver
+support, not the installed Toolkit. `nvcc --version` checks a local Toolkit,
+which these containers do not require. A CUDA 13.0 image requires a compatible GPU
+and [driver 580 or newer](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html).
 
 CUDA: [run-deciflow-laya-cuda.sh](scripts/run-deciflow-laya-cuda.sh)
 
@@ -193,7 +200,7 @@ curl --fail --silent --show-error \
   "http://127.0.0.1:${LAYA_HOST_PORT}/health"
 ```
 
-On the DeciFlow node, replace `127.0.0.1` with the server address. Inspect
+On the DeciFlow node, replace `127.0.0.1` with the server address. For CUDA, inspect
 `checkpoint_devices`/`device` and `cpu_fallbacks` to verify actual GPU use.
 Restrict Laya access to trusted DeciFlow nodes and use TLS over external networks.
 Keep `LAYA_JEV_STRICT=0` for required truncation metadata. Initial model loading
