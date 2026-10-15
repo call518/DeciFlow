@@ -43,7 +43,7 @@ and saving converts them to UI-managed code and environments.
 Actions use `actions/` under the shared `DECIFLOW_DATA_DIR` root. The default is
 `/var/lib/deciflow-data/actions` for both Python and Docker. Direct host startup needs write
 permission; set the shared root to `./data` if needed. For Docker, keep the shared data
-root and volume destination identical. Registrations, code snapshots,
+root and volume destination identical. Registrations, code,
 projects, lockfiles, and venvs are stored together. New analysis sources default to **None**, including sources with older stored
 assignments. Reconnecting to a running job displays its original Action settings
 and continues that same job. Restored completed jobs default to **None** for a new run. Action selections persist only during the
@@ -51,28 +51,35 @@ current page session; users must explicitly select them again after reload.
 Criteria and chunk sizes remain in browser local storage. Changing this directory does not migrate
 existing data automatically.
 
-`actions.json` remains at the storage root. New Actions use
-`<initial-name>-<Action UUID>/`, with unsafe name characters replaced by hyphens.
-Action names are fixed after creation; Edit keeps Name read-only. Environments use
-`environments/Rev-<number>-<UUID>/`; script snapshots use
-`scripts/Rev-<number>-<UUID>.py`. Each has its own sequence.
+`actions.json` stores the current configuration at the Actions storage root.
+Each UI-managed Action uses `<initial-name>-<Action UUID>/`, with unsafe name
+characters replaced by hyphens. Names are fixed after creation; Edit keeps Name
+read-only. Code and the environment live directly in that directory:
 
-The registry's `history.environments` and `history.scripts` record successful saved
-revisions with their number, UUID, UTC creation time, and path. Environment entries
-also include Python version and modules. Unchanged code/environments and Reset venv
-reuse the current revision. Failed saves do not update the registry; leftover
-revision paths are skipped when allocating numbers. Numbers may have gaps.
+```text
+<initial-name>-<Action UUID>/
+├── action.py
+├── .venv/
+├── pyproject.toml
+├── uv.lock
+└── .ready
+```
 
-Revision history is stored in JSON; no history or rollback UI is provided.
-Saving is serialized within one DeciFlow process; multiple writers sharing a volume
-are not supported.
+`action.py` is the current script; `.venv` is its Python environment.
+`pyproject.toml` and `uv.lock` keep the environment settings and resolved packages.
+`.ready` marks completed preparation. Code-only edits reuse the environment;
+Python/module changes rebuild `.venv` at the same path. Unchanged ready settings
+are reused.
 
-Unchanged ready environments are reused. Python/module changes create a new
-revision; code edits save a new script snapshot and reuse the environment. Existing
-runs keep their original scripts and environments; saved changes apply to the next
-run. Old code and environment revisions are retained: remove unused revisions
-only after their runs have stopped. After removing an Action, check its
-source assignments.
+Saving temporarily backs up files it will change and removes the backup after
+success. Preparation or saving failure restores those files and keeps the saved
+configuration. Backups are temporary working files, not stored versions.
+
+An Action cannot be changed, reset, or deleted while analysis uses it. Stop that
+analysis first. Saving unchanged Actions and editing other Actions remain allowed.
+New runs cannot use an Action while its configuration is being changed.
+Saving is serialized within one DeciFlow process; multiple writers sharing a
+volume are not supported. After removing an Action, check its source assignments.
 
 **Reset venv** deletes the saved Action's current `.venv` and rebuilds it from its
 Python/module settings and `uv.lock`, including pip. Code, registrations, and lockfiles
@@ -81,8 +88,8 @@ environment unready; retry with Reset venv. Actions using external Python
 cannot be reset.
 
 **Delete → Save & prepare environments** removes the Action's data folder, including
-code snapshots, all environment revisions, lockfiles, and data. External scripts/Python
-outside DeciFlow-managed storage are not deleted. Reset/deletion is rejected while
+code, the environment, lockfiles, and data. External scripts/Python
+outside DeciFlow-managed storage are not deleted. Changes/reset/deletion are rejected while
 analysis uses the Action; click **Stop** first. New runs using it cannot start during
 maintenance.
 

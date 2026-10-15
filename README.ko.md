@@ -110,7 +110,7 @@ docker compose logs --follow laya-cpu
 | [사용법](docs/usage.ko.md) | 입력 모드·판정 기준·필터·수동 검토·재접속·시간 지표 |
 | [설정](docs/configuration.ko.md) | 환경변수·모델·입력 예산 |
 | [Criteria](docs/criteria.ko.md) | 고정 5개 범주 프로필 관리; Default Criteria는 보기 전용 |
-| [Python Actions](docs/actions.ko.md) | 구성 보기·환경 Status·pip 포함 환경·Reset venv·리비전 이력·삭제·소스 할당 |
+| [Python Actions](docs/actions.ko.md) | 구성 보기·환경 Status·pip 포함 환경·Reset venv·삭제·소스 할당 |
 | [결과 JSON](docs/results.ko.md) | 현재 요청·결과 예시와 필드 설명 |
 
 사이드바 화면은 URL에 반영됩니다: Main `/`, Criteria `/#criteria`, Actions `/#actions`.

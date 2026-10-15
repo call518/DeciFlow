@@ -111,7 +111,7 @@ and request/result examples.
 | [Usage](docs/usage.md) | Input modes, criteria, filters, human review, reconnecting, timing |
 | [Configuration](docs/configuration.md) | Environment variables, models, input budgets |
 | [Criteria](docs/criteria.md) | Manage fixed-category profiles; Default Criteria is view-only |
-| [Python Actions](docs/actions.md) | Configuration viewing, environment Status, pip-enabled environments, Reset venv, revision history, deletion, source assignment |
+| [Python Actions](docs/actions.md) | Configuration viewing, environment Status, pip-enabled environments, Reset venv, deletion, source assignment |
 | [Result JSON](docs/results.md) | Current request/result examples and field reference |
 
 Sidebar views have URLs: Main `/`, Criteria `/#criteria`, Actions `/#actions`.

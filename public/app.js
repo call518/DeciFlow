@@ -263,7 +263,7 @@ function handleEditAction(index) {
       label.append(note);
     }
     if (['pythonVersion', 'modules'].includes(key) && index < registeredActions.length) {
-      const note = element('span', 'Changing Python version or modules creates a new environment. The current environment is retained.', 'caption');
+      const note = element('span', 'Changing Python version or modules replaces the environment after preparation succeeds. Stop runs using this Action before editing.', 'caption');
       note.id = `action-${key}-note`;
       input.setAttribute('aria-describedby', note.id);
       label.append(note);

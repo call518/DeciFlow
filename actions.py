@@ -7,10 +7,9 @@ import shutil
 import subprocess
 from collections import Counter
 from collections.abc import Iterator
-from contextlib import contextmanager
-from copy import deepcopy
-from datetime import UTC, datetime
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from time import perf_counter
 from uuid import uuid4
 
@@ -133,6 +132,9 @@ def load_actions() -> list[Result]:
         for value in values
     ):
         raise ValueError("Invalid action registry.")
+    for value in values:
+        value.pop("revision", None)
+        value.pop("history", None)
     return values
 
 
@@ -152,55 +154,61 @@ def _action_directory(action: Result) -> Path:
     return get_registry_path().parent / directory
 
 
-def _initialize_history(action: Result, previous: Result | None) -> None:
+def _initialize_action(action: Result, previous: Result | None) -> None:
     if previous:
         action["directory"] = previous.get("directory", action["id"])
-        action["history"] = deepcopy(previous.get("history", {}))
+        return
+    name = re.sub(r"[^\w.-]+", "-", action["name"]).strip(".-")[:40]
+    action["directory"] = f"{name or 'Action'}-{action['id']}"
+
+
+def _remove_path(path: Path) -> None:
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
     else:
-        name = re.sub(r"[^\w.-]+", "-", action["name"]).strip(".-")[:40]
-        action["directory"] = f"{name or 'Action'}-{action['id']}"
-        action["history"] = {}
-    history = action["history"]
-    for kind in ("environments", "scripts"):
-        history.setdefault(kind, [])
-    if previous:
-        if not history["environments"]:
-            history["environments"].append(
-                {
-                    "number": 1,
-                    "id": previous["revision"],
-                    "createdAt": None,
-                    "path": str(Path(previous["python"]).parent.parent.parent),
-                    "pythonVersion": previous["pythonVersion"],
-                    "modules": previous["modules"],
-                }
-            )
-        if not history["scripts"]:
-            history["scripts"].append(
-                {
-                    "number": 1,
-                    "id": Path(previous["script"]).stem,
-                    "createdAt": None,
-                    "path": previous["script"],
-                }
-            )
+        path.unlink(missing_ok=True)
 
 
-def _new_revision(action: Result, kind: str) -> tuple[str, Result]:
-    directory = _action_directory(action) / kind
-    numbers = [entry["number"] for entry in action["history"][kind]]
-    if directory.exists():
-        for path in directory.iterdir():
-            match = re.match(r"Rev-(\d+)-", path.name)
-            if match:
-                numbers.append(int(match[1]))
-    number = max(numbers, default=0) + 1
-    identity = uuid4().hex
-    return f"Rev-{number}-{identity}", {
-        "number": number,
-        "id": identity,
-        "createdAt": datetime.now(UTC).isoformat(),
-    }
+@contextmanager
+def _update_action(action: Result, previous: Result | None) -> Iterator[None]:
+    directory = _action_directory(action)
+    directory.mkdir(parents=True, exist_ok=True)
+    same_environment = previous is not None and all(
+        previous.get(key) == action[key] for key in ("pythonVersion", "modules")
+    )
+    files = ["action.py"]
+    if (
+        not same_environment
+        or previous is None
+        or Path(previous["python"]).parent.parent.parent != directory
+        or not Path(previous["python"]).is_file()
+        or not (directory / ".ready").is_file()
+        or not (directory / "uv.lock").is_file()
+    ):
+        files.extend([".venv", "pyproject.toml", "uv.lock", ".ready"])
+    # Build at the final path: venv entry points contain absolute interpreter paths.
+    with TemporaryDirectory(prefix=".prepare-", dir=directory) as temporary:
+        backup = Path(temporary)
+        moved: list[Path] = []
+        prepared: list[Path] = []
+        try:
+            for filename in files:
+                path = directory / filename
+                if path.exists() or path.is_symlink():
+                    path.replace(backup / filename)
+                    moved.append(path)
+                prepared.append(path)
+            if same_environment:
+                for filename in ("pyproject.toml", "uv.lock"):
+                    if (backup / filename).is_file():
+                        shutil.copyfile(backup / filename, directory / filename)
+            yield
+        except BaseException:
+            for path in prepared:
+                _remove_path(path)
+            for path in moved:
+                (backup / path.name).replace(path)
+            raise
 
 
 def ensure_actions_available(actions: list[Result]) -> None:
@@ -228,7 +236,9 @@ def use_actions(actions: list[Result]) -> Iterator[None]:
 
 def _ensure_idle(actions: list[Result]) -> None:
     if any(ACTION_USERS[action.get("id", "")] for action in actions):
-        raise ValueError("Stop runs using this Action before resetting or deleting it.")
+        raise ValueError(
+            "Stop runs using this Action before editing, resetting, or deleting it."
+        )
 
 
 @contextmanager
@@ -251,7 +261,7 @@ async def reset_action(identity: str) -> Result:
         directory = _action_directory(action)
         project = Path(action["python"]).parent.parent.parent
         venv = project / ".venv"
-        if not project.resolve().is_relative_to(directory.resolve()):
+        if project != directory:
             raise ValueError("Save this Action before resetting its environment.")
         with _maintain_actions([action]):
             (project / ".ready").unlink(missing_ok=True)
@@ -286,50 +296,51 @@ async def save_actions(values: object) -> list[Result]:
                 raise ValueError("Action names cannot be changed after creation.")
         retained = {action.get("id") for action in actions}
         removed = [a for key, a in previous.items() if key and key not in retained]
-        with _maintain_actions(removed):
-            for action in actions:
-                if action.get("pythonVersion"):
-                    _initialize_history(action, previous.get(action["id"]))
-                    await prepare_action(action, previous.get(action["id"]))
+        managed = [a for a in actions if a.get("pythonVersion")]
+        changing = []
+        for action in managed:
+            old = previous.get(action["id"])
+            _initialize_action(action, old)
+            if "code" not in action:
+                action["code"] = Path(action["script"]).read_text(encoding="utf-8")
+            directory = _action_directory(action)
+            if (
+                old is None
+                or any(
+                    action.get(key) != old.get(key)
+                    for key in ("pythonVersion", "modules", "code")
+                )
+                or get_action_status(old) != "ready"
+                or Path(old["script"]) != directory / "action.py"
+                or Path(old["python"]).parent.parent.parent != directory
+            ):
+                changing.append(action)
+        with _maintain_actions([*removed, *changing]), ExitStack() as updates:
+            for action in changing:
+                updates.enter_context(
+                    _update_action(action, previous.get(action["id"]))
+                )
+            for action in managed:
+                await prepare_action(action, previous.get(action["id"]))
+                script = _action_directory(action) / "action.py"
+                if (
+                    not script.is_file()
+                    or script.read_text(encoding="utf-8") != action["code"]
+                ):
+                    script.write_text(action["code"], encoding="utf-8")
+                action["script"] = str(script)
             registry = get_registry_path()
-            for action in actions:
-                if "code" in action:
-                    old = previous.get(action["id"])
-                    if (
-                        old
-                        and Path(old["script"]).is_file()
-                        and Path(old["script"]).parent
-                        == _action_directory(action) / "scripts"
-                        and Path(old["script"]).read_text(encoding="utf-8")
-                        == action["code"]
-                    ):
-                        action["script"] = old["script"]
-                        continue
-                    revision, entry = _new_revision(action, "scripts")
-                    script = _action_directory(action) / "scripts" / f"{revision}.py"
-                    script.parent.mkdir(parents=True, exist_ok=True)
-                    with script.open("x", encoding="utf-8") as file:
-                        file.write(action["code"])
-                    action["script"] = str(script)
-                    entry["path"] = str(script)
-                    action["history"]["scripts"].append(entry)
-                if action.get("pythonVersion") and not action["history"]["scripts"]:
-                    action["history"]["scripts"].append(
-                        {
-                            "number": 1,
-                            "id": Path(action["script"]).stem,
-                            "createdAt": None,
-                            "path": action["script"],
-                        }
-                    )
             registry.parent.mkdir(parents=True, exist_ok=True)
             temporary = registry.with_suffix(".json.tmp")
             temporary.write_text(json.dumps(actions, indent=2) + "\n", encoding="utf-8")
             temporary.replace(registry)
-            for action in removed:
-                directory = _action_directory(action)
-                if directory.exists():
-                    await anyio.to_thread.run_sync(shutil.rmtree, directory)
+        for action in changing:
+            for kind in ("scripts", "environments"):
+                await anyio.to_thread.run_sync(
+                    _remove_path, _action_directory(action) / kind
+                )
+        for action in removed:
+            await anyio.to_thread.run_sync(_remove_path, _action_directory(action))
     return actions
 
 
@@ -397,23 +408,18 @@ async def prepare_action(action: Result, previous: Result | None = None) -> None
 
 
 async def _prepare_action(action: Result, previous: Result | None = None) -> None:
-    """Reuse unchanged environments or build a new revision without replacing one."""
+    """Prepare the environment directly in its Action directory."""
     unchanged = previous is not None and all(
         previous.get(key) == action[key] for key in ("pythonVersion", "modules")
     )
-    if "history" not in action:
-        _initialize_history(action, previous)
-    entry = None
-    if unchanged and previous:
-        revision = previous["revision"]
-    else:
-        revision, entry = _new_revision(action, "environments")
-    project = _action_directory(action) / "environments" / revision
+    if "directory" not in action:
+        _initialize_action(action, previous)
+    project = _action_directory(action)
     interpreter = (
         project / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     )
     ready = project / ".ready"
-    action.update({"revision": revision, "python": str(interpreter)})
+    action["python"] = str(interpreter)
     if ready.is_file() and interpreter.is_file() and (project / "uv.lock").is_file():
         return
     ready.unlink(missing_ok=True)
@@ -477,15 +483,6 @@ async def _prepare_action(action: Result, previous: Result | None = None) -> Non
             f"Could not prepare action {action['name']}. {error}"
         ) from error
     ready.touch()
-    if entry is not None:
-        entry.update(
-            {
-                "path": str(project),
-                "pythonVersion": action["pythonVersion"],
-                "modules": list(action["modules"]),
-            }
-        )
-        action["history"]["environments"].append(entry)
 
 
 async def _read_output(stream: ByteReceiveStream | None, limit: int = 0) -> str:

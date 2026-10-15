@@ -1465,13 +1465,13 @@ test('Throughput follows all other classification metrics', () => {
 });
 
 
-test('Action edit explains environment revisions and reset behavior', () => {
+test('Action edit explains environment replacement and reset behavior', () => {
   const {nodes, context} = workspace([]);
   vm.runInContext("registeredActions=[{id:'a'.repeat(32), name:'Notify', pythonVersion:'3.12', modules:[], code:'pass'}]; handleEditAction(0);", context);
   const row = nodes.get('action-editor').children[0];
   for (const index of [1, 2]) {
     assert.equal(row.children[index].children[0].readOnly, undefined);
-    assert.equal(row.children[index].children[1].textContent, 'Changing Python version or modules creates a new environment. The current environment is retained.');
+    assert.equal(row.children[index].children[1].textContent, 'Changing Python version or modules replaces the environment after preparation succeeds. Stop runs using this Action before editing.');
   }
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   assert.ok(html.includes('Reset venv deletes the current virtual environment and rebuilds it using saved settings and locked dependencies.'));
