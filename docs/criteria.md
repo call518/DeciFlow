@@ -1,6 +1,6 @@
 # Criteria management
 
-[English](criteria.md) | [한국어](criteria.ko.md) | [README](../README.md)
+[English](criteria.md) | [한국어](criteria.ko.md) | [Documentation](README.md) | [README](../README.md)
 
 Manage decision profiles under **Criteria** in the sidebar. Both Laya and Jev use them.
 
@@ -40,7 +40,7 @@ exists, DeciFlow loads its complete list without overwriting edits or deletions.
 The default path is `/var/lib/deciflow-data/criteria/criteria.json`. Once saved criteria
 exist, editing bundled JSON no longer changes the active criteria.
 
-The Docker launch script shares the `deciflow-data` volume with Actions; no additional
+Docker Compose shares the `deciflow-data` volume with Actions; no additional
 mount is needed. Direct host startup needs write permission in the shared directory,
 or set `DECIFLOW_DATA_DIR` in `.env` to a writable directory. Changing directories
 does not migrate existing data automatically.

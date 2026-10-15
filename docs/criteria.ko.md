@@ -1,6 +1,6 @@
 # Criteria 관리
 
-[English](criteria.md) | [한국어](criteria.ko.md) | [README](../README.ko.md)
+[English](criteria.md) | [한국어](criteria.ko.md) | [문서 안내](README.ko.md) | [README](../README.ko.md)
 
 사이드바 **Criteria**에서 판정 프로필을 관리합니다. Laya와 Jev에 동일하게 적용합니다.
 
@@ -40,7 +40,7 @@ Add·Edit에서는 목록을 숨기고 입력폼만 표시합니다. 저장 또�
 기본 경로는 `/var/lib/deciflow-data/criteria/criteria.json`입니다.
 저장 파일이 있으면 번들 JSON을 수정해도 운영 기준이 바뀌지 않습니다.
 
-Docker 실행 스크립트의 `deciflow-data` 볼륨을 Actions와 함께 사용하므로 추가 마운트가
+Docker Compose의 `deciflow-data` 볼륨을 Actions와 함께 사용하므로 추가 마운트가
 필요하지 않습니다. 호스트 직접 실행에서는 공통 경로에 쓰기 권한이 있어야 하며,
 필요하면 `.env`의 `DECIFLOW_DATA_DIR`을 쓰기 가능한 디렉터리로 설정하세요.
 경로 변경은 기존 데이터를 자동으로 이전하지 않습니다.

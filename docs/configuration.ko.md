@@ -1,15 +1,18 @@
 # 설정
 
-[English](configuration.md) | [한국어](configuration.ko.md) | [README](../README.ko.md)
+[English](configuration.md) | [한국어](configuration.ko.md) | [문서 안내](README.ko.md) | [README](../README.ko.md)
 
 DeciFlow 설정은 `.env`에서 관리하며 프로세스 환경변수가 우선합니다.
 Laya 서버 설정은 Laya 호스트에서 관리하며, Compose는 `LAYA_API_KEY`를 DeciFlow와
 공유합니다. `COMPOSE_PROFILES`는 `cpu` 또는 `cuda`를 선택하며 빈 값이면 UI만 실행합니다.
 
-| 환경변수 | 기본값 | 역할 |
+| 환경변수 | 미설정 시 코드 기본값 | 역할 |
 | --- | --- | --- |
+| `COMPOSE_PROFILES` | 미설정(UI만 실행) | Compose 전용. cpu·cuda 중 하나만 선택. .env.example은 cpu 지정 |
 | `DECISION_ENGINE` | `laya` | `laya` 또는 `jev` |
 | `DECIFLOW_DATA_DIR` | `/var/lib/deciflow-data` | Actions·Criteria 공통 저장 루트; 쓰기 권한 필요 |
+| `DECIFLOW_CSRF_TRUSTED_ORIGINS` | 빈 값 | 쉼표로 구분한 신뢰 UI 출처. https://*.ngrok-free.app 지원. 출처 검사이며 인증 기능은 아님 |
+| `DECIFLOW_LOG_DIR` | `/var/log/deciflow` | 서버·접근 로그. 빈 값은 파일 기록 비활성화. Compose는 deciflow-logs에 보존 |
 | `PORT` | `4000` | DeciFlow 웹 포트 |
 | `LAYA_API_URL` | `http://127.0.0.1:8000/v1/systemone` | 프록시 접두사를 포함한 전체 Laya URL. Compose CPU·CUDA는 모두 `http://laya:8000/v1/systemone`, 네이티브 실행은 루프백 사용 |
 | `LAYA_API_KEY` | `changeme` | Laya 서버와 동일한 키 |
@@ -22,9 +25,18 @@ Laya 서버 설정은 Laya 호스트에서 관리하며, Compose는 `LAYA_API_KE
 | `JEV_MAX_INPUT_BYTES` | `30000` | Jev 요청 JSON의 UTF-8 바이트 예산; 1~30000 허용 |
 | `JEV_CONCURRENCY` | `4` | 실행별 최대 Jev 동시 요청 수; 양의 정수 |
 
+`.env.example`은 일부 코드 기본값을 덮어씁니다. LAYA_API_URL은 Compose 호스트
+`laya`, LAYA_MODEL은 `english`, JEV_MODEL은 `jev-latest`이며 신뢰 UI 출처에
+`https://*.ngrok-free.app`을 포함합니다. 기존 `.env` 값은
+덮어쓰지 않습니다. 네이티브 DeciFlow·외부 Laya는 접근 가능한 URL을 직접 설정하세요.
+CPU·CUDA 모두 8000 포트를 공개합니다.
+Compose 환경변수 변경은 `docker compose up -d`로 적용합니다. `restart`만으로는
+`env_file` 값이 갱신되지 않습니다. 네이티브 실행은 Python 프로세스를 재시작하세요.
+state·세 질문·출력은 [요청·결과 JSON](results.ko.md)을 참고하세요.
+
 `LAYA_HEAD_TOKENS=384`이면 매 Laya 요청에 `"head_max_len": 384`를 전송합니다.
 `LAYA_MAX_TOKENS=1024`는 `"max_len": 1024`를 전송합니다. 해당 요청에서
-체크포인트 기본값을 덮어씁니다. `.env` 변경 후 DeciFlow를 재시작하세요.
+체크포인트 기본값을 덮어씁니다. `.env` 변경은 위 실행 방식별 절차로 적용하세요.
 DeciFlow 설정이므로 이 값을 전송하기 위해 원격 Docker를 변경할 필요는 없습니다.
 
 **내장 모델은 `LAYA_MAX_TOKENS=`를 비워두는 것을 권장합니다.** DeciFlow가
@@ -63,7 +75,7 @@ Jev 1.13은 state + 가장 긴 질문 32k, 전체 요청 64k 토큰 제한을 �
 `JEV_MAX_INPUT_BYTES`는 보수적 바이트 검사이며 토큰 할당량이 아닙니다.
 Jev 모델 가용성은 계정·API에 따르며 별칭의 제한은 바뀔 수 있습니다.
 
-파라미터 동작과 반영·보류 사항은 [연동 검토](laya-integration-review.ko.md)를
+요청 검증과 서버 설정은 [Laya 연동](laya-integration.ko.md)을
 참고하세요. 5개 프로필의 정답 라벨을 붙인 합성 사례 36개(헤더 변경 사례 포함)를
 평가하려면 다음을 실행합니다:
 

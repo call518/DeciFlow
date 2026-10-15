@@ -1,6 +1,6 @@
 # 사용법
 
-[English](usage.md) | [한국어](usage.ko.md) | [README](../README.ko.md)
+[English](usage.md) | [한국어](usage.ko.md) | [문서 안내](README.ko.md) | [README](../README.ko.md)
 
 넓은 화면에서는 왼쪽 **40%**에 **Classification overview → Log input**, 오른쪽
 **60%**에 **Classification results**를 배치합니다. 좁은 화면은 세로로 표시합니다.
@@ -32,7 +32,6 @@ Batch와 Realtime은 다음 기본값을 함께 사용합니다.
 | Paste | 붙여 넣은 텍스트를 청크로 묶어 처리 |
 
 UI·내보내기 JSON의 모드명은 `realtime`, `batch`, `paste`입니다.
-파일 API는 기존 `follow` 요청도 받으며 응답에는 `realtime`을 사용합니다.
 
 파일은 **Laya 호스트가 아닌 DeciFlow 실행 노드**에 있어야 합니다. 파일 입력에는
 로컬 브라우저 접속(`localhost`·`127.0.0.1`)과 읽기 가능한 UTF-8 일반 파일이
@@ -71,6 +70,10 @@ Batch는 선택한 파일을 동시에 읽고 준비된 청크를 교차 공급�
 저장 위치와 삭제 후 소스 재선택은 [Criteria 관리](criteria.ko.md)를 참고하세요.
 기준에는 사건의 결과와 증거를 설명하고 특정 로그 문자열은 검증 샘플에서 다룹니다.
 
+로그 청크는 요청의 `state` 문자열로 전달합니다. 이벤트 하나 또는 여러 이벤트를
+줄바꿈으로 연결한 내용이며, 판정 지시문은 state가 아닌 `questions`에 둡니다.
+[요청·결과 예시](results.ko.md)에서 세 질문과 답변을 확인할 수 있습니다.
+
 서로 다른 파일의 이벤트는 섞지 않습니다. Batch는 EOF 잔여분을, Realtime은 설정한
 이벤트 수가 차거나 새 이벤트가 1초 동안 없으면 제출하며 파일 회전 경계도 분리합니다.
 빈 줄은 제외하고 이벤트 경계를 자동 인식하지는 않습니다. 겹치는 경로는 설정이
@@ -97,8 +100,8 @@ Authentication은 개별 시도 실패·중단(Warning), 서비스·지원 기�
 Realtime의 **Observed line(s)**는 감시 시작 또는 파일 회전 이후 읽은 라인 순번입니다.
 `1 event (max 5)`는 최대 5이벤트 설정에서 실제 1이벤트를 제출했다는 뜻입니다.
 JSON의 `chunkEvents`는 설정값, `eventCount`는 실제 이벤트 수입니다.
-`line`·`lineEnd`·`lineCount`는 줄 위치·수를 유지합니다. 기존 API 입력 `chunkLines`도
-받지만 새 요청·결과에는 `chunkEvents`를 사용합니다.
+`line`·`lineEnd`·`lineCount`는 줄 위치·수를 유지합니다.
+요청·결과에는 `chunkEvents`를 사용합니다.
 
 #### 불확실성과 사람의 검토
 

@@ -1,69 +1,85 @@
-# Laya log validation — 2026-10-10
+# Laya log validation
 
-[English](laya-validation.md) | [한국어](laya-validation.ko.md)
+[English](laya-validation.md) | [한국어](laya-validation.ko.md) | [Documentation](README.md) | [README](../README.md)
 
-**The display/budget fixes are verified; log classification is still unreliable.**
-We tested 13 General system cases on the remote CUDA server. Expected labels are
-engineering judgments in [the fixture](../tests/fixtures/general_evaluation.json),
-not a held-out accuracy benchmark. No paid Jev calls were made.
+Use `scripts/evaluate_laya.py` to evaluate the configured Laya model against
+labeled logs. Each request sends the log as `state` with category (`choice`),
+urgency (`score`), and work-ticket need (`noul`) questions. The classifier validates
+all three answers; expected-label comparisons measure **category only**.
+The script does not measure urgency or ticket-probability accuracy and refuses Jev.
 
-| Checkpoint | Final expected labels matched | Final Certain results |
-| --- | --- | --- |
-| English | 9/13 | 0/13 |
-| Multilingual | 5/13 | 4/13 |
-| Typed-decisions | 6/13 | 0/13 |
+## Run an evaluation
 
-Certain means passing the selected-category probability and margin thresholds;
-it is not correctness. Fixing the confidence scale does not force Certain results.
+Set `DECISION_ENGINE=laya` and choose `LAYA_MODEL` in `.env`. The model must be
+available on the Laya server. Choose one execution method:
 
-## Changes applied
+- **Docker Compose:** run inside the UI container, where `http://laya:8000/v1/systemone`
+  reaches the selected CPU or CUDA service.
+- **Local Python:** run from the cloned repository with uv and project dependencies
+  installed. Set `LAYA_API_URL` to a reachable Laya address; use
+  `http://127.0.0.1:8000/v1/systemone` for Laya on the same host.
 
-- Chart **Truncated** counts confirmed `usage.truncated=true` responses across
-  all groups. These rejected predictions are included in request failures.
-- UI shows selected-category probability; Uncertain uses probability below 70%
-  or a top-two gap below 10 percentage points. Provider confidence stays in JSON.
-- English question budget increased from 192 to 256; its request window remains
-  512. The official tokenizer showed 26 of 89 instruction tokens dropped at 192,
-  and none at 256. Multilingual/Typed-decisions kept their full instructions at 256.
-  The server does not report its cached tokenizer revision, so this token check
-  uses the official repository's current tokenizer.
+Docker Compose:
 
-`usage.truncated` reports state/log truncation, not question truncation. Increasing
-question budget can leave less room for logs; rejected originals remain available.
+```bash
+docker compose exec ui uv run --no-sync python -m scripts.evaluate_laya \
+  --output /tmp/laya-validation.json
+docker compose cp ui:/tmp/laya-validation.json /tmp/laya-validation.json
+```
 
-## Experiments not adopted
-
-We made 156 comparison requests across three checkpoints, using the existing
-question, a larger question budget, shorter positive criteria, and shorter
-criteria with syslog-header normalization. Short criteria raised Typed-decisions
-from 7/13 to 10/13 in that comparison, but still misclassified `falseticker` as
-Security and synchronization failure as Warning. Header removal did not improve
-all checkpoints. Repeating the existing Typed-decisions request scored 6/13 in
-final validation, so the small-sample results are not stable enough to justify
-changing production criteria or automatically switching models.
-
-The remaining issue is semantic classification: thresholds and larger windows do
-not teach the model what an unfamiliar service message means. Validate more
-representative labeled logs before using these categories to trigger actions.
-
-## Reproduce the final validation
-
-With `DECISION_ENGINE=laya` and the selected checkpoint available on the server:
+Local Python:
 
 ```bash
 uv run python -m scripts.evaluate_laya --output /tmp/laya-validation.json
 ```
 
-To compare all three prepared checkpoints, repeat `--model`:
+By default, the evaluator uses [36 synthetic cases across five profiles](../tests/fixtures/log_evaluation.json)
+and caps concurrent requests at two. It uses the bundled profile definitions in
+[`profiles/`](../profiles/), not profiles edited and saved through the UI.
+For UI-edited criteria, validate the same labeled logs through the UI.
 
-```bash
-uv run python -m scripts.evaluate_laya \
-  --model english \
-  --model multilingual \
-  --model typed-decisions \
-  --output /tmp/laya-validation.json
+To compare prepared models, repeat `--model` (append these options to the chosen command):
+
+```text
+--model english --model multilingual --model typed-decisions
 ```
 
-The script uses current production criteria, caps concurrency at two, writes
-individual responses and mismatches, and refuses Jev. The historical experiments
-and final responses are in [laya-validation.json](laya-validation.json).
+Use `--cases PATH` for a UTF-8 JSON list of labeled cases:
+
+```json
+[
+  {
+    "log": "application: database connection failed",
+    "expected": "error",
+    "profile": "application"
+  }
+]
+```
+
+Each case requires log text and one expected category: `normal`, `warning`,
+`error`, `security`, or `other`. `profile` defaults to `general` and must name a
+bundled profile. The cases path must be readable in the environment running the evaluator.
+
+## Read the report
+
+The generated JSON contains UTC `evaluatedAt` and a `reports` list with one entry
+per model:
+
+| Field | Meaning |
+| --- | --- |
+| `model` | Requested checkpoint name |
+| `total` / `correct` | Case count / category predictions matching the expected label |
+| `failed` | Rejected requests, invalid answers, and connection/API errors |
+| `uncertain` | Successful predictions flagged Uncertain |
+| `certain` / `certainCorrect` | Successful predictions without Uncertain / matching labels within that group |
+| `confusionMatrix` | Expected-category rows and predicted-category columns, including failed |
+| `rows` | Input case, match flag, and classifier result including all three questions and answers when successful |
+
+Certain means the prediction passes DeciFlow's probability and option-integrity
+checks; it does not prove correctness. Use representative labeled logs to assess
+misclassification and review workload. Synthetic cases are regression probes,
+not a production accuracy estimate. Model, criteria, and input budgets affect
+results; keep them consistent when comparing runs.
+
+See [request/result JSON](results.md) for the response schema and
+[uncertainty rules](usage.md#uncertainty-and-human-review) for review thresholds.

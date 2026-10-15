@@ -1,6 +1,6 @@
 # Python Actions
 
-[English](actions.md) | [한국어](actions.ko.md) | [README](../README.ko.md)
+[English](actions.md) | [한국어](actions.ko.md) | [문서 안내](README.ko.md) | [README](../README.ko.md)
 
 Add·Edit에서는 목록을 숨기고 입력폼만 표시합니다. 저장 또는 Cancel edit 후 목록으로 돌아옵니다.
 
@@ -28,7 +28,7 @@ Python 코드를 편집기에 직접 입력한 뒤 **Save & prepare environments
 
 **Status**는 환경 상태를 표시합니다. Ready는 Python·모듈 설치까지 완료,
 Preparing...은 준비 중, Not ready는 환경 누락·불완전 상태입니다. 외부 Python을
-사용하는 기존 Action은 External입니다. 저장·Reset 중에는 Preparing...을 표시하며,
+사용하는 Action은 External입니다. 저장·Reset 중에는 Preparing...을 표시하며,
 준비 중인 상태가 있으면 완료될 때까지 자동 갱신합니다. 편집 화면에도 상태를 표시합니다.
 
 DeciFlow의 PATH에 `uv`가 있고 영구 저장 경로에 쓰기 권한이 있어야 합니다.
@@ -61,11 +61,7 @@ Edit에서 Name은 읽기 전용입니다.
 동일한 코드·환경과 Reset venv는 현재 리비전을 재사용합니다. 저장 실패 시 레지스트리는
 변경하지 않으며 남은 리비전 경로의 번호는 건너뜁니다. 순번에 빈 구간이 생길 수 있습니다.
 
-기존 Action별 UUID 디렉터리는 유지합니다. 다음 저장 시 현재 리비전을 초기 이력으로
-등록하고 알 수 없는 생성 시각은 `null`로 기록합니다. 과거 미기록 이력은 복원하지 않습니다.
-Action별 디렉터리 도입 이전의 등록은 기존 방식대로 lockfile을 사용해 환경을 재생성하며,
-실행 중인 작업을 위해 이전 경로를 유지합니다. venv는 절대 경로를 포함하므로 이동하지 않습니다.
-이력은 JSON에 저장하며 이력 조회·롤백 UI는 추가하지 않습니다.
+리비전 이력은 JSON에 저장하며 이력 조회·롤백 UI는 제공하지 않습니다.
 저장은 단일 DeciFlow 프로세스 안에서 직렬화하며 여러 프로세스가 볼륨에 함께 쓰는 방식은
 지원하지 않습니다.
 
@@ -78,7 +74,7 @@ Action별 디렉터리 도입 이전의 등록은 기존 방식대로 lockfile�
 목록의 **Reset venv**는 저장된 Action의 현재 `.venv`를 삭제하고 Python·모듈 설정과
 `uv.lock`을 기준으로 다시 생성합니다. pip도 포함하며 코드·등록 정보·lockfile은 유지합니다.
 초안에는 적용하지 않고 저장된 설정을 사용합니다. 실패하면 불완전한 환경을 실행하지 않으며
-Reset venv를 다시 눌러 재시도할 수 있습니다. 외부 Python을 지정한 기존 Action은 대상이 아닙니다.
+Reset venv를 다시 눌러 재시도할 수 있습니다. 외부 Python을 지정한 Action은 대상이 아닙니다.
 
 **Delete → Save & prepare environments**로 삭제를 확정하면 해당 Action의 데이터 폴더를
 제거합니다. 코드 스냅샷·모든 환경 리비전·lockfile·데이터가 함께 삭제됩니다.
@@ -115,13 +111,9 @@ Action은 실행 단위별로 순차 처리하며 시간 제한은 30초이고 �
 제한을 사용하므로 신뢰 출처에 코드 실행 권한도 부여됩니다. 인증 정보는 환경 변수나
 비밀 저장소에 보관하고 stderr에 출력하지 마세요.
 
-Docker에서는 다음 옵션을 함께 사용합니다. 실행 스크립트에도 적용되어 있습니다.
-
-```bash
---env DECIFLOW_DATA_DIR=/var/lib/deciflow-data \
---mount type=volume,src=deciflow-data,dst=/var/lib/deciflow-data
-```
-
-볼륨이 읽기 전용 `/app` 밖에 있으므로 호스트에 별도 데이터 디렉터리를 만들 필요가 없습니다.
-기존 볼륨·마운트에서 변경하려면 Docker 이미지를 다시 빌드하고 컨테이너를 다시 생성하세요.
-Actions가 있다면 데이터 이전과 새 경로에서의 가상환경 재준비가 필요합니다.
+Docker Compose는 `deciflow-data` 볼륨을 `DECIFLOW_DATA_DIR`
+(기본 `/var/lib/deciflow-data`)에 연결하며 Criteria와 공유합니다. 읽기 전용 `/app`
+밖에 있으므로 호스트에 별도 데이터 디렉터리가 필요하지 않습니다. 경로를 바꾸면
+기존 Actions를 이전하고 새 경로에 가상환경을 준비한 뒤
+`docker compose up -d ui`로 적용하세요. 데이터 경로 변경에는 UI 이미지 재빌드가
+필요하지 않습니다. [Docker 배포](../README.ko.md#deciflow-docker)를 참고하세요.

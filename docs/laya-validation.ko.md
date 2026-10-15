@@ -1,67 +1,83 @@
-# Laya 로그 검증 — 2026-10-10
+# Laya 로그 검증
 
-[English](laya-validation.md) | [한국어](laya-validation.ko.md)
+[English](laya-validation.md) | [한국어](laya-validation.ko.md) | [문서 안내](README.ko.md) | [README](../README.ko.md)
 
-**표시·입력 예산 수정은 검증했지만, 로그 분류는 아직 신뢰하기 어렵습니다.**
-원격 CUDA 서버에서 General system 대표 사례 13건을 시험했습니다. 기대 범주는
-[검증 샘플](../tests/fixtures/general_evaluation.json)에 기록한 운영 관점의 판단이며,
-독립적인 정확도 벤치마크는 아닙니다. 유료 Jev 호출은 하지 않았습니다.
+`scripts/evaluate_laya.py`로 설정한 Laya 모델을 정답 로그와 비교합니다.
+각 요청은 로그를 `state`로 보내고 분류(`choice`), 긴급도(`score`), 작업 티켓
+필요성(`noul`)을 함께 묻습니다. 분류 코드는 세 답변을 모두 검증하지만,
+정답 라벨과의 비교는 **분류 범주만** 평가합니다.
+긴급도·티켓 확률의 정확도는 측정하지 않으며 Jev 호출은 거부합니다.
 
-| 체크포인트 | 최종 기대 범주 일치 | 최종 Certain 결과 |
-| --- | --- | --- |
-| English | 9/13 | 0/13 |
-| Multilingual | 5/13 | 4/13 |
-| Typed-decisions | 6/13 | 0/13 |
+## 평가 실행
 
-Certain은 선택 범주 확률·확률 차이 기준을 통과했다는 뜻이며 정답이라는 뜻이
-아닙니다. confidence 척도를 고쳐도 Certain 결과를 억지로 만들지는 않습니다.
+`.env`에서 `DECISION_ENGINE=laya`와 `LAYA_MODEL`을 설정하세요.
+선택한 모델이 Laya 서버에 준비되어 있어야 합니다. 실행 방식은 하나를 선택합니다:
 
-## 반영한 변경
+- **Docker Compose:** UI 컨테이너 안에서 실행합니다.
+  `http://laya:8000/v1/systemone`으로 선택한 CPU·CUDA 서비스에 연결합니다.
+- **로컬 Python:** uv와 프로젝트 의존성이 설치된 복제 저장소에서 실행합니다.
+  `LAYA_API_URL`은 접근 가능한 Laya 주소로 설정하세요. 같은 호스트의 Laya는
+  `http://127.0.0.1:8000/v1/systemone`을 사용합니다.
 
-- 차트의 **Truncated**는 전체 그룹에서 `usage.truncated=true`로 확인된 응답 수를
-  표시합니다. 거절한 판정이므로 요청 실패에도 포함합니다.
-- 화면에는 선택 범주의 확률을 표시합니다. 확률 70% 미만 또는 상위 두 범주의
-  차이 10%p 미만이면 Uncertain입니다. 엔진 고유 confidence는 JSON에 유지합니다.
-- English 질문 예산을 192에서 256으로 늘리고 요청 윈도는 512로 유지했습니다.
-  공식 토크나이저 기준으로 192에서는 지시문 89토큰 중 26토큰이 빠지고,
-  256에서는 전부 들어갑니다. Multilingual·Typed-decisions는 기존 256에서도
-  지시문이 전부 들어갑니다. 서버가 캐시한 토크나이저 버전을 알려주지 않으므로
-  토큰 검사는 공식 저장소의 현재 토크나이저 기준입니다.
+Docker Compose:
 
-`usage.truncated`는 로그 본문 잘림이며 질문 잘림이 아닙니다. 질문 예산을 늘리면
-로그에 남는 공간이 줄 수 있습니다. 거절한 로그 원문은 계속 확인할 수 있습니다.
+```bash
+docker compose exec ui uv run --no-sync python -m scripts.evaluate_laya \
+  --output /tmp/laya-validation.json
+docker compose cp ui:/tmp/laya-validation.json /tmp/laya-validation.json
+```
 
-## 적용하지 않은 실험
-
-세 체크포인트에 기존 질문, 늘린 질문 예산, 짧은 긍정형 기준, 짧은 기준과 syslog
-헤더 제거를 적용해 156건을 비교했습니다. 짧은 기준은 Typed-decisions의 일치를
-7/13에서 10/13으로 늘렸지만 `falseticker`를 Security로, 동기화 실패를 Warning으로
-오판했습니다. 헤더 제거도 모든 모델을 개선하지는 않았습니다. 기존 Typed-decisions
-요청을 반복한 최종 검증에서는 6/13이 나와, 작은 표본의 결과만으로 운영 기준을
-변경하거나 모델을 자동 전환할 만큼 안정적이지 않았습니다.
-
-남은 문제는 로그 의미 판정입니다. 임계값이나 입력 공간을 바꿔도 모델이 익숙하지
-않은 서비스 메시지의 뜻을 배우지는 않습니다. 이 범주로 조치를 자동 실행하기 전
-더 다양한 실제 로그와 정답으로 검증해야 합니다.
-
-## 최종 검증 재실행
-
-`DECISION_ENGINE=laya`이며 선택한 체크포인트가 서버에 준비된 상태에서:
+로컬 Python:
 
 ```bash
 uv run python -m scripts.evaluate_laya --output /tmp/laya-validation.json
 ```
 
-준비된 세 체크포인트를 비교하려면 `--model`을 반복합니다:
+기본값은 [5개 프로필의 합성 사례 36개](../tests/fixtures/log_evaluation.json)이며,
+동시 요청은 최대 두 개로 제한합니다. 평가에는 [`profiles/`](../profiles/)의 번들
+기준을 사용하며 UI에서 수정·저장한 기준은 읽지 않습니다.
+UI에서 편집한 기준은 같은 정답 로그를 UI에서 분석해 검증하세요.
 
-```bash
-uv run python -m scripts.evaluate_laya \
-  --model english \
-  --model multilingual \
-  --model typed-decisions \
-  --output /tmp/laya-validation.json
+준비된 모델을 비교하려면 선택한 명령에 `--model` 옵션을 반복해서 추가합니다:
+
+```text
+--model english --model multilingual --model typed-decisions
 ```
 
-스크립트는 현재 운영 기준을 사용하고 동시 요청을 최대 두 개로 제한하며 개별 응답과
-오판을 기록합니다. Jev는 호출을 거부합니다. 과거 비교 실험과 최종 응답은
-[laya-validation.json](laya-validation.json)에서 확인할 수 있습니다.
+자체 사례는 UTF-8 JSON 목록으로 작성하고 `--cases PATH`로 지정하세요:
+
+```json
+[
+  {
+    "log": "application: database connection failed",
+    "expected": "error",
+    "profile": "application"
+  }
+]
+```
+
+각 사례에는 로그 문자열과 기대 범주(`normal`·`warning`·`error`·`security`·`other` 중 하나)가
+필요합니다. `profile` 기본값은 `general`이며 번들 프로필 이름이어야 합니다.
+사례 파일 경로는 평가 스크립트를 실행하는 환경에서 읽을 수 있어야 합니다.
+
+## 보고서 확인
+
+생성한 JSON은 UTC `evaluatedAt`과 모델별 항목을 담은 `reports` 목록을 포함합니다:
+
+| 필드 | 의미 |
+| --- | --- |
+| `model` | 요청한 체크포인트 이름 |
+| `total` / `correct` | 전체 사례 수 / 기대 범주와 일치한 예측 수 |
+| `failed` | 거절된 요청·유효하지 않은 답변·연결 및 API 오류 |
+| `uncertain` | Uncertain으로 표시한 성공 판정 수 |
+| `certain` / `certainCorrect` | Uncertain이 아닌 성공 판정 수 / 그중 기대 범주와 일치한 수 |
+| `confusionMatrix` | 행은 기대 범주, 열은 예측 범주이며 실패 열도 포함 |
+| `rows` | 입력 사례·일치 여부·분류 결과. 성공 시 세 질문과 답변 포함 |
+
+Certain은 DeciFlow의 확률·선택지 구별 검사를 통과했다는 뜻이며 정답 보장이 아닙니다.
+대표 정답 로그로 오분류와 검토량을 평가하세요. 합성 사례는 회귀 검증용이며 운영
+정확도 추정 자료가 아닙니다. 모델·판정 기준·입력 예산이 결과에 영향을 주므로
+실행 결과를 비교할 때 같은 조건을 유지하세요.
+
+응답 스키마는 [요청·결과 JSON](results.ko.md), 검토 임계값은
+[불확실성 규칙](usage.ko.md#불확실성과-사람의-검토)을 참고하세요.

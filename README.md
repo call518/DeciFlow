@@ -18,7 +18,8 @@ category probabilities and confidence instead of reading every line unaided.
 Choose a domain profile and chunk size per source; compare category counts in a
 live chart and pause list updates to inspect individual results.
 
-Each chunk receives three decisions in one Laya or Jev request: **`choice` for category**,
+Each chunk is sent as the request's `state` string (events joined with newlines).
+It receives three decisions in one Laya or Jev request: **`choice` for category**,
 **`score` for urgency** (0–3: Low, Medium, High, Critical), and **`noul` for the
 probability that a work ticket is needed**. Urgency is a probability-weighted score,
 not a rounded grade. Results show both values and retain all answers in JSON.
@@ -102,13 +103,16 @@ The default key `changeme` is for trials. Change it in `.env` before deployment.
 
 ## Usage and configuration
 
+Browse the [documentation guide](docs/README.md) for all guides, deployment references,
+and request/result examples.
+
 | Guide | Contents |
 | --- | --- |
 | [Usage](docs/usage.md) | Input modes, criteria, filters, human review, reconnecting, timing |
 | [Configuration](docs/configuration.md) | Environment variables, models, input budgets |
 | [Criteria](docs/criteria.md) | Manage fixed-category profiles; Default Criteria is view-only |
 | [Python Actions](docs/actions.md) | Configuration viewing, environment Status, pip-enabled environments, Reset venv, revision history, deletion, source assignment |
-| [Result JSON](docs/results.md) | Real response example and field reference |
+| [Result JSON](docs/results.md) | Current request/result examples and field reference |
 
 Sidebar views have URLs: Main `/`, Criteria `/#criteria`, Actions `/#actions`.
 Reloading, browser history, and direct links retain the selected view.
@@ -249,6 +253,32 @@ read-only at `/app`; `uv sync --frozen` installs dependencies into `deciflow-ven
 on startup. Initial startup needs network access. Compose passes `.env` to the UI;
 `PORT` controls both host and container ports (default: 4000).
 
+#### Dockerfile and Compose responsibilities
+
+[`Dockerfile`](Dockerfile) builds the UI runtime from `python:3.12-slim`, installs
+uv `0.7.20` and operational tools, and sets `/app` as the working directory.
+It does not copy application source or preinstall project dependencies. Its startup
+command runs `uv sync --frozen --no-dev --no-install-project --no-cache`, then starts
+`server.main(host='0.0.0.0')`. The published UI image therefore still needs the cloned
+repository mounted at `/app`. UI inference runs on Laya or Jev, not inside this image.
+
+[`docker-compose.yml`](docker-compose.yml) supplies the runtime configuration:
+
+| Item | Behavior |
+| --- | --- |
+| `name: deciflow` | Compose project/group name; lowercase. Individual container names retain DeciFlow capitalization. |
+| `ui` | Always enabled; pulls the published UI image if missing, reads `.env`, maps PORT, and mounts source/logs/data. No build step. |
+| `laya-cpu` / `laya-cuda` | Selected by COMPOSE_PROFILES=cpu or cuda; same laya network alias and port 8000. Only CUDA reserves GPUs. |
+| `x-laya` | YAML anchor for shared Laya settings; not an additional container. |
+| Named volumes | deciflow-venv, deciflow-data, deciflow-logs, and deciflow-laya-model-cache retain their existing names. |
+
+Compose reads `.env` for interpolation and passes it to the UI through `env_file`.
+Only the declared Laya server variables are passed to Laya; its API key uses the same
+`LAYA_API_KEY`. Process environment values override `.env` during interpolation.
+`COMPOSE_PROFILES` is independent of `DECISION_ENGINE`: for Jev or external Laya,
+leave profiles empty or start only `ui`. The UI can start before Laya is ready;
+check Laya readiness before analyzing logs. There is no automatic paid fallback.
+
 The UI is published on all host interfaces. For local-only access, change its
 Compose port mapping to `127.0.0.1:${PORT:-4000}:${PORT:-4000}`.
 Open **http://127.0.0.1:4000** with the default port; use the DeciFlow host IP for remote access.
@@ -282,21 +312,6 @@ changes. If you modify the Dockerfile, build the UI image explicitly with
 `docker build --tag call518/deciflow-ui:0.0.1 .`, then run
 `docker compose up -d --force-recreate ui`.
 Stop DeciFlow before switching source versions.
-
-#### Migrate from the launch scripts
-
-Export results you need, then stop and remove the old containers once before
-starting Compose (these commands preserve named volumes):
-
-```bash
-docker stop DeciFlow-UI DeciFlow-Laya-CPU DeciFlow-Laya-CUDA
-docker rm DeciFlow-UI DeciFlow-Laya-CPU DeciFlow-Laya-CUDA
-```
-
-Include only container names that exist. Compose reuses the existing data, logs,
-venv, and model-cache volumes. Set `COMPOSE_PROFILES=cpu` or `cuda` and, for the local
-stack, `LAYA_API_URL=http://laya:8000/v1/systemone` in `.env` before starting it.
-CPU's published port changes from 8001 to 8000; update external DeciFlow connections.
 
 For ngrok/reverse-proxy file access, set `DECIFLOW_CSRF_TRUSTED_ORIGINS` to the
 UI origin, e.g. `https://your-domain.ngrok-free.app`, or
@@ -388,17 +403,17 @@ Validate API compatibility when upgrading Laya.
 
 ## Development
 
-For real-model results and remaining limitations, see [Laya log validation](docs/laya-validation.md).
-Re-run the selected Laya model on the 13 labeled examples:
+For model evaluation commands and report fields, see [Laya log validation](docs/laya-validation.md).
+Evaluate the selected Laya model on 36 labeled cases across five profiles:
 
 ```bash
 uv run python -m scripts.evaluate_laya \
-  --cases tests/fixtures/general_evaluation.json \
   --output /tmp/laya-validation.json
 ```
 
-This calls your Laya server only; it refuses paid Jev. The small sample is not an
-accuracy guarantee.
+`scripts/evaluate_laya.py` is an optional evaluation utility, not needed for UI or
+Compose startup. It calls your Laya server only and refuses paid Jev. The small
+sample is not an accuracy guarantee.
 
 ```bash
 uv run ruff format .
@@ -417,7 +432,7 @@ Tests cover both providers without paid calls, input budgets, streaming,
 cancellation, and file discovery/rotation. Keep both READMEs and actual/example
 `.env` files synchronized; environment comments use English and Korean.
 
-For optional local Laya development (0.3.20):
+For optional local Laya development (the `laya` extra specifies v0.4.1):
 
 ```bash
 uv sync --extra laya
@@ -425,8 +440,8 @@ uv run --extra laya python laya_server.py
 ```
 
 Set DeciFlow's `LAYA_API_URL` to loopback and start DeciFlow in another terminal. Use this
-adapter for 0.3.20; it adds token-budget checks and truncation metadata missing from
-that version's HTTP server. Set local server options through process environment
+local adapter to reject events exceeding the configured token budget before
+inference and expose truncation metadata. Set local server options through process environment
 variables. DeciFlow nodes using a separate Laya server do not need the `laya` extra.
 
 [Laya](https://github.com/NandhaKishorM/laya) · [Jev](https://docs.typesafe.ai/introduction/quickstart)
@@ -438,5 +453,5 @@ Set `DECIFLOW_LOG_DIR=/var/log/deciflow` in `.env` and restart DeciFlow to write
 while retaining console logs. The default is `/var/log/deciflow`; missing directories
 are created automatically with parent directories, requiring write permission. Relative paths start at the project directory. Each
 file rotates at 10 MiB with 5 backups. Empty disables file logging. This does not
-record browser interactions or classification results. For Docker, use a writable
-container path and bind-mount it to retain logs on the host.
+record browser interactions or classification results. Docker Compose already persists these logs in the `deciflow-logs` volume.
+For direct host-directory access, replace that volume mount with a writable bind mount.

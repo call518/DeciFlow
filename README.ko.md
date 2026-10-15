@@ -19,7 +19,8 @@ DeciFlow는 로그 이벤트를 청크로 묶어 Laya 또는 Jev로
 소스별 프로필·청크 크기를 지정하고, 실시간 차트로 분포를 보거나 목록 갱신을
 일시정지해 개별 결과를 살펴보세요.
 
-청크마다 Laya 또는 Jev 요청 하나로 **`choice` 분류**, **`score` 긴급도**
+각 청크는 로그 이벤트를 줄바꿈으로 연결한 `state` 문자열로 전달합니다.
+Laya 또는 Jev 요청 하나로 **`choice` 분류**, **`score` 긴급도**
 (0–3: Low, Medium, High, Critical), **`noul` 작업 티켓 발행 필요 확률**을 함께 받습니다.
 긴급도는 반올림한 등급이 아닌 확률 가중 점수입니다. 화면에 두 값을 표시하고
 JSON에 모든 답변을 보존합니다. 티켓을 자동 생성하지는 않습니다.
@@ -101,13 +102,16 @@ docker compose logs --follow laya-cpu
 
 ## 사용법과 설정
 
+전체 사용·설정 문서, 배포 참고 자료, 요청·결과 예시는
+[문서 안내](docs/README.ko.md)에서 찾아보세요.
+
 | 문서 | 내용 |
 | --- | --- |
 | [사용법](docs/usage.ko.md) | 입력 모드·판정 기준·필터·수동 검토·재접속·시간 지표 |
 | [설정](docs/configuration.ko.md) | 환경변수·모델·입력 예산 |
 | [Criteria](docs/criteria.ko.md) | 고정 5개 범주 프로필 관리; Default Criteria는 보기 전용 |
 | [Python Actions](docs/actions.ko.md) | 구성 보기·환경 Status·pip 포함 환경·Reset venv·리비전 이력·삭제·소스 할당 |
-| [결과 JSON](docs/results.ko.md) | 실제 응답 예시·필드 설명 |
+| [결과 JSON](docs/results.ko.md) | 현재 요청·결과 예시와 필드 설명 |
 
 사이드바 화면은 URL에 반영됩니다: Main `/`, Criteria `/#criteria`, Actions `/#actions`.
 새로고침·뒤로가기·직접 링크에서도 해당 화면을 유지합니다.
@@ -248,6 +252,31 @@ Compose는 Docker Hub에 공개된 `call518/deciflow-ui:0.0.1` 이미지를 사�
 최초 실행에는 네트워크 연결이 필요합니다. Compose가 `.env`를 UI에 전달하며
 `PORT`로 호스트·컨테이너 포트를 함께 지정합니다(기본값: 4000).
 
+#### Dockerfile과 Compose의 역할
+
+[`Dockerfile`](Dockerfile)은 `python:3.12-slim`을 기반으로 uv `0.7.20`과 운영 도구를
+설치하고 작업 디렉터리를 `/app`으로 지정합니다. 앱 소스나 프로젝트 의존성은 이미지에
+미리 포함하지 않습니다. 시작 명령은 `uv sync --frozen --no-dev --no-install-project --no-cache`
+이후 `server.main(host='0.0.0.0')`을 실행합니다. 따라서 공개된 UI 이미지에도 복제한
+저장소를 `/app`에 마운트해야 합니다. 추론은 UI 이미지가 아닌 Laya 또는 Jev가 처리합니다.
+
+[`docker-compose.yml`](docker-compose.yml)은 실행 구성을 제공합니다:
+
+| 항목 | 동작 |
+| --- | --- |
+| `name: deciflow` | 소문자 Compose 프로젝트·그룹 이름. 개별 컨테이너 이름은 DeciFlow 표기 유지. |
+| `ui` | 항상 활성화. 공개 UI 이미지가 없으면 다운로드하고 .env·PORT·소스·로그·데이터 마운트를 적용. 빌드 단계 없음. |
+| `laya-cpu` / `laya-cuda` | COMPOSE_PROFILES=cpu 또는 cuda로 선택. laya 네트워크 별칭·8000 포트 공유. CUDA만 GPU 요청. |
+| `x-laya` | Laya 공통 설정을 재사용하는 YAML 앵커이며 별도 컨테이너가 아님. |
+| 이름 있는 볼륨 | deciflow-venv·deciflow-data·deciflow-logs·deciflow-laya-model-cache의 기존 이름 유지. |
+
+Compose는 `.env`를 변수 치환에 사용하고 `env_file`로 UI에 전달합니다.
+Laya에는 명시한 서버 변수만 전달하며 `LAYA_API_KEY`는 같은 설정을 공유합니다.
+변수 치환 시 프로세스 환경변수가 `.env`보다 우선합니다. `COMPOSE_PROFILES`는
+`DECISION_ENGINE`과 독립적이므로 Jev·외부 Laya 사용 시 프로필을 비우거나 `ui`만
+시작하세요. UI가 Laya 준비 전에 시작할 수 있으므로 로그 분석 전 준비 상태를
+확인하세요. 유료 엔진으로 자동 전환하지 않습니다.
+
 UI는 호스트의 모든 인터페이스에 공개합니다. 로컬 접속만 허용하려면 Compose의
 UI 포트 매핑을 `127.0.0.1:${PORT:-4000}:${PORT:-4000}`으로 변경하세요.
 기본 포트에서는 **http://127.0.0.1:4000**, 원격에서는 DeciFlow 호스트 IP로 접속합니다.
@@ -280,21 +309,6 @@ Compose Laya 주소는 `http://laya:8000/v1/systemone`입니다. 외부 서버�
 Dockerfile을 수정한 경우에만 `docker build --tag call518/deciflow-ui:0.0.1 .`로
 UI 이미지를 직접 빌드한 뒤 `docker compose up -d --force-recreate ui`로 적용합니다.
 소스 버전 전환 전에는 DeciFlow를 중지하세요.
-
-#### 기존 실행 스크립트에서 전환
-
-필요한 결과를 내보낸 뒤 Compose를 시작하기 전에 기존 컨테이너를 한 번 중지·제거하세요.
-아래 명령은 이름 있는 볼륨을 유지합니다:
-
-```bash
-docker stop DeciFlow-UI DeciFlow-Laya-CPU DeciFlow-Laya-CUDA
-docker rm DeciFlow-UI DeciFlow-Laya-CPU DeciFlow-Laya-CUDA
-```
-
-실제로 존재하는 컨테이너 이름만 포함하세요. Compose는 기존 데이터·로그·venv·모델 캐시
-볼륨을 재사용합니다. `.env`에 `COMPOSE_PROFILES=cpu` 또는 `cuda`를 지정하고,
-로컬 구성이면 `LAYA_API_URL=http://laya:8000/v1/systemone`으로 설정한 뒤 시작하세요.
-CPU의 공개 포트가 8001에서 8000으로 바뀌므로 외부 DeciFlow의 연결 설정도 갱신하세요.
 
 ngrok·리버스 프록시로 파일을 처리하려면 `DECIFLOW_CSRF_TRUSTED_ORIGINS`에
 정확한 UI 출처 또는 랜덤 ngrok 주소용 `https://*.ngrok-free.app`을 지정하고
@@ -381,16 +395,16 @@ Laya 업그레이드 시 API 호환성을 검증합니다.
 
 ## 개발
 
-실제 모델 결과와 남은 제약은 [Laya 로그 검증](docs/laya-validation.ko.md)을 확인하세요.
-선택한 Laya 모델로 기대 범주를 기록한 13개 샘플을 다시 검증하려면:
+모델 평가 명령과 보고서 필드는 [Laya 로그 검증](docs/laya-validation.ko.md)을 확인하세요.
+선택한 Laya 모델로 5개 프로필의 정답 사례 36개를 평가하려면:
 
 ```bash
 uv run python -m scripts.evaluate_laya \
-  --cases tests/fixtures/general_evaluation.json \
   --output /tmp/laya-validation.json
 ```
 
-Laya 서버만 호출하며 유료 Jev는 거부합니다. 작은 표본이므로 정확도 보장이 아닙니다.
+`scripts/evaluate_laya.py`는 선택적 평가 도구이며 UI·Compose 실행에는 필요하지 않습니다.
+Laya 서버만 호출하고 유료 Jev는 거부합니다. 작은 표본이므로 정확도 보장이 아닙니다.
 
 ```bash
 uv run ruff format .
@@ -409,7 +423,7 @@ node --test tests/test_ui.mjs
 확인합니다. 두 README와 실제·예제 `.env`를 함께 관리하며 환경변수 주석은
 영어와 한국어를 병기합니다.
 
-선택적 로컬 Laya 개발 환경(0.3.20):
+선택적 로컬 Laya 개발 환경(`laya` 추가 의존성은 v0.4.1 지정):
 
 ```bash
 uv sync --extra laya
@@ -417,8 +431,8 @@ uv run --extra laya python laya_server.py
 ```
 
 DeciFlow의 `LAYA_API_URL`을 루프백으로 설정하고 다른 터미널에서 DeciFlow를 시작하세요.
-0.3.20에서는 해당 버전의 HTTP 서버에 없는 토큰 예산 검사와 잘림 메타데이터를
-제공하는 이 어댑터를 사용합니다. 로컬 서버 옵션은 프로세스 환경변수로 지정합니다.
+이 로컬 어댑터는 추론 전에 설정된 토큰 예산을 초과한 이벤트를 거절하고
+잘림 메타데이터를 제공합니다. 로컬 서버 옵션은 프로세스 환경변수로 지정합니다.
 별도 Laya 서버를 사용하는 DeciFlow 실행 노드에는 `laya` 추가 의존성이 필요하지 않습니다.
 
 [Laya](https://github.com/NandhaKishorM/laya) · [Jev](https://docs.typesafe.ai/introduction/quickstart)
@@ -430,5 +444,5 @@ DeciFlow의 `LAYA_API_URL`을 루프백으로 설정하고 다른 터미널에�
 콘솔 로그도 유지합니다. 기본값은 `/var/log/deciflow`이며, 없는 디렉터리는 상위
 경로까지 자동 생성합니다. 생성·기록하려면 쓰기 권한이 필요합니다. 상대 경로는 프로젝트 디렉터리 기준입니다. 각 파일은
 10 MiB마다 회전하고 백업 5개를 유지합니다. 빈 값이면 파일 기록을 끕니다.
-브라우저 조작이나 분류 결과는 기록하지 않습니다. Docker에서는 쓰기 가능한
-컨테이너 경로를 사용하고 호스트에 로그를 보관하려면 해당 경로를 바인드 마운트하세요.
+브라우저 조작이나 분류 결과는 기록하지 않습니다. Docker Compose는 `deciflow-logs` 볼륨에 로그를 보존합니다.
+호스트 디렉터리에서 직접 접근하려면 해당 볼륨 마운트를 쓰기 가능한 바인드 마운트로 바꾸세요.

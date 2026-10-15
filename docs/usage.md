@@ -1,6 +1,6 @@
 # Usage
 
-[English](usage.md) | [한국어](usage.ko.md) | [README](../README.md)
+[English](usage.md) | [한국어](usage.ko.md) | [Documentation](README.md) | [README](../README.md)
 
 On wide screens, the left **40%** shows **Classification overview → Log input**;
 the right **60%** shows **Classification results**. Narrow screens stack the panels.
@@ -33,7 +33,6 @@ Batch and Realtime share these defaults:
 | Paste | Pasted text grouped into chunks |
 
 Mode identifiers in the UI and exported JSON are `realtime`, `batch`, and `paste`.
-The file API also accepts legacy `follow` and returns `realtime`.
 
 File sources are on the **DeciFlow node**, not the Laya host. They require local
 browser access (`localhost`/`127.0.0.1`) and readable UTF-8 regular files. Enter one
@@ -73,6 +72,10 @@ be deleted. **Save changes** applies to new runs; running jobs keep their origin
 criteria. See [Criteria management](criteria.md) for storage and source reassignment.
 Describe outcomes and evidence; keep specific log strings in evaluation samples.
 
+The resulting log chunk is sent as the request `state` string: one event, or
+events joined with newlines. Classification instructions are in `questions`, not
+state. [Request/result examples](results.md) show all three questions and answers.
+
 Chunks never mix files. Batch flushes remaining events at EOF; Realtime flushes at
 the configured size or after one second without a new event, and separates
 file rotations. Blank lines are skipped; event boundaries are not automatically
@@ -102,8 +105,7 @@ for Batch and **Observed line(s)** for Realtime—the sequence read since monito
 started or the file rotated. `1 event (max 5)` means one event was submitted
 with a configured maximum of five. JSON uses `chunkEvents` for the configured
 limit and `eventCount` for actual events. `line`, `lineEnd`, and `lineCount`
-retain line locations/counts. Legacy API input `chunkLines` remains accepted;
-new requests and results use `chunkEvents`.
+retain line locations/counts. Requests and results use `chunkEvents`.
 
 #### Uncertainty and human review
 

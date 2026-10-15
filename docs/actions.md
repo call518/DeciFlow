@@ -1,6 +1,6 @@
 # Python Actions
 
-[English](actions.md) | [한국어](actions.ko.md) | [README](../README.md)
+[English](actions.md) | [한국어](actions.ko.md) | [Documentation](README.md) | [README](../README.md)
 
 Add/Edit hides the list and shows only the form. Saving or Cancel edit returns to the list.
 
@@ -29,7 +29,7 @@ only the standard library. Each handler reads the decision with
 
 **Status** shows environment readiness: Ready after Python/dependency installation,
 Preparing... during preparation, or Not ready for missing/incomplete environments.
-Legacy Actions using external Python show External. Saving/resetting displays
+Actions using external Python show External. Saving/resetting displays
 Preparing...; pending statuses refresh automatically until preparation ends.
 The editor also displays preparation status.
 
@@ -63,12 +63,7 @@ also include Python version and modules. Unchanged code/environments and Reset v
 reuse the current revision. Failed saves do not update the registry; leftover
 revision paths are skipped when allocating numbers. Numbers may have gaps.
 
-Existing per-Action UUID directories are retained. On the next save, current legacy
-revisions gain history entries with unknown creation times (`null`); older unrecorded
-revisions are not reconstructed. Registrations predating per-Action directories
-retain the existing migration behavior: environments are rebuilt using their
-lockfiles rather than moved, and old paths remain available for running processes.
-History is stored in JSON; this does not add a history or rollback UI.
+Revision history is stored in JSON; no history or rollback UI is provided.
 Saving is serialized within one DeciFlow process; multiple writers sharing a volume
 are not supported.
 
@@ -82,7 +77,7 @@ source assignments.
 **Reset venv** deletes the saved Action's current `.venv` and rebuilds it from its
 Python/module settings and `uv.lock`, including pip. Code, registrations, and lockfiles
 stay intact. It uses saved settings, not editor drafts. A failed reset leaves the
-environment unready; retry with Reset venv. Legacy Actions using external Python
+environment unready; retry with Reset venv. Actions using external Python
 cannot be reset.
 
 **Delete → Save & prepare environments** removes the Action's data folder, including
@@ -124,14 +119,9 @@ local/trusted-origin restrictions as file access; trusted origins therefore gran
 code-execution capability. Keep credentials in environment variables or a secret
 store, and avoid printing them to stderr.
 
-For Docker, use the following options together (also supported by the launch script):
-
-```bash
---env DECIFLOW_DATA_DIR=/var/lib/deciflow-data \
---mount type=volume,src=deciflow-data,dst=/var/lib/deciflow-data
-```
-
-The volume is outside read-only `/app`; no separate host data directory is needed.
-When switching from the old volume/mount, rebuild the Docker image and recreate the
-container. Existing Actions require data migration and environment preparation at
-the new path.
+Docker Compose already mounts the `deciflow-data` volume at `DECIFLOW_DATA_DIR`
+(default `/var/lib/deciflow-data`), shared with Criteria and outside read-only `/app`.
+No separate host data directory is needed. If changing the data path, migrate
+existing Actions and prepare their environments at the new path, then apply the
+Compose configuration with `docker compose up -d ui`. Rebuilding the UI image is
+unnecessary for data-path changes. See [Docker deployment](../README.md#deciflow-docker).
