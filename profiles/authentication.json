@@ -1,5 +1,5 @@
 {
-  "label": "Authentication",
+  "label": "Sample Authentication",
   "instructions": "Classify the observed authentication or session outcome and failure scope, not severity words alone. Distinguish an unsuccessful individual attempt from failure of the authentication service or its supporting mechanisms. Require behavioral or policy evidence for abuse; repetition alone is not proof of an attack. Missing root cause does not make an identifiable outcome other. Do not infer missing events or identities.",
   "criteria": {
     "normal": "Successful authorized authentication or session operation, routine informational activity, or explicitly expected session termination.",

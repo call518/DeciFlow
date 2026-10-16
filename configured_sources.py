@@ -33,7 +33,7 @@ async def _source_chunks(
         async for record in records:
             yield {
                 **record,
-                **({"action": spec["action"]} if spec.get("action") else {}),
+                **({"actionId": spec["actionId"]} if spec.get("actionId") else {}),
                 **(
                     {
                         "sourceId": spec["sourceId"],

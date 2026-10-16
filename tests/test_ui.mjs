@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { webcrypto } from 'node:crypto';
 import { test } from 'node:test';
 
 const prismRuntime=vm.createContext({});
@@ -32,7 +33,7 @@ function workspace(events, status, storage = { getItem: () => null, setItem() {}
     setAttribute(name, value) { this.attributes[name] = value; },
   });
   const context = vm.createContext({
-    Prism:prismRuntime.Prism,
+    Prism:prismRuntime.Prism, crypto: webcrypto,
     ...(navigation ? { location: navigation, addEventListener: (name, handler) => listeners.set(name, handler) } : {}),
     document: {
       getElementById(id) {
@@ -55,7 +56,7 @@ function workspace(events, status, storage = { getItem: () => null, setItem() {}
       }
       if (path === '/api/tasks') return {ok:true,json:async()=>({tasks:vm.runInContext('registeredTasks.map(task=>({...task}))',context)})};
       if (path === '/api/tasks/test-task/run') {
-        const sources=vm.runInContext('sourceRows.map(({path,profile,size,action})=>({sourceId:path,profile:profile.value,chunkEvents:Number(size.value),action:action.value}))',context);
+        const sources=vm.runInContext('sourceRows.map(({path,profile,size,action})=>({sourceId:path,profile:profile.value,chunkEvents:Number(size.value),actionId:action.value}))',context);
         const mode=nodes.get('source-mode').value || 'batch';
         const error=vm.runInContext('!sourcesLoaded',context)?'Sources are not loaded.':sources.some(source=>!vm.runInContext('registeredSources.map(s=>s.id)',context).includes(source.sourceId))?'Select a registered source.':sources.some(source=>!Number.isInteger(source.chunkEvents)||source.chunkEvents<1)?'Events per chunk must be a positive integer.':null;
         if(error)return {ok:false,json:async()=>({error})};
@@ -263,7 +264,7 @@ test('Main monitors Tasks and Source configuration lives only in Tasks', () => {
 });
 
 test('Editing an existing Task restores saved per-Source criteria, chunk size and Action', async () => {
-  const {context}=workspace([]);await vm.runInContext("handleEditTask({id:'saved',name:'Logs',mode:'batch',timezone:'UTC',cron:'',sources:[{sourceId:sampleSources[0].id,profile:'http_access',chunkEvents:3,action:'notify'}]})",context);
+  const {context}=workspace([]);await vm.runInContext("handleEditTask({id:'saved',name:'Logs',mode:'batch',timezone:'UTC',cron:'',sources:[{sourceId:sampleSources[0].id,profile:'http_access',chunkEvents:3,actionId:'notify'}]})",context);
   assert.equal(vm.runInContext('sourceRows[0].profile.value',context),'http_access');assert.equal(vm.runInContext('sourceRows[0].size.value',context),'3');assert.equal(vm.runInContext('sourceRows[0].action.value',context),'notify');
 });
 
@@ -368,7 +369,7 @@ test('file line labels distinguish batch from observed realtime sequences', asyn
     assert.equal(rows[1].children[2].textContent, `Source: /var/log/secure · ${prefix} line 1`);
     assert.equal(rows[0].children[2].textContent, `Source: /var/log/secure · ${prefix} lines 10–12`);
     assert.equal(rows[1].children[3].textContent, 'Category criteria (Choice): General system · Chunk: 1 event (max 1)');
-    assert.equal(rows[0].children[3].textContent, 'Category criteria (Choice): Authentication · Chunk: 1 event (max 5)');
+    assert.equal(rows[0].children[3].textContent, 'Category criteria (Choice): Sample Authentication · Chunk: 1 event (max 5)');
     if (mode === 'realtime') assert.ok(rows[1].children[2].title.includes('not an absolute'));
     nodes.get('source-mode').value = mode === 'realtime' ? 'batch' : 'realtime';
     nodes.get('source-mode').onchange();
@@ -759,13 +760,13 @@ test('file Actions are assigned in requests and execution failures are visible',
     { type: 'start', engine: 'laya', total: 1 }, event,
   ]);
   await new Promise(resolve => setImmediate(resolve));
-  vm.runInContext("registeredActions = [{name: 'notify', python: '/venv/bin/python', script: '/actions/notify.py'}]; renderActions(); updateSourceSettings();", context);
+  vm.runInContext("registeredActions = [{id:'notify',name:'notify', python: '/venv/bin/python', script: '/actions/notify.py'}]; renderActions(); updateSourceSettings();", context);
   const selector = nodes.get('source-settings').children[0].children[3].children[0];
   assert.match(selector.attributes['aria-label'], /^Action for /);
   assert.deepEqual(selector.children.map(option => option.text), ['None', 'notify']);
   selector.value = 'notify'; selector.onchange();
   await runTask(nodes);
-  assert.equal(requests[0].sources[0].action, 'notify');
+  assert.equal(requests[0].sources[0].actionId, 'notify');
   assert.ok(nodes.get('results').children[0].children.some(node => node.textContent?.includes('Action execution: notify · failed · 12ms · exit 7')));
   assert.equal(selector.disabled, false);
 });
@@ -777,7 +778,7 @@ test('Action editor sends Python Versions and module lists and recovers from pre
   const row = nodes.get('action-editor').children[0];
   const inputs = row.children.slice(0, 4).map(label => label.children[0]);
   assert.equal(inputs[0].readOnly, false);
-  assert.equal(row.children[0].children[1].textContent, 'Name cannot be changed after creation.');
+  assert.equal(row.children[0].children.length, 1);
   assert.equal(inputs[1].value, '3.12');
   inputs[0].value = 'notify'; inputs[3].value = 'import json, sys\nresult = json.load(sys.stdin)\n';
   inputs[2].value = 'httpx==0.28.1\nrequests';
@@ -840,7 +841,7 @@ test('Action list edits one handler, cancels drafts, and saves deletion without 
   nodes.get('cancel-action').onclick();
   assert.equal(table().children[2].children[0].textContent, 'Second');
   table().children[2].children[4].children[1].onclick();
-  assert.equal(nodes.get('action-editor').children[0].children[0].children[0].readOnly, true);
+  assert.equal(nodes.get('action-editor').children[0].children[0].children[0].readOnly, false);
   nodes.get('action-editor').children[0].children[0].children[0].value = 'Edited';
   let sent;
   context.fetch = async (path, options) => {
@@ -851,12 +852,12 @@ test('Action list edits one handler, cancels drafts, and saves deletion without 
   await nodes.get('save-actions').onclick();
   assert.equal(sent.length, 2);
   assert.equal(sent[0].name, 'First');
-  assert.equal(sent[1].name, 'Second');
+  assert.equal(sent[1].name, 'Edited');
   assert.equal(nodes.get('action-editor').hidden, true);
   await table().children[1].children[4].children[3].onclick();
   await nodes.get('save-actions').onclick();
   assert.equal(sent.length, 1);
-  assert.equal(sent[0].name, 'Second');
+  assert.equal(sent[0].name, 'Edited');
   nodes.get('add-action').onclick();
   nodes.get('cancel-action').onclick();
   assert.equal(table().children.length, 2);
@@ -866,7 +867,7 @@ test('Action list edits one handler, cancels drafts, and saves deletion without 
 test('Action name search ignores case and retains original edit and delete targets', async () => {
   const { nodes, context } = workspace([]);
   await new Promise(resolve => setImmediate(resolve));
-  vm.runInContext("registeredActions = [{name:'First', code:'pass'}, {name:'Notify admin', code:'pass'}, {name:'Last', code:'pass'}]; renderActions();", context);
+  vm.runInContext("registeredActions = [{id:'First',name:'First', code:'pass'}, {id:'Notify admin',name:'Notify admin', code:'pass'}, {id:'Last',name:'Last', code:'pass'}]; renderActions();", context);
   const search = nodes.get('action-search');
   search.value = '  NOTIFY  '; search.oninput();
   const table = nodes.get('action-registry').children[0];
@@ -889,7 +890,7 @@ test('source rows select registered sources, reject unknown text, and retain set
   assert.equal(nodes.get('source-settings').children.length, 3);
   const first = nodes.get('source-settings').children[0];
   const path = first.children[0].children[0];
-  assert.equal(path.value, 'System messages');
+  assert.equal(path.value, '1'.padStart(32,'0'));
   path.value = '/custom/access*.log'; path.onchange();
   const profile = first.children[1].children[0];
   profile.value = 'http_access'; profile.onchange();
@@ -901,12 +902,12 @@ test('source rows select registered sources, reject unknown text, and retain set
   await runTask(nodes);
   assert.equal(requests.length, 0);
   assert.match(nodes.get('message').textContent, /Select a registered source/);
-  added.value = 'System messages'; added.onchange();
+  added.value = '1'.padStart(32,'0'); added.onchange();
   vm.runInContext("sourceRows[2].profile.value = 'http_access'; sourceRows[2].profile.onchange();", context);
   assert.equal(vm.runInContext('sourceRows[2].path', context), '1'.padStart(32,'0'));
   nodes.get('source-mode').value = 'realtime'; nodes.get('source-mode').onchange();
   nodes.get('source-mode').value = 'batch'; nodes.get('source-mode').onchange();
-  assert.equal(nodes.get('source-settings').children[2].children[0].children[0].value, 'System messages');
+  assert.equal(nodes.get('source-settings').children[2].children[0].children[0].value, '1'.padStart(32,'0'));
   assert.equal(vm.runInContext('sourceRows[2].profile.value', context), 'http_access');
   await runTask(nodes);
   assert.equal(requests[0].sources.length, 3);
@@ -930,18 +931,18 @@ test('result JSON puts metadata first and preserves UTC ISO 8601 timestamps and 
 test('stored Action assignments never run by default; explicit selections last only for this page', async () => {
   let saved;
   const storage = {
-    getItem: () => JSON.stringify([['/host-logs/var/log/messages', {profile:'http_access', chunkEvents:3, action:'notify'}]]),
+    getItem: () => JSON.stringify([['/host-logs/var/log/messages', {profile:'http_access', chunkEvents:3, actionId:'notify'}]]),
     setItem: (_, value) => { saved = JSON.parse(value); },
   };
   const {nodes, context, requests} = workspace([], undefined, storage);
   await new Promise(resolve => setImmediate(resolve));
-  vm.runInContext("registeredActions = [{name:'notify'}]; updateSourceSettings();", context);
+  vm.runInContext("registeredActions = [{id:'notify',name:'notify'}]; updateSourceSettings();", context);
   const selector = () => nodes.get('source-settings').children[0].children[3].children[0];
   assert.equal(selector().value, '');
   assert.equal(vm.runInContext('sourceRows[0].profile.value', context), 'http_access');
   assert.equal(vm.runInContext('sourceRows[0].size.value', context), '3');
   await runTask(nodes);
-  assert.ok(requests[0].sources.every(source => source.action === ''));
+  assert.ok(requests[0].sources.every(source => source.actionId === ''));
   selector().value = 'notify'; selector().onchange();
   assert.ok(saved.every(([, preference]) => !Object.hasOwn(preference, 'action')));
   nodes.get('source-mode').value = 'realtime'; nodes.get('source-mode').onchange();
@@ -949,7 +950,7 @@ test('stored Action assignments never run by default; explicit selections last o
   assert.equal(selector().value, 'notify');
   const reloaded = workspace([], undefined, {getItem:() => JSON.stringify(saved), setItem() {}});
   await new Promise(resolve => setImmediate(resolve));
-  vm.runInContext("registeredActions = [{name:'notify'}]; updateSourceSettings();", reloaded.context);
+  vm.runInContext("registeredActions = [{id:'notify',name:'notify'}]; updateSourceSettings();", reloaded.context);
   assert.equal(reloaded.nodes.get('source-settings').children[0].children[3].children[0].value, '');
 });
 
@@ -961,7 +962,7 @@ test('new jobs persist their ID and reload replays results without submitting an
   const first = workspace(events, undefined, storage);
   await new Promise(resolve => setImmediate(resolve));
   let submissions = 0;
-  const settings = {mode:'batch', sources:[{path:'/custom/log', profile:'http_access', chunkEvents:2, action:'notify'}]};
+  const settings = {mode:'batch', sources:[{path:'/custom/log', profile:'http_access', chunkEvents:2, actionId:'notify'}]};
   first.context.fetch = async (path, options) => {
     if (path === '/api/tasks/test-task/run') {
       submissions++;
@@ -1073,20 +1074,20 @@ test('Criteria management resets drafts on menu entry, saves edits, and clears d
   assert.equal(nodes.get('criteria-page').hidden, false);
   assert.equal(nodes.get('main-page').hidden, true);
   assert.equal(nodes.get('save-criteria').disabled, false);
-  assert.equal(nodes.get('criteria-default').children[0].children[1].children[2].children[0].textContent, 'View');
+  assert.equal(nodes.get('criteria-default').children[0].children[1].children[1].children[0].textContent, 'View');
   assert.equal(nodes.get('criteria-registry').children[0].children[1].children[0].textContent, 'Custom');
   nodes.get('add-criteria').onclick();
-  vm.runInContext("criteriaFields.id.value='new_profile'; criteriaFields.label.value='New profile'; criteriaFields.instructions.value='New instructions';", context);
+  vm.runInContext("criteriaFields.label.value='New profile'; criteriaFields.instructions.value='New instructions';", context);
   nodes.get('nav-main').onclick();
   await nodes.get('nav-criteria').onclick();
   assert.equal(nodes.get('criteria-editor').hidden,true);
   assert.equal(vm.runInContext('editingCriteria', context),null);
   nodes.get('add-criteria').onclick();
-  vm.runInContext("criteriaFields.id.value='new_profile'; criteriaFields.label.value='New profile'; criteriaFields.instructions.value='New instructions';", context);
+  vm.runInContext("criteriaFields.label.value='New profile'; criteriaFields.instructions.value='New instructions';", context);
   await nodes.get('save-criteria').onclick();
-  assert.equal(vm.runInContext("profileLabels.new_profile", context), 'New profile');
+  assert.equal(vm.runInContext("Object.values(profileLabels).find(name=>name==='New profile')", context), 'New profile');
   vm.runInContext("handleEditCriteria('custom'); criteriaFields.instructions.value='Edited custom';", context);
-  assert.equal(vm.runInContext('criteriaFields.id.readOnly', context), true);
+  assert.equal(vm.runInContext('criteriaFields.id', context), undefined);
   await nodes.get('save-criteria').onclick();
   assert.equal(vm.runInContext('criteriaProfiles.custom.instructions', context), 'Edited custom');
   vm.runInContext("sourceRows[0].profile.value='custom';", context);
@@ -1110,10 +1111,10 @@ test('Criteria search, cancel, and duplicate IDs leave saved profiles unchanged'
   nodes.get('cancel-criteria').onclick();
   assert.equal(vm.runInContext('criteriaProfiles.custom.instructions', context), 'Original');
   nodes.get('add-criteria').onclick();
-  vm.runInContext("criteriaFields.id.value='general';", context);
+  vm.runInContext("criteriaFields.label.value='General system'; criteriaFields.label.oninput();", context);
   await nodes.get('save-criteria').onclick();
   assert.match(nodes.get('criteria-message').textContent, /already exists/);
-  assert.equal(nodes.get('save-criteria').disabled, false);
+  assert.equal(nodes.get('save-criteria').disabled, true);
 });
 
 
@@ -1154,12 +1155,12 @@ test('View shows all Criteria definitions and preserves the edit draft', async (
   const profiles = { general: { label: 'General system', instructions: 'Saved instructions', criteria: definitions }, custom: { label: 'Custom', instructions: 'Saved instructions', criteria: definitions } };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await nodes.get('nav-criteria').onclick();
-  const controls = () => nodes.get('criteria-registry').children[0].children[1].children[2].children;
-  assert.deepEqual(controls().map(button => button.textContent), ['View', 'Edit', 'Delete']);
+  const controls = () => nodes.get('criteria-registry').children[0].children[1].children[1].children;
+  assert.deepEqual(controls().map(button => button.textContent), ['View', 'Edit', 'Clone', 'Delete']);
   controls()[0].onclick();
   const values = () => nodes.get('criteria-view').children[1].children.map(field => field.children[1]);
   assert.ok(values().every(value => value.className !== 'action-code'));
-  assert.deepEqual(values().slice(3).map(input => input.textContent), Object.values(definitions));
+  assert.deepEqual(values().slice(2).map(input => input.textContent), Object.values(definitions));
   assert.equal(vm.runInContext('editingCriteria', context), null);
   controls()[1].onclick();
   assert.equal(nodes.get('criteria-view').hidden, true);
@@ -1167,7 +1168,7 @@ test('View shows all Criteria definitions and preserves the edit draft', async (
   assert.equal(nodes.get('criteria-editor').hidden, false);
   vm.runInContext("criteriaFields.instructions.value='Draft instructions';", context);
   controls()[0].onclick();
-  assert.equal(values()[2].textContent, 'Saved instructions');
+  assert.equal(values()[1].textContent, 'Saved instructions');
   assert.equal(nodes.get('criteria-editor').hidden, true);
   assert.equal(nodes.get('save-criteria').disabled, true);
   assert.equal(nodes.get('criteria-view').children[0].children.length, 1);
@@ -1184,18 +1185,18 @@ test('Add closes View in both managers and enables the new editor', async () => 
   const profiles = { general: { label: 'General', instructions: 'Instructions', criteria: definitions } };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await new Promise(resolve => setImmediate(resolve));
-  vm.runInContext("registeredActions=[{name:'Notify', code:'pass'}]; renderActions();", context);
+  vm.runInContext("registeredActions=[{id:'Notify',name:'Notify', code:'pass'}]; renderActions();", context);
   nodes.get('action-registry').children[0].children[1].children[4].children[0].onclick();
   nodes.get('add-action').onclick();
   assert.equal(nodes.get('action-view').hidden, true);
   assert.equal(nodes.get('action-editor').hidden, false);
   assert.equal(nodes.get('save-actions').disabled, false);
   await nodes.get('nav-criteria').onclick();
-  nodes.get('criteria-default').children[0].children[1].children[2].children[0].onclick();
+  nodes.get('criteria-default').children[0].children[1].children[1].children[0].onclick();
   nodes.get('add-criteria').onclick();
   assert.equal(nodes.get('criteria-view').hidden, true);
   assert.equal(nodes.get('criteria-editor').hidden, false);
-  assert.equal(nodes.get('save-criteria').disabled, false);
+  assert.equal(nodes.get('save-criteria').disabled, true);
 });
 
 
@@ -1260,21 +1261,20 @@ test('engine connection follows actual requests for both providers without local
 });
 
 
-test('Default Criteria stays above search with View only and outside the editable list', async () => {
+test('Default Criteria stays above search with View and Clone and outside the editable list', async () => {
   const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
   const profiles = { general: { label: 'General system', instructions: 'Default instructions', criteria: definitions }, custom: { label: 'Custom', instructions: 'Custom instructions', criteria: definitions } };
   const { nodes } = workspace([], undefined, undefined, profiles);
   await nodes.get('nav-criteria').onclick();
   const defaultRow = () => nodes.get('criteria-default').children[0].children[1];
-  assert.deepEqual(nodes.get('criteria-default').children[0].children[0].children.map(cell => cell.textContent), ['Name', 'Profile ID', 'Manage']);
+  assert.deepEqual(nodes.get('criteria-default').children[0].children[0].children.map(cell => cell.textContent), ['Name', 'Manage']);
   assert.equal(defaultRow().children[0].textContent, 'General system');
-  assert.equal(defaultRow().children[1].textContent, 'general');
-  assert.deepEqual(defaultRow().children[2].children.map(button => button.textContent), ['View']);
+  assert.deepEqual(defaultRow().children[1].children.map(button => button.textContent), ['View', 'Clone']);
   assert.equal(nodes.get('criteria-registry').children[0].children.length, 2);
   nodes.get('criteria-search').value = 'missing'; nodes.get('criteria-search').oninput();
   assert.equal(defaultRow().children[0].textContent, 'General system');
-  defaultRow().children[2].children[0].onclick();
-  assert.equal(nodes.get('criteria-view').children[1].children[0].children[1].textContent, 'general');
+  defaultRow().children[1].children[0].onclick();
+  assert.equal(nodes.get('criteria-view').children[1].children[0].children[1].textContent, 'General system');
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   assert.ok(html.indexOf('id="criteria-default"') < html.indexOf('id="additional-criteria-title"'));
   assert.ok(html.indexOf('id="additional-criteria-title"') < html.indexOf('id="criteria-search"'));
@@ -1286,7 +1286,7 @@ test('Add and Edit show only the form and restore each manager list on cancel or
   const profiles = { general: { label: 'General', instructions: 'Default', criteria: definitions }, custom: { label: 'Custom', instructions: 'Custom', criteria: definitions } };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await new Promise(resolve => setImmediate(resolve));
-  vm.runInContext("registeredActions=[{name:'Notify', code:'pass'}]; renderActions();", context);
+  vm.runInContext("registeredActions=[{id:'Notify',name:'Notify', code:'pass'}]; renderActions();", context);
   nodes.get('add-action').onclick();
   assert.equal(nodes.get('action-list').hidden, true);
   assert.equal(nodes.get('action-editor').hidden, false);
@@ -1299,7 +1299,7 @@ test('Add and Edit show only the form and restore each manager list on cancel or
   assert.equal(nodes.get('action-list').hidden, false);
   assert.equal(nodes.get('action-editor').hidden, true);
   await nodes.get('nav-criteria').onclick();
-  nodes.get('criteria-default').children[0].children[1].children[2].children[0].onclick();
+  nodes.get('criteria-default').children[0].children[1].children[1].children[0].onclick();
   nodes.get('add-criteria').onclick();
   assert.equal(nodes.get('criteria-list').hidden, true);
   assert.equal(nodes.get('criteria-view').hidden, true);
@@ -1345,7 +1345,7 @@ test('Reset venv rebuilds a saved managed Action and reports maintenance errors'
   await controls()[2].onclick();
   assert.match(nodes.get('action-message').textContent, /Stop runs/);
   assert.equal(controls()[2].disabled, false);
-  vm.runInContext("registeredActions=[{name:'External', python:'/usr/bin/python', script:'/tmp/script.py'}]; renderActions();", context);
+  vm.runInContext("registeredActions=[{id:'External',name:'External', python:'/usr/bin/python', script:'/tmp/script.py'}]; renderActions();", context);
   assert.equal(controls()[2].disabled, true);
 });
 
@@ -1353,7 +1353,7 @@ test('Reset venv rebuilds a saved managed Action and reports maintenance errors'
 test('Action status distinguishes saved readiness, reset progress, and other Actions', async () => {
   const { nodes, context } = workspace([]);
   await new Promise(resolve => setImmediate(resolve));
-  vm.runInContext("registeredActions=[{id:'a'.repeat(32), name:'Ready action', pythonVersion:'3.12', environmentStatus:'ready'}, {id:'b'.repeat(32), name:'Missing action', pythonVersion:'3.12', environmentStatus:'not_ready'}, {name:'External'}]; renderActions();", context);
+  vm.runInContext("registeredActions=[{id:'a'.repeat(32), name:'Ready action', pythonVersion:'3.12', environmentStatus:'ready'}, {id:'b'.repeat(32), name:'Missing action', pythonVersion:'3.12', environmentStatus:'not_ready'}, {id:'External',name:'External'}]; renderActions();", context);
   const statuses = () => nodes.get('action-registry').children[0].children.slice(1).map(row => row.children[3].children[0].textContent);
   assert.deepEqual(statuses(), ['Ready', 'Not ready', 'External']);
   let finish;
@@ -1407,7 +1407,7 @@ test('Reset Selections restores registered samples and clears Action assignments
   const values = new Map();
   const storage = { getItem: key => values.get(key) || null, setItem: (key, value) => values.set(key, value) };
   const { nodes, context } = workspace([], undefined, storage);
-  vm.runInContext("sourcePreferences.set('/host-logs/var/log/messages', {profile:'network', chunkEvents:9, action:'Notify'}); filePaths.realtime='/my/live.log';", context);
+  vm.runInContext("sourcePreferences.set('/host-logs/var/log/messages', {profile:'network', chunkEvents:9, actionId:'Notify'}); filePaths.realtime='/my/live.log';", context);
   nodes.get('file-path').value = '/custom.log'; nodes.get('file-path').oninput();
   nodes.get('reset-sources').onclick();
   assert.equal(nodes.get('file-path').value, vm.runInContext('defaultFilePaths.batch', context));
@@ -1516,11 +1516,11 @@ test('Sources navigation and SSH registration feed searchable Main choices by ID
   assert.equal(Object.hasOwn(saved[3], 'hostId'), false);
   assert.equal(Object.hasOwn(saved[3], 'keyPath'), false);
   assert.equal(Object.hasOwn(saved[3], 'password'), false);
-  vm.runInContext("registeredActions=[{name:'Notify'}]; updateSourceSettings([registeredSources[3].id]);",context);
+  vm.runInContext("registeredActions=[{id:'Notify',name:'Notify'}]; updateSourceSettings([registeredSources[3].id]);",context);
   const picker=nodes.get('source-settings').children[0].children[0];
   assert.equal(picker.children[0].attributes['aria-label'], 'Registered source');
-  assert.equal(picker.children[0].value, 'Production logs');
-  assert.match(picker.children[0].children.find(option=>option.value==='Production logs').title,/Remote File.*app/);
+  assert.equal(picker.children[0].value, '4'.padStart(32,'0'));
+  assert.match(picker.children[0].children.find(option=>option.value==='4'.padStart(32,'0')).title,/Remote File.*app/);
   nodes.get('nav-main').onclick();
   await runTask(nodes);
   assert.equal(requests[0].sources[0].sourceId,'4'.padStart(32,'0'));
@@ -1546,7 +1546,7 @@ test('Saved source edits keep identity, and source search filters host and path'
   await nodes.get('save-sources').onclick();
   assert.equal(vm.runInContext('registeredSources[1].name',context),'Renamed HTTP');
   assert.equal(vm.runInContext('registeredSources[1].id',context),'2'.padStart(32,'0'));
-  assert.equal(vm.runInContext('sourceRows[1].name.value',context),'Renamed HTTP');
+  assert.equal(vm.runInContext('sourceRows[1].name.value',context),'2'.padStart(32,'0'));
   assert.equal(vm.runInContext('sourceRows[1].profile.value',context),'http_access');
 });
 
@@ -1568,11 +1568,11 @@ test('Settings uses a compact key list, opens details and confirms deletion', as
   const { nodes, context } = workspace([], null, undefined, null, { hash: '#settings' });
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(nodes.get('settings-page').hidden, false);
-  vm.runInContext(`sshKeys = [{name:'production',privatePath:'/data/private_key',publicPath:'/data/public_key.pub',publicKey:'ssh-ed25519 PUBLIC'}]; renderSSHKeys();`, context);
+  vm.runInContext(`sshKeys = [{id:'key-production',name:'production',privatePath:'/data/private_key',publicPath:'/data/public_key.pub',publicKey:'ssh-ed25519 PUBLIC'}]; renderSSHKeys();`, context);
   const row = nodes.get('ssh-key-list').children[0].children[1].children[0];
   assert.equal(row.children[0].textContent, 'production');
   assert.equal(row.children[1].textContent, '/data/private_key');
-  assert.equal(row.children[2].children.length, 2);
+  assert.equal(row.children[2].children.length, 3);
   row.children[2].children[0].onclick();
   const card = nodes.get('ssh-key-view').children[1];
   assert.equal(card.children[2].children[1].textContent, 'ssh-ed25519 PUBLIC');
@@ -1584,16 +1584,16 @@ test('Settings uses a compact key list, opens details and confirms deletion', as
     return {ok:true, json:async()=>({keys:[]})};
   };
   context.handleConfirmDelete = async () => false;
-  await row.children[2].children[1].onclick();
+  await row.children[2].children[2].onclick();
   assert.equal(calls.length, 0);
   context.handleConfirmDelete = async () => true;
-  await row.children[2].children[1].onclick();
+  await row.children[2].children[2].onclick();
   assert.equal(calls[0].options.method, 'DELETE');
 });
 
 test('SSH Key import clears file and Sources select managed keys', async () => {
   const { nodes, context } = workspace([], null);
-  const key = {name:'production',privatePath:'/data/ssh-keys/production/private_key',publicPath:'/data/ssh-keys/production/public_key.pub',publicKey:'ssh-ed25519 PUBLIC'};
+  const key = {id:'key-production',name:'production',privatePath:'/data/ssh-keys/production/private_key',publicPath:'/data/ssh-keys/production/public_key.pub',publicKey:'ssh-ed25519 PUBLIC'};
   context.fetch = async (path, options) => {
     assert.equal(path, '/api/ssh-keys');
     assert.equal(JSON.parse(options.body).privateKey, 'PRIVATE test input');
@@ -1606,7 +1606,7 @@ test('SSH Key import clears file and Sources select managed keys', async () => {
   assert.equal(nodes.get('ssh-key-file').value, '');
   assert.equal(nodes.get('ssh-key-name').value, '');
   vm.runInContext('handleEditHost()', context);
-  assert.equal(nodes.get('ssh-host-key').children[0].value, key.privatePath);
+  assert.equal(nodes.get('ssh-host-key').children[0].value, key.id);
 });
 
 
@@ -1637,7 +1637,7 @@ test('SSH Key methods mask pasted multiline keys and send paths without contents
   await get('ssh-key-form').onsubmit({preventDefault(){}});
   assert.equal(bodies[1].privateKeyPath, '/run/keys/existing');
   assert.equal(Object.hasOwn(bodies[1], 'privateKey'), false);
-  vm.runInContext("sshKeys=[{name:'test',privatePath:'/keys/private',publicPath:'/keys/public',publicKey:'PUBLIC'}];renderSSHKeys()",context);
+  vm.runInContext("sshKeys=[{id:'key-test',name:'test',privatePath:'/keys/private',publicPath:'/keys/public',publicKey:'PUBLIC'}];renderSSHKeys()",context);
   vm.runInContext('handleViewKey(sshKeys[0])', context);
   const card = nodes.get('ssh-key-view').children[1];
   assert.equal(card.children[3].children[1].textContent, '****');
@@ -1679,7 +1679,7 @@ test('SSH Key Add, cancel and search keep the default screen compact', async () 
   assert.equal(get('ssh-key-registry').hidden, true);
   get('cancel-ssh-key').onclick();
   assert.equal(get('ssh-key-editor').hidden, true);
-  vm.runInContext("sshKeys=[{name:'one',privatePath:'/one'},{name:'two',privatePath:'/two'}];renderSSHKeys()",context);
+  vm.runInContext("sshKeys=[{id:'key-one',name:'one',privatePath:'/one'},{id:'key-two',name:'two',privatePath:'/two'}];renderSSHKeys()",context);
   get('ssh-key-search').value = 'two'; get('ssh-key-search').oninput();
   const rows = get('ssh-key-list').children[0].children[1].children;
   assert.equal(rows.length, 1); assert.equal(rows[0].children[0].textContent, 'two');
@@ -1690,13 +1690,13 @@ test('SSH Hosts CRUD and Remote File selection share saved connection settings',
   const {nodes,context} = workspace([], null);
   await new Promise(resolve=>setImmediate(resolve));
   const get = id => context.document.getElementById(id);
-  vm.runInContext("sshKeys=[{name:'logs',privatePath:'/keys/logs/private_key'}]",context);
+  vm.runInContext("sshKeys=[{id:'key-logs',name:'logs',privatePath:'/keys/logs/private_key'}]",context);
   get('open-add-ssh-host').onclick();
   assert.equal(get('ssh-host-editor').hidden, false);
-  assert.equal(get('ssh-host-key').children[0].value, '/keys/logs/private_key');
+  assert.equal(get('ssh-host-key').children[0].value, 'key-logs');
   get('ssh-host-name').value='Production'; get('ssh-host-address').value='logs.example';
   get('ssh-host-port').value='2222'; get('ssh-host-user').value='reader';
-  get('ssh-host-key').value='/keys/logs/private_key';
+  get('ssh-host-key').value='key-logs';
   const requests=[];
   context.fetch=async(path,options)=>{
     requests.push({path,options});
@@ -1732,7 +1732,7 @@ test('Selected Source shows its path or pattern and updates without stale text',
   const input=label.children[0]; const path=label.children[1];
   assert.equal(path.textContent,'Path: /var/log/app/*.log');
   assert.equal(path.hidden,false);
-  input.value='Remote logs'; input.onchange();
+  input.value='two'; input.onchange();
   assert.equal(path.textContent,'Path: /srv/logs/**/*.json');
   input.value='Unregistered'; input.onchange();
   assert.equal(path.textContent,''); assert.equal(path.hidden,true);
@@ -1845,15 +1845,16 @@ test('Source and Action dropdowns retain every sorted option with an existing se
     registeredTasks=['Zulu','가나다','Alpha','나다라'].map((name,index)=>({id:String(index),name,mode:'batch',sources:[]}));
     selectedTaskId='0'; renderTaskMonitor();
     registeredSources=['Zulu','가나다','Alpha','나다라'].map((name,index)=>({id:String(index),name,type:'local',path:'/logs/'+index}));
-    registeredActions=[{name:'Zulu'},{name:'Alpha'}];
-    sourcePreferences.set('0',{profile:'general',chunkEvents:1,action:'Zulu'});
+    registeredActions=[{id:'Zulu',name:'Zulu'},{id:'Alpha',name:'Alpha'}];
+    sourcePreferences.set('0',{profile:'general',chunkEvents:1,actionId:'Zulu'});
     updateSourceSettings(['0']);
   `,context);
   const row=nodes.get('source-settings').children[0];
   const source=row.children[0].children[0]; const action=row.children[3].children[0];
   const expected=['가나다','나다라','Alpha','Zulu'];
-  assert.deepEqual(source.children.map(option=>option.value),expected);
-  assert.equal(source.value,'Zulu');
+  assert.deepEqual(source.children.map(option=>option.text),expected);
+  assert.deepEqual(source.children.map(option=>option.value),['1','3','2','0']);
+  assert.equal(source.value,'0');
   assert.deepEqual(action.children.map(option=>option.value),['','Alpha','Zulu']);
   assert.equal(action.value,'Zulu');
   const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
@@ -1898,7 +1899,7 @@ test('Required selectors omit Select placeholders without silently choosing a de
   const {nodes,context}=workspace([]);
   await new Promise(resolve=>setImmediate(resolve));
   vm.runInContext(`
-    sshKeys=[{name:'Key',privatePath:'/keys/private_key'}];handleEditHost();
+    sshKeys=[{id:'key-Key',name:'Key',privatePath:'/keys/private_key'}];handleEditHost();
     registeredSources=[{id:'source',name:'Logs',type:'local',path:'/logs/app.log'}];
     updateSourceSettings(['']);
   `,context);
@@ -1932,7 +1933,7 @@ test('Sidebar places DeciFlow host information above Main and keeps SSH manageme
 test('SSH connection tests work from unsaved editor and saved rows with status feedback', async () => {
   const {nodes,context}=workspace([]);
   await new Promise(resolve=>setImmediate(resolve));
-  vm.runInContext("sshKeys=[{name:'Key',privatePath:'/keys/private'}];handleEditHost()",context);
+  vm.runInContext("sshKeys=[{id:'key-Key',name:'Key',privatePath:'/keys/private'}];handleEditHost()",context);
   nodes.get('ssh-host-name').value='Draft';nodes.get('ssh-host-address').value='logs.example';
   nodes.get('ssh-host-port').value='2222';nodes.get('ssh-host-user').value='reader';nodes.get('ssh-host-key').value='/keys/private';
   const calls=[];
@@ -2277,9 +2278,9 @@ test('Paged polling only requests new rows and freezes historical or paused page
 test('Results settings persist the page size and apply it to the selected run', async()=>{
   const {nodes,context}=pagedWorkspace();
   await vm.runInContext("handlePagedProcessing({jobId:'paged',state:'completed',settings:{mode:'batch'},pagedResults:true})",context);
-  nodes.get('nav-results-settings').onclick();
-  assert.equal(nodes.get('settings-title').textContent,'Results');
-  assert.equal(nodes.get('settings-results').hidden,false);
+  nodes.get('nav-configuration').onclick();
+  assert.equal(nodes.get('settings-title').textContent,'Configurations');
+  assert.equal(nodes.get('settings-configuration').hidden,false);
   nodes.get('results-per-page').value='10';
   await nodes.get('results-settings-form').onsubmit({preventDefault(){}});
   assert.equal(vm.runInContext('results.length',context),10);
@@ -2331,9 +2332,10 @@ test('Task View groups source fields and host names in structured cards',()=>{
   vm.runInContext(`
     registeredSources=[{id:'remote',name:'System Logs',type:'ssh',path:'/var/log/*'},{id:'local',name:'Local Input',type:'local',path:'/input/data.txt'}];
     sshHosts=[{id:'host-a',name:'Oracle'},{id:'host-b',name:'Raspberry Pi'}];
+    registeredActions=[{id:'Notify',name:'Notify'}];
     handleViewTask({name:'Monitor',mode:'realtime',resumeOnRestart:true,sources:[
-      {sourceId:'remote',profile:'general',chunkEvents:5,action:'Notify',hostIds:['host-a','host-b']},
-      {sourceId:'local',profile:'general',chunkEvents:1,action:''}
+      {sourceId:'remote',profile:'general',chunkEvents:5,actionId:'Notify',hostIds:['host-a','host-b']},
+      {sourceId:'local',profile:'general',chunkEvents:1,actionId:''}
     ]});
   `,context);
   const container=nodes.get('task-view').children[0];
@@ -2369,7 +2371,7 @@ test('View keeps Task and SSH lists visible without a Back to List button',()=>{
   vm.runInContext("handleViewTask({name:'Example',mode:'batch',sources:[]})",context);
   assert.equal(nodes.get('task-registry').hidden,false);
   assert.equal(nodes.get('task-view').children[0].children[0].children.length,1);
-  vm.runInContext("handleViewKey({name:'Key',privatePath:'/private',publicPath:'/public',publicKey:'public'})",context);
+  vm.runInContext("handleViewKey({id:'key-Key',name:'Key',privatePath:'/private',publicPath:'/public',publicKey:'public'})",context);
   assert.equal(nodes.get('ssh-key-registry').hidden,false);
   assert.equal(nodes.get('ssh-key-view').children[0].children.length,1);
   vm.runInContext("handleViewHost({name:'Host',host:'example',port:22,username:'reader',keyPath:'/private'})",context);
@@ -2415,7 +2417,7 @@ test('Host View and redraw do not repeat automatic checks within one visit',asyn
 
 test('Source Action Criteria Task and SSH Key View buttons insert a detail row immediately after selection',async()=>{
   const {context,nodes}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
-  vm.runInContext(`registeredSources=[{id:'source',name:'Input',type:'local',path:'/input'}];renderSources();registeredActions=[{id:'action',name:'Notify',code:'pass'}];renderActions();registeredTasks=[{id:'task',name:'Analysis',mode:'batch',sources:[]}];renderTasks();sshKeys=[{name:'Key',privatePath:'/key',publicPath:'/pub',publicKey:'public'}];renderSSHKeys();criteriaProfiles={general:{label:'General',instructions:'Default',criteria:{normal:'Normal'}}};renderCriteria();`,context);
+  vm.runInContext(`registeredSources=[{id:'source',name:'Input',type:'local',path:'/input'}];renderSources();registeredActions=[{id:'action',name:'Notify',code:'pass'}];renderActions();registeredTasks=[{id:'task',name:'Analysis',mode:'batch',sources:[]}];renderTasks();sshKeys=[{id:'key-Key',name:'Key',privatePath:'/key',publicPath:'/pub',publicKey:'public'}];renderSSHKeys();criteriaProfiles={general:{label:'General',instructions:'Default',criteria:{normal:'Normal'}}};renderCriteria();`,context);
   for(const [list,id,body] of [['source-registry','source-view',false],['action-registry','action-view',false],['task-list','task-view',false],['ssh-key-list','ssh-key-view',true],['criteria-default','criteria-view',false]]){
     const table=nodes.get(list).children[0];const parent=body?table.children[1]:table;
     const row=parent.children[body?0:1];const button=row.children.at(-1).children.find(item=>item.textContent==='View');
@@ -2443,7 +2445,7 @@ test('Source Criteria Action SSH Key SSH Host and Task Views share compact detai
     handleViewConfiguration('source-view','Input',[['Name','Input'],['Path / Pattern','/input']]);
     handleViewConfiguration('criteria-view','General',[['Name','General'],['Decision Instructions','Use observed evidence.']]);
     handleViewConfiguration('action-view','Notify',[['Name','Notify'],['Python Code','print(1)\\nprint(2)']]);
-    handleViewKey({name:'Key',privatePath:'/private',publicPath:'/public',publicKey:'ssh-ed25519 PUBLIC'});
+    handleViewKey({id:'key-Key',name:'Key',privatePath:'/private',publicPath:'/public',publicKey:'ssh-ed25519 PUBLIC'});
     handleViewHost({name:'Host',host:'example',port:22,username:'reader',keyPath:'/private'});
     registeredSources=[{id:'input',name:'Input',type:'local',path:'/input'}];
     handleViewTask({name:'Task',mode:'batch',sources:[{sourceId:'input',profile:'general',chunkEvents:1}]});
@@ -2471,7 +2473,7 @@ test('Python coloring preserves source text and treats code as inert text',()=>{
 
 test('Python editor recolors without changing input text or selection and synchronizes scrolling',()=>{
   const {context,nodes}=workspace([]);
-  vm.runInContext("registeredActions=[{name:'Notify',code:'print(1)'}];handleEditAction(0)",context);
+  vm.runInContext("registeredActions=[{id:'Notify',name:'Notify',code:'print(1)'}];handleEditAction(0)",context);
   const label=nodes.get('action-editor').children[0].children[3];
   const input=label.children[0],backdrop=label.children[1],code=backdrop.children[0];
   input.value='if True:\n    print("updated")';input.selectionStart=4;input.selectionEnd=4;input.oninput();
@@ -2510,7 +2512,7 @@ test('Criteria View uses compact full-width rows for instructions and category d
   vm.runInContext("criteriaProfiles={application:{label:'Application',instructions:'Distinguish retries from final failures.',criteria:{normal:'Successful operation.',warning:'Recoverable issue.',error:'Final failure.',security:'Unauthorized action.',other:'Insufficient context.'}}};handleViewCriteria('application')",context);
   const fields=nodes.get('criteria-view').children[1];
   assert.ok(fields.className.includes('criteria-details'));
-  assert.deepEqual(fields.children.map(field=>field.children[0].textContent),['Profile ID','Name','Decision Instructions','Normal','Warning','Error','Security','Other']);
+  assert.deepEqual(fields.children.map(field=>field.children[0].textContent),['Name','Decision Instructions','Normal','Warning','Error','Security','Other']);
   const css=readFileSync(new URL('../public/style.css',import.meta.url),'utf8');
   assert.match(css,/\.criteria-details > div:nth-child\(n\+3\) \{ grid-column: 1 \/ -1;/);
 });
@@ -2571,7 +2573,7 @@ test('SSH Host selector stays visible without a disclosure control',()=>{
 
 test('Task Monitor labels Source, type and optional Action without Host details',()=>{
   const {nodes,context}=workspace([]);
-  vm.runInContext(`registeredSources=[{id:'remote',name:'System Logs',type:'ssh'}];sshHosts=[{id:'host',name:'Oracle'}];registeredTasks=[{id:'monitor',name:'Monitor',mode:'realtime',enabled:false,sources:[{sourceId:'remote',hostIds:['host'],action:'ElasticSearch'}],latestRun:{state:'stopped',counts:{completed:125,failed:2}}}];renderTaskMonitor()`,context);
+  vm.runInContext(`registeredSources=[{id:'remote',name:'System Logs',type:'ssh'}];sshHosts=[{id:'host',name:'Oracle'}];registeredActions=[{id:'ElasticSearch',name:'ElasticSearch'},{id:'Notify',name:'Notify'}];registeredTasks=[{id:'monitor',name:'Monitor',mode:'realtime',enabled:false,sources:[{sourceId:'remote',hostIds:['host'],actionId:'ElasticSearch'}],latestRun:{state:'stopped',counts:{completed:125,failed:2}}}];renderTaskMonitor()`,context);
   const card=nodes.get('running-tasks').children[0];
   assert.equal(card.children.length,4);
   assert.deepEqual(card.children[1].children.map(node=>node.textContent),['Disabled','Stopped']);
@@ -2584,7 +2586,7 @@ test('Task Monitor labels Source, type and optional Action without Host details'
   card.onkeydown({key:'Escape'});
   assert.equal(nodes.get('task-monitor-tooltip').hidden,true);
   assert.doesNotMatch(card.children[3].textContent,/Oracle|Host:/);
-  vm.runInContext("registeredSources=[{id:'local',name:'DeciFlow',type:'local'}];registeredTasks[0].sources=[{sourceId:'local',action:''}];renderTaskMonitor()",context);
+  vm.runInContext("registeredSources=[{id:'local',name:'DeciFlow',type:'local'}];registeredTasks[0].sources=[{sourceId:'local',actionId:''}];renderTaskMonitor()",context);
   assert.equal(nodes.get('running-tasks').children[0].children[2].textContent,'Source: DeciFlow · Source Hosts: 1');
   assert.equal(nodes.get('running-tasks').children[0].children[3].textContent,'Type: Local File / Mode: Realtime / Action: None');
 });
@@ -2624,7 +2626,7 @@ test('Source editor accepts multiple paths in one multiline field',async()=>{
 
 test('Monitor counts distinct Source Hosts while tooltip includes all assignments',()=>{
   const {nodes,context}=workspace([]);
-  vm.runInContext(`registeredSources=[{id:'one',name:'Application',type:'ssh',path:'/var/log/app.log'},{id:'two',name:'System',type:'ssh',path:'/var/log/messages'}];sshHosts=[{id:'a',name:'Alpha',host:'alpha.example',username:'reader',port:22},{id:'b',name:'Beta',host:'beta.example',username:'logs',port:2222}];registeredTasks=[{id:'monitor',name:'Fleet',mode:'batch',enabled:true,sources:[{sourceId:'one',hostIds:['a','b'],action:'Notify',profile:'general',chunkEvents:2},{sourceId:'two',hostIds:['a'],action:''}]}];renderTaskMonitor()`,context);
+  vm.runInContext(`registeredSources=[{id:'one',name:'Application',type:'ssh',path:'/var/log/app.log'},{id:'two',name:'System',type:'ssh',path:'/var/log/messages'}];sshHosts=[{id:'a',name:'Alpha',host:'alpha.example',username:'reader',port:22},{id:'b',name:'Beta',host:'beta.example',username:'logs',port:2222}];registeredActions=[{id:'ElasticSearch',name:'ElasticSearch'},{id:'Notify',name:'Notify'}];registeredTasks=[{id:'monitor',name:'Fleet',mode:'batch',enabled:true,sources:[{sourceId:'one',hostIds:['a','b'],actionId:'Notify',profile:'general',chunkEvents:2},{sourceId:'two',hostIds:['a'],actionId:''}]}];renderTaskMonitor()`,context);
   const card=nodes.get('running-tasks').children[0];
   assert.equal(card.children[2].textContent,'Source: Application, System · Source Hosts: 2');
   assert.doesNotMatch(card.children[2].textContent,/Alpha|Beta/);
@@ -2677,4 +2679,181 @@ test('Task tooltip waits for one stationary second and stays open during movemen
   card.onmouseenter();card.onkeydown({key:'Escape'});advance(2000);
   assert.equal(tip.hidden,true);
   card.onfocus();assert.equal(tip.hidden,false);
+});
+
+
+test('Configuration reset uses the styled destructive confirmation and Cancel sends nothing',async()=>{
+  const {nodes,context}=workspace([]);
+  let resets=0;
+  context.fetch=async(path)=>{
+    if(path==='/api/reset')resets++;
+    return {ok:true,json:async()=>({dataDirectory:'/tmp/test-data',instanceId:'before',resetting:false})};
+  };
+  await vm.runInContext('handleLoadResetStatus()',context);
+  assert.equal(nodes.get('reset-deciflow').disabled,false);
+  context.document.getElementById('reset-dialog').showModal=function(){this.returnValue='cancel';this.onclose();};
+  await nodes.get('reset-deciflow').onclick();
+  assert.equal(resets,0);
+  assert.equal(nodes.get('reset-confirm-directory').textContent,'/tmp/test-data');
+  vm.runInContext("handleNavigation('settings','configuration')",context);
+  assert.equal(nodes.get('settings-configuration').hidden,false);
+  assert.equal(nodes.get('settings-ssh-hosts').hidden,true);
+  const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
+  assert.match(html,/This permanently deletes all DeciFlow application data/);
+  assert.match(html,/Yes, Reset DeciFlow/);
+});
+
+
+test('Confirmed reset submits once and reloads only after a new server instance returns',async()=>{
+  const {nodes,context}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
+  let accepted=false,reloaded=false,requests=0;
+  context.fetch=async(path,options)=>{
+    if(path==='/api/reset'){
+      requests++;assert.equal(JSON.parse(options.body).confirmation,'RESET DECIFLOW');accepted=true;
+      return {ok:true,json:async()=>({instanceId:'before',resetting:true})};
+    }
+    return {ok:true,json:async()=>({instanceId:accepted?'after':'before',dataDirectory:'/tmp/test-data',resetting:false})};
+  };
+  context.setTimeout=callback=>{callback();return 1;};
+  context.location={reload(){reloaded=true;}};
+  await vm.runInContext('handleLoadResetStatus()',context);
+  context.document.getElementById('reset-dialog').showModal=function(){this.returnValue='reset';this.onclose();};
+  await nodes.get('reset-deciflow').onclick();
+  assert.equal(requests,1);assert.equal(reloaded,true);
+});
+
+test('Clone Criteria opens an unsaved Add Profile draft and preserves source metadata', async () => {
+  const criteria = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, `${key} definition`]));
+  const profiles = { general: { label: 'General', instructions: 'Default', criteria }, custom: { label: 'Authentication', instructions: 'Inspect authentication', criteria, normalization: 'single_line_syslog_header' } };
+  const { nodes, context } = workspace([], undefined, undefined, profiles);
+  await new Promise(resolve => setImmediate(resolve));
+  await nodes.get('nav-criteria').onclick();
+  nodes.get('criteria-registry').children[0].children[1].children[1].children[2].onclick();
+  assert.equal(nodes.get('criteria-editor').children[0].textContent, 'Add Profile');
+  assert.match(vm.runInContext('criteriaDraftId', context), /^[0-9a-f-]{36}$/);
+  assert.equal(vm.runInContext('criteriaFields.id', context), undefined);
+  assert.equal(vm.runInContext('criteriaFields.label.value', context), 'Authentication (Clone)');
+  assert.equal(vm.runInContext('criteriaFields.instructions.value', context), profiles.custom.instructions);
+  for (const key of Object.keys(criteria)) assert.equal(vm.runInContext(`criteriaFields.${key}.value`, context), criteria[key]);
+  assert.equal(vm.runInContext('Object.keys(criteriaProfiles).length', context), 2);
+  nodes.get('cancel-criteria').onclick();
+  nodes.get('criteria-default').children[0].children[1].children[1].children[1].onclick();
+  assert.equal(vm.runInContext('criteriaFields.label.value', context), 'General (Clone)');
+  nodes.get('cancel-criteria').onclick();
+  vm.runInContext("handleCloneCriteria('custom'); criteriaFields.normal.value='Edited definition';", context);
+  const cloneId = vm.runInContext('criteriaDraftId', context);
+  let saved;
+  context.fetch = async (_path, options) => { saved = JSON.parse(options.body); return { ok: true, json: async () => ({ profiles: saved }) }; };
+  await nodes.get('save-criteria').onclick();
+  assert.equal(saved[cloneId].normalization, profiles.custom.normalization);
+  assert.equal(saved[cloneId].label, 'Authentication (Clone)');
+  assert.equal(saved[cloneId].criteria.normal, 'Edited definition');
+  assert.deepEqual(saved.custom, profiles.custom);
+  assert.equal(nodes.get('criteria-editor').hidden, true);
+});
+
+
+test('Criteria UUIDs stay internal, independent of Name and stable across edits', async () => {
+  const criteria = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
+  const { nodes, context } = workspace([], undefined, undefined, { general: { label: 'General', instructions: 'Default', criteria } });
+  await nodes.get('nav-criteria').onclick();
+  nodes.get('add-criteria').onclick();
+  const first = vm.runInContext('criteriaDraftId', context);
+  assert.match(first, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  assert.equal(vm.runInContext('criteriaFields.id', context), undefined);
+  vm.runInContext("criteriaFields.label.value='한글 123'; criteriaFields.label.oninput();", context);
+  assert.equal(nodes.get('save-criteria').disabled, false);
+  assert.equal(vm.runInContext('criteriaDraftId', context), first);
+  nodes.get('cancel-criteria').onclick(); nodes.get('add-criteria').onclick();
+  assert.notEqual(vm.runInContext('criteriaDraftId', context), first);
+  nodes.get('cancel-criteria').onclick();
+  vm.runInContext("handleEditCriteria('general'); criteriaFields.label.value='Renamed'; criteriaFields.label.oninput();", context);
+  assert.equal(vm.runInContext('criteriaDraftId', context), 'general');
+});
+
+test('Repeated Criteria clones report duplicate names immediately without losing the draft', async () => {
+  const criteria = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
+  const profiles = { general: { label: 'General', instructions: 'Default', criteria }, general_clone: { label: 'General (Clone)', instructions: 'Copy', criteria } };
+  const { nodes, context } = workspace([], undefined, undefined, profiles);
+  await nodes.get('nav-criteria').onclick();
+  vm.runInContext("handleCloneCriteria('general'); criteriaFields.instructions.value='Important draft';", context);
+  assert.match(nodes.get('criteria-message').textContent, /Name already exists/);
+  assert.match(nodes.get('criteria-message').className, /error-message/);
+  assert.equal(nodes.get('save-criteria').disabled, true);
+  await nodes.get('save-criteria').onclick();
+  assert.equal(vm.runInContext('criteriaFields.instructions.value', context), 'Important draft');
+  vm.runInContext("criteriaFields.label.value='General (Clone) 2'; criteriaFields.label.oninput();", context);
+  assert.equal(nodes.get('save-criteria').disabled, false);
+  assert.equal(nodes.get('criteria-message').textContent, '');
+  assert.equal(vm.runInContext('criteriaFields.id', context), undefined);
+});
+
+
+test('Legacy Results route opens Configuration and Results is absent from Settings navigation', () => {
+  const navigation = {hash:'#settings/results'};
+  const {nodes}=workspace([], undefined, undefined, undefined, navigation);
+  assert.equal(nodes.get('settings-title').textContent,'Configurations');
+  assert.equal(nodes.get('settings-configuration').hidden,false);
+  assert.equal(navigation.hash,'#settings/configuration');
+  const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
+  assert.ok(!html.includes('id="nav-results-settings"'));
+  assert.ok(!html.includes('id="settings-results"'));
+  assert.ok(html.indexOf('id="settings-configuration"')<html.indexOf('id="results-settings-form"'));
+  assert.ok(html.indexOf('id="results-settings-form"')<html.indexOf('id="reset-deciflow"'));
+  assert.ok(html.indexOf('id="reset-deciflow"')<html.indexOf('id="save-results-settings"'));
+  assert.ok(html.indexOf('id="save-results-settings"')<html.indexOf('</form>',html.indexOf('id="results-settings-form"')));
+  assert.match(html, /id="reset-deciflow"[^>]*type="button"/);
+});
+
+
+test('SSH Key Edit renames UUID metadata without sending key material or changing host selection', async () => {
+  const {nodes,context}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext("sshKeys=[{id:'key-uuid',name:'Original',privatePath:'/keys/key-uuid/private_key',publicPath:'/keys/key-uuid/public_key.pub',publicKey:'PUBLIC'}];sshHosts=[{id:'host-uuid',name:'Remote',host:'example',port:22,username:'reader',keyId:'key-uuid',keyPath:'/keys/key-uuid/private_key'}];renderSSHKeys();",context);
+  const controls=nodes.get('ssh-key-list').children[0].children[1].children[0].children[2];
+  controls.children[1].onclick();
+  assert.equal(nodes.get('add-ssh-key-title').textContent,'Edit SSH Key');
+  assert.equal(nodes.get('ssh-key-material').hidden,true);
+  assert.equal(nodes.get('ssh-key-name').value,'Original');
+  nodes.get('ssh-key-name').value='Renamed';
+  let body;
+  context.fetch=async(path,options)=>{
+    assert.equal(path,'/api/ssh-keys');assert.equal(options.method,'PATCH');
+    body=JSON.parse(options.body);
+    return {ok:true,json:async()=>({keys:[{id:'key-uuid',name:'Renamed',privatePath:'/keys/key-uuid/private_key',publicPath:'/keys/key-uuid/public_key.pub',publicKey:'PUBLIC'}]})};
+  };
+  await nodes.get('ssh-key-form').onsubmit({preventDefault(){}});
+  assert.deepEqual(body,{id:'key-uuid',name:'Renamed'});
+  assert.equal(nodes.get('ssh-key-editor').hidden,true);
+  assert.equal(nodes.get('ssh-host-list').children[0].children[1].children[0].children[2].textContent,'Renamed');
+  vm.runInContext('handleEditHost(sshHosts[0])',context);
+  assert.equal(nodes.get('ssh-host-key').value,'key-uuid');
+  assert.equal(nodes.get('ssh-host-key').children[0].text,'Renamed');
+});
+
+
+test('Action rename refreshes monitor labels while Tasks keep their UUID assignment', async () => {
+  const {nodes,context}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext("registeredActions=[{id:'action-uuid',name:'Original',pythonVersion:'3.12',modules:[],code:'pass'}];registeredTasks=[{id:'task-uuid',name:'Analysis',mode:'batch',sources:[{sourceId:sampleSources[0].id,actionId:'action-uuid'}]}];handleEditAction(0);actionRows[0].name.value='Renamed';",context);
+  context.fetch=async(path,options)=>({ok:true,json:async()=>({actions:JSON.parse(options.body)})});
+  await nodes.get('save-actions').onclick();
+  assert.equal(vm.runInContext('registeredActions[0].id',context),'action-uuid');
+  assert.equal(vm.runInContext('registeredTasks[0].sources[0].actionId',context),'action-uuid');
+  assert.match(nodes.get('running-tasks').children[0].children[3].textContent,/Action: Renamed/);
+});
+
+
+test('SSH connection status distinguishes key UUIDs and ignores display renames', async () => {
+  const {context}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  const keys=vm.runInContext(`(() => {
+    const host={host:'logs.example',port:22,username:'reader',keyId:'first'};
+    return [hostConnectionKey(host),hostConnectionKey({...host,name:'Renamed'}),
+      hostConnectionKey({...host,keyId:'second'}),
+      hostConnectionKey({...host,keyPath:'/keys/first/private_key'})];
+  })()`,context);
+  assert.equal(keys[0],keys[1]);
+  assert.notEqual(keys[0],keys[2]);
+  assert.equal(keys[0],keys[3]);
 });

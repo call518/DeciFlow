@@ -19,7 +19,8 @@ import server
 from classifier import Result
 from source_registry import load_sources, save_sources, source_pattern
 from source_settings import parse_source_settings, resolve_configured_sources
-from ssh_hosts import get_hosts_path, save_host
+from ssh_hosts import get_hosts_directory, save_host
+from ssh_keys import add_key
 
 
 @pytest.fixture
@@ -32,6 +33,7 @@ async def ssh_source(
     host_key = asyncssh.generate_private_key("ssh-ed25519")
     key_path = tmp_path / "client_key"
     client_key.write_private_key(key_path)
+    pair = add_key("Test Key", client_key.export_private_key().decode())
     root = tmp_path / "remote"
     root.mkdir()
     connections: set[asyncssh.SSHServerConnection] = set()
@@ -72,7 +74,7 @@ async def ssh_source(
     home = tmp_path / "home"
     (home / ".ssh").mkdir(parents=True)
     monkeypatch.setenv("HOME", str(home))
-    known_hosts = get_hosts_path().parent / "known_hosts"
+    known_hosts = get_hosts_directory() / "known_hosts"
     known_hosts.parent.mkdir(parents=True, exist_ok=True)
     known_hosts.write_text(
         f"[127.0.0.1]:{port} {host_key.export_public_key().decode()}"
@@ -83,7 +85,7 @@ async def ssh_source(
         "host": "127.0.0.1",
         "port": port,
         "username": "logs",
-        "keyPath": str(key_path),
+        "keyId": pair["id"],
         "path": "/logs/*.log",
     }
     connection = save_host(source)
@@ -170,13 +172,13 @@ async def test_sftp_batch_streams_utf8_and_metadata(ssh_source: Result) -> None:
     directory = ssh_source["root"] / "logs"
     directory.mkdir()
     (directory / "app.log").write_text("hello\n\n한글 로그\nlast", encoding="utf-8")
-    spec = {**ssh_source, "chunkEvents": 2, "action": "notify"}
+    spec = {**ssh_source, "chunkEvents": 2, "actionId": "notify-id"}
     rows = [row async for row in remote_sources.read_remote(spec)]
     assert [row["log"] for row in rows] == ["hello\n한글 로그", "last"]
     assert rows[0]["line"] == 1 and rows[0]["lineEnd"] == 3
     assert rows[0]["source"] == source_pattern({**spec, "path": "/logs/app.log"})
     assert rows[0]["sourceId"] == spec["id"]
-    assert rows[0]["action"] == "notify"
+    assert rows[0]["actionId"] == "notify-id"
     assert rows[0]["sourcePatterns"] == [source_pattern(spec)]
 
 
@@ -187,7 +189,7 @@ async def test_sftp_rejects_unknown_hosts_wrong_keys_and_missing_files(
 ) -> None:
     spec = {**ssh_source}
     if failure == "host":
-        (get_hosts_path().parent / "known_hosts").write_text("")
+        (get_hosts_directory() / "known_hosts").write_text("")
     elif failure == "key":
         wrong = tmp_path / "wrong_key"
         asyncssh.generate_private_key("ssh-ed25519").write_private_key(wrong)

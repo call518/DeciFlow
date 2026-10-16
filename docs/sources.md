@@ -57,8 +57,6 @@ Task Source selections store `hostIds`; connection details are resolved and froz
 for each new run. Host edits apply to new runs, while running jobs keep their snapshots.
 Deletion requires confirmation and is blocked while a saved Task or running job
 references the Host. A key referenced by any saved Host cannot be deleted.
-Existing Source host bindings are automatically moved into every referencing Task.
-Source and Task IDs, known_hosts, and previous run history are preserved.
 
 These fields belong to a Host in Settings:
 
@@ -117,7 +115,8 @@ After verifying it, repeat the request with `trustedHostKey` set to that public 
 Open **Settings → SSH Keys** in the sidebar (`/#settings/ssh-keys`). Enter a key name
 (letters, digits, spaces, underscores, or hyphens) and select one registration method.
 The default view is a searchable list of names, private-key paths, and management
-buttons. **Add Key** opens the registration form; **View** opens details.
+buttons. **Add Key** opens the registration form; **View** opens details; **Edit**
+renames the key without replacing key material. Names must remain unique.
 
 - **Upload Private Key:** select a file from the computer running your browser.
 - **Private Key File Path:** enter a file path accessible to the DeciFlow process
@@ -130,16 +129,18 @@ All three methods accept a dedicated private key without a passphrase, up to
 Select the registered key in an **SSH Host**, then select that Host in the Task's
 Remote File Source row.
 
-Pairs persist under `DECIFLOW_DATA_DIR/ssh-keys/<name>/` in the `deciflow-data`
+Pairs persist under `DECIFLOW_DATA_DIR/ssh-keys/<key-id>/` in the `deciflow-data`
 volume: `private_key` (0600) and `public_key.pub` (0644), in a directory with 0700
-permissions. Settings shows the private key's path with its contents masked as
+permissions. UUID and Name metadata are stored in SQLite. SSH Hosts persist `keyId`;
+key paths are resolved at execution time. Renaming never moves files or changes
+Host references. Settings shows the private key's path with its contents masked as
 `****`, and the public key's path and contents. It never returns private key
 contents. Deleting a pair requires a
 confirmation and is rejected while a saved SSH Host or running job references it.
 Remove or change those references first. Deletion permanently removes both files.
 
 For an existing key on the DeciFlow host, use the file-path method; for a key on
-your browser computer, use upload or paste. Existing SSH Host registrations using mounted key paths remain usable. Settings only manages pairs in `ssh-keys`;
+your browser computer, use upload or paste. SSH Hosts select registered keys by UUID. Settings only manages pairs in `ssh-keys`;
 it does not automatically scan or delete keys elsewhere on the host.
 
 Keys are stored without encryption at rest. Protect access to Settings, the host,
@@ -171,14 +172,13 @@ rotation between checks can still lose events.
 
 SSH Host listing, registration/editing, and deletion use `POST`, `PUT`, and
 `DELETE` on `/api/ssh-hosts`. Hosts persist in
-`DECIFLOW_DATA_DIR/ssh-hosts/hosts.json`.
-SSH Key listing, import, and deletion use `POST`, `PUT`, and `DELETE` on
+`DECIFLOW_DATA_DIR/deciflow.sqlite3`.
+SSH Key listing, import, rename, and deletion use `POST`, `PUT`, `PATCH`, and `DELETE` on
 `/api/ssh-keys` with the same trusted file-access origins as Sources.
 
-Definitions are stored in `DECIFLOW_DATA_DIR/sources/sources.json` (default
-`/var/lib/deciflow-data/sources/sources.json`). Compose's `deciflow-data` volume
-already covers this directory. Saving applies to new runs; active jobs retain
-their source settings even if the registration is edited or deleted.
+Definitions are stored as individual records in `DECIFLOW_DATA_DIR/deciflow.sqlite3`.
+Compose's `deciflow-data` volume already covers this database. Saving applies to
+new runs; active jobs retain their source snapshots.
 
 Management uses `POST /api/sources` to read and `PUT /api/sources` to replace the
 list. Both require the same local/trusted UI Origin as file access. Saving validates
@@ -190,7 +190,7 @@ for `POST /api/file-source` (Local File omits hostIds):
 {
   "mode": "batch",
   "sources": [
-    {"sourceId": "<registered-source-id>", "profile": "general", "chunkEvents": 1, "action": "", "hostIds": ["<ssh-host-id>"]}
+    {"sourceId": "<registered-source-id>", "profile": "general", "chunkEvents": 1, "actionId": "", "hostIds": ["<ssh-host-id>"]}
   ],
   "persist": true
 }

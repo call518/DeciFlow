@@ -181,7 +181,7 @@ async def _chunks(
                 "sourceName": spec["name"],
                 "sourceType": "ssh",
                 "sourcePatterns": source_patterns(spec),
-                **({"action": spec["action"]} if spec.get("action") else {}),
+                **({"actionId": spec["actionId"]} if spec.get("actionId") else {}),
             }
 
 

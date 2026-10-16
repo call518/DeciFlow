@@ -1,5 +1,5 @@
 {
-  "label": "HTTP access",
+  "label": "Sample HTTP access",
   "instructions": "A 404 alone is not an outage or attack. A bot user-agent or encoded URL alone is not malicious. Use only requests in this chunk.",
   "criteria": {
     "normal": "Successful HTTP response or routine redirect without suspicious evidence.",

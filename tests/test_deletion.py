@@ -1,6 +1,5 @@
 """Verify deletion blockers use saved and active references without side effects."""
 
-from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
@@ -11,21 +10,19 @@ import server
 
 @pytest.mark.anyio
 async def test_dependency_check_lists_saved_and_running_references(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    key_path = str(tmp_path / "Key" / "private_key")
     source = {
         "id": "source-1",
         "sourceId": "source-1",
         "name": "Input",
         "profile": "profile-1",
-        "action": "Notify",
+        "actionId": "notify-id",
         "hostId": "host-1",
-        "keyPath": key_path,
+        "keyId": "key-id",
     }
     task = {"id": "task-1", "name": "Analysis", "sources": [source]}
-    host = {"id": "host-1", "name": "Remote", "keyPath": key_path}
-    monkeypatch.setattr(server, "get_keys_directory", lambda: tmp_path)
+    host = {"id": "host-1", "name": "Remote", "keyId": "key-id"}
     monkeypatch.setattr(server, "load_tasks", lambda: [task])
     monkeypatch.setattr(server, "load_sources", lambda: [source])
     monkeypatch.setattr(server, "load_hosts", lambda: [host])
@@ -47,8 +44,8 @@ async def test_dependency_check_lists_saved_and_running_references(
     cases = {
         "Source": "source-1",
         "Criteria": "profile-1",
-        "Action": "Notify",
-        "SSH Key": "Key",
+        "Action": "notify-id",
+        "SSH Key": "key-id",
         "SSH Host": "host-1",
         "Task": "task-1",
     }

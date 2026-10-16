@@ -98,14 +98,14 @@ Wait for the initial model download/loading, then press `Ctrl+C` to leave the lo
 Open **http://127.0.0.1:4000** on the same host. In **Sources**, edit
 **Sample HTTP access** to use `/host-logs/sample-logs/access-100.log` and save.
 In **Tasks**, add a named **Batch / Manual** Task, select **Sample HTTP access**,
-**HTTP access** criteria, **Events/Chunk: 1**, and **Action: None**, then save.
+**Sample HTTP access** criteria, **Events/Chunk: 1**, and **Action: None**, then save.
 Click **Run** in Tasks; select the Task in **Main → Task Monitor** to view its results.
 
 For optional GPU acceleration, see [Docker deployment details](#laya-docker);
 for a paid API, see [Jev](#jev).
 The default key `changeme` is for trials. Change it in `.env` before deployment.
 
-A built-in **DeciFlow Server Log** Task monitors `DECIFLOW_LOG_DIR/server.log` / `DECIFLOW_LOG_DIR/access.log`; it is disabled by default (enable it before Run). Missing default configuration is restored on startup or when the Task registry is removed. See [Tasks](docs/tasks.md).
+A built-in **DeciFlow Server Log** Task monitors `DECIFLOW_LOG_DIR/server.log` / `DECIFLOW_LOG_DIR/access.log`; it is disabled by default (enable it before Run). Missing default configuration is restored on startup, including after Reset DeciFlow. See [Tasks](docs/tasks.md).
 
 Use **Export Reviewed JSON** in Classification Results to download only results
 whose human reviewer category differs from the AI category in the selected run.
@@ -118,11 +118,11 @@ and request/result examples.
 | Guide | Contents |
 | --- | --- |
 | [Tasks](docs/tasks.md) | Reusable executions, cron schedules, continuous monitoring, and durable run history |
-| [Result Storage](docs/result-storage.md) | SQLite, pagination, legacy history migration, backups, and database adapters |
+| [Result Storage](docs/result-storage.md) | SQLite, pagination, configuration/result storage, backups, and database adapters |
 | [Sources](docs/sources.md) | Register local/SSH sources, manage SSH Keys in Settings, and select sorted dropdown entries |
 | [Usage](docs/usage.md) | Input modes, criteria, filters, human review, reconnecting, timing |
 | [Configuration](docs/configuration.md) | Environment variables, models, input budgets |
-| [Criteria](docs/criteria.md) | Manage fixed-category profiles; Default Criteria is view-only |
+| [Criteria](docs/criteria.md) | Manage fixed-category profiles with internal UUIDs; Default Criteria is read-only and cloneable |
 | [Python Actions](docs/actions.md) | Configuration viewing, environment Status, pip-enabled environments, Reset venv, deletion, source assignment |
 | [Result JSON](docs/results.md) | Current request/result examples and field reference |
 
@@ -134,8 +134,17 @@ The browser updates only new results and reuses existing cards. Rendering pauses
 while Main or the tab is hidden; Tasks keep running and all results are retained.
 
 Main groups Source, Criteria, Actions, and Tasks; Settings groups SSH Keys and
-SSH Hosts, plus Results (page size, default 50). Returning through the sidebar opens lists and discards unsaved drafts.
+SSH Hosts and Configurations (result page size, default 50, and maintenance). Returning through the sidebar opens lists and discards unsaved drafts.
 [Usage](docs/usage.md) covers navigation, result controls, and reconnecting.
+Settings and results share `DECIFLOW_DATA_DIR/deciflow.sqlite3`; only SSH key material, known_hosts and Action execution files remain on disk. This test-stage storage change does not import earlier JSON registries or databases: reset application data before use.
+
+A bundled **Elasticsearch** Action is registered on fresh initialization/reset (Python 3.12, module `elasticsearch`). Startup automatically prepares its script, venv, Python and module before Tasks start (download access is required). Setup failures appear in Actions and can be retried by saving or restarting. It is not assigned to Tasks automatically.
+
+Action execution files use `actions/<Action UUID>/`; changing the Name does not create another venv. Action and SSH Key names are editable. Task Action selections and SSH Host key selections use UUIDs; renaming preserves assignments, key files, and Action environments.
+
+**Settings → Configurations → Reset DeciFlow** permanently clears application data
+and restarts the UI server after explicit confirmation. Back up data first; see
+[reset scope and behavior](docs/configuration.md#reset-deciflow).
 
 Settings accepts private keys by **Upload, Path, or Paste**, copies them into managed
 storage, and derives public keys. SSH Hosts save connection details and a key.
@@ -280,6 +289,8 @@ The image provides Python, uv, and operational utilities. The repository is moun
 read-only at `/app`; `uv sync --frozen` installs dependencies into `deciflow-venv`
 on startup. Initial startup needs network access. Compose passes `.env` to the UI;
 `PORT` controls both host and container ports (default: 4000).
+Compose checks for updated images on each `up` with `pull_policy: always`.
+All Compose services map `host.docker.internal` to the Docker host gateway via `extra_hosts`. Recreate existing containers to apply this mapping.
 
 #### Dockerfile and Compose responsibilities
 

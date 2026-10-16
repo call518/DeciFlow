@@ -96,15 +96,9 @@ Evaluation uses only Laya, never paid Jev.
 
 | Path | Contents |
 | --- | --- |
-| `results.sqlite3` | Decisions, errors, Action outcomes, reviewer corrections, and aggregates (SQLite WAL) |
-| `settings.json` | Results page size |
-| `sources/sources.json` | Source names, types, and reusable paths/patterns |
-| `tasks/tasks.json` | Tasks, Source/Host assignments, and schedules |
-| `tasks/<task-id>/runs/<run-id>/run.json` | Run state, settings snapshot, counts, and host collection status |
-| `criteria/criteria.json` | Saved decision profiles |
-| `actions/` | Registrations and each Action's code, venv, project, and lockfile |
-| `ssh-keys/<name>/` | Managed private key and derived public key |
-| `ssh-hosts/hosts.json` | Saved SSH connection definitions |
+| `deciflow.sqlite3` | Sources, Criteria, Tasks, Actions, SSH Hosts, SSH Key metadata, application preferences, execution snapshots, results, reviews, and aggregates (SQLite WAL) |
+| `actions/<name>-<id>/` | Action code, venv, project, and lockfile |
+| `ssh-keys/<key-id>/` | Managed private key and derived public key |
 | `ssh-hosts/known_hosts` | Host keys explicitly approved in DeciFlow |
 
 Back up and protect the whole directory; it contains raw logs and private keys.
@@ -113,3 +107,36 @@ directory. Per-run engine concurrency is shared by all source Hosts; different
 Tasks have separate limits. See [Tasks](tasks.md) for scheduling and storage limits.
 
 Copying only the live database can omit data in its WAL. Stop the server before backing up the whole data directory, or use the SQLite backup API. See [Result storage](result-storage.md).
+
+## Reset DeciFlow
+
+Open **Settings → Configurations → Reset DeciFlow**. The in-app warning lists
+what will be lost and the exact `DECIFLOW_DATA_DIR` path. Cancel, Escape, or the
+close button makes no change. **Yes, Reset DeciFlow** permanently deletes every
+entry in that directory, including hidden files, after stopping the scheduler,
+Tasks, and Action subprocesses and closing SQLite. The directory itself remains;
+child symlinks are removed without deleting their external targets.
+
+This removes Sources, Tasks, Actions and their environments, custom Criteria,
+results/history/reviews, managed SSH Keys/Hosts, approved known_hosts, and saved
+settings. Back up the data directory and export any results/reviews first.
+Application files, `.env`, Laya/model caches, and inputs/logs outside the data
+directory remain unchanged. Put only DeciFlow-managed data in the configured root.
+
+The server replaces its process with the original Python command; no Docker socket
+or Docker control permission is required. Use one server process per data directory.
+Default Criteria, sample Sources, the disabled default Task, and default settings
+return. The browser waits for a new server instance and reloads; it does not retry
+the destructive request. An incomplete cleanup is reported in red after restart;
+check server logs before retrying. Existing Task runs do not resume because their
+definitions have been deleted.
+
+Trusted UI origins only: `POST /api/reset/status` describes the directory and
+server instance; `POST /api/reset` requires
+`{ "confirmation": "RESET DECIFLOW" }` and returns HTTP 202 before graceful
+shutdown. Repeated requests during a reset are rejected. Protected system/project
+roots and a symlink used as the data root are rejected. This maintenance API has
+the same trusted-origin boundary as file and Action management; do not expose it
+to untrusted users.
+
+In **Settings → Configurations**, edit settings and select **Save Changes** at the bottom to apply them together. **Reset DeciFlow** is a separate immediate action with its own confirmation.

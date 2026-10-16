@@ -41,26 +41,29 @@ selected Task unless a historical run was explicitly opened.
 
 Edits apply to new runs; running jobs keep their settings snapshot. Source,
 Criteria, and Action references cannot be removed while saved Tasks use them.
-Stop a Task before deleting it. Deletion permanently removes its history, results, and run directories.
+Stop a Task before deleting it. Deletion permanently removes its history, results, and reviews.
 
 ## Default Task
 
-DeciFlow creates **DeciFlow Server Log** with a Local File Source for
+DeciFlow creates **DeciFlow Server Log** with its **Sample DeciFlow Server Log** Local File Source first in the
+Sources registry. It monitors
 `DECIFLOW_LOG_DIR/server.log` / `DECIFLOW_LOG_DIR/access.log`, General system criteria, one event per chunk, and
 no Action. It uses Realtime mode with the Task disabled; enable it, then use Run to start
 it manually. Automatic restart is off. File logging must be enabled.
 
-The server restores a missing default Task at startup and recreates it if
-`tasks/tasks.json` disappears while running, including after clearing the entire
-Tasks directory. Existing Task settings are preserved; other deleted Tasks and
-history are not restored. Deleting only the default Task through the UI keeps it
-removed until the next server startup.
+The server identifies the default Task by UUID and restores it at startup, including after a reset. If its name conflicts with another Task, a numeric suffix is added.
+Existing Task settings are preserved; deleted nondefault Tasks and history are not
+restored. Deleting only the default Task through the UI keeps it removed until
+next startup. Deleting application files while the server runs is unsupported;
+use Reset DeciFlow to stop execution and close the database first.
+
+
+Action selections store `actionId`; SSH Hosts store `keyId`. Names are display metadata, so renaming does not change saved assignments.
 
 ## Multiple Source Hosts
 
 Each Remote File Source row selects one or more SSH Hosts. Local File has no SSH
 Host selector. At run start, Source × Host expands into frozen connection snapshots.
-Existing Source host bindings are migrated to Task rows automatically.
 
 Collection runs independently per host. Prepared records are submitted in rotating
 host order, skipping empty slots without additional remote availability probes.
@@ -86,12 +89,7 @@ a Realtime pattern with no current files keeps watching for new files.
 Under `DECIFLOW_DATA_DIR` (default `/var/lib/deciflow-data`):
 
 ```text
-results.sqlite3
-settings.json
-tasks/
-  tasks.json
-  <task-id>/runs/<run-id>/
-    run.json
+deciflow.sqlite3
 ```
 
 The data volume preserves definitions, status, settings, original logs, decisions,
@@ -103,7 +101,7 @@ Use **one server process/instance per data directory**. This is an in-process
 scheduler, without distributed workers or DAG dependencies. SQLite stores results;
 the server retains bounded event caches and aggregates, and the browser loads only
 the current page. No automatic disk retention/cleanup is applied. See
-[Result storage](result-storage.md) for migration, pagination, backups, and limits.
+[Result storage](result-storage.md) for configuration storage, pagination, backups, and limits.
 
 ## API
 
@@ -113,7 +111,7 @@ All endpoints require a trusted file-access UI Origin:
 | --- | --- |
 | `POST /api/tasks` | List definitions, active/latest runs, next scheduled time |
 | `PUT /api/tasks` | Save one Task (`id` for update) |
-| `DELETE /api/tasks` | Permanently delete the Task and its history/results/files with `{ "id": "..." }` |
+| `DELETE /api/tasks` | Permanently delete the Task and its history/results/reviews with `{ "id": "..." }` |
 | `POST /api/tasks/<id>/run` | Start manually; HTTP 202 returns run status and jobId |
 | `POST /api/tasks/<id>/stop` | Stop the active run |
 | `POST /api/tasks/<id>/enabled` | Set `{ "enabled": true/false }`; false also stops the active run |
@@ -149,14 +147,14 @@ with `POST /api/tasks/<id>/run` using the returned Task ID.
       "sourceId": "<remote-source-id>",
       "profile": "general",
       "chunkEvents": 1,
-      "action": "",
+      "actionId": "",
       "hostIds": ["<first-host-id>", "<second-host-id>"]
     }
   ]
 }
 ```
 
-Confirming Task deletion permanently removes its definition, all run history, results, reviewer corrections, and Task directory. Original Source files are kept. Existing orphan Task directories are not automatically removed. SQLite reuses freed space; the DB file may not shrink immediately.
+Confirming Task deletion permanently removes its definition, all run history, results, and reviewer corrections. Original Source files are kept. SQLite reuses freed space; the DB file may not shrink immediately.
 
 Once visible, the tooltip stays open while the pointer is over the Task card or
 tooltip. Move into the tooltip to select/copy text; leaving both closes it.

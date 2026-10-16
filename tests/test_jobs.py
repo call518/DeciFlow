@@ -47,11 +47,13 @@ async def test_job_reconnect_replays_without_duplicate_decisions_or_actions(
 
     monkeypatch.setattr(server, "classify_log", handle_classify)
     monkeypatch.setattr(server, "run_action", handle_action)
-    monkeypatch.setattr(server, "load_actions", lambda: [{"name": "notify"}])
+    monkeypatch.setattr(
+        server, "load_actions", lambda: [{"id": "notify-id", "name": "notify"}]
+    )
     log = tmp_path / "job.log"
     log.write_text("one\ntwo\n")
     body = (
-        {"mode": mode, "sources": [{"path": str(log), "action": "notify"}]}
+        {"mode": mode, "sources": [{"path": str(log), "actionId": "notify-id"}]}
         if mode == "batch"
         else {"text": "one\ntwo"}
     )

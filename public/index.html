@@ -20,7 +20,7 @@
     <div class="nav-children" role="group" aria-label="Settings sections">
       <button id="nav-ssh-keys" class="nav" type="button">SSH Keys</button>
       <button id="nav-ssh-hosts" class="nav" type="button">SSH Hosts</button>
-      <button id="nav-results-settings" class="nav" type="button">Results</button>
+      <button id="nav-configuration" class="nav" type="button">Configurations</button>
     </div>
   </nav><div class="aside-bottom"><br><span id="powered-by">Loading engine…</span><br><span>Small decisions. Faster flow.</span></div></aside>
   <main>
@@ -74,24 +74,33 @@
     <section id="settings-page" hidden aria-labelledby="settings-title">
       <section class="intro"><h1 id="settings-title">Settings</h1><p id="settings-description" class="caption">Manage shared application settings.</p></section>
       <section id="settings-overview" class="card">
-        <div class="card-title"><h2>Configuration</h2></div>
+        <div class="card-title"><h2>Settings Sections</h2></div>
         <div class="settings-links">
           <a class="settings-link" href="#settings/ssh-keys"><strong>SSH Keys</strong><span class="caption">Manage authentication keys for SSH connections.</span></a>
           <a class="settings-link" href="#settings/ssh-hosts"><strong>SSH Hosts</strong><span class="caption">Manage remote hosts and test SSH connections.</span></a>
-          <a class="settings-link" href="#settings/results"><strong>Results</strong><span class="caption">Configure result pages.</span></a>
+          <a class="settings-link" href="#settings/configuration"><strong>Configurations</strong><span class="caption">Manage result display and application maintenance settings.</span></a>
         </div>
       </section>
-      <section id="settings-results" class="card" hidden>
-        <form id="results-settings-form" class="action-registration">
-          <label>Results per Page<select id="results-per-page"><option value="10">10</option><option value="30">30</option><option value="50" selected>50</option><option value="100">100</option></select></label>
-          <p class="caption">Controls displayed results only. Stored results are retained.</p>
+      <section id="settings-configuration" class="card" hidden>
+        <form id="results-settings-form">
+          <div class="configuration-row">
+            <label for="results-per-page"><strong>Results per Page</strong></label>
+            <select id="results-per-page"><option value="10">10</option><option value="30">30</option><option value="50" selected>50</option><option value="100">100</option></select>
+            <p class="caption">Controls displayed results only. Stored results are retained.</p>
+          </div>
+        <div class="configuration-row">
+          <strong>Reset DeciFlow</strong>
+          <button id="reset-deciflow" class="danger" type="button" disabled>Reset DeciFlow</button>
+          <p class="caption">Permanently delete application data and restart DeciFlow. Data directory: <span id="reset-data-directory">Loading…</span></p>
+        </div>
+        <p id="configuration-message" class="caption" role="status" aria-live="polite"></p>
           <button id="save-results-settings" class="primary" type="submit">Save Changes</button>
           <p id="results-settings-message" class="caption" role="status"></p>
         </form>
       </section>
       <section id="settings-ssh-keys" class="card actions-manager settings-section" aria-label="SSH Keys">
         <div class="settings-section-body">
-        <p class="caption">Key pairs are stored in deciflow-data/ssh-keys. Private Key contents are never displayed. Public Keys are derived automatically. Keys used by SSH Hosts, saved Sources, or running jobs cannot be deleted.</p>
+        <p class="caption">Key pairs are stored in deciflow-data/ssh-keys. Private Key contents are never displayed. Public Keys are derived automatically. Keys used by SSH Hosts or running jobs cannot be deleted.</p>
         <section id="ssh-key-registry" class="settings-subsection" aria-labelledby="registered-ssh-keys-title">
           <div class="card-title"><h3 id="registered-ssh-keys-title">Registered Keys</h3><button id="open-add-ssh-key" type="button" class="quiet">Add Key</button></div>
           <div class="action-search-row"><label for="ssh-key-search">Search Keys</label><input id="ssh-key-search" type="search" placeholder="Key name…"></div>
@@ -162,17 +171,17 @@
       <section class="card actions-manager">
         <div id="criteria-list">
         <div class="card-title"><h2>Criteria Profiles</h2></div>
-        <p class="caption">The default profile is shown separately with View only. Deleting other profiles requires selecting a replacement in Main. Running jobs keep their original criteria.</p>
+        <p class="caption">The default profile is shown separately with View and Clone. Deleting other profiles requires selecting a replacement in Tasks. Running jobs keep their original criteria.</p>
         <section aria-labelledby="default-criteria-title"><h3 id="default-criteria-title">Default Criteria</h3><div id="criteria-default"></div></section>
-        <div class="card-title"><h3 id="additional-criteria-title">Additional Criteria</h3><button id="add-criteria" type="button" class="quiet" disabled>Add Profile</button></div>
+        <div class="card-title"><h3 id="additional-criteria-title">Registered Criteria</h3><button id="add-criteria" type="button" class="quiet" disabled>Add Profile</button></div>
         <div class="action-search-row"><label for="criteria-search">Search by Name</label><input id="criteria-search" type="search" placeholder="Profile name…"></div>
         <div id="criteria-registry"></div>
         </div>
         <section id="criteria-view" class="configuration-view" hidden aria-label="Criteria configuration"></section>
         <button id="cancel-criteria" type="button" class="quiet" hidden>Cancel Edit</button>
+        <p id="criteria-message" role="status" class="caption"></p>
         <div id="criteria-editor" hidden></div>
         <button id="save-criteria" type="button" class="primary" disabled>Save Changes</button>
-        <p id="criteria-message" role="status" class="caption"></p>
       </section>
     </section>
     <section id="actions-page" hidden aria-labelledby="actions-title">
@@ -215,6 +224,18 @@
       <header class="ssh-trust-header"><h2 id="delete-title">Confirm Deletion</h2><button type="submit" value="cancel" class="quiet ssh-trust-close" aria-label="Cancel deletion">×</button></header>
       <div class="ssh-trust-body"><strong id="delete-name"></strong><p id="delete-description"></p><ul id="delete-references" hidden></ul></div>
       <footer class="ssh-trust-actions"><button id="delete-cancel" type="submit" value="cancel" class="quiet" autofocus>Cancel</button><button id="delete-approve" type="submit" value="delete" class="danger">Delete</button></footer>
+    </form>
+  </dialog>
+  <dialog id="reset-dialog" class="ssh-trust-dialog delete-dialog" aria-labelledby="reset-title" aria-describedby="reset-description">
+    <form method="dialog">
+      <header class="ssh-trust-header"><h2 id="reset-title">Reset DeciFlow?</h2><button type="submit" value="cancel" class="quiet ssh-trust-close" aria-label="Cancel reset">×</button></header>
+      <div class="ssh-trust-body">
+        <p id="reset-description"><strong>This permanently deletes all DeciFlow application data. This cannot be undone.</strong></p>
+        <p>All running Tasks will stop. Tasks, Sources, custom Criteria, Actions and their environments, results, run history, reviews, SSH Keys, SSH Hosts, trusted host keys, and saved settings will be deleted.</p>
+        <p>Everything inside <strong id="reset-confirm-directory"></strong> will be removed, including hidden files. Back up anything you need before continuing.</p>
+        <p>DeciFlow will restart with its default configuration. The data directory itself, application files, .env, input files outside this directory, and logs outside this directory are retained.</p>
+      </div>
+      <footer class="ssh-trust-actions"><button type="submit" value="cancel" class="quiet" autofocus>Cancel</button><button id="confirm-reset" type="submit" value="reset" class="danger">Yes, Reset DeciFlow</button></footer>
     </form>
   </dialog>
   <div id="task-monitor-tooltip" class="task-monitor-tooltip" role="tooltip" hidden></div>

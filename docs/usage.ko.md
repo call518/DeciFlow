@@ -50,10 +50,10 @@ Batch는 선택한 파일을 동시에 읽고 준비된 청크를 교차 공급�
 | Criteria 프로필 | 판정 대상 |
 | --- | --- |
 | General system | 시스템·서비스 동작과 장애 |
-| Authentication | 인증·세션 결과, 서비스 장애, 악용 증거 |
-| HTTP access | 응답, 요청 실패, 의심 접근 |
-| Application | 애플리케이션 작업, 예외, 의존 서비스 |
-| Network / tcpdump text | 텍스트의 연결·패킷 증거; 바이너리 PCAP 미지원 |
+| Sample Authentication | 인증·세션 결과, 서비스 장애, 악용 증거 |
+| Sample HTTP access | 응답, 요청 실패, 의심 접근 |
+| Sample Application | 애플리케이션 작업, 예외, 의존 서비스 |
+| Sample Network / tcpdump text | 텍스트의 연결·패킷 증거; 바이너리 PCAP 미지원 |
 
 프로필은 사이드바의 **Criteria**에서 추가·수정·삭제합니다.
 결과 범주는 Normal·Warning·Error·Security·Other로 고정하며 `general`은 삭제할 수 없습니다.
@@ -90,7 +90,7 @@ Authentication은 개별 시도 실패·중단(Warning), 서비스·지원 기�
 각 결과의 원본 입력 데이터는 굵게 표시합니다. JSON과 Action 코드는 각자의 서식을
 유지합니다.
 
-최근 **판정 완료** 청크부터 기본 페이지당 50건을 표시합니다(Settings → Results에서 10·30·50·100건 선택). 로그 타임스탬프 순서가
+최근 **판정 완료** 청크부터 기본 페이지당 50건을 표시합니다(Settings → Configurations에서 10·30·50·100건 선택). 로그 타임스탬프 순서가
 아닌 완료 순서입니다. Batch의 **File line(s)**는 실제 파일 라인 번호이고,
 Realtime의 **Observed line(s)**는 감시 시작 또는 파일 회전 이후 읽은 라인 순번입니다.
 `1 event (max 5)`는 최대 5이벤트 설정에서 실제 1이벤트를 제출했다는 뜻입니다.
@@ -210,7 +210,7 @@ Settings 자체는 SSH Keys·SSH Hosts로 이동하는 목록을 표시합니다
 해당 실행을 유지합니다.
 
 Task 정의·실행 상태·설정 스냅샷·결과·Action 실행 결과를
-`DECIFLOW_DATA_DIR`에 보존합니다(Task 메타데이터는 `tasks/`, 결과는 `results.sqlite3`). 재시작 시 중단된 실행은 Stopped로 표시합니다.
+`DECIFLOW_DATA_DIR`에 보존합니다(설정과 결과 모두 `deciflow.sqlite3`). 재시작 시 중단된 실행은 Stopped로 표시합니다.
 Batch는 자동 재시도하지 않으며 Realtime은 Resume on restart가 켜진 경우에만
 새 실행을 시작합니다. [Tasks](tasks.ko.md)를 참고하세요.
 
@@ -271,3 +271,7 @@ Source 설정과 호스트 이름·SSH 주소를 확인합니다. 클릭하면 �
 
 말풍선이 열린 뒤에는 Task 카드나 말풍선 위에서 마우스를 움직여도 유지합니다.
 말풍선으로 이동해 텍스트를 선택·복사할 수 있으며 양쪽에서 벗어나면 닫힙니다.
+
+Settings의 **Configurations**은 유지보수 항목을 제공합니다. **Reset DeciFlow**는
+삭제 경고창에서 **Yes, Reset DeciFlow**를 눌러야 실행하며 취소하면 변경하지 않습니다.
+사용 전 [초기화 범위와 재시작](configuration.ko.md#deciflow-초기화)을 확인하세요.

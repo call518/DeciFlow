@@ -4,6 +4,7 @@ import json
 from collections.abc import Iterator
 from copy import deepcopy
 from pathlib import Path
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
@@ -12,9 +13,13 @@ from conftest import DECISION_ANSWERS
 import server
 from classifier import Result, classify_log
 from config import get_engine
+from config_store import (
+    get_database_path,
+    load_records,
+    save_records,
+)
 from profiles import (
     PROFILES,
-    get_criteria_path,
     get_profile,
     load_profiles,
     save_profiles,
@@ -43,11 +48,11 @@ def test_persistence_and_invalid_save(criteria_storage: Path) -> None:
     load_profiles()
     assert PROFILES == values
     assert "network" not in PROFILES
-    saved = get_criteria_path().read_bytes()
+    saved = load_records("criteria")
     values["custom"]["criteria"]["normal"] = ""
     with pytest.raises(ValueError, match="nonempty"):
         save_profiles(values)
-    assert get_criteria_path().read_bytes() == saved
+    assert load_records("criteria") == saved
     assert PROFILES["custom"]["criteria"]["normal"]
 
 
@@ -104,6 +109,7 @@ async def test_custom_criteria_snapshot_reaches_both_engines(
     monkeypatch.setenv("DECISION_ENGINE", engine)
     values = deepcopy(PROFILES)
     values["custom"] = deepcopy(values["general"])
+    values["custom"]["label"] = "Custom"
     values["custom"]["instructions"] = "Original custom instructions"
     save_profiles(values)
     snapshot = deepcopy(PROFILES)
@@ -150,6 +156,7 @@ async def test_started_runs_keep_original_criteria(
     if mode == "configured_batch":
         values = deepcopy(PROFILES)
         values["custom"] = deepcopy(values["general"])
+        values["custom"]["label"] = "Custom"
         save_profiles(values)
         profile = "custom"
     original = PROFILES[profile]["instructions"]
@@ -188,46 +195,54 @@ async def test_started_runs_keep_original_criteria(
 def test_default_criteria_storage(
     monkeypatch: pytest.MonkeyPatch, directory: str | None
 ) -> None:
+    monkeypatch.delenv("DECIFLOW_DATA_DIR", raising=False)
     if directory is not None:
         monkeypatch.setenv("DECIFLOW_DATA_DIR", directory)
-    assert get_criteria_path() == Path("/var/lib/deciflow-data/criteria/criteria.json")
+    assert get_database_path() == Path("/var/lib/deciflow-data/deciflow.sqlite3")
 
 
 def test_shared_criteria_and_action_storage(criteria_storage: Path) -> None:
     import actions
 
     save_profiles(deepcopy(PROFILES))
-    assert get_criteria_path() == criteria_storage / "criteria/criteria.json"
-    assert actions.get_registry_path() == criteria_storage / "actions/actions.json"
+    assert get_database_path() == criteria_storage / "deciflow.sqlite3"
+    assert actions.get_actions_directory() == criteria_storage / "actions"
     assert not (criteria_storage / "actions").exists()
 
 
-def test_startup_creates_criteria_and_preserves_existing_file(
+def test_startup_creates_criteria_and_preserves_existing_records(
     criteria_storage: Path,
 ) -> None:
     expected = deepcopy(PROFILES)
-    path = get_criteria_path()
-    assert not path.exists()
+    assert not get_database_path().exists()
     load_profiles()
-    assert json.loads(path.read_text()) == expected
-    assert PROFILES == expected
-
+    assert load_records("criteria") == expected
     expected["general"]["label"] = "Saved custom name"
     expected.pop("network")
-    path.write_text(json.dumps(expected))
-    saved = path.read_bytes()
+    save_records("criteria", expected)
     load_profiles()
     assert PROFILES == expected
-    assert path.read_bytes() == saved
-    assert "network" not in PROFILES
+    assert not list(criteria_storage.rglob("*.json"))
 
 
 def test_startup_does_not_replace_invalid_existing_criteria(
     criteria_storage: Path,
 ) -> None:
-    path = get_criteria_path()
-    path.parent.mkdir(parents=True)
-    path.write_text("invalid JSON")
+    save_records("criteria", {"general": {"label": "Invalid"}})
     with pytest.raises(ValueError):
         load_profiles()
-    assert path.read_text() == "invalid JSON"
+    assert load_records("criteria") == {"general": {"label": "Invalid"}}
+
+
+def test_uuid_profiles_preserve_legacy_references(criteria_storage: Path) -> None:
+    """Persist UUID criteria alongside legacy IDs without renaming references."""
+    values = deepcopy(PROFILES)
+    identity = str(uuid4())
+    assert UUID(identity).version == 4
+    values[identity] = deepcopy(values["general"])
+    values[identity]["label"] = "한글 Criteria"
+    save_profiles(values)
+    load_profiles()
+    assert PROFILES == values
+    assert get_profile(identity)["label"] == "한글 Criteria"
+    assert get_profile("general") == values["general"]

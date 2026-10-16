@@ -40,15 +40,17 @@ def parse_source_settings(values: object) -> list[dict[str, Any]]:
             value.get("profile", "general"),
             value.get("chunkEvents", value.get("chunkLines", 1)),
         )
-        action = value.get("action", "")
+        if value.get("action"):
+            raise ValueError("Select the Action again using its UUID.")
+        action = value.get("actionId", "")
         if not isinstance(action, str):
-            raise TypeError("Action must be a registered action name.")
+            raise TypeError("Action must be a registered Action UUID.")
         spec = {
             **definition,
             "path": path.strip(),
             "profile": profile,
             "chunkEvents": events,
-            **({"action": action.strip()} if action.strip() else {}),
+            **({"actionId": action.strip()} if action.strip() else {}),
         }
         if definition.get("type") != "ssh":
             if value.get("hostIds"):
@@ -78,6 +80,7 @@ def parse_source_settings(values: object) -> list[dict[str, Any]]:
                     "host": host["host"],
                     "port": host["port"],
                     "username": host["username"],
+                    "keyId": host["keyId"],
                     "keyPath": host["keyPath"],
                 }
             )
@@ -99,8 +102,8 @@ def resolve_configured_sources(
                 if path in result and (
                     result[path]["profile"],
                     result[path]["chunkEvents"],
-                    result[path].get("action", ""),
-                ) != (spec["profile"], spec["chunkEvents"], spec.get("action", "")):
+                    result[path].get("actionId", ""),
+                ) != (spec["profile"], spec["chunkEvents"], spec.get("actionId", "")):
                     raise ValueError(
                         f"Conflicting profile, chunk size, or action for: {path}"
                     )

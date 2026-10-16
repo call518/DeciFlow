@@ -190,6 +190,7 @@ function handleCloseConfiguration(id) {
     $('criteria-editor').hidden = editingCriteria === null;
     $('cancel-criteria').hidden = editingCriteria === null;
     $('save-criteria').disabled = !criteriaLoaded || savingCriteria;
+    if (editingCriteria !== null) handleValidateCriteria(false);
   }
 }
 function highlightPython(target, source) {
@@ -249,14 +250,23 @@ function handleViewConfiguration(id, title, fields) {
 }
 let sshKeys = [];
 function handleCloseKey() {
+  editingSSHKey = null;
+  $('ssh-key-material').hidden = false;
+  $('ssh-key-file').required = true;
   handleCloseInlineView('ssh-key-view');
   $('ssh-key-registry').hidden = false; $('ssh-key-view').hidden = true;
   $('ssh-key-editor').hidden = true;
   $('ssh-key-name').value = ''; $('ssh-key-file').value = ''; $('ssh-key-paste').value = '';
   pastedPrivateKey = '';
 }
-function handleAddKey() {
+function handleAddKey(key = null) {
   handleCloseKey();
+  editingSSHKey = key?.id || null;
+  $('ssh-key-name').value = key?.name || '';
+  $('add-ssh-key-title').textContent = key ? 'Edit SSH Key' : 'Add SSH Key';
+  $('add-ssh-key').textContent = key ? 'Save Changes' : 'Add Key';
+  $('ssh-key-material').hidden = Boolean(key);
+  if (key) for (const id of ['ssh-key-file','ssh-key-path','ssh-key-paste']) $(id).required = false;
   $('ssh-key-registry').hidden = true; $('ssh-key-editor').hidden = false;
   handleMessage('ssh-key-message','');
 }
@@ -279,15 +289,15 @@ function renderSSHKeys() {
   for (const key of sshKeys.filter(key => key.name.toLowerCase().includes(query))) {
     const row = element('tr', ''); row.append(element('td', key.name), element('td', key.privatePath));
     const controls = element('td', '', 'action-list-controls');
-    for (const [caption, handler] of [['View', () => handleViewKey(key)], ['Delete', () => handleDeleteKey(key.name)]]) {
+    for (const [caption, handler] of [['View', () => handleViewKey(key)], ['Edit', () => handleAddKey(key)], ['Delete', () => handleDeleteKey(key)]]) {
       const button = element('button', caption, 'quiet'); button.type = 'button'; button.onclick = handler; controls.append(button);
     }
-    row.append(controls); handleAppendViewRow(body,row,'ssh-key-view',key.name);
+    row.append(controls); handleAppendViewRow(body,row,'ssh-key-view',key.id);
   }
   table.append(body); list.append(table);
   if (!body.children.length) list.append(element('p', 'No matching SSH Keys.', 'caption'));
 }
-$('open-add-ssh-key').onclick = handleAddKey;
+$('open-add-ssh-key').onclick = () => handleAddKey();
 $('cancel-ssh-key').onclick = handleCloseKey;
 $('ssh-key-search').oninput = renderSSHKeys;
 async function handleKeyResponse(response) {
@@ -307,6 +317,7 @@ async function handleLoadKeys() {
     sshKeys = data.keys; renderSSHKeys();
   } catch (error) { handleMessage('ssh-key-message',error.message,true); }
 }
+let editingSSHKey = null;
 let pastedPrivateKey = '';
 $('ssh-key-paste').onpaste = event => {
   event.preventDefault();
@@ -325,37 +336,39 @@ $('ssh-key-method').onchange = () => {
 $('ssh-key-form').onsubmit = async event => {
   event.preventDefault();
   const method = $('ssh-key-method').value || 'upload';
-  const body = { name: $('ssh-key-name').value.trim(), inputMethod: method };
+  const body = { name: $('ssh-key-name').value.trim(), ...(editingSSHKey ? {id:editingSSHKey} : {inputMethod: method}) };
+  const editing = Boolean(editingSSHKey);
   $('add-ssh-key').disabled = true;
-  handleMessage('ssh-key-message','Adding SSH Key…');
+  handleMessage('ssh-key-message',editing ? 'Saving SSH Key…' : 'Adding SSH Key…');
   try {
     if (!/^[A-Za-z0-9_ -]{1,64}$/.test(body.name)) throw new Error('Enter a name of 1–64 letters, digits, spaces, underscores, or hyphens.');
-    if (method === 'path') {
+    if (!editing && method === 'path') {
       body.privateKeyPath = $('ssh-key-path').value.trim();
       if (!body.privateKeyPath) throw new Error('Enter a private key file path.');
-    } else if (method === 'upload') {
+    } else if (!editing && method === 'upload') {
       const file = $('ssh-key-file').files?.[0];
       if (!file || file.size > 65536) throw new Error('Select a private key file of at most 64 KiB.');
       body.privateKey = await file.text();
-    } else {
+    } else if (!editing) {
       if (!pastedPrivateKey || pastedPrivateKey.length > 65536) throw new Error('Paste a private key of at most 64 KiB.');
       body.privateKey = pastedPrivateKey;
     }
-    const response = await fetch('/api/ssh-keys', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const response = await fetch('/api/ssh-keys', { method: editing ? 'PATCH' : 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const data = await handleKeyResponse(response);
     sshKeys = data.keys; renderSSHKeys();
     handleCloseKey();
-    handleMessage('ssh-key-message','SSH Key added.');
+    handleMessage('ssh-key-message',editing ? 'SSH Key renamed.' : 'SSH Key added.');
+    renderSSHHosts();
   } catch (error) { handleMessage('ssh-key-message',error.message,true); }
   finally {
     pastedPrivateKey = ''; $('ssh-key-paste').value = ''; $('ssh-key-file').value = '';
     $('add-ssh-key').disabled = false;
   }
 };
-async function handleDeleteKey(name) {
-  if (!await handleConfirmDelete('SSH Key', name, 'Both private and public key files will be permanently deleted. This cannot be undone.')) return;
+async function handleDeleteKey(key) {
+  if (!await handleConfirmDelete('SSH Key', key.name, 'Both private and public key files will be permanently deleted. This cannot be undone.', key.id)) return;
   try {
-    const response = await fetch('/api/ssh-keys', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+    const response = await fetch('/api/ssh-keys', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: key.id }) });
     const data = await handleKeyResponse(response);
     sshKeys = data.keys; renderSSHKeys(); handleMessage('ssh-key-message','SSH Key deleted.');
   } catch (error) { handleMessage('ssh-key-message',error.message,true); }
@@ -364,10 +377,10 @@ let sshHosts = [];
 let editingSSHHost = null;
 const sshHostChecks = new Map();
 function hostConnectionKey(host) {
-  return JSON.stringify([host.host,host.port,host.username,host.keyPath]);
+  return JSON.stringify([host.host,host.port,host.username,host.keyId || host.keyPath]);
 }
 function hostDraft() {
-  return {...(editingSSHHost ? {id:editingSSHHost} : {}),name:$('ssh-host-name').value,host:$('ssh-host-address').value,port:Number($('ssh-host-port').value),username:$('ssh-host-user').value,keyPath:$('ssh-host-key').value};
+  return {...(editingSSHHost ? {id:editingSSHHost} : {}),name:$('ssh-host-name').value,host:$('ssh-host-address').value,port:Number($('ssh-host-port').value),username:$('ssh-host-user').value,keyId:$('ssh-host-key').value};
 }
 function connectionStatus(result) {
   if(!result)return 'Not checked';
@@ -458,7 +471,7 @@ function renderSSHHosts() {
   const body = element('tbody', ''); const query = $('ssh-host-search').value.toLowerCase();
   for (const host of sshHosts.filter(host => `${host.name} ${host.host} ${host.username}`.toLowerCase().includes(query))) {
     const row = element('tr', '');
-    row.append(element('td', host.name), element('td', `${host.username}@${host.host}:${host.port}`), element('td', sshKeys.find(key => key.privatePath === host.keyPath)?.name || host.keyPath));
+    row.append(element('td', host.name), element('td', `${host.username}@${host.host}:${host.port}`), element('td', sshKeys.find(key => key.id === host.keyId)?.name || host.keyPath));
     const controls = element('td', '', 'action-list-controls');
     for (const [caption, handler] of [['View', () => handleViewHost(host)], ['Edit', () => handleEditHost(host)], ['Delete', () => handleDeleteHost(host)]]) {
       const button = element('button', caption, 'quiet'); button.type = 'button'; button.onclick = handler; controls.append(button);
@@ -485,9 +498,9 @@ function handleEditHost(host = null) {
   $('ssh-host-editor-title').textContent = host ? 'Edit SSH Host' : 'Add SSH Host';
   for (const [id, value] of [['ssh-host-name', host?.name || ''], ['ssh-host-address', host?.host || ''], ['ssh-host-port', host?.port || 22], ['ssh-host-user', host?.username || '']]) $(id).value = String(value);
   const keys = $('ssh-host-key'); keys.replaceChildren();
-  for (const key of sshKeys) keys.append(new Option(key.name, key.privatePath));
-  if (host?.keyPath && !sshKeys.some(key => key.privatePath === host.keyPath)) keys.append(new Option(host.keyPath, host.keyPath));
-  keys.value = host?.keyPath || ''; handleMessage('ssh-host-message','');
+  for (const key of sshKeys) keys.append(new Option(key.name, key.id));
+  if (host?.keyId && !sshKeys.some(key => key.id === host.keyId)) keys.append(new Option('Unavailable Key', host.keyId));
+  keys.value = host?.keyId || ''; handleMessage('ssh-host-message','');
   $('ssh-host-test-result').textContent='';
 }
 function handleViewHost(host) {
@@ -495,7 +508,7 @@ function handleViewHost(host) {
   const view = $('ssh-host-view'); view.replaceChildren();
   const header = element('div', '', 'card-title');
   header.append(element('h3', host.name)); view.append(header);
-  const fields = detailFields([['Host', host.host], ['Port', host.port], ['SSH User', host.username], ['SSH Key Path', host.keyPath]]);
+  const fields = detailFields([['Host', host.host], ['Port', host.port], ['SSH User', host.username], ['SSH Key Path', host.keyPath || sshKeys.find(key=>key.id===host.keyId)?.privatePath || 'Unavailable']]);
   fields.className += ' ssh-host-details';
   fields.children[3].className='view-field-wide';
   view.append(fields); view.hidden = false;
@@ -592,7 +605,7 @@ function renderTaskMonitor() {
         const port=saved?.port || frozen?.port;
         return {id,label:`${hostName}${address?` · ${user?`${user}@`:''}${address}:${port || 22}`:''}`};
       }):[{id:'local',label:'DeciFlow (Local)'}];
-      return {name:definition?.name || 'Unavailable source',path:definition?.path,type:remote?'Remote File (SSH)':'Local File',action:source.action || 'None',hosts,profile:profileLabels[source.profile] || source.profile || 'General system',chunkEvents:source.chunkEvents || 1};
+      return {name:definition?.name || 'Unavailable source',path:definition?.path,type:remote?'Remote File (SSH)':'Local File',action:actionName(source.actionId),hosts,profile:profileLabels[source.profile] || source.profile || 'General system',chunkEvents:source.chunkEvents || 1};
     });
     const hostCount=new Set(definitions.flatMap(source=>source.hosts.map(host=>host.id))).size;
     const summary=element('span',`Source: ${definitions.map(source=>source.name).join(', ') || 'None'} · Source Hosts: ${hostCount}`,'caption monitor-task-sources');
@@ -692,7 +705,7 @@ async function handleEditTask(task=null) {
   $('task-cron').value=task?.cron || '';$('task-timezone').value=task?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   $('task-enabled').checked=task?.enabled ?? true;$('task-resume').checked=task?.resumeOnRestart || false;
   sourcePreferences.clear();
-  for(const source of task?.sources || [])sourcePreferences.set(source.sourceId,{profile:source.profile,chunkEvents:source.chunkEvents,action:source.action || '',hostIds:[...(source.hostIds || [])]});
+  for(const source of task?.sources || [])sourcePreferences.set(source.sourceId,{profile:source.profile,chunkEvents:source.chunkEvents,actionId:source.actionId || '',hostIds:[...(source.hostIds || [])]});
   const paths=task?.sources.map(source=>source.sourceId) || registeredSources.slice(0,1).map(source=>source.id);
   $('file-path').value=paths.join('\n');updateSourceSettings(paths);handleTaskMode();handleMessage('task-message','');
 }
@@ -701,7 +714,7 @@ $('task-form').onsubmit=async event=>{
   event.preventDefault();$('save-task').disabled=true;
   try {
     const mode=$('source-mode').value;
-    const sources=sourceRows.map(({path,profile,size,action,hostIds})=>({sourceId:path,profile:profile.value,chunkEvents:Number(size.value),action:action.value,...(hostIds?.length?{hostIds:[...hostIds]}:{})}));
+    const sources=sourceRows.map(({path,profile,size,action,hostIds})=>({sourceId:path,profile:profile.value,chunkEvents:Number(size.value),actionId:action.value,...(hostIds?.length?{hostIds:[...hostIds]}:{})}));
     const task={...(editingTask?{id:editingTask}:{}),name:$('task-name').value,mode,sources,cron:mode==='batch' && $('task-trigger').value==='cron'?$('task-cron').value:'',timezone:$('task-timezone').value || 'UTC',enabled:$('task-enabled').checked,resumeOnRestart:mode==='realtime' && $('task-resume').checked};
     const response=await fetch('/api/tasks',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(task)});
     const data=await response.json();if(!response.ok)throw new Error(data.error);
@@ -727,7 +740,7 @@ function handleViewTask(task) {
       ['Source Type',definition?.type==='ssh' || source.hostIds?.length?'Remote File (SSH)':'Local File',false],
       ['Criteria',profileLabels[source.profile] || source.profile,false],
       ['Events per Chunk',String(source.chunkEvents),false],
-      ['Action',source.action || 'None',false],
+      ['Action',actionName(source.actionId),false],
     ]){
       const field=element('div','',wide?'task-source-field-wide':'');
       field.append(element('dt',label),element('dd',value,label==='File Path / Pattern'?'task-source-path':''));fields.append(field);
@@ -746,7 +759,7 @@ function handleViewTask(task) {
   container.append(sources);view.append(container);view.hidden=false;
 }
 async function handleDeleteTask(task) {
-  if(!await handleConfirmDelete('Task', task.name, 'The Task, all run history, results, reviewer corrections, and Task files will be permanently deleted. Original source files are kept. This cannot be undone.', task.id))return;
+  if(!await handleConfirmDelete('Task', task.name, 'The Task, all run history, results, and reviewer corrections will be permanently deleted. Original source files are kept. This cannot be undone.', task.id))return;
   try {
     const response=await fetch('/api/tasks',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:task.id})});
     const data=await response.json();if(!response.ok)throw new Error(data.error);
@@ -840,15 +853,16 @@ function handleNavigation(view, section=null) {
   $('nav-settings').setAttribute('data-active', String(view === 'settings'));
   const settingsHeading = section === 'ssh-keys'
     ? ['SSH Keys', 'Manage authentication keys for SSH connections.']
-    : section === 'results' ? ['Results', 'Configure result pages.']
+    : section === 'configuration' ? ['Configurations', 'Manage result display and application maintenance settings.']
     : section === 'ssh-hosts'
       ? ['SSH Hosts', 'Manage remote hosts and test SSH connections.']
       : ['Settings', 'Manage shared application settings.'];
   $('settings-title').textContent = settingsHeading[0];
   $('settings-description').textContent = settingsHeading[1];
   $('settings-overview').hidden = Boolean(section);
-  $('settings-results').hidden = view !== 'settings' || section !== 'results';
-  $('nav-results-settings').setAttribute('aria-current', view === 'settings' && section === 'results' ? 'page' : 'false');
+  $('settings-configuration').hidden=view!=='settings' || section!=='configuration';
+  $('nav-configuration').setAttribute('aria-current',view==='settings' && section==='configuration'?'page':'false');
+  if(view==='settings' && section==='configuration'){handleLoadResetStatus();handleLoadResultSettings();}
   for(const id of ['ssh-keys','ssh-hosts']) {
     $(`settings-${id}`).hidden = view !== 'settings' || section !== id;
     $(`nav-${id}`).setAttribute('aria-current', view === 'settings' && section===id ? 'page' : 'false');
@@ -865,10 +879,10 @@ function handleNavigation(view, section=null) {
   $('nav-main').setAttribute('aria-current', view === 'main' ? 'page' : 'false');
   $('nav-actions').setAttribute('aria-current', view === 'actions' ? 'page' : 'false');
 }
+$('nav-configuration').onclick=()=>handleMenuNavigation('settings','configuration');
 $('nav-settings').onclick = () => { handleMenuNavigation('settings'); };
 $('nav-ssh-keys').onclick = () => handleMenuNavigation('settings','ssh-keys');
 $('nav-ssh-hosts').onclick = () => handleMenuNavigation('settings','ssh-hosts');
-$('nav-results-settings').onclick = () => {handleMenuNavigation('settings','results');handleLoadResultSettings();};
 $('nav-tasks').onclick = () => handleMenuNavigation('tasks');
 $('nav-main').onclick = () => handleNavigation('main');
 $('nav-actions').onclick = () => handleMenuNavigation('actions');
@@ -881,7 +895,7 @@ result = json.load(sys.stdin)
 # Use result["category"], result["log"], and result["source"] here.
 # Replace this handler with your notification, storage, or other integration.
 `;
-const profileLabels = { general: 'General system', authentication: 'Authentication', http_access: 'HTTP access', application: 'Application', network: 'Network / tcpdump text' };
+const profileLabels = { general: 'General system', authentication: 'Sample Authentication', http_access: 'Sample HTTP access', application: 'Sample Application', network: 'Sample Network / tcpdump text' };
 let registeredActions = [];
 let actionRows = [];
 let preparingActions = false;
@@ -915,13 +929,15 @@ function renderActions() {
     const state = action.pythonVersion && preparingActions && (index === preparingActionIndex || (preparingActionIndex === null && action.environmentStatus === 'not_ready')) ? 'preparing' : action.environmentStatus || (action.pythonVersion ? 'not_ready' : 'external');
     const status = element('td', '', 'action-status-cell');
     const badge = element('span', { ready: 'Ready', preparing: 'Preparing...', not_ready: 'Not ready', external: 'External' }[state], `action-status ${state}`);
-    badge.setAttribute('role', 'status'); status.append(badge); row.append(status);
+    badge.setAttribute('role', 'status'); status.append(badge);
+    if (state === 'not_ready' && action.preparationError) status.append(element('div', action.preparationError, 'error-message'));
+    row.append(status);
     const controls = element('td', '', 'action-list-controls');
     for (const [caption, handler] of [
       ['View', () => handleViewConfiguration('action-view', action.name, [['Name', action.name], ['ID', action.id], ['Python Version', action.pythonVersion], ['Modules', action.modules || []], ['Python Executable', action.python], ['Script Path', action.script], ['Python Code', action.code]])],
       ['Edit', () => handleEditAction(index)],
       ['Reset venv', () => handleResetAction(index)],
-      ['Delete', async () => { if (!await handleConfirmDelete('Action', action.name, 'This Action and its managed script and environment will be deleted when you save changes.')) return; registeredActions.splice(registeredActions.indexOf(action), 1); handleCloseConfiguration('action-view'); renderActions(); handleMessage('action-message','Deletion pending. Save Changes to apply.'); }],
+      ['Delete', async () => { if (!await handleConfirmDelete('Action', action.name, 'This Action and its managed script and environment will be deleted when you save changes.', action.id)) return; registeredActions.splice(registeredActions.indexOf(action), 1); handleCloseConfiguration('action-view'); renderActions(); handleMessage('action-message','Deletion pending. Save Changes to apply.'); }],
     ]) {
       const button = element('button', caption, 'quiet');
       button.type = 'button'; button.disabled = preparingActions || (caption !== 'View' && editingAction !== null) || (caption === 'Reset venv' && (!action.id || !action.pythonVersion));
@@ -977,18 +993,12 @@ function handleEditAction(index) {
     const label = element('label', caption);
     const input = element(['modules', 'code'].includes(key) ? 'textarea' : 'input', '');
     input.value = key === 'modules' && Array.isArray(action.modules) ? action.modules.join('\n') : action[key] || (key === 'pythonVersion' ? '3.12' : '');
-    if (key === 'name') input.readOnly = index < registeredActions.length;
-    if (key === 'modules') input.rows = 3;
+    if (key === 'name') input.readOnly = false;
+    if (key === 'modules') { input.rows = 3; input.className = 'action-modules'; }
     if (key === 'code') { input.rows = 14; input.spellcheck = false; input.className = 'action-code'; label.className = 'action-code-label'; }
     input.setAttribute('aria-label', caption);
     label.append(input);
     if(key==='code')handlePythonEditor(input,label);
-    if (key === 'name' && !input.readOnly) {
-      const note = element('span', 'Name cannot be changed after creation.', 'caption error-message');
-      note.id = 'action-name-note';
-      input.setAttribute('aria-describedby', note.id);
-      label.append(note);
-    }
     if (['pythonVersion', 'modules'].includes(key) && index < registeredActions.length) {
       const note = element('span', 'Changing Python version or modules replaces the environment after preparation succeeds. Stop runs using this Action before editing.', 'caption');
       note.id = `action-${key}-note`;
@@ -1023,12 +1033,11 @@ $('save-actions').onclick = async () => {
   try {
     const values = registeredActions.slice();
     if (editingAction !== null) values[editingAction] = { ...registeredActions[editingAction], ...Object.fromEntries(Object.entries(actionRows[0]).map(([key, input]) => [key, input.value])) };
-    if (editingAction !== null && registeredActions[editingAction]) values[editingAction].name = registeredActions[editingAction].name;
     const response = await fetch('/api/actions', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values) });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error);
     registeredActions = data.actions;
-    handleCloseConfiguration('action-view'); handleCloseAction(); updateSourceSettings();
+    handleCloseConfiguration('action-view'); handleCloseAction(); updateSourceSettings(); renderTaskMonitor();
     handleMessage('action-message','Actions saved and environments ready. Changes apply to the next run.');
   } catch (error) { handleMessage('action-message',error.message,true); }
   finally {
@@ -1048,28 +1057,33 @@ let criteriaLoaded = false;
 let savingCriteria = false;
 let editingCriteria = null;
 let criteriaFields = {};
+let criteriaTemplate = null;
+let criteriaDraftId = null;
 function handleViewCriteria(id) {
   const profile = criteriaProfiles[id];
-  handleViewConfiguration('criteria-view', profile.label, [['Profile ID', id], ['Name', profile.label], ['Decision Instructions', profile.instructions], ...Object.entries(labels).map(([key, label]) => [label, profile.criteria[key]]), ['Normalization', profile.normalization]]);
+  handleViewConfiguration('criteria-view', profile.label, [['Name', profile.label], ['Decision Instructions', profile.instructions], ...Object.entries(labels).map(([key, label]) => [label, profile.criteria[key]]), ['Normalization', profile.normalization]]);
 }
 function renderCriteria() {
   handleParkInlineView('criteria-view');
   $('criteria-list').hidden = editingCriteria !== null;
   const defaultTable = element('table', '', 'action-list');
   const defaultHeader = element('tr', '');
-  for (const title of ['Name', 'Profile ID', 'Manage']) defaultHeader.append(element('th', title));
+  for (const title of ['Name', 'Manage']) defaultHeader.append(element('th', title));
   const defaultRow = element('tr', '');
-  defaultRow.append(element('td', criteriaProfiles.general.label), element('td', 'general'));
+  defaultRow.append(element('td', criteriaProfiles.general.label));
   const defaultControls = element('td', '', 'action-list-controls');
   const viewDefault = element('button', 'View', 'quiet');
   viewDefault.type = 'button'; viewDefault.disabled = savingCriteria;
   viewDefault.onclick = () => handleViewCriteria('general');
-  defaultControls.append(viewDefault); defaultRow.append(defaultControls);
+  const cloneDefault = element('button', 'Clone', 'quiet');
+  cloneDefault.type = 'button'; cloneDefault.disabled = savingCriteria || editingCriteria !== null;
+  cloneDefault.onclick = () => handleCloneCriteria('general');
+  defaultControls.append(viewDefault, cloneDefault); defaultRow.append(defaultControls);
   defaultTable.append(defaultHeader);handleAppendViewRow(defaultTable,defaultRow,'criteria-view','general');
   $('criteria-default').replaceChildren(); $('criteria-default').append(defaultTable);
   const table = element('table', '', 'action-list');
   const header = element('tr', '');
-  for (const title of ['Name', 'Profile ID', 'Manage']) header.append(element('th', title));
+  for (const title of ['Name', 'Manage']) header.append(element('th', title));
   table.append(header);
   const query = $('criteria-search').value.trim().toLowerCase();
   let matches = 0;
@@ -1077,11 +1091,12 @@ function renderCriteria() {
     if (id === 'general' || !profile.label.toLowerCase().includes(query)) continue;
     matches++;
     const row = element('tr', '');
-    row.append(element('td', profile.label), element('td', id));
+    row.append(element('td', profile.label));
     const controls = element('td', '', 'action-list-controls');
     for (const [caption, handler] of [
       ['View', () => handleViewCriteria(id)],
       ['Edit', () => handleEditCriteria(id)],
+      ['Clone', () => handleCloneCriteria(id)],
       ['Delete', async () => { if (!await handleConfirmDelete('Criteria', profile.label, 'This criteria profile will be deleted when you save changes.', id)) return; delete criteriaProfiles[id]; handleCloseConfiguration('criteria-view'); renderCriteria(); handleMessage('criteria-message','Deletion pending. Save Changes to apply.'); }],
     ]) {
       const button = element('button', caption, 'quiet');
@@ -1095,29 +1110,51 @@ function renderCriteria() {
   $('criteria-registry').append(matches ? table : element('p', 'No profiles match your search.', 'caption'));
   $('add-criteria').disabled = !criteriaLoaded || savingCriteria || editingCriteria !== null;
 }
-function handleEditCriteria(id) {
+function handleCloneCriteria(id) {
+  const profile = criteriaProfiles[id];
+  handleEditCriteria('', { ...profile, label: `${profile.label} (Clone)`, criteria: { ...profile.criteria } });
+}
+function handleEditCriteria(id, template = null) {
   handleCloseConfiguration('criteria-view');
   editingCriteria = id;
-  const profile = criteriaProfiles[id] || { label: '', instructions: '', criteria: { ...criteriaProfiles.general.criteria } };
+  criteriaTemplate = template;
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 15) | 64; bytes[8] = (bytes[8] & 63) | 128;
+  const hex = Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+  criteriaDraftId = id || `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+  const profile = criteriaProfiles[id] || template || { label: '', instructions: '', criteria: { ...criteriaProfiles.general.criteria } };
   const row = element('div', '', 'action-registration');
   criteriaFields = {};
-  for (const [key, caption] of [['id', 'Profile ID (lowercase letters, digits, _ or -)'], ['label', 'Name'], ['instructions', 'Decision Instructions'], ...Object.entries(labels)]) {
+  for (const [key, caption] of [['label', 'Name'], ['instructions', 'Decision Instructions'], ...Object.entries(labels)]) {
     const label = element('label', caption);
-    const input = element(['id', 'label'].includes(key) ? 'input' : 'textarea', '');
-    input.value = key === 'id' ? id : (profile[key] ?? profile.criteria[key] ?? '');
-    if (key === 'id') input.readOnly = Boolean(criteriaProfiles[id]);
+    const input = element(key === 'label' ? 'input' : 'textarea', '');
+    input.value = profile[key] ?? profile.criteria[key] ?? '';
     input.setAttribute('aria-label', caption);
     if (key !== 'id' && key !== 'label') { input.rows = 3; label.className = 'action-code-label'; }
     label.append(input); row.append(label); criteriaFields[key] = input;
   }
-  $('criteria-editor').replaceChildren(); $('criteria-editor').append(row);
+  criteriaFields.label.oninput = () => handleValidateCriteria();
+  criteriaFields.label.oninput();
+  $('criteria-editor').replaceChildren(); $('criteria-editor').append(element('h3', id ? 'Edit Profile' : 'Add Profile'), row);
   $('criteria-editor').hidden = false; $('cancel-criteria').hidden = false;
   renderCriteria();
 }
+function handleValidateCriteria(showMessage = true) {
+  if (editingCriteria === null) return true;
+  const name = criteriaFields.label.value.trim();
+  const errors = [];
+  if (!name) errors.push('Name is required.');
+  if (Object.entries(criteriaProfiles).some(([key, profile]) => key !== editingCriteria && profile.label.trim().toLowerCase() === name.toLowerCase())) errors.push('Name already exists.');
+  if (showMessage) handleMessage('criteria-message', errors.join(' '), errors.length > 0);
+  $('save-criteria').disabled = savingCriteria || errors.length > 0;
+  return errors.length === 0;
+}
 function handleCloseCriteria() {
-  editingCriteria = null; criteriaFields = {};
+  editingCriteria = null; criteriaFields = {}; criteriaTemplate = null; criteriaDraftId = null;
   $('criteria-editor').replaceChildren(); $('criteria-editor').hidden = true;
   $('cancel-criteria').hidden = true;
+  $('save-criteria').disabled = savingCriteria;
+  handleMessage('criteria-message', '');
   if (criteriaLoaded) renderCriteria();
 }
 function handleCriteriaLabels(profiles) {
@@ -1150,15 +1187,16 @@ $('criteria-search').oninput = renderCriteria;
 $('add-criteria').onclick = () => handleEditCriteria('');
 $('cancel-criteria').onclick = handleCloseCriteria;
 $('save-criteria').onclick = async () => {
+  if (!handleValidateCriteria()) return;
   savingCriteria = true; $('save-criteria').disabled = true; $('cancel-criteria').disabled = true;
   renderCriteria();
   for (const input of Object.values(criteriaFields)) input.disabled = true;
   try {
     const values = { ...criteriaProfiles };
     if (editingCriteria !== null) {
-      const id = criteriaFields.id.value.trim();
+      const id = criteriaDraftId;
       if (!editingCriteria && Object.hasOwn(values, id)) throw new Error('Profile ID already exists.');
-      values[id] = { ...criteriaProfiles[editingCriteria], label: criteriaFields.label.value, instructions: criteriaFields.instructions.value, criteria: Object.fromEntries(Object.keys(labels).map(key => [key, criteriaFields[key].value])) };
+      values[id] = { ...(criteriaProfiles[editingCriteria] || criteriaTemplate), label: criteriaFields.label.value, instructions: criteriaFields.instructions.value, criteria: Object.fromEntries(Object.keys(labels).map(key => [key, criteriaFields[key].value])) };
     }
     const response = await fetch('/api/criteria', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values) });
     const data = await response.json();
@@ -1171,6 +1209,7 @@ $('save-criteria').onclick = async () => {
     savingCriteria = false; $('save-criteria').disabled = false; $('cancel-criteria').disabled = false;
     for (const input of Object.values(criteriaFields)) input.disabled = false;
     renderCriteria();
+    if (editingCriteria !== null) handleValidateCriteria(false);
   }
 };
 let sourcesLoaded = false;
@@ -1257,16 +1296,19 @@ $('save-sources').onclick = async () => {
 function compareNames(left, right) {
   return left.name.localeCompare(right.name, 'ko', {numeric:true, sensitivity:'base'});
 }
+function actionName(id) {
+  return id ? registeredActions.find(action=>action.id===id)?.name || 'Unavailable Action' : 'None';
+}
 function selectionInput(items, value, caption, placeholder) {
   const input = element('select', ''); input.disabled = false;
   input.setAttribute('aria-label', caption);
   if (placeholder) input.append(new Option(placeholder, ''));
   for (const item of [...items].sort(compareNames)) {
-    const option = new Option(item.name, item.name);
+    const option = new Option(item.name, item.id);
     option.title = item.label || item.name;
     input.append(option);
   }
-  if (value && !items.some(item => item.name === value)) {
+  if (value && !items.some(item => item.id === value)) {
     input.append(new Option(`Unavailable: ${value}`, value));
   }
   input.value = value;
@@ -1314,7 +1356,7 @@ function updateSourceSettings(paths = $('file-path').value.split('\n').map(s => 
     const preference = sourcePreferences.get(path) || sourcePreferences.get(definitionForDefaults?.path) || { profile: defaultSourceProfiles[sampleSources.find(source => source.id === path)?.path || definitionForDefaults?.path || path] || 'general', chunkEvents: 1 };
     const row = element('div', '', 'source-setting');
     const definition = [...registeredSources, ...sourceSnapshots].find(source => source.id === path || (source.type === 'local' && source.path === path));
-    const name = selectionInput(registeredSources.map(source => ({ name: source.name, label: sourceDescription(source) })), definition?.name || '', 'Registered source', '');
+    const name = selectionInput(registeredSources.map(source => ({ id: source.id, name: source.name, label: sourceDescription(source) })), definition?.id || '', 'Registered source', '');
     name.className = 'source-path-input';
     const pathLabel = element('label', 'Source ', 'source-path');
     const selectedPath = element('span', definition?.path ? `Path: ${definition.path}` : '', 'source-selected-path');
@@ -1332,13 +1374,13 @@ function updateSourceSettings(paths = $('file-path').value.split('\n').map(s => 
     label.append(size);
     const criteriaLabel = element('label', 'Criteria ', 'criteria-label');
     criteriaLabel.append(profile);
-    const action = selectionInput(registeredActions.filter(item => item.name), preference.action || '', `Action for ${path}`, 'None');
+    const action = selectionInput(registeredActions.filter(item => item.name), preference.actionId || '', `Action for ${path}`, 'None');
     const actionLabel = element('label', 'Action '); actionLabel.append(action);
     const remove = element('button', 'Remove', 'quiet source-remove');
     remove.type = 'button'; remove.disabled = false;
     row.append(pathLabel, criteriaLabel, label, actionLabel, remove);
     const save = () => {
-      sourcePreferences.set(source.path, { profile: profile.value, chunkEvents: Number(size.value), action: action.value, hostIds:[...source.hostIds] });
+      sourcePreferences.set(source.path, { profile: profile.value, chunkEvents: Number(size.value), actionId: action.value, hostIds:[...source.hostIds] });
       try { localStorage.setItem('deciflow-source-preferences', JSON.stringify([...sourcePreferences].map(([path, { profile, chunkEvents }]) => [path, { profile, chunkEvents }]))); } catch { /* Preferences remain available for this page session. */ }
     };
     profile.onchange = save; size.oninput = save; action.onchange = save;
@@ -1346,7 +1388,7 @@ function updateSourceSettings(paths = $('file-path').value.split('\n').map(s => 
     const hosts = hostPicker(source, save); hosts.hidden=definition?.type!=='ssh';
     row.replaceChildren();row.append(pathLabel,criteriaLabel,label,actionLabel,hosts,remove);
     name.onchange = () => {
-      const selected = registeredSources.find(item => item.name === name.value);
+      const selected = registeredSources.find(item => item.id === name.value);
       source.path = selected?.id || '';
       selectedPath.textContent = selected?.path ? `Path: ${selected.path}` : '';
       selectedPath.hidden = !selected?.path;
@@ -1372,7 +1414,7 @@ $('add-source').onclick = () => {
 $('reset-sources').onclick = () => {
   const available = sampleSources.filter(sample => registeredSources.some(source => source.id === sample.id));
   const defaults = (available.length ? available : registeredSources.slice(0, 1)).map(source => source.id).join('\n');
-  for (const path of defaults.split('\n')) sourcePreferences.set(path, { profile: defaultSourceProfiles[sampleSources.find(source => source.id === path)?.path || registeredSources.find(source => source.id === path)?.path] || 'general', chunkEvents: 1, action: '' });
+  for (const path of defaults.split('\n')) sourcePreferences.set(path, { profile: defaultSourceProfiles[sampleSources.find(source => source.id === path)?.path || registeredSources.find(source => source.id === path)?.path] || 'general', chunkEvents: 1, actionId: '' });
   try { localStorage.setItem('deciflow-source-preferences', JSON.stringify([...sourcePreferences].map(([path, { profile, chunkEvents }]) => [path, { profile, chunkEvents }]))); } catch { /* The current page still uses the reset defaults. */ }
   filePaths[sourceMode] = defaults; $('file-path').value = defaults;
   updateSourceSettings();
@@ -1870,6 +1912,53 @@ function handleExportResults(reviewedOnly=false) {
 }
 $('export').onclick=()=>handleExportResults();
 $('export-reviewed').onclick=()=>handleExportResults(true);
+let resetInfo=null;
+let resettingDeciFlow=false;
+async function handleLoadResetStatus() {
+  if(resettingDeciFlow)return;
+  $('reset-deciflow').disabled=true;
+  try{
+    const response=await fetch('/api/reset/status',{method:'POST'});
+    if(response.status===404 || response.status===405)throw new Error('Reset API is unavailable. Restart the DeciFlow UI server or container.');
+    const data=await response.json();if(!response.ok)throw new Error(data.error);
+    resetInfo=data;$('reset-data-directory').textContent=data.dataDirectory;
+    $('reset-deciflow').disabled=Boolean(data.resetting);
+    handleMessage('configuration-message',data.resetError || (data.resetting?'Reset is in progress…':''),Boolean(data.resetError));
+  }catch(error){handleMessage('configuration-message',error.message,true);}
+}
+$('reset-deciflow').onclick=async()=>{
+  if(!resetInfo || resettingDeciFlow)return;
+  const dialog=$('reset-dialog');dialog.returnValue='cancel';$('reset-confirm-directory').textContent=resetInfo.dataDirectory;
+  const confirmed=await new Promise(resolve=>{dialog.onclose=()=>resolve(dialog.returnValue==='reset');dialog.showModal();});
+  if(!confirmed)return;
+  resettingDeciFlow=true;$('reset-deciflow').disabled=true;
+  let accepted=false;
+  try{
+    const response=await fetch('/api/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirmation:'RESET DECIFLOW'})});
+    const data=await response.json();if(!response.ok)throw new Error(data.error);
+    accepted=true;
+    handleMessage('configuration-message','Reset accepted. Stopping Tasks, deleting data, and restarting…');
+    for(const storage of [globalThis.localStorage,globalThis.sessionStorage]){
+      if(!storage)continue;
+      try{for(const key of ['deciflow-source-preferences','deciflow-job-id'])storage.removeItem?.(key);}catch{/* Browser storage may be disabled. */}
+    }
+    const deadline=Date.now()+60000;
+    while(Date.now()<deadline){
+      await new Promise(resolve=>setTimeout(resolve,1000));
+      let status;
+      try{
+        const check=await fetch('/api/reset/status',{method:'POST'});
+        if(check.ok)status=await check.json();
+      }catch{/* The server closes connections while restarting. */}
+      if(status && status.instanceId!==data.instanceId && !status.resetting){
+        if(status.resetError)throw new Error(status.resetError);
+        globalThis.location.reload();return;
+      }
+    }
+    throw new Error('The server has not returned yet. Refresh this page after checking the server logs.');
+  }catch(error){handleMessage('configuration-message',error.message,true);}
+  finally{resettingDeciFlow=false;if(!accepted)$('reset-deciflow').disabled=false;}
+};
 async function handleLoadResultSettings() {
   try {
     const response=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
@@ -1980,7 +2069,7 @@ fetch('/api/status').then(async response => {
 
 function handleRoute() {
   const hash = globalThis.location?.hash;
-  const section = hash === '#settings/results' ? 'results' : hash === '#settings/ssh-keys' ? 'ssh-keys' : hash === '#settings/ssh-hosts' ? 'ssh-hosts' : null;
+  const section = (hash === '#settings/configuration' || hash === '#settings/results') ? 'configuration' : hash === '#settings/ssh-keys' ? 'ssh-keys' : hash === '#settings/ssh-hosts' ? 'ssh-hosts' : null;
   const view = hash === '#tasks' ? 'tasks' : hash === '#settings' || section ? 'settings' : hash === '#sources' ? 'sources' : hash === '#criteria' ? 'criteria' : hash === '#actions' ? 'actions' : 'main';
   if (view === currentView && section === currentSettingsSection) return;
   if (view === 'criteria') return $('nav-criteria').onclick();

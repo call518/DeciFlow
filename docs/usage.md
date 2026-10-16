@@ -55,10 +55,10 @@ separately. No ticket is created automatically. Missing or invalid answers fail 
 | Criteria profile | Focus |
 | --- | --- |
 | General system | System/service operation and failures |
-| Authentication | Authentication/session outcomes, service failures, and abuse |
-| HTTP access | Responses, request failures, and suspicious access |
-| Application | Application operations, exceptions, and dependencies |
-| Network / tcpdump text | Connection/packet evidence in text; binary PCAP is unsupported |
+| Sample Authentication | Authentication/session outcomes, service failures, and abuse |
+| Sample HTTP access | Responses, request failures, and suspicious access |
+| Sample Application | Application operations, exceptions, and dependencies |
+| Sample Network / tcpdump text | Connection/packet evidence in text; binary PCAP is unsupported |
 
 Use **Criteria** in the sidebar to add, edit, or delete profiles.
 Result categories remain Normal, Warning, Error, Security, and Other; `general` cannot
@@ -97,7 +97,7 @@ reduces input variation; it does not guarantee identical predictions or accuracy
 Each result displays the original input data in bold; JSON and Action code keep
 their own formatting.
 
-Newest **completed** chunks appear first, with 50 results per page by default (Settings → Results: 10, 30, 50, or 100); this is
+Newest **completed** chunks appear first, with 50 results per page by default (Settings → Configurations: 10, 30, 50, or 100); this is
 completion order, not log timestamp order. File locations show **File line(s)**
 for Batch and **Observed line(s)** for Realtime—the sequence read since monitoring
 started or the file rotated. `1 event (max 5)` means one event was submitted
@@ -225,7 +225,7 @@ without repeating classification or Actions. Main follows new executions of the
 selected Task; explicitly viewing a historical run keeps that run selected.
 
 Task definitions, run status, settings snapshots, results, and Action outcomes
-persist under `DECIFLOW_DATA_DIR` (Task metadata in `tasks/`, results in `results.sqlite3`). A restart marks interrupted executions
+persist under `DECIFLOW_DATA_DIR` (configurations and results in `deciflow.sqlite3`). A restart marks interrupted executions
 Stopped. Batch is not automatically retried; Realtime starts a new run only when
 Resume on restart is enabled. See [Tasks](tasks.md).
 
@@ -286,3 +286,7 @@ Tasks. See [Tasks](tasks.md) for scheduling and default Task restoration.
 
 Once visible, the tooltip stays open while the pointer is over the Task card or
 tooltip. Move into the tooltip to select/copy text; leaving both closes it.
+
+Settings includes **Configurations** for maintenance. **Reset DeciFlow** opens a
+destructive warning and requires **Yes, Reset DeciFlow**; Cancel changes nothing.
+See [reset scope and restart](configuration.md#reset-deciflow) before using it.

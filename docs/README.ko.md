@@ -18,7 +18,7 @@ Source → Criteria → 선택적 Actions → Tasks 순으로 구성하고 Main�
 | [Criteria](criteria.ko.md) | 분류 지시문·범주 정의 생성과 관리 |
 | [Python Actions](actions.ko.md) | 판정 후 Python 코드 실행과 실행 환경 관리 |
 | [Tasks](tasks.ko.md) | 재사용 실행 설정·Cron 예약·연속 감시·영속 실행 이력 |
-| [결과 저장](result-storage.ko.md) | SQLite 저장·페이지 크기·기존 이력 이전·백업·DB 확장 |
+| [결과 저장](result-storage.ko.md) | SQLite 저장·페이지 크기·설정·결과 통합 저장·백업·DB 확장 |
 
 ## 배포와 연동
 

@@ -1,6 +1,7 @@
 """Register local Python actions and pass decisions through standard input."""
 
 import json
+import logging
 import os
 import re
 import shutil
@@ -11,14 +12,32 @@ from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from time import perf_counter
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 import anyio
 from anyio.abc import ByteReceiveStream
 
 from classifier import Result
+from config_store import get_data_directory, load_records, save_record, save_records
 
-REGISTRY_PATH = Path("/var/lib/deciflow-data/actions/actions.json")
+DEFAULT_ACTION_ID = uuid5(NAMESPACE_URL, "deciflow:action:elasticsearch").hex
+DEFAULT_ACTION_CODE = """import json
+import sys
+from datetime import datetime, timezone
+from elasticsearch import Elasticsearch
+
+result = json.load(sys.stdin)
+
+es = Elasticsearch("http://host.docker.internal:9200")
+
+doc = {
+    **result,
+    "@timestamp": datetime.now(timezone.utc).isoformat(),
+}
+
+resp = es.index(index="deciflow", document=doc)
+print(resp["result"], resp["_id"])
+"""
 ACTION_TIMEOUT = 30
 PREPARE_TIMEOUT = 300
 REGISTRY_LOCK = anyio.Lock()
@@ -32,12 +51,27 @@ MODULE_PATTERN = re.compile(
 )
 
 
-def get_registry_path() -> Path:
-    """Store Actions under the shared data root."""
-    data_directory = os.getenv("DECIFLOW_DATA_DIR", "").strip()
-    if data_directory:
-        return Path(data_directory).expanduser().absolute() / "actions" / "actions.json"
-    return REGISTRY_PATH
+def get_actions_directory() -> Path:
+    """Return the directory for Action scripts, projects and environments."""
+    return get_data_directory() / "actions"
+
+
+def _default_action() -> Result:
+    action: Result = {
+        "id": DEFAULT_ACTION_ID,
+        "name": "Elasticsearch",
+        "pythonVersion": "3.12",
+        "modules": ["elasticsearch"],
+        "code": DEFAULT_ACTION_CODE,
+    }
+    _initialize_action(action, None)
+    directory = _action_directory(action)
+    executable = "Scripts/python.exe" if os.name == "nt" else "bin/python"
+    action.update(
+        python=str(directory / ".venv" / executable),
+        script=str(directory / "action.py"),
+    )
+    return action
 
 
 def validate_actions(values: object) -> list[Result]:
@@ -75,9 +109,9 @@ def validate_actions(values: object) -> list[Result]:
             if not isinstance(text, str) or not text.strip():
                 raise ValueError(f"Enter an action {key}.")
             fields[key] = text.strip()
-        if fields["name"] in names:
+        if fields["name"].casefold() in names:
             raise ValueError("Action names must be unique.")
-        names.add(fields["name"])
+        names.add(fields["name"].casefold())
         for key in () if inline else (("script",) if managed else ("python", "script")):
             # Keep venv interpreter symlinks: resolving them loses the venv.
             path = Path(fields[key]).expanduser().absolute()
@@ -105,25 +139,21 @@ def validate_actions(values: object) -> list[Result]:
                     "Enter package names with optional extras or versions."
                 )
             fields.update({"pythonVersion": version, "modules": modules})
-            identity = value.get("id") or uuid4().hex
-            if not isinstance(identity, str) or not re.fullmatch(
-                r"[0-9a-f]{32}", identity
-            ):
-                raise ValueError("Invalid action ID.")
-            if identity in identities:
-                raise ValueError("Action IDs must be unique.")
-            identities.add(identity)
-            fields["id"] = identity
+        identity = value.get("id") or uuid4().hex
+        if not isinstance(identity, str) or not re.fullmatch(r"[0-9a-f]{32}", identity):
+            raise ValueError("Invalid action ID.")
+        if identity in identities:
+            raise ValueError("Action IDs must be unique.")
+        identities.add(identity)
+        fields["id"] = identity
         actions.append(fields)
     return actions
 
 
 def load_actions() -> list[Result]:
-    """Read saved actions; absent registry means no actions are configured."""
-    registry = get_registry_path()
-    if not registry.exists():
-        return []
-    values = json.loads(registry.read_text(encoding="utf-8"))
+    """Seed the sample on first initialization; preserve saved edits and deletions."""
+    default = _default_action()
+    values = list(load_records("actions", {default["id"]: default}).values())
     if not isinstance(values, list) or any(
         not isinstance(value, dict)
         or any(
@@ -136,6 +166,28 @@ def load_actions() -> list[Result]:
         value.pop("revision", None)
         value.pop("history", None)
     return values
+
+
+async def initialize_default_action() -> None:
+    """Prepare the bundled Action before Tasks can start; retry failed setup later."""
+    async with REGISTRY_LOCK:
+        action = next(
+            (item for item in load_actions() if item["id"] == DEFAULT_ACTION_ID), None
+        )
+        if action is None:
+            return
+        if get_action_status(action) == "ready" and Path(action["script"]).is_file():
+            return
+        try:
+            await prepare_action(action, action)
+            Path(action["script"]).write_text(action["code"], encoding="utf-8")
+            action.pop("preparationError", None)
+        except (OSError, ValueError, TimeoutError) as error:
+            action["preparationError"] = str(error)
+            logging.getLogger("uvicorn.error").exception(
+                "Default Action environment preparation failed."
+            )
+        save_record("actions", action["id"], action)
 
 
 def _action_directory(action: Result) -> Path:
@@ -151,15 +203,11 @@ def _action_directory(action: Result) -> Path:
         or not (directory == identity or directory.endswith(f"-{identity}"))
     ):
         raise ValueError("Invalid Action directory.")
-    return get_registry_path().parent / directory
+    return get_actions_directory() / directory
 
 
 def _initialize_action(action: Result, previous: Result | None) -> None:
-    if previous:
-        action["directory"] = previous.get("directory", action["id"])
-        return
-    name = re.sub(r"[^\w.-]+", "-", action["name"]).strip(".-")[:40]
-    action["directory"] = f"{name or 'Action'}-{action['id']}"
+    action["directory"] = action["id"]
 
 
 def _remove_path(path: Path) -> None:
@@ -268,6 +316,8 @@ async def reset_action(identity: str) -> Result:
             if venv.exists():
                 await anyio.to_thread.run_sync(shutil.rmtree, venv)
             await prepare_action(action, action)
+            action.pop("preparationError", None)
+            save_record("actions", action["id"], action)
         return action
 
 
@@ -277,23 +327,6 @@ async def save_actions(values: object) -> list[Result]:
     async with REGISTRY_LOCK:
         saved = load_actions()
         previous = {action.get("id"): action for action in saved}
-        for action in actions:
-            old = (
-                previous.get(action["id"])
-                if action.get("id")
-                else next(
-                    (
-                        item
-                        for item in saved
-                        if not item.get("id")
-                        and item["python"] == action["python"]
-                        and item["script"] == action["script"]
-                    ),
-                    None,
-                )
-            )
-            if old and old["name"] != action["name"]:
-                raise ValueError("Action names cannot be changed after creation.")
         retained = {action.get("id") for action in actions}
         removed = [a for key, a in previous.items() if key and key not in retained]
         managed = [a for a in actions if a.get("pythonVersion")]
@@ -329,12 +362,14 @@ async def save_actions(values: object) -> list[Result]:
                 ):
                     script.write_text(action["code"], encoding="utf-8")
                 action["script"] = str(script)
-            registry = get_registry_path()
-            registry.parent.mkdir(parents=True, exist_ok=True)
-            temporary = registry.with_suffix(".json.tmp")
-            temporary.write_text(json.dumps(actions, indent=2) + "\n", encoding="utf-8")
-            temporary.replace(registry)
+            save_records(
+                "actions",
+                {action["id"]: action for action in actions},
+            )
         for action in changing:
+            old = previous.get(action["id"])
+            if old and _action_directory(old) != _action_directory(action):
+                await anyio.to_thread.run_sync(_remove_path, _action_directory(old))
             for kind in ("scripts", "environments"):
                 await anyio.to_thread.run_sync(
                     _remove_path, _action_directory(action) / kind
@@ -390,6 +425,7 @@ def get_action_status(action: Result) -> str:
         "ready"
         if (
             interpreter.is_file()
+            and Path(action["script"]).is_file()
             and (project / ".ready").is_file()
             and (project / "uv.lock").is_file()
         )
@@ -501,6 +537,7 @@ async def run_action(action: Result, payload: Result) -> Result:
             return await _run_action(action, payload)
     except ValueError as error:
         return {
+            "id": action["id"],
             "name": action["name"],
             "status": "failed",
             "elapsedMs": 0,
@@ -516,6 +553,7 @@ async def _run_action(action: Result, payload: Result) -> Result:
         or not (Path(action["python"]).parent.parent.parent / ".ready").is_file()
     ):
         return {
+            "id": action["id"],
             "name": action["name"],
             "status": "failed",
             "elapsedMs": 0,
@@ -584,6 +622,7 @@ async def _run_action(action: Result, payload: Result) -> Result:
     except OSError as error:
         outcome = {"status": "failed", "error": str(error)}
     return {
+        "id": action["id"],
         "name": action["name"],
         **outcome,
         "elapsedMs": round((perf_counter() - started) * 1000),

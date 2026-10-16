@@ -96,16 +96,11 @@ uv run python -m scripts.evaluate_laya --output /tmp/laya-validation.json
 
 | 경로 | 내용 |
 | --- | --- |
-| `results.sqlite3` | 판정·오류·Action 결과·수동 정정·집계(SQLite WAL) |
-| `settings.json` | Results 페이지 크기 |
-| `sources/sources.json` | Source 이름·타입·재사용 경로/패턴 |
-| `tasks/tasks.json` | Task·Source/Host 할당·예약 설정 |
-| `tasks/<task-id>/runs/<run-id>/run.json` | 실행 상태·설정 스냅샷·처리 수·호스트 수집 상태 |
-| `criteria/criteria.json` | 저장한 판정 프로필 |
-| `actions/` | 등록 정보와 Action별 코드·venv·프로젝트·lockfile |
-| `ssh-keys/<name>/` | 관리 개인키와 추출한 공개키 |
-| `ssh-hosts/hosts.json` | SSH 접속 정의 |
+| `deciflow.sqlite3` | Source·Criteria·Task·Action·SSH Host·SSH Key 메타데이터·일반 설정·실행 스냅샷·결과·리뷰·집계(SQLite WAL) |
+| `actions/<name>-<id>/` | Action 코드·venv·프로젝트·잠금 파일 |
+| `ssh-keys/<key-id>/` | 관리되는 개인키와 파생 공개키 |
 | `ssh-hosts/known_hosts` | DeciFlow에서 명시적으로 승인한 호스트 키 |
+
 
 전체 디렉터리를 백업하고 접근 권한을 관리하세요. 원본 로그·개인키가 포함됩니다.
 실행 이력은 자동 정리하지 않으며 데이터 경로마다 DeciFlow 프로세스 하나를 사용합니다.
@@ -113,3 +108,32 @@ uv run python -m scripts.evaluate_laya --output /tmp/laya-validation.json
 사용합니다. 예약·저장 제약은 [Tasks](tasks.ko.md)를 참고하세요.
 
 실행 중 DB 파일 하나만 복사하면 WAL의 데이터가 빠질 수 있습니다. 서버를 중지한 뒤 전체 데이터 경로를 백업하거나 SQLite 백업 API를 사용하세요. [결과 저장](result-storage.ko.md)을 참고하세요.
+
+## DeciFlow 초기화
+
+**Settings → Configurations → Reset DeciFlow**를 엽니다. 사이트 디자인의 확인창에
+삭제 항목과 실제 `DECIFLOW_DATA_DIR` 경로를 표시합니다. Cancel·Escape·닫기는
+변경하지 않습니다. **Yes, Reset DeciFlow**는 스케줄러·Task·Action 하위 프로세스를
+중지하고 SQLite를 닫은 뒤 해당 디렉토리 내부의 모든 항목과 숨김 파일을 영구
+삭제합니다. 디렉토리 자체는 유지하며 내부 심볼릭 링크의 외부 대상은 삭제하지 않습니다.
+
+Sources·Tasks·Actions 및 가상환경·사용자 Criteria·결과/이력/리뷰·관리 SSH Keys/Hosts·
+승인한 known_hosts·저장 설정이 삭제됩니다. 필요한 데이터는 먼저 백업하고 결과·리뷰를
+내보내세요. 앱 파일·`.env`·Laya/모델 캐시·데이터 디렉토리 밖의 입력/로그는 유지합니다.
+설정한 데이터 디렉토리는 DeciFlow 전용으로 사용하세요.
+
+서버는 원래 Python 실행 명령으로 프로세스를 교체하므로 Docker 소켓이나 제어 권한이
+필요하지 않습니다. 데이터 디렉토리당 서버 프로세스 하나를 사용해야 합니다.
+기본 Criteria·샘플 Sources·비활성 기본 Task·기본 설정으로 복구하고 브라우저는 새 서버
+인스턴스를 확인해 새로고침합니다. 삭제 요청은 자동 재시도하지 않습니다. 삭제가
+불완전하면 재시작 후 붉은 오류를 표시하므로 재시도 전에 서버 로그를 확인하세요.
+기존 Task 정의도 삭제되므로 기존 실행은 자동 재개하지 않습니다.
+
+신뢰 UI Origin에서만 `POST /api/reset/status`로 경로·서버 인스턴스를 조회하고,
+`POST /api/reset`에 `{ "confirmation": "RESET DECIFLOW" }`를 보내 초기화합니다.
+HTTP 202 응답 후 정상 종료를 시작하며 초기화 중 중복 요청은 거부합니다.
+보호된 시스템/프로젝트 경로와 데이터 루트 심볼릭 링크는 거부합니다.
+파일·Action 관리와 같은 신뢰 출처 경계를 사용하므로 신뢰하지 않는 사용자에게
+노출하지 마세요.
+
+**Settings → Configurations**에서 설정들을 수정한 뒤 맨 아래 **Save Changes**로 한 번에 반영합니다. **Reset DeciFlow**는 별도의 확인창을 거쳐 즉시 실행하는 동작입니다.

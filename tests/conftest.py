@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -22,9 +23,9 @@ def anyio_backend() -> str:
 
 
 @pytest.fixture(autouse=True)
-def engine_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+def engine_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Keep provider tests independent of developer secrets and shell settings."""
-    monkeypatch.delenv("DECIFLOW_DATA_DIR", raising=False)
+    monkeypatch.setenv("DECIFLOW_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.delenv("DECIFLOW_CSRF_TRUSTED_ORIGINS", raising=False)
     monkeypatch.setenv("DECISION_ENGINE", "jev")
     monkeypatch.setenv("JEV_API_KEY", "test-key")

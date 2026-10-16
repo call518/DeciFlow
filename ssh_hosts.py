@@ -1,7 +1,6 @@
 """Persist reusable SSH connections independently of log file paths."""
 
 import asyncio
-import json
 import os
 import re
 from datetime import UTC, datetime
@@ -12,32 +11,28 @@ from uuid import uuid4
 import asyncssh
 
 from classifier import Result
+from config_store import delete_record, get_data_directory, load_records, save_record
+from ssh_keys import get_key
 
 
-def get_hosts_path() -> Path:
-    """Return the SSH host registry in the shared data volume."""
-    root = os.getenv("DECIFLOW_DATA_DIR", "").strip() or "/var/lib/deciflow-data"
-    return Path(root).expanduser().absolute() / "ssh-hosts" / "hosts.json"
+def get_hosts_directory() -> Path:
+    """Return the directory for approved SSH known_hosts keys."""
+    return get_data_directory() / "ssh-hosts"
 
 
 def load_hosts() -> list[Result]:
     """Read saved SSH connections without opening network connections."""
-    path = get_hosts_path()
-    hosts = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
-    if not isinstance(hosts, list):
-        raise TypeError("Invalid SSH host registry.")
-    for host in hosts:
-        if not isinstance(host, dict) or not host.get("id"):
-            raise ValueError("Invalid SSH host registry fields.")
-        _validate_host(host, check_file=False)
-    return hosts
+    return [
+        {**host, "keyPath": get_key(host["keyId"])["privatePath"]}
+        for host in load_records("ssh_hosts").values()
+    ]
 
 
 def _validate_host(value: object, *, check_file: bool = True) -> Result:
     if not isinstance(value, dict):
         raise TypeError("Enter SSH host details.")
     host: Result = {}
-    for field in ("name", "host", "username", "keyPath"):
+    for field in ("name", "host", "username"):
         text = value.get(field)
         if (
             not isinstance(text, str)
@@ -56,18 +51,12 @@ def _validate_host(value: object, *, check_file: bool = True) -> Result:
     identity = value.get("id") or uuid4().hex
     if not isinstance(identity, str) or not re.fullmatch(r"[0-9a-f]{32}", identity):
         raise ValueError("Invalid SSH host ID.")
-    path = Path(host["keyPath"]).expanduser().absolute()
+    key = get_key(value.get("keyId"))
+    host["keyId"] = key["id"]
+    path = Path(key["privatePath"])
     if check_file and not path.is_file():
         raise ValueError("Select an SSH key readable by DeciFlow.")
     return {**host, "id": identity, "port": port, "keyPath": str(path)}
-
-
-def _write_hosts(hosts: list[Result]) -> None:
-    path = get_hosts_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".json.tmp")
-    temporary.write_text(json.dumps(hosts, indent=2) + "\n", encoding="utf-8")
-    temporary.replace(path)
 
 
 def save_host(value: object) -> Result:
@@ -82,25 +71,12 @@ def save_host(value: object) -> Result:
         for item in hosts
     ):
         raise ValueError("SSH host names must be unique.")
-    _write_hosts([item for item in hosts if item["id"] != host["id"]] + [host])
+    save_record(
+        "ssh_hosts",
+        host["id"],
+        {key: value for key, value in host.items() if key != "keyPath"},
+    )
     return host
-
-
-def import_legacy_host(source: Result) -> str:
-    """Reuse or preserve an existing Source connection during schema migration."""
-    hosts = load_hosts()
-    fields = ("host", "port", "username", "keyPath")
-    for host in hosts:
-        if all(host[field] == source.get(field) for field in fields):
-            return host["id"]
-    name = source["name"]
-    suffix = 2
-    while any(host["name"].casefold() == name.casefold() for host in hosts):
-        name = f"{source['name']} ({suffix})"
-        suffix += 1
-    host = _validate_host({**source, "id": uuid4().hex, "name": name}, check_file=False)
-    _write_hosts([*hosts, host])
-    return host["id"]
 
 
 def delete_host(identity: object, references: list[Result]) -> None:
@@ -110,12 +86,12 @@ def delete_host(identity: object, references: list[Result]) -> None:
         raise ValueError("SSH host not found.")
     if any(source.get("hostId") == identity for source in references):
         raise ValueError("This SSH host is used by a saved Task or running job.")
-    _write_hosts([host for host in hosts if host["id"] != identity])
+    delete_record("ssh_hosts", str(identity))
 
 
 def known_host_data() -> bytes:
     """Read only DeciFlow's persistent host approvals, separate from user SSH."""
-    path = get_hosts_path().parent / "known_hosts"
+    path = get_hosts_directory() / "known_hosts"
     return path.read_bytes() if path.is_file() else b""
 
 
@@ -152,7 +128,7 @@ class HostKeyCheck(asyncssh.SSHClient):
 
 
 def _remember_host_key(host: Result, key: asyncssh.SSHKey) -> None:
-    path = get_hosts_path().parent / "known_hosts"
+    path = get_hosts_directory() / "known_hosts"
     path.parent.mkdir(parents=True, exist_ok=True)
     address = host["host"] if host["port"] == 22 else f"[{host['host']}]:{host['port']}"
     line = f"{address} {key.export_public_key().decode().strip()}\n"

@@ -291,7 +291,7 @@ Task 실행 정보와 호스트별 수집 상태는 실행 이력에 별도로 �
 | `probabilityMargin` | 상위 1·2위 확률 차이(0~1). 0.0181은 1.81%p. |
 | `candidates` | 확률 상위 두 범주. 확률 내림차순. |
 | `schemaVersion` / `eventId` / `decidedAt` | Action 입력 스키마 버전·이벤트 UUID·판정 UTC 시각. 할당된 Action 실행 전에 추가. |
-| `action` / `actionExecution` | 할당된 Action 이름·실행 결과. Action 실패는 분류 결과를 바꾸지 않음. |
+| `actionId` / `action` / `actionExecution` | 할당된 Action UUID·실행 시점 이름·실행 결과. Action 실패는 분류 결과를 바꾸지 않음. |
 | `reviewerCategory` | 수동 정정. AI 판정을 덮어쓰거나 모델을 학습하지 않음. |
 | `elapsedMs` | 클라이언트가 측정한 요청 시간(ms). 네트워크·서버 대기 포함, 추론 시간만이 아님. |
 

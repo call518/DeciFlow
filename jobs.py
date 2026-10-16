@@ -15,7 +15,7 @@ from uuid import uuid4
 import anyio
 
 from classifier import Result
-from result_store import ResultRepository, open_result_store
+from result_store import open_result_store
 
 
 class Job:
@@ -25,10 +25,10 @@ class Job:
         self,
         settings: Result,
         events: AsyncGenerator[str, None],
-        directory: Path | None = None,
+        storage_root: Path | None = None,
     ) -> None:
         self.id = uuid4().hex
-        self.directory = directory / self.id if directory else None
+        self.persistent = storage_root is not None
         self.storage_failed = False
         self.started_at = datetime.now(UTC).isoformat()
         self.finished_at: str | None = None
@@ -54,19 +54,16 @@ class Job:
         self.timing: str | None = None
         self.progress: Result = {"elapsedMs": 0, "activeProcessingMs": 0}
         self.temporary = (
-            TemporaryDirectory(prefix="deciflow-job-") if directory is None else None
+            TemporaryDirectory(prefix="deciflow-job-") if storage_root is None else None
         )
-        if self.directory:
-            root = self.directory.parents[3]
+        if storage_root is not None:
+            root = storage_root
         else:
             assert self.temporary is not None
             root = Path(self.temporary.name)
         self.store = open_result_store(root)
         self.store.create(self.id, self.snapshot())
         self.changed = asyncio.Event()
-        if self.directory:
-            self.directory.mkdir(parents=True, mode=0o700)
-            self._persist()
         self.task = asyncio.create_task(self.handle_run(events))
         completed = [identity for identity, job in JOBS.items() if job.task.done()]
         for identity in completed[:-32]:
@@ -76,7 +73,7 @@ class Job:
         """Return status and the frozen settings for this execution."""
         return {
             "jobId": self.id,
-            "pagedResults": self.directory is not None,
+            "pagedResults": self.persistent,
             "state": self.state,
             "settings": self.settings,
             "startedAt": self.started_at,
@@ -88,12 +85,9 @@ class Job:
         }
 
     def _persist(self) -> None:
-        if self.directory is None or self.storage_failed:
+        if not self.persistent or self.storage_failed:
             return
-        path = self.directory / "run.json"
-        temporary = path.with_suffix(".tmp")
-        temporary.write_text(json.dumps(self.snapshot()) + "\n", encoding="utf-8")
-        temporary.replace(path)
+        self.store.save_snapshot(self.id, self.snapshot())
 
     def append(self, event: Result) -> None:
         """Retain results and terminal events; keep only the latest timing tick."""
@@ -129,7 +123,6 @@ class Job:
             if not self.storage_failed:
                 try:
                     self.store.append(self.id, event, self.snapshot())
-                    self._persist()
                 except (OSError, sqlite3.Error) as error:
                     self.storage_failed = True
                     raise OSError(f"Result storage failed: {error}") from error
@@ -156,7 +149,7 @@ class Job:
                         self.state = (
                             "completed" if self.state == "running" else self.state
                         )
-                        if self.directory and (
+                        if self.persistent and (
                             self.counts["failed"] or self.counts["actionFailed"]
                         ):
                             self.state = "failed"
@@ -219,38 +212,20 @@ class Job:
 JOBS: dict[str, Job] = {}
 
 
-def read_archived_run(root: Path, identity: str) -> tuple[Result, Path] | None:
-    """Find a persisted execution by its generated ID without accepting paths."""
+def read_archived_run(root: Path, identity: str) -> Result | None:
+    """Read a persisted execution by ID directly from the database."""
     if not re.fullmatch(r"[0-9a-f]{32}", identity):
         return None
-    for path in root.glob(f"*/runs/{identity}/run.json"):
-        return {
-            **json.loads(path.read_text(encoding="utf-8")),
-            "pagedResults": True,
-        }, path.parent
-    store = open_result_store(root.parent)
+    store = open_result_store(root)
     if store.contains(identity):
-        snapshot = store.state(identity)["snapshot"]
-        directory = root / snapshot["settings"]["taskId"] / "runs" / identity
-        return {**snapshot, "pagedResults": True}, directory
+        return {**store.state(identity)["snapshot"], "pagedResults": True}
     return None
 
 
-def archived_store(directory: Path) -> ResultRepository:
-    """Import an archived NDJSON run on demand and return its repository."""
-    store = open_result_store(directory.parents[3])
-    if not (directory / "run.json").exists():
-        return store
-    snapshot = json.loads((directory / "run.json").read_text(encoding="utf-8"))
-    store.import_legacy(directory, snapshot)
-    store.save_snapshot(snapshot["jobId"], snapshot)
-    return store
-
-
-async def replay_archived_run(directory: Path) -> AsyncGenerator[str, None]:
+async def replay_archived_run(root: Path, identity: str) -> AsyncGenerator[str, None]:
     """Replay archived events in bounded batches without rerunning decisions."""
-    store = await anyio.to_thread.run_sync(archived_store, directory)
+    store = await anyio.to_thread.run_sync(open_result_store, root)
     cursor = 0
-    while batch := await anyio.to_thread.run_sync(store.events, directory.name, cursor):
+    while batch := await anyio.to_thread.run_sync(store.events, identity, cursor):
         for cursor, event in batch:
             yield event

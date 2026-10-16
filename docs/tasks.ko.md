@@ -38,25 +38,28 @@ Skipped로 기록합니다. 서로 다른 Task는 동시 실행하며 각각 엔
 
 편집 내용은 다음 실행부터 적용하고 진행 중 실행은 설정 스냅샷을 유지합니다.
 저장한 Task가 사용하는 Source·Criteria·Action 참조는 제거할 수 없습니다.
-Task 삭제 전 실행을 중지해야 하며 삭제하면 실행 이력·결과·디렉토리도 영구 삭제합니다.
+Task 삭제 전 실행을 중지해야 하며 삭제하면 실행 이력·결과·리뷰도 영구 삭제합니다.
 
 ## 기본 Task
 
-DeciFlow는 **DeciFlow Server Log**를 자동 생성합니다. Local File Source는
+DeciFlow는 **DeciFlow Server Log**를 자동 생성하며 **Sample DeciFlow Server Log** Local File Source를
+Sources 목록의 첫 번째에 등록합니다. 경로는
 `DECIFLOW_LOG_DIR/server.log` / `DECIFLOW_LOG_DIR/access.log`이며 General system 기준·청크당 1개 이벤트·Action
 없음으로 설정됩니다. Realtime 모드이고 Task는 기본 Disable 상태입니다.
 Enable로 전환한 뒤 Run으로 직접 시작합니다. 자동 재시작도 꺼져 있습니다. 파일 로깅이 켜져 있어야 합니다.
 
-서버 시작 시 기본 Task가 없으면 복구하고, 실행 중 `tasks/tasks.json`이 사라져도
-재생성합니다. Tasks 디렉토리 전체를 비운 경우도 포함합니다. 기존 Task 설정은
-보존하며 다른 삭제된 Task나 이력은 복구하지 않습니다. UI에서 기본 Task만 삭제하면
-다음 서버 시작 전까지는 삭제 상태를 유지합니다.
+기본 Task는 UUID로 식별하며 서버 시작 시 없으면 복구합니다. Reset 후에도 동일하며 다른 항목과 이름이 겹치면 숫자 접미사를 붙입니다. 기존 설정을 보존하고
+다른 삭제된 Task·이력은 복구하지 않습니다. UI에서 기본 Task만 삭제하면 다음 기동 전까지
+삭제 상태를 유지합니다. 실행 중 데이터 파일 직접 삭제는 지원하지 않습니다. Reset DeciFlow로
+실행 중지·DB 종료 후 초기화하세요.
+
+
+Action 선택은 `actionId`, SSH Host의 키 선택은 `keyId`로 저장합니다. 이름은 표시용이므로 변경해도 기존 할당은 유지됩니다.
 
 ## 여러 Source Hosts
 
 Remote File Source 행마다 SSH Hosts를 하나 이상 선택합니다. Local File에는 SSH Host
-선택이 없습니다. 실행 시작 시 Source × Host를 펼쳐 접속 설정 스냅샷을 확정하며
-기존 Source의 Host 연결은 Task 행으로 자동 이전합니다.
+선택이 없습니다. 실행 시작 시 Source × Host를 펼쳐 접속 설정 스냅샷을 확정합니다.
 
 호스트별로 독립 수집하고 준비된 청크를 호스트 순환으로 제출합니다. 빈 차례는
 추가 원격 존재 확인 없이 건너뜁니다. 호스트마다 병합된 청크 하나를 대기시키고,
@@ -81,12 +84,7 @@ Batch에서 일치하는 파일이 없으면 실패로 기록하며 Realtime은 
 `DECIFLOW_DATA_DIR`(기본 `/var/lib/deciflow-data`) 아래에 저장합니다:
 
 ```text
-results.sqlite3
-settings.json
-tasks/
-  tasks.json
-  <task-id>/runs/<run-id>/
-    run.json
+deciflow.sqlite3
 ```
 
 데이터 볼륨에 정의·상태·설정·원본 로그·판정·Action 결과를 보존하여 서버 재시작
@@ -97,7 +95,7 @@ tasks/
 **데이터 경로마다 서버 프로세스·인스턴스 하나**를 사용합니다. 프로세스 내 예약
 실행이며 분산 워커·DAG 의존성은 없습니다. 결과는 SQLite에 저장하며 서버는 제한된
 이벤트 캐시와 집계만, 브라우저는 현재 페이지만 유지합니다. 자동 디스크 이력 정리는
-없습니다. 이전 이력 이전·페이지 조회·백업·한계는 [결과 저장](result-storage.ko.md)을 참고하세요.
+없습니다. 설정 저장·페이지 조회·백업·한계는 [결과 저장](result-storage.ko.md)을 참고하세요.
 
 ## API
 
@@ -107,7 +105,7 @@ tasks/
 | --- | --- |
 | `POST /api/tasks` | 정의·현재/최근 실행·다음 예약 시각 조회 |
 | `PUT /api/tasks` | Task 하나 저장(수정 시 `id` 포함) |
-| `DELETE /api/tasks` | `{ "id": "..." }`로 Task 정의·이력·결과·파일 영구 삭제 |
+| `DELETE /api/tasks` | `{ "id": "..." }`로 Task 정의·이력·결과·리뷰 영구 삭제 |
 | `POST /api/tasks/<id>/run` | 수동 시작; HTTP 202로 상태·jobId 반환 |
 | `POST /api/tasks/<id>/stop` | 현재 실행 중지 |
 | `POST /api/tasks/<id>/enabled` | `{ "enabled": true/false }` 설정. false는 현재 실행도 중지 |
@@ -143,14 +141,14 @@ ID로 `POST /api/tasks/<id>/run`을 호출해 실행합니다.
       "sourceId": "<remote-source-id>",
       "profile": "general",
       "chunkEvents": 1,
-      "action": "",
+      "actionId": "",
       "hostIds": ["<first-host-id>", "<second-host-id>"]
     }
   ]
 }
 ```
 
-Task 삭제 확인창에서 승인하면 Task 정의·실행 이력·결과·수동 정정·Task 디렉토리를 영구 삭제합니다. 원본 Source 파일은 삭제하지 않습니다. 기존 미등록 Task의 잔여 폴더는 자동 정리하지 않습니다. SQLite의 삭제 공간은 이후 저장에 재사용하며 DB 파일 크기가 즉시 줄지는 않을 수 있습니다.
+Task 삭제 확인창에서 승인하면 Task 정의·실행 이력·결과·수동 정정을 영구 삭제합니다. 원본 Source 파일은 삭제하지 않습니다. SQLite의 삭제 공간은 이후 저장에 재사용하며 DB 파일 크기가 즉시 줄지는 않을 수 있습니다.
 
 말풍선이 열린 뒤에는 Task 카드나 말풍선 위에서 마우스를 움직여도 유지합니다.
 말풍선으로 이동해 텍스트를 선택·복사할 수 있으며 양쪽에서 벗어나면 닫힙니다.

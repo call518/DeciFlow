@@ -4,6 +4,9 @@ x-laya: &laya
   hostname: DeciFlow-Laya
   init: true
   restart: unless-stopped
+  pull_policy: always
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
   command: laya-serve
   ports:
     - "8000:8000"
@@ -27,6 +30,9 @@ services:
     hostname: DeciFlow-UI
     init: true
     restart: unless-stopped
+    pull_policy: always
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file: .env
     environment:
       DECIFLOW_DATA_DIR: ${DECIFLOW_DATA_DIR:-/var/lib/deciflow-data}

@@ -14,6 +14,7 @@ RUN printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d \
       iputils-ping \
       dnsutils \
       openssh-client \
+      telnet \
       wget \
       curl \
       tree \

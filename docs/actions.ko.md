@@ -2,6 +2,21 @@
 
 [English](actions.md) | [한국어](actions.ko.md) | [문서 안내](README.ko.md) | [README](../README.ko.md)
 
+## 기본 샘플 Action
+
+최초 초기화 또는 Reset DeciFlow 후 **Elasticsearch**를 자동 등록합니다.
+Python **3.12**, 모듈 **elasticsearch**를 사용하며 결과에 UTC `@timestamp`를 추가해
+`http://host.docker.internal:9200`의 `deciflow` 인덱스에 저장하는 코드입니다.
+Task 시작 전에 스크립트·venv를 자동 생성하고 Python·모듈을 설치합니다.
+최초 준비에는 다운로드 연결이 필요하며 서버 기동이 지연될 수 있습니다.
+실패하면 Actions에 **Not ready**와 오류를 표시합니다. **Save & Prepare Environments**
+또는 DeciFlow 재시작으로 재시도할 수 있습니다. 준비 과정에서 샘플 코드를 실행하지는 않습니다.
+이후 수정·삭제한 설정은 재기동 시 보존합니다. Compose에서 `host.docker.internal`은
+Docker 호스트 게이트웨이를 가리킵니다. Python 직접 실행 시에는 DeciFlow 호스트에서
+접근 가능한 주소로 수정하세요.
+
+## Action 관리
+
 Add·Edit에서는 목록을 숨기고 입력폼만 표시합니다. 저장 또는 Cancel Edit 후 목록으로 돌아옵니다.
 
 **View**는 선택한 행 아래에서 이름·Python 버전·모듈·코드·경로를 공통 라벨·값 형식으로 표시합니다. 같은 View를 다시 누르면 접으며 편집 초안이나 환경을 변경하지 않습니다. Python Code는 View와 Add/Edit 모두 키워드·문자열·주석 등에 구문 색상을 적용합니다. 색상은 표시 기능이며 코드 내용과 저장·실행 동작은 유지합니다. 외부 CDN은 사용하지 않으며 구문 검증이나 자동완성 기능은 아닙니다. Edit·Add는 View를 닫습니다.
@@ -24,7 +39,7 @@ Python 코드를 편집기에 직접 입력한 뒤 **Save & Prepare Environments
 코드에서는 `result = json.load(sys.stdin)`으로 판정을 받습니다.
 새 편집기에는 실행 가능한 기본 템플릿이 제공됩니다.
 
-**Status**는 환경 상태를 표시합니다. Ready는 Python·모듈 설치까지 완료,
+**Status**는 환경 상태를 표시합니다. Ready는 스크립트·Python 실행 파일·의존성 잠금 파일·설치 완료 표시가 모두 존재하는 상태,
 Preparing...은 준비 중, Not ready는 환경 누락·불완전 상태입니다. 외부 Python을
 사용하는 Action은 External입니다. 저장·Reset 중에는 Preparing...을 표시하며,
 준비 중인 상태가 있으면 완료될 때까지 자동 갱신합니다. 편집 화면에도 상태를 표시합니다.
@@ -40,19 +55,21 @@ Actions는 공통 `DECIFLOW_DATA_DIR` 아래 `actions/`에 저장합니다.
 기본 경로는 Python·Docker 모두 `/var/lib/deciflow-data/actions`입니다.
 Python 직접 실행에서는 쓰기 권한이 필요하며, 필요하면 공통 경로를 `./data`로 설정하세요.
 Docker에서는 공통 데이터 루트와 볼륨 목적지를 동일하게 유지합니다.
-등록 정보·코드·프로젝트·lockfile·venv를 Actions 디렉터리에 함께 저장합니다.
+등록 정보는 `DECIFLOW_DATA_DIR/deciflow.sqlite3`에 저장하고 코드·프로젝트·lockfile·venv는 Actions 디렉터리에 보관합니다.
 새 Task Source 행의 Action 기본값은 **None**입니다. Action 할당·Criteria·청크 크기는
 Task에 서버 측으로 저장하며 새로고침 후에도 유지합니다. 각 실행은 시작 시 설정을
 보존하고 변경 사항은 새 실행에 적용합니다. 저장 경로를 변경해도 기존 데이터는
 자동으로 이동하지 않습니다.
 
-`actions.json`에는 현재 설정을 저장합니다. UI에서 관리하는 Action은
-`<최초 이름>-<Action UUID>/` 디렉터리를 사용하며 이름의 안전하지 않은 문자는
-하이픈으로 바꿉니다. 생성 후 이름은 고정하고 Edit에서 읽기 전용으로 표시합니다.
+현재 설정은 공통 SQLite DB에서 관리합니다. UI에서 관리하는 Action은
+`<Action UUID>/` 디렉터리를 사용합니다. 기존 이름 접두사 폴더는 다음 저장 시 UUID 경로에
+환경을 다시 준비하고 저장 성공 후 제거합니다. Edit에서 중복되지 않는 이름으로 변경할 수 있으며 대소문자는 구분하지 않습니다.
+Task 할당·실행 대상 선택·삭제 의존성 검사는 표시 이름 대신 `actionId`를 사용합니다.
+이름 변경 시 UUID·최초 디렉터리·코드·가상환경은 그대로 유지하며 실행 중 작업은 기존 스냅샷을 유지합니다.
 코드와 실행 환경은 해당 디렉터리 바로 아래에 둡니다:
 
 ```text
-<최초 이름>-<Action UUID>/
+<Action UUID>/
 ├── action.py
 ├── .venv/
 ├── pyproject.toml

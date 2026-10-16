@@ -8,6 +8,7 @@ import json
 import sqlite3
 from collections.abc import Iterator
 from contextlib import closing, contextmanager
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from threading import RLock
@@ -85,14 +86,14 @@ def _aggregate(stats: Result, result: Result) -> None:
 
 
 class ResultRepository(Protocol):
-    """Backend contract shared by execution, HTTP, migration, and export callers."""
+    """Backend contract shared by execution, HTTP, and export callers."""
 
+    def close(self) -> None: ...
     def contains(self, run_id: str) -> bool: ...
     def create(self, run_id: str, snapshot: Result) -> None: ...
     def save_snapshot(self, run_id: str, snapshot: Result) -> None: ...
     def append(self, run_id: str, event: Result, snapshot: Result) -> None: ...
-    def register_legacy(self, snapshot: Result) -> None: ...
-    def import_legacy(self, directory: Path, snapshot: Result) -> None: ...
+    def recover_interrupted(self) -> None: ...
     def delete_task(self, task_id: str) -> None: ...
     def history(self, task_id: str, limit: int) -> list[Result]: ...
     def state(self, run_id: str) -> Result: ...
@@ -120,9 +121,10 @@ class SQLiteResultStore:
             CREATE TABLE IF NOT EXISTS runs (
                 id TEXT PRIMARY KEY, snapshot TEXT NOT NULL,
                 summary TEXT NOT NULL, sequence INTEGER NOT NULL DEFAULT 0,
-                task_id TEXT, started_at TEXT, imported INTEGER NOT NULL DEFAULT 1
+                task_id TEXT, started_at TEXT, state TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS run_history ON runs(task_id,started_at DESC);
+            CREATE INDEX IF NOT EXISTS run_state ON runs(state);
             CREATE TABLE IF NOT EXISTS events (
                 run_id TEXT NOT NULL, sequence INTEGER NOT NULL,
                 kind TEXT NOT NULL, payload TEXT NOT NULL,
@@ -148,6 +150,11 @@ class SQLiteResultStore:
                 ON sources(run_id, source, sequence);
         """)
 
+    def close(self) -> None:
+        """Release the database connection after all application jobs stop."""
+        with self.lock:
+            self.connection.close()
+
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
         """Serialize short transactions; never retain a reader across a download."""
@@ -165,40 +172,27 @@ class SQLiteResultStore:
             yield connection
 
     def contains(self, run_id: str) -> bool:
-        """Return whether a run has already been created or imported."""
+        """Return whether an execution exists in the database."""
         with self.lock:
             return (
                 self.connection.execute(
-                    "SELECT 1 FROM runs WHERE id=? AND imported=1", (run_id,)
+                    "SELECT 1 FROM runs WHERE id=?", (run_id,)
                 ).fetchone()
                 is not None
             )
 
     def create(self, run_id: str, snapshot: Result) -> None:
-        """Create an empty run without overwriting an existing import."""
+        """Create an empty run without overwriting an existing execution."""
         with self.transaction() as connection:
             connection.execute(
-                "INSERT OR IGNORE INTO runs(id,snapshot,summary,task_id,started_at) VALUES(?,?,?,?,?)",
+                "INSERT OR IGNORE INTO runs(id,snapshot,summary,task_id,started_at,state) VALUES(?,?,?,?,?,?)",
                 (
                     run_id,
                     json.dumps(snapshot),
                     json.dumps(empty_summary()),
                     snapshot.get("settings", {}).get("taskId"),
                     snapshot.get("startedAt"),
-                ),
-            )
-
-    def register_legacy(self, snapshot: Result) -> None:
-        """Index metadata without loading legacy result bodies into memory."""
-        with self.transaction() as connection:
-            connection.execute(
-                "INSERT OR IGNORE INTO runs(id,snapshot,summary,task_id,started_at,imported) VALUES(?,?,?,?,?,0)",
-                (
-                    snapshot["jobId"],
-                    json.dumps(snapshot),
-                    json.dumps(empty_summary()),
-                    snapshot["settings"].get("taskId"),
-                    snapshot.get("startedAt"),
+                    snapshot.get("state", "running"),
                 ),
             )
 
@@ -217,7 +211,8 @@ class SQLiteResultStore:
         """Persist the execution state separately from result payloads."""
         with self.transaction() as connection:
             connection.execute(
-                "UPDATE runs SET snapshot=? WHERE id=?", (json.dumps(snapshot), run_id)
+                "UPDATE runs SET snapshot=?,state=? WHERE id=?",
+                (json.dumps(snapshot), snapshot["state"], run_id),
             )
 
     def _append(
@@ -279,41 +274,42 @@ class SQLiteResultStore:
             sequence = row["sequence"] + 1
             self._append(connection, run_id, event, sequence, stats)
             connection.execute(
-                "UPDATE runs SET summary=?,sequence=?,snapshot=? WHERE id=?",
-                (json.dumps(stats), sequence, json.dumps(snapshot), run_id),
-            )
-
-    def import_legacy(self, directory: Path, snapshot: Result) -> None:
-        """Atomically import NDJSON once, leaving the original files untouched."""
-        run_id = snapshot["jobId"]
-        with self.transaction() as connection:
-            if connection.execute(
-                "SELECT 1 FROM runs WHERE id=? AND imported=1", (run_id,)
-            ).fetchone():
-                return
-            stats = empty_summary()
-            sequence = 0
-            path = directory / "events.ndjson"
-            if path.is_file():
-                with path.open(encoding="utf-8") as stream:
-                    for line in stream:
-                        event = json.loads(line)
-                        if event["type"] == "timing":
-                            continue
-                        sequence += 1
-                        self._append(connection, run_id, event, sequence, stats)
-            connection.execute(
-                "INSERT INTO runs(id,snapshot,summary,sequence,task_id,started_at,imported) VALUES(?,?,?,?,?,?,1) "
-                "ON CONFLICT(id) DO UPDATE SET snapshot=excluded.snapshot,summary=excluded.summary,sequence=excluded.sequence,imported=1",
+                "UPDATE runs SET summary=?,sequence=?,snapshot=?,state=? WHERE id=?",
                 (
-                    run_id,
-                    json.dumps(snapshot),
                     json.dumps(stats),
                     sequence,
-                    snapshot["settings"].get("taskId"),
-                    snapshot.get("startedAt"),
+                    json.dumps(snapshot),
+                    snapshot["state"],
+                    run_id,
                 ),
             )
+
+    def recover_interrupted(self) -> None:
+        """Stop interrupted DB runs in bounded batches without replaying inputs."""
+        while True:
+            with self.reader() as connection:
+                rows = connection.execute(
+                    "SELECT id,snapshot FROM runs WHERE state='running' LIMIT 128"
+                ).fetchall()
+            if not rows:
+                return
+            for row in rows:
+                snapshot = json.loads(row["snapshot"])
+                snapshot.update(
+                    state="stopped",
+                    finishedAt=datetime.now(UTC).isoformat(),
+                    error="Server restarted; execution was interrupted.",
+                )
+                self.append(
+                    row["id"],
+                    {
+                        "type": "done",
+                        "state": "stopped",
+                        "elapsedMs": snapshot.get("elapsedMs", 0),
+                        "activeProcessingMs": snapshot.get("activeProcessingMs", 0),
+                    },
+                    snapshot,
+                )
 
     def delete_task(self, task_id: str) -> None:
         """Delete all run records and related rows for exactly one Task."""
@@ -445,7 +441,7 @@ class SQLiteResultStore:
 @lru_cache(maxsize=8)
 def _cached_store(root: Path) -> ResultRepository:
     """Select the result repository adapter; SQL stays inside its implementation."""
-    return SQLiteResultStore(root / "results.sqlite3")
+    return SQLiteResultStore(root / "deciflow.sqlite3")
 
 
 _STORE_LOCK = RLock()
@@ -455,3 +451,10 @@ def open_result_store(root: Path) -> ResultRepository:
     """Select the backend once per root; future adapters implement ResultRepository."""
     with _STORE_LOCK:
         return _cached_store(root.absolute())
+
+
+def close_result_store(root: Path) -> None:
+    """Close the active data repository before deleting its files."""
+    with _STORE_LOCK:
+        _cached_store(root.absolute()).close()
+        _cached_store.cache_clear()

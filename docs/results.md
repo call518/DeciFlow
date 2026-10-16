@@ -295,7 +295,7 @@ and per-host collection status are stored separately in run history; see [Tasks]
 | `probabilityMargin` | Top probability minus second-highest, on a 0–1 scale; 0.0181 means 1.81 percentage points. |
 | `candidates` | Two highest-probability categories, in descending order. |
 | `schemaVersion` / `eventId` / `decidedAt` | Action payload schema version, event UUID, and UTC decision time; added before an assigned Action runs. |
-| `action` / `actionExecution` | Assigned Action name and execution outcome; Action failure does not change classification. |
+| `actionId` / `action` / `actionExecution` | Assigned Action UUID, frozen display name, and execution outcome; Action failure does not change classification. |
 | `reviewerCategory` | Human correction; does not replace the AI prediction or train the model. |
 | `elapsedMs` | Client-measured request duration in milliseconds, including network/server waits; not inference time alone. |
 

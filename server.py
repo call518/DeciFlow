@@ -2,8 +2,10 @@
 
 import asyncio
 import json
+import logging
 import os
 import platform
+import signal
 import socket
 import sqlite3
 from collections.abc import AsyncGenerator, AsyncIterator
@@ -22,6 +24,7 @@ import httpx
 import uvicorn
 from dotenv import load_dotenv
 from starlette.applications import Starlette
+from starlette.background import BackgroundTask
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
@@ -30,6 +33,7 @@ from uvicorn.config import LOGGING_CONFIG
 from actions import (
     ensure_actions_available,
     get_action_status,
+    initialize_default_action,
     load_actions,
     reset_action,
     run_action,
@@ -45,9 +49,10 @@ from config import (
     get_engine,
     get_jev_input_bytes,
 )
+from config_store import get_data_directory
 from configured_sources import follow_configured, read_configured
 from host_sources import host_metadata, read_host_sources
-from jobs import JOBS, Job, archived_store, read_archived_run, replay_archived_run
+from jobs import JOBS, Job, read_archived_run, replay_archived_run
 from profiles import (
     PROFILES,
     load_profiles,
@@ -55,6 +60,8 @@ from profiles import (
     use_profile_snapshot,
     validate_settings,
 )
+from reset import reset_data, reset_directory, restart_process
+from result_store import open_result_store
 from source_registry import load_sources, save_sources, source_patterns
 from source_settings import parse_source_settings, resolve_configured_sources
 from sources import follow_sources, read_sources
@@ -65,11 +72,11 @@ from ssh_keys import (
     delete_key,
     get_keys_directory,
     list_keys,
+    rename_key,
 )
 from tasks import (
     TaskScheduler,
     delete_task,
-    get_tasks_directory,
     load_tasks,
     next_run,
     record_unstarted_run,
@@ -487,12 +494,18 @@ async def prepare_file_execution(
     """Resolve settings once for both direct file requests and saved Tasks."""
     specs = parse_source_settings(values)
     profile_snapshot = deepcopy(PROFILES)
-    actions = load_actions() if any(spec.get("action") for spec in specs) else []
-    names = {action["name"] for action in actions}
-    if any(spec.get("action") and spec["action"] not in names for spec in specs):
+    actions = load_actions() if any(spec.get("actionId") for spec in specs) else []
+    identities = {action["id"] for action in actions}
+    if any(
+        spec.get("actionId") and spec["actionId"] not in identities for spec in specs
+    ):
         raise ValueError("Select a registered action or None.")
-    selected = {spec.get("action") for spec in specs}
-    actions = [action for action in actions if action["name"] in selected]
+    selected = {spec.get("actionId") for spec in specs}
+    actions = [action for action in actions if action["id"] in selected]
+    action_names = {action["id"]: action["name"] for action in actions}
+    for spec in specs:
+        if spec.get("actionId"):
+            spec["actionName"] = action_names[spec["actionId"]]
     ensure_actions_available(actions)
     paths = await anyio.to_thread.run_sync(
         partial(resolve_configured_sources, specs, follow=mode == "realtime"),
@@ -584,7 +597,7 @@ async def launch_task(task: Result, trigger: str) -> Result:
                     task, "stopped", trigger, "Task was disabled during startup."
                 )
             settings.update(taskId=identity, taskName=task["name"], trigger=trigger)
-            job = Job(settings, events, get_tasks_directory() / identity / "runs")
+            job = Job(settings, events, get_data_directory())
             JOBS[job.id] = job
             return job.snapshot()
         except (ValueError, TypeError, OSError) as error:
@@ -601,7 +614,6 @@ def deletion_dependencies(kind: str, identity: str) -> list[str]:
     if kind not in {"Task", "Source", "Criteria", "Action", "SSH Key", "SSH Host"}:
         raise ValueError("Invalid item type.")
     references: set[str] = set()
-    key_path = (get_keys_directory() / identity / "private_key").resolve()
 
     def matches(source: Result) -> bool:
         if kind == "Source":
@@ -609,16 +621,12 @@ def deletion_dependencies(kind: str, identity: str) -> list[str]:
         if kind == "Criteria":
             return source.get("profile") == identity
         if kind == "Action":
-            return source.get("action") == identity
+            return source.get("actionId") == identity
         if kind == "SSH Host":
             return source.get("hostId") == identity or identity in source.get(
                 "hostIds", []
             )
-        return (
-            kind == "SSH Key"
-            and bool(source.get("keyPath"))
-            and (Path(source["keyPath"]).resolve() == key_path)
-        )
+        return kind == "SSH Key" and source.get("keyId") == identity
 
     if kind != "Task":
         for task in load_tasks():
@@ -767,19 +775,20 @@ async def _action_results(
     actions: list[Result],
     engine: str,
 ) -> AsyncGenerator[tuple[int, Result], None]:
-    registered = {action["name"]: action for action in actions}
+    registered = {action["id"]: action for action in actions}
     async for index, result in results:
-        name = result.get("action")
-        if name and not result.get("error"):
+        identity = result.get("actionId")
+        if identity and not result.get("error"):
             result.update(
                 {
+                    "action": registered[identity]["name"],
                     "schemaVersion": 1,
                     "eventId": str(uuid4()),
                     "decidedAt": datetime.now(UTC).isoformat(),
                     "engine": engine,
                 }
             )
-            result["actionExecution"] = await run_action(registered[name], result)
+            result["actionExecution"] = await run_action(registered[identity], result)
         yield index, result
 
 
@@ -812,7 +821,6 @@ async def handle_ssh_hosts(request: Request) -> Response:
             403, {"error": "SSH host management requires a trusted UI origin."}
         )
     try:
-        load_sources()  # Migrate existing Source connections before listing hosts.
         if request.method == "PUT":
             save_host(await request.json())
         elif request.method == "DELETE":
@@ -852,7 +860,9 @@ async def handle_ssh_keys(request: Request) -> Response:
             body = json.loads(chunks)
             if not isinstance(body, dict):
                 raise ValueError("Enter SSH key details.")
-            if request.method == "PUT":
+            if request.method == "PATCH":
+                rename_key(body.get("id"), body.get("name"))
+            elif request.method == "PUT":
                 method = body.get("inputMethod", "upload")
                 if method == "path":
                     add_key_from_path(body.get("name"), body.get("privateKeyPath"))
@@ -867,15 +877,15 @@ async def handle_ssh_keys(request: Request) -> Response:
                     if job.state == "running"
                     for source in job.settings.get("sources", [])
                 ]
-                require_unused("SSH Key", body.get("name"))
-                delete_key(body.get("name"), active)
+                require_unused("SSH Key", body.get("id"))
+                delete_key(body.get("id"), active)
         return _json(200, {"keys": list_keys()})
     except (ValueError, TypeError, OSError):
         return _json(
             400,
             {
                 "error": "Could not manage SSH keys. Check the key name, "
-                "unencrypted key file, storage permissions, and Host/Source/job references."
+                "unencrypted key file, storage permissions, and Host/job references."
             },
         )
 
@@ -985,20 +995,20 @@ async def handle_actions(request: Request) -> Response:
         else:
             values = await request.json()
             if isinstance(values, list):
-                names = {
-                    action.get("name") for action in values if isinstance(action, dict)
+                identities = {
+                    action.get("id") for action in values if isinstance(action, dict)
                 }
                 for task in load_tasks():
                     if any(
-                        source.get("action") and source["action"] not in names
+                        source.get("actionId") and source["actionId"] not in identities
                         for source in task["sources"]
                     ):
                         raise ValueError(
-                            f"An Action is used by Task '{task['name']}'. Update the Task before deleting or renaming it."
+                            f"An Action is used by Task '{task['name']}'. Update the Task before deleting it."
                         )
                 for action in load_actions():
-                    if action["name"] not in names:
-                        require_unused("Action", action["name"])
+                    if action["id"] not in identities:
+                        require_unused("Action", action["id"])
             actions = await save_actions(values)
     except (ValueError, TypeError, OSError) as error:
         return _json(400, {"error": str(error)})
@@ -1026,15 +1036,15 @@ async def handle_job(request: Request) -> Response:
     job = JOBS.get(request.path_params["job_id"])
     if job is None:
         archived = read_archived_run(
-            get_tasks_directory(), request.path_params["job_id"]
+            get_data_directory(), request.path_params["job_id"]
         )
         if archived:
             if not _allowed_origin(request, files=True):
                 return _json(403, {"error": "Job access requires a trusted UI origin."})
-            snapshot, directory = archived
+            snapshot = archived
             if request.url.path.endswith("/events"):
                 return StreamingResponse(
-                    replay_archived_run(directory),
+                    replay_archived_run(get_data_directory(), snapshot["jobId"]),
                     media_type="application/x-ndjson",
                     headers=HEADERS,
                 )
@@ -1079,11 +1089,13 @@ async def handle_result_page(request: Request) -> Response:
             store = job.store
         else:
             archived = await anyio.to_thread.run_sync(
-                read_archived_run, get_tasks_directory(), identity
+                read_archived_run, get_data_directory(), identity
             )
             if archived is None:
                 return _json(404, {"error": "Run not found."})
-            store = await anyio.to_thread.run_sync(archived_store, archived[1])
+            store = await anyio.to_thread.run_sync(
+                open_result_store, get_data_directory()
+            )
         operation = request.url.path.rsplit("/", 1)[-1]
         if operation in {"export", "export-reviewed"}:
             reviewed_only = operation == "export-reviewed"
@@ -1159,10 +1171,62 @@ async def handle_result_page(request: Request) -> Response:
         return _json(503, {"error": "Result storage is unavailable."})
 
 
+INSTANCE_ID = uuid4().hex
+RESET_ERROR = os.environ.pop("_DECIFLOW_RESET_ERROR", "")
+
+
+async def handle_reset_status(request: Request) -> Response:
+    """Describe reset scope and server identity to trusted UI origins."""
+    if not _allowed_origin(request, files=True):
+        return _json(403, {"error": "Reset requires a trusted UI origin."})
+    try:
+        return _json(
+            200,
+            {
+                "instanceId": INSTANCE_ID,
+                "resetting": getattr(request.app.state, "reset_requested", False),
+                "dataDirectory": str(reset_directory()),
+                "resetError": RESET_ERROR,
+            },
+        )
+    except ValueError as error:
+        return _json(400, {"error": str(error)})
+
+
+async def handle_reset_shutdown() -> None:
+    """Let the accepted response finish before requesting graceful shutdown."""
+    await asyncio.sleep(0.1)
+    os.kill(os.getpid(), signal.SIGTERM)
+
+
+async def handle_reset(request: Request) -> Response:
+    """Accept explicit confirmation, then reset during graceful shutdown."""
+    if not _allowed_origin(request, files=True):
+        return _json(403, {"error": "Reset requires a trusted UI origin."})
+    if getattr(request.app.state, "reset_requested", False):
+        return _json(409, {"error": "A reset is already in progress."})
+    try:
+        body = await request.json()
+        if not isinstance(body, dict) or body.get("confirmation") != "RESET DECIFLOW":
+            raise ValueError("Confirm Reset DeciFlow before continuing.")
+        request.app.state.reset_root = reset_directory()
+    except (ValueError, TypeError) as error:
+        return _json(400, {"error": str(error)})
+    request.app.state.reset_requested = True
+    return JSONResponse(
+        {"resetting": True, "instanceId": INSTANCE_ID},
+        status_code=202,
+        headers=HEADERS,
+        background=BackgroundTask(handle_reset_shutdown),
+    )
+
+
 @asynccontextmanager
 async def lifespan(application: Starlette) -> AsyncIterator[None]:
     """Stop background analysis jobs when the server shuts down."""
+    application.state.reset_requested = False
     load_profiles()
+    await initialize_default_action()
     get_keys_directory()
     scheduler = asyncio.create_task(SCHEDULER.run())
     try:
@@ -1172,6 +1236,16 @@ async def lifespan(application: Starlette) -> AsyncIterator[None]:
         await asyncio.gather(scheduler, return_exceptions=True)
         await asyncio.gather(*(job.stop() for job in JOBS.values()))
         JOBS.clear()
+        if getattr(application.state, "reset_requested", False):
+            try:
+                await anyio.to_thread.run_sync(reset_data, application.state.reset_root)
+                os.environ.pop("_DECIFLOW_RESET_ERROR", None)
+            except (OSError, ValueError, sqlite3.Error):
+                logging.getLogger("uvicorn.error").exception("DeciFlow reset failed.")
+                os.environ["_DECIFLOW_RESET_ERROR"] = (
+                    "Reset was incomplete. Check the server logs before retrying."
+                )
+            restart_process()
 
 
 async def handle_asset(request: Request) -> Response:
@@ -1192,6 +1266,8 @@ async def handle_asset(request: Request) -> Response:
 app = Starlette(
     lifespan=lifespan,
     routes=[
+        Route("/api/reset/status", handle_reset_status, methods=["POST"]),
+        Route("/api/reset", handle_reset, methods=["POST"]),
         Route("/api/settings", handle_settings, methods=["POST", "PUT"]),
         Route("/api/jobs/{job_id}/results", handle_result_page, methods=["POST"]),
         Route("/api/jobs/{job_id}/review", handle_result_page, methods=["POST"]),
@@ -1208,7 +1284,9 @@ app = Starlette(
         Route("/api/jobs/{job_id}", handle_job, methods=["POST"]),
         Route("/api/jobs/{job_id}/events", handle_job, methods=["POST"]),
         Route("/api/jobs/{job_id}/stop", handle_job, methods=["POST"]),
-        Route("/api/ssh-keys", handle_ssh_keys, methods=["POST", "PUT", "DELETE"]),
+        Route(
+            "/api/ssh-keys", handle_ssh_keys, methods=["POST", "PUT", "PATCH", "DELETE"]
+        ),
         Route("/api/ssh-hosts/test", handle_test_ssh_host, methods=["POST"]),
         Route("/api/ssh-hosts", handle_ssh_hosts, methods=["POST", "PUT", "DELETE"]),
         Route("/api/sources", handle_sources, methods=["POST", "PUT"]),

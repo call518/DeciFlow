@@ -1,14 +1,11 @@
 """Persist reusable local and SSH file sources independently of run settings."""
 
-import json
-import os
 import re
-from copy import deepcopy
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 from uuid import uuid4
 
 from classifier import Result
-from ssh_hosts import import_legacy_host
+from config_store import load_records, save_records
 
 DEFAULT_SOURCES = [
     {"id": f"{index:032x}", "name": name, "type": "local", "path": path}
@@ -20,56 +17,11 @@ DEFAULT_SOURCES = [
 ]
 
 
-def get_sources_path() -> Path:
-    """Return the source registry under the shared persistent data directory."""
-    directory = os.getenv("DECIFLOW_DATA_DIR", "").strip() or "/var/lib/deciflow-data"
-    return Path(directory).expanduser().absolute() / "sources" / "sources.json"
-
-
 def load_sources() -> list[Result]:
-    """Read saved sources, or provide editable sample sources before the first save."""
-    path = get_sources_path()
-    values = (
-        json.loads(path.read_text(encoding="utf-8"))
-        if path.exists()
-        else deepcopy(DEFAULT_SOURCES)
+    """Read saved Sources, persisting sample defaults on the first access."""
+    return list(
+        load_records("sources", {item["id"]: item for item in DEFAULT_SOURCES}).values()
     )
-    if not isinstance(values, list):
-        raise TypeError("Invalid source registry.")
-    legacy_hosts: dict[str, str] = {}
-    for source in values:
-        if not isinstance(source, dict) or source.get("type") not in {"local", "ssh"}:
-            raise ValueError("Invalid source registry.")
-        if any(
-            not isinstance(source.get(key), str) or not source[key].strip()
-            for key in ("id", "name", "type", "path")
-        ):
-            raise ValueError("Invalid source registry fields.")
-        if source["type"] == "ssh":
-            if source.get("hostId"):
-                legacy_hosts[source["id"]] = source["hostId"]
-            elif source.get("host"):
-                legacy_hosts[source["id"]] = import_legacy_host(source)
-    if legacy_hosts:
-        # Write Tasks first so an interrupted migration can be repeated safely.
-        task_path = path.parent.parent / "tasks" / "tasks.json"
-        if task_path.exists():
-            tasks = json.loads(task_path.read_text(encoding="utf-8"))
-            for task in tasks:
-                for selection in task["sources"]:
-                    identity = selection.get("sourceId")
-                    if identity in legacy_hosts and "hostIds" not in selection:
-                        selection["hostIds"] = [legacy_hosts[identity]]
-            temporary = task_path.with_suffix(".json.tmp")
-            temporary.write_text(json.dumps(tasks, indent=2) + "\n", encoding="utf-8")
-            temporary.replace(task_path)
-        values = [
-            {key: source[key] for key in ("id", "name", "type", "path")}
-            for source in values
-        ]
-        _write_sources(values)
-
-    return values
 
 
 def validate_sources(values: object) -> list[Result]:
@@ -109,18 +61,14 @@ def validate_sources(values: object) -> list[Result]:
 
 
 def save_sources(values: object) -> list[Result]:
-    """Atomically save source definitions; active runs retain their own snapshots."""
+    """Atomically save Source records in SQLite; active runs retain their own snapshots."""
     sources = validate_sources(values)
     _write_sources(sources)
     return load_sources()
 
 
 def _write_sources(sources: list[Result]) -> None:
-    path = get_sources_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".json.tmp")
-    temporary.write_text(json.dumps(sources, indent=2) + "\n", encoding="utf-8")
-    temporary.replace(path)
+    save_records("sources", {item["id"]: item for item in sources})
 
 
 def source_pattern(source: Result) -> str:

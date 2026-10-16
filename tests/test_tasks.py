@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import shutil
 from collections.abc import AsyncGenerator, AsyncIterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -12,14 +11,15 @@ import pytest
 
 import server
 from classifier import Result
+from config_store import get_data_directory, save_records
 from jobs import JOBS, Job
+from result_store import open_result_store
 from source_registry import load_sources, save_sources
 from tasks import (
     DEFAULT_TASK_ID,
     DEFAULT_TASK_NAME,
     TaskScheduler,
     ensure_default_task,
-    get_tasks_directory,
     load_tasks,
     next_run,
     recover_interrupted_runs,
@@ -75,7 +75,7 @@ async def test_task_validation_and_timezone(task_setup: Result) -> None:
         {"sources": []},
         {"sources": [{"sourceId": "missing"}]},
         {"sources": [{"sourceId": task_setup["source"]["id"], "chunkEvents": 0}]},
-        {"sources": [{"sourceId": task_setup["source"]["id"], "action": "unknown"}]},
+        {"sources": [{"sourceId": task_setup["source"]["id"], "actionId": "unknown"}]},
         {"sources": task["sources"] * 2},
     ]:
         with pytest.raises((ValueError, TypeError)):
@@ -244,7 +244,7 @@ async def test_failed_results_or_actions_fail_task(
     job = Job(
         {"taskId": task_setup["task"]["id"], "mode": "batch", "sources": []},
         events(),
-        get_tasks_directory() / task_setup["task"]["id"] / "runs",
+        get_data_directory(),
     )
     await job.task
     assert job.state == "failed"
@@ -255,19 +255,17 @@ async def test_interrupted_run_and_opt_in_realtime_restart(task_setup: Result) -
     task = save_task(
         {**task_setup["task"], "mode": "realtime", "resumeOnRestart": True}
     )
-    directory = get_tasks_directory() / task["id"] / "runs" / ("1" * 32)
-    directory.mkdir(parents=True)
-    (directory / "run.json").write_text(
-        json.dumps(
-            {
-                "state": "running",
-                "jobId": "1" * 32,
-                "settings": {"taskId": task["id"], "mode": "realtime"},
-            }
-        )
+    store = open_result_store(get_data_directory())
+    store.create(
+        "1" * 32,
+        {
+            "state": "running",
+            "jobId": "1" * 32,
+            "settings": {"taskId": task["id"], "mode": "realtime"},
+        },
     )
     recover_interrupted_runs()
-    assert json.loads((directory / "run.json").read_text())["state"] == "stopped"
+    assert store.state("1" * 32)["snapshot"]["state"] == "stopped"
     called = asyncio.Event()
 
     async def launch(task: Result, trigger: str) -> Result:
@@ -295,9 +293,9 @@ async def test_history_write_failure_terminates_stream_instead_of_hanging(
     job = Job(
         {"taskId": task_setup["task"]["id"], "mode": "batch", "sources": []},
         events(),
-        get_tasks_directory() / task_setup["task"]["id"] / "runs",
+        get_data_directory(),
     )
-    assert job.directory is not None
+    assert job.persistent
 
     def handle_failed_write(*args: object) -> None:
         raise OSError("fixture SQLite write failure")
@@ -316,20 +314,18 @@ async def test_delete_task_removes_files_and_database_history(
 ) -> None:
     task = task_setup["task"]
     identity = "f" * 32
-    directory = get_tasks_directory() / task["id"] / "runs" / identity
-    directory.mkdir(parents=True)
     snapshot = {
         "jobId": identity,
         "state": "completed",
         "settings": {"mode": "batch", "taskId": task["id"]},
         "startedAt": "2026-10-16T00:00:00Z",
     }
-    (directory / "run.json").write_text(json.dumps(snapshot))
-    (directory / "events.ndjson").write_text(
-        json.dumps(
-            {"type": "result", "result": {"log": "retained", "category": "normal"}}
-        )
-        + "\n"
+    store = open_result_store(get_data_directory())
+    store.create(identity, snapshot)
+    store.append(
+        identity,
+        {"type": "result", "result": {"log": "retained", "category": "normal"}},
+        snapshot,
     )
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=server.app),
@@ -338,7 +334,7 @@ async def test_delete_task_removes_files_and_database_history(
     ) as client:
         response = await client.request("DELETE", "/api/tasks", json={"id": task["id"]})
         assert response.status_code == 200
-        assert not directory.parents[1].exists()
+        assert not (get_data_directory() / "tasks").exists()
         assert task_setup["path"].exists()
         page = await client.post(f"/api/jobs/{identity}/results", json={})
         assert page.status_code == 404
@@ -348,19 +344,7 @@ async def test_delete_task_removes_files_and_database_history(
         assert exported.status_code == 404
 
 
-async def test_delete_task_removes_corrupt_legacy_history(task_setup: Result) -> None:
-    from tasks import delete_task
-
-    task = task_setup["task"]
-    directory = get_tasks_directory() / task["id"] / "runs" / ("f" * 32)
-    directory.mkdir(parents=True)
-    (directory / "run.json").write_text("invalid json")
-    delete_task(task["id"])
-    assert not directory.parents[1].exists()
-    assert load_tasks() == []
-
-
-async def test_default_task_restores_after_directory_removal(
+async def test_default_task_restores_after_database_reset(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("DECIFLOW_DATA_DIR", str(tmp_path / "data"))
@@ -375,7 +359,7 @@ async def test_default_task_restores_after_directory_removal(
     loop = asyncio.create_task(scheduler.run())
     try:
         for _ in range(100):
-            if (get_tasks_directory() / "tasks.json").exists():
+            if load_tasks():
                 break
             await asyncio.sleep(0.01)
         task = load_tasks()[0]
@@ -384,7 +368,8 @@ async def test_default_task_restores_after_directory_removal(
         assert task["mode"] == "realtime"
         assert task["enabled"] is False
         assert task["resumeOnRestart"] is False
-        source = load_sources()[-1]
+        source = load_sources()[0]
+        assert source["name"] == "Sample DeciFlow Server Log"
         assert source["path"] == "\n".join(
             str(tmp_path / "logs" / name) for name in ("server.log", "access.log")
         )
@@ -393,10 +378,11 @@ async def test_default_task_restores_after_directory_removal(
                 "sourceId": source["id"],
                 "profile": "general",
                 "chunkEvents": 1,
-                "action": "",
+                "actionId": "",
             }
         ]
-        shutil.rmtree(get_tasks_directory())
+        save_records("tasks", {})
+        ensure_default_task()
         await scheduler.tick(datetime.now(UTC))
         assert load_tasks() == [task]
         assert len([s for s in load_sources() if s["id"] == source["id"]]) == 1
@@ -485,3 +471,16 @@ async def test_disabled_realtime_task_does_not_resume(task_setup: Result) -> Non
     finally:
         loop.cancel()
         await asyncio.gather(loop, return_exceptions=True)
+
+
+async def test_default_task_uses_uuid_and_avoids_name_collisions(
+    task_setup: Result,
+) -> None:
+    original = save_task({**task_setup["task"], "name": DEFAULT_TASK_NAME.lower()})
+    ensure_default_task()
+    tasks = load_tasks()
+    default = next(task for task in tasks if task["id"] == DEFAULT_TASK_ID)
+    assert default["name"] == f"{DEFAULT_TASK_NAME} (2)"
+    assert original in tasks
+    ensure_default_task()
+    assert load_tasks() == tasks

@@ -7,6 +7,7 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import aclosing
 from pathlib import Path
 
+import asyncssh
 import httpx
 import pytest
 
@@ -15,10 +16,11 @@ import server
 import tasks
 from classifier import Result
 from jobs import JOBS
-from source_registry import get_sources_path, load_sources, save_sources
+from source_registry import load_sources, save_sources
 from source_settings import parse_source_settings
 from ssh_hosts import save_host
-from tasks import get_tasks_directory, load_tasks, save_task, task_runs
+from ssh_keys import add_key
+from tasks import load_tasks, save_task, task_runs
 
 pytestmark = pytest.mark.anyio
 
@@ -28,8 +30,10 @@ async def multi(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> AsyncIterator[Result]:
     monkeypatch.setenv("DECIFLOW_DATA_DIR", str(tmp_path / "data"))
-    key = tmp_path / "key"
-    key.write_text("fixture file; SSH is mocked")
+    pair = add_key(
+        "Test Key",
+        asyncssh.generate_private_key("ssh-ed25519").export_private_key().decode(),
+    )
     hosts = [
         save_host(
             {
@@ -37,7 +41,7 @@ async def multi(
                 "host": name.lower(),
                 "port": 22,
                 "username": "reader",
-                "keyPath": str(key),
+                "keyId": pair["id"],
             }
         )
         for name in ("Alpha", "Beta", "Gamma")
@@ -84,33 +88,6 @@ async def test_target_validation_and_resolved_settings_are_authoritative(
         parse_source_settings(
             [{"sourceId": local["id"], "hostIds": selection["hostIds"]}]
         )
-
-
-async def test_legacy_source_targets_move_to_all_tasks_once(multi: Result) -> None:
-    source = multi["source"]
-    host = multi["hosts"][0]
-    source_path = get_sources_path()
-    source_path.write_text(json.dumps([{**source, "hostId": host["id"]}]))
-    tasks = [
-        {
-            **multi["task"],
-            "id": str(index) * 32,
-            "sources": [{"sourceId": source["id"], "chunkEvents": 2}],
-        }
-        for index in (1, 2)
-    ]
-    task_path = get_tasks_directory() / "tasks.json"
-    task_path.write_text(json.dumps(tasks))
-    history = get_tasks_directory() / tasks[0]["id"] / "runs" / ("f" * 32) / "run.json"
-    history.parent.mkdir(parents=True)
-    history.write_text('{"state":"completed","settings":{"host":"original"}}')
-    snapshot = history.read_bytes()
-    migrated = load_tasks()
-    assert all(task["sources"][0]["hostIds"] == [host["id"]] for task in migrated)
-    assert load_sources() == [source]
-    stored = task_path.read_bytes()
-    assert load_tasks() == migrated and task_path.read_bytes() == stored
-    assert history.read_bytes() == snapshot
 
 
 async def test_slow_host_gets_the_next_round_and_backpressure_is_bounded(
@@ -192,7 +169,7 @@ async def test_partial_host_failure_and_frozen_run_replay(
             raise ValueError("Host key is not approved")
         for number in range(2):
             yield {
-                "action": spec.get("action"),
+                "actionId": spec.get("actionId"),
                 "log": f"{spec['host']}-{number}",
                 "sourceId": spec["sourceId"],
                 "source": f"ssh://{spec['host']}/logs/app.log",
@@ -209,12 +186,12 @@ async def test_partial_host_failure_and_frozen_run_replay(
         action_inputs.append(dict(result))
         return {"name": "Notify", "status": "success"}
 
-    actions = lambda: [{"name": "Notify"}]
+    actions = lambda: [{"id": "notify-id", "name": "Notify"}]
     monkeypatch.setattr(server, "load_actions", actions)
     monkeypatch.setattr(tasks, "load_actions", actions)
     monkeypatch.setattr(server, "ensure_actions_available", lambda values: None)
     monkeypatch.setattr(server, "run_action", action)
-    multi["task"]["sources"][0]["action"] = "Notify"
+    multi["task"]["sources"][0]["actionId"] = "notify-id"
     monkeypatch.setattr(host_sources, "read_remote", remote)
     monkeypatch.setattr(server, "classify_log", classify)
     run = await server.launch_task(multi["task"], "manual")

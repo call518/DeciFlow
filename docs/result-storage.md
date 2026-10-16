@@ -3,13 +3,14 @@
 [한국어](result-storage.ko.md) | [Documentation](README.md)
 
 Task results, original inputs, Action outcomes, reviewer corrections, and run
-aggregates are stored in `DECIFLOW_DATA_DIR/results.sqlite3`. Definitions remain
-JSON files; `settings.json` stores application display settings. No separate DB
-server or new environment setting is required.
+aggregates share `DECIFLOW_DATA_DIR/deciflow.sqlite3` with Source, Criteria, Task,
+Action, SSH Host, SSH Key metadata, and application settings. Configuration collections store one
+record per item, keyed by its internal identifier; nested fields remain JSON payloads
+inside the DB. No separate DB server or new environment setting is required.
 
 ## Bounded Result Loading
 
-- Settings → Results sets Results per Page: **50** by default, with 10/30/50/100 options.
+- Settings → Configurations sets Results per Page: **50** by default, with 10/30/50/100 options.
 - The server applies filters and cursor pagination before returning results. The
   browser retains only the current page; previous pages are fetched when needed.
 - Latest-page polling requests results after the last received cursor. Polling is
@@ -35,12 +36,13 @@ search may scan many rows. Search input is debounced. Disk use continues to grow
 there is no automatic retention policy. This is not a guarantee of constant CPU
 under every query or input workload.
 
-## Existing History and Backups
+## Initialization and Backups
 
-Existing `tasks/<task-id>/runs/<run-id>/events.ndjson` files are imported once when
-the run is opened. Import streams records in one transaction and preserves the
-original file. A failed import rolls back and can be retried. Large first imports
-can take time and temporarily delay other writes. New runs use SQLite directly.
+On a fresh data directory, bundled Sources, Criteria, the Elasticsearch sample Action and disabled default
+Task are created in SQLite. Empty saved lists remain empty. No configuration JSON,
+run.json, or events.ndjson is generated or imported. Previous JSON registries and
+older result databases are not read; reset application data before using this version.
+Bundled Criteria JSON files under `profiles/` remain read-only seed definitions.
 
 Use one DeciFlow process per data directory on a local filesystem. SQLite uses WAL,
 FULL synchronous commits, and a 2 MiB connection cache. Do not place the active DB
@@ -54,11 +56,15 @@ are sensitive.
 Application code calls the `ResultRepository` interface. `open_result_store()`
 selects the implementation; SQL and transactions are isolated in
 `SQLiteResultStore`. PostgreSQL or MySQL can be introduced by implementing this
-interface and extending the factory, with migration and concurrency tests.
+interface and extending the factory, with migration and concurrency tests. Configuration SQL is isolated in `config_store.py` and must also receive a matching adapter.
 Only SQLite is implemented today; no PostgreSQL/MySQL connection setting is exposed.
 
 A local synthetic check compared 5,000 and 50,000 records: median 30-row retrieval
 was about 0.37 ms in both cases. This measures indexed retrieval on that machine,
 not end-to-end inference, text searches, or a production performance guarantee.
 
-Confirming Task deletion permanently removes its definition, all run history, results, reviewer corrections, and Task directory. Original Source files are kept. Existing orphan Task directories are not automatically removed. SQLite reuses freed space; the DB file may not shrink immediately.
+Confirming Task deletion permanently removes its definition, all run history, results, and reviewer corrections. Original Source files are kept. SQLite reuses freed space; the DB file may not shrink immediately.
+
+For a complete reset, use **Settings → Configurations → Reset DeciFlow**.
+It stops execution, closes SQLite, removes all application data, and restarts the
+server only after confirmation. See [reset details](configuration.md#reset-deciflow).

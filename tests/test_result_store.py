@@ -1,4 +1,4 @@
-"""Verify bounded persistence, keyset pagination, migration, and full-run aggregates."""
+"""Verify bounded persistence, keyset pagination and full-run aggregates."""
 
 import asyncio
 import json
@@ -84,29 +84,6 @@ def test_keyset_pages_filters_and_aggregates_stay_independent(tmp_path: Path) ->
         store.page(run["jobId"], {"before": "bad"}, 30)
 
 
-def test_legacy_import_is_atomic_idempotent_and_preserves_original(
-    tmp_path: Path,
-) -> None:
-    run = snapshot()
-    directory = tmp_path / run["jobId"]
-    directory.mkdir()
-    path = directory / "events.ndjson"
-    original = json.dumps(event(0)) + "\n"
-    path.write_text(original + "broken\n")
-    store = SQLiteResultStore(tmp_path / "results.db")
-    store.register_legacy(run)
-    with pytest.raises(ValueError):
-        store.import_legacy(directory, run)
-    assert not store.contains(run["jobId"])
-    assert store.page(run["jobId"], {}, 30)["items"] == []
-    path.write_text(original)
-    for _ in range(2):
-        store.import_legacy(directory, run)
-    assert path.read_text() == original
-    assert store.state(run["jobId"])["summary"]["total"] == 1
-    assert store.history("b" * 32, 50)[0]["jobId"] == run["jobId"]
-
-
 @pytest.mark.anyio
 @pytest.mark.parametrize("engine", ["laya", "jev"])
 async def test_paged_api_settings_reviews_export_and_archive(
@@ -123,14 +100,15 @@ async def test_paged_api_settings_reviews_export_and_archive(
     job = Job(
         {"mode": "batch", "taskId": "b" * 32, "sources": []},
         produce(),
-        tmp_path / "tasks" / ("b" * 32) / "runs",
+        tmp_path,
     )
     JOBS[job.id] = job
     try:
         await asyncio.wait_for(job.task, 10)
         assert len(job.events) == 128
-        assert job.directory is not None
-        assert not (job.directory / "events.ndjson").exists()
+        assert job.persistent
+        assert not list(tmp_path.rglob("*.json"))
+        assert not list(tmp_path.rglob("*.ndjson"))
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=server.app), base_url="http://localhost"
         ) as client:
@@ -215,7 +193,7 @@ async def test_stop_waits_for_an_in_progress_transaction_before_terminal_event(
     job = Job(
         {"mode": "batch", "taskId": "b" * 32},
         produce(),
-        tmp_path / "tasks" / ("b" * 32) / "runs",
+        tmp_path,
     )
     original = job.store.append
 

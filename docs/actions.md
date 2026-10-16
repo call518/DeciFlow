@@ -2,6 +2,21 @@
 
 [English](actions.md) | [한국어](actions.ko.md) | [Documentation](README.md) | [README](../README.md)
 
+## Default Sample Action
+
+On first initialization or after Reset DeciFlow, **Elasticsearch** is registered
+with Python **3.12**, module **elasticsearch**, and code that writes each result to
+`http://host.docker.internal:9200`, index `deciflow`, adding a UTC `@timestamp`.
+Startup automatically creates its script and venv and installs Python and its module
+before Tasks start. Initial setup requires package download access and can delay startup.
+If preparation fails, Actions shows **Not ready** with the error; use
+**Save & Prepare Environments** to retry, or restart DeciFlow. The sample code is not
+executed during setup. Saved edits and deletions are preserved on later starts.
+In Compose, `host.docker.internal` resolves to the Docker host gateway.
+For direct Python execution, use a hostname reachable from the DeciFlow host.
+
+## Managing Actions
+
 Add/Edit hides the list and shows only the form. Saving or Cancel Edit returns to the list.
 
 **View** shows names, Python Version, modules, code, and paths in compact label/value fields directly below the selected row. Click View again to collapse it without changing drafts or environments. Python Code uses syntax colors for keywords, strings, comments, and other tokens in both View and Add/Edit. Coloring preserves source text and save/execution behavior, uses no external CDN, and does not provide syntax validation or autocomplete. Edit/Add closes View.
@@ -24,7 +39,7 @@ and environment markers are not supported. Leave modules empty for code using
 only the standard library. Each handler reads the decision with
 `result = json.load(sys.stdin)`; the initial editor includes a runnable template.
 
-**Status** shows environment readiness: Ready after Python/dependency installation,
+**Status** shows environment readiness: Ready when the script, Python interpreter, dependency lock and installation marker exist,
 Preparing... during preparation, or Not ready for missing/incomplete environments.
 Actions using external Python show External. Saving/resetting displays
 Preparing...; pending statuses refresh automatically until preparation ends.
@@ -40,20 +55,22 @@ and saving converts them to UI-managed code and environments.
 Actions use `actions/` under the shared `DECIFLOW_DATA_DIR` root. The default is
 `/var/lib/deciflow-data/actions` for both Python and Docker. Direct host startup needs write
 permission; set the shared root to `./data` if needed. For Docker, keep the shared data
-root and volume destination identical. Registrations, code,
-projects, lockfiles, and venvs are stored together. New Task Source rows default to
+root and volume destination identical. Registrations are stored in
+`DECIFLOW_DATA_DIR/deciflow.sqlite3`; code, projects, lockfiles and venvs remain in `actions/`. New Task Source rows default to
 **None**. Action assignments, Criteria, and chunk sizes are saved in the Task on
 the server and survive page reloads. Each run keeps its original settings snapshot;
 edits affect new runs. Changing the data directory does not migrate existing data
 automatically.
 
-`actions.json` stores the current configuration at the Actions storage root.
-Each UI-managed Action uses `<initial-name>-<Action UUID>/`, with unsafe name
-characters replaced by hyphens. Names are fixed after creation; Edit keeps Name
-read-only. Code and the environment live directly in that directory:
+The shared SQLite database stores current Action configurations.
+Each UI-managed Action uses `<Action UUID>/`. Existing name-prefixed directories
+are rebuilt at the UUID path on the next save and removed only after saving succeeds. Edit can change Name when it remains unique
+(case-insensitive). Task assignments, execution selection and deletion checks use
+`actionId`, never the display name. Renaming keeps the UUID, original directory,
+script and environment unchanged; running jobs retain their original snapshots. Code and the environment live directly in that directory:
 
 ```text
-<initial-name>-<Action UUID>/
+<Action UUID>/
 ├── action.py
 ├── .venv/
 ├── pyproject.toml

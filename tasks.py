@@ -1,13 +1,10 @@
 """Persist reusable Tasks and schedule executions independently of browsers."""
 
 import asyncio
-import json
 import os
 import re
-import shutil
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from functools import lru_cache
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid4, uuid5
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -16,46 +13,43 @@ from croniter import croniter
 
 from actions import load_actions
 from classifier import Result
+from config_store import (
+    delete_record,
+    get_data_directory,
+    load_records,
+    save_record,
+    save_records,
+)
 from result_store import open_result_store
-from source_registry import get_sources_path, load_sources, save_sources
+from source_registry import load_sources, save_sources
 from source_settings import parse_source_settings
 
 DEFAULT_TASK_NAME = "DeciFlow Server Log"
+DEFAULT_SOURCE_NAME = "Sample DeciFlow Server Log"
 DEFAULT_TASK_ID = uuid5(NAMESPACE_URL, "deciflow:task:server-log").hex
 DEFAULT_SOURCE_ID = uuid5(NAMESPACE_URL, "deciflow:source:server-log").hex
 
 
-def get_tasks_directory() -> Path:
-    """Return Task definitions and run history storage under the shared volume."""
-    return get_sources_path().parent.parent / "tasks"
-
-
 def load_tasks() -> list[Result]:
     """Read definitions, including Tasks whose dependencies need repair."""
-    load_sources()  # Move legacy Source host bindings into Task selections first.
-    path = get_tasks_directory() / "tasks.json"
-    tasks = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
-    if not isinstance(tasks, list):
-        raise TypeError("Invalid Task registry.")
-    return tasks
+    return list(load_records("tasks").values())
 
 
 def _write_tasks(tasks: list[Result]) -> None:
-    path = get_tasks_directory() / "tasks.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".json.tmp")
-    temporary.write_text(json.dumps(tasks, indent=2) + "\n", encoding="utf-8")
-    temporary.replace(path)
+    save_records("tasks", {task["id"]: task for task in tasks})
 
 
 def ensure_default_task() -> None:
     """Restore the disabled server-log Task without overwriting saved settings."""
     tasks = load_tasks()
-    if any(
-        task["id"] == DEFAULT_TASK_ID or task["name"] == DEFAULT_TASK_NAME
-        for task in tasks
-    ):
+    if any(task["id"] == DEFAULT_TASK_ID for task in tasks):
         return
+    task_name = DEFAULT_TASK_NAME
+    suffix = 1
+    task_names = {task["name"].casefold() for task in tasks}
+    while task_name.casefold() in task_names:
+        suffix += 1
+        task_name = f"{DEFAULT_TASK_NAME} ({suffix})"
     sources = load_sources()
     directory = Path(
         os.getenv("DECIFLOW_LOG_DIR", "/var/log/deciflow").strip()
@@ -74,22 +68,25 @@ def ensure_default_task() -> None:
         None,
     )
     if source is None:
-        name = DEFAULT_TASK_NAME
-        if any(source["name"].casefold() == name.casefold() for source in sources):
-            name += " (Default)"
+        name = DEFAULT_SOURCE_NAME
+        suffix = 1
+        source_names = {source["name"].casefold() for source in sources}
+        while name.casefold() in source_names:
+            suffix += 1
+            name = f"{DEFAULT_SOURCE_NAME} ({suffix})"
         source = {
             "id": DEFAULT_SOURCE_ID,
             "name": name,
             "type": "local",
             "path": pattern,
         }
-        save_sources([*sources, source])
+        save_sources([source, *sources])
     _write_tasks(
         [
             *tasks,
             {
                 "id": DEFAULT_TASK_ID,
-                "name": DEFAULT_TASK_NAME,
+                "name": task_name,
                 "mode": "realtime",
                 "cron": "",
                 "timezone": "UTC",
@@ -100,7 +97,7 @@ def ensure_default_task() -> None:
                         "sourceId": source["id"],
                         "profile": "general",
                         "chunkEvents": 1,
-                        "action": "",
+                        "actionId": "",
                     }
                 ],
             },
@@ -143,13 +140,15 @@ def save_task(value: object) -> Result:
         if identity not in selections:
             selections[identity] = {
                 key: spec[key]
-                for key in ("sourceId", "profile", "chunkEvents", "action")
+                for key in ("sourceId", "profile", "chunkEvents", "actionId")
                 if key in spec
             }
         if spec.get("hostId"):
             selections[identity].setdefault("hostIds", []).append(spec["hostId"])
-    action_names = {action["name"] for action in load_actions()}
-    if any(spec.get("action") and spec["action"] not in action_names for spec in specs):
+    action_ids = {action["id"] for action in load_actions()}
+    if any(
+        spec.get("actionId") and spec["actionId"] not in action_ids for spec in specs
+    ):
         raise ValueError("Select registered Actions or leave them empty.")
     cron = value.get("cron", "")
     timezone = value.get("timezone", "UTC")
@@ -193,7 +192,7 @@ def save_task(value: object) -> Result:
     }
     if cron:
         next_run(task, datetime.now(UTC))
-    _write_tasks([item for item in tasks if item["id"] != identity] + [task])
+    save_record("tasks", identity, task)
     return task
 
 
@@ -206,44 +205,30 @@ def set_task_enabled(identity: str, enabled: object) -> Result:
     if task is None:
         raise ValueError("Task not found.")
     task = {**task, "enabled": enabled}
-    _write_tasks([task if item["id"] == identity else item for item in tasks])
+    save_record("tasks", identity, task)
     return task
 
 
 def delete_task(identity: str) -> None:
-    """Remove Task files, all stored results, and its registration."""
+    """Remove the Task registration and all stored execution results."""
     tasks = load_tasks()
     if not any(task["id"] == identity for task in tasks):
         raise ValueError("Task not found.")
-    directory = get_tasks_directory() / identity
-    store = open_result_store(directory.parent.parent)
-    if directory.exists():
-        shutil.rmtree(directory)
+    store = open_result_store(get_data_directory())
     store.delete_task(identity)
-    _write_tasks([task for task in tasks if task["id"] != identity])
+    delete_record("tasks", identity)
 
 
 def task_runs(identity: str, limit: int = 50) -> list[Result]:
     """Return the latest persisted executions, including skipped cron occurrences."""
     if not re.fullmatch(r"[0-9a-f]{32}", identity):
         raise ValueError("Invalid Task ID.")
-    directory = get_tasks_directory() / identity / "runs"
-    _index_history(directory)
-    return open_result_store(get_tasks_directory().parent).history(identity, limit)
-
-
-@lru_cache(maxsize=128)
-def _index_history(directory: Path) -> None:
-    store = open_result_store(directory.parents[2])
-    for path in directory.glob("*/run.json"):
-        store.register_legacy(json.loads(path.read_text(encoding="utf-8")))
+    return open_result_store(get_data_directory()).history(identity, limit)
 
 
 def record_unstarted_run(task: Result, state: str, trigger: str, error: str) -> Result:
     """Retain skipped/failed starts so schedules never fail silently."""
     identity = uuid4().hex
-    directory = get_tasks_directory() / task["id"] / "runs" / identity
-    directory.mkdir(parents=True, mode=0o700)
     now = datetime.now(UTC).isoformat()
     settings = {
         "taskId": task["id"],
@@ -261,7 +246,6 @@ def record_unstarted_run(task: Result, state: str, trigger: str, error: str) -> 
         "error": error,
         "counts": {"completed": 0, "failed": 0, "actionFailed": 0},
     }
-    (directory / "run.json").write_text(json.dumps(run) + "\n", encoding="utf-8")
     events = [
         {
             "type": "start",
@@ -272,7 +256,7 @@ def record_unstarted_run(task: Result, state: str, trigger: str, error: str) -> 
         {"type": "error", "error": error},
         {"type": "done", "state": state, "elapsedMs": 0, "activeProcessingMs": 0},
     ]
-    store = open_result_store(get_tasks_directory().parent)
+    store = open_result_store(get_data_directory())
     store.create(identity, run)
     for event in events:
         store.append(identity, event, run)
@@ -281,29 +265,7 @@ def record_unstarted_run(task: Result, state: str, trigger: str, error: str) -> 
 
 def recover_interrupted_runs() -> None:
     """Mark interrupted executions stopped; never automatically retry a Batch."""
-    for path in get_tasks_directory().glob("*/runs/*/run.json"):
-        run = json.loads(path.read_text(encoding="utf-8"))
-        if run["state"] != "running":
-            continue
-        run.update(
-            state="stopped",
-            finishedAt=datetime.now(UTC).isoformat(),
-            error="Server restarted; execution was interrupted.",
-        )
-        path.write_text(json.dumps(run) + "\n", encoding="utf-8")
-        event = {
-            "type": "done",
-            "state": "stopped",
-            "elapsedMs": run.get("elapsedMs", 0),
-            "activeProcessingMs": run.get("activeProcessingMs", 0),
-        }
-        store = open_result_store(get_tasks_directory().parent)
-        if store.contains(run["jobId"]):
-            store.append(run["jobId"], event, run)
-        else:
-            with (path.parent / "events.ndjson").open("a", encoding="utf-8") as events:
-                events.write(json.dumps(event) + "\n")
-            store.register_legacy(run)
+    open_result_store(get_data_directory()).recover_interrupted()
 
 
 class TaskScheduler:
@@ -315,8 +277,6 @@ class TaskScheduler:
 
     async def tick(self, now: datetime) -> None:
         """Start due schedules and calculate the next future occurrence."""
-        if not (get_tasks_directory() / "tasks.json").exists():
-            ensure_default_task()
         tasks = load_tasks()
         identities = {task["id"] for task in tasks}
         self.due = {key: value for key, value in self.due.items() if key in identities}

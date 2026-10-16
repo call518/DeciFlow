@@ -18,7 +18,7 @@ Source → Criteria → optional Actions → Tasks, and inspect current/latest T
 | [Criteria](criteria.md) | Create and manage category instructions and definitions |
 | [Python Actions](actions.md) | Run Python Code after classification and manage execution environments |
 | [Tasks](tasks.md) | Reusable executions, cron schedules, continuous monitoring, and durable run history |
-| [Result Storage](result-storage.md) | Manage SQLite storage, page sizes, legacy history, backups, and database adapters |
+| [Result Storage](result-storage.md) | Manage SQLite storage, page sizes, configuration records, backups, and database adapters |
 
 ## Deploy and integrate
 

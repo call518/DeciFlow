@@ -1,7 +1,6 @@
 """Explicit, domain-specific decision profiles shared by both engines."""
 
 import json
-import os
 import re
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -10,10 +9,13 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-PROFILES = {
+from config_store import load_records, save_records
+
+DEFAULT_PROFILES = {
     path.stem: json.loads(path.read_text())
     for path in sorted(Path(__file__).parent.glob("*.json"))
 }
+PROFILES = deepcopy(DEFAULT_PROFILES)
 
 
 ProfileMap = dict[str, dict[str, Any]]
@@ -38,26 +40,20 @@ def use_profile_snapshot(snapshot: ProfileMap) -> Iterator[None]:
         PROFILE_SNAPSHOT.reset(token)
 
 
-def get_criteria_path() -> Path:
-    """Store criteria in their own directory under the shared persistent data root."""
-    directory = os.getenv("DECIFLOW_DATA_DIR", "").strip()
-    return (
-        Path(directory or "/var/lib/deciflow-data").expanduser().absolute()
-        / "criteria"
-        / "criteria.json"
-    )
-
-
 def validate_profiles(values: object) -> ProfileMap:
     """Validate editable profiles with the five fixed result categories."""
     if not isinstance(values, dict):
         raise TypeError("Criteria profiles must be an object keyed by profile ID.")
     validated: ProfileMap = {}
+    names: set[str] = set()
     for identity, value in values.items():
         if not isinstance(identity, str) or not re.fullmatch(
-            r"[a-z][a-z0-9_-]{0,63}", identity
+            r"(?:[a-z][a-z0-9_-]{0,63}|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})",
+            identity,
         ):
-            raise ValueError("Profile IDs must use lowercase letters, digits, _ or -.")
+            raise ValueError(
+                "Profile IDs must be UUIDs or legacy lowercase identifiers."
+            )
         if not isinstance(value, dict):
             raise TypeError(
                 "Each profile must contain a name, instructions and criteria."
@@ -68,6 +64,10 @@ def validate_profiles(values: object) -> ProfileMap:
             if not isinstance(text, str) or not text.strip():
                 raise ValueError(f"Enter a nonempty {key} for {identity}.")
             fields[key] = text.strip()
+        name = fields["label"].casefold()
+        if name in names:
+            raise ValueError("Criteria names must be unique.")
+        names.add(name)
         criteria = value.get("criteria")
         if not isinstance(criteria, dict) or set(criteria) != set(CATEGORIES):
             raise ValueError(
@@ -89,11 +89,7 @@ def validate_profiles(values: object) -> ProfileMap:
 
 def load_profiles() -> None:
     """Load saved criteria, persisting current defaults on the first startup."""
-    path = get_criteria_path()
-    if not path.exists():
-        save_profiles(PROFILES)
-        return
-    values = validate_profiles(json.loads(path.read_text(encoding="utf-8")))
+    values = validate_profiles(load_records("criteria", DEFAULT_PROFILES))
     PROFILES.clear()
     PROFILES.update(values)
 
@@ -101,13 +97,7 @@ def load_profiles() -> None:
 def save_profiles(values: object) -> ProfileMap:
     """Atomically persist validated profiles before publishing the new settings."""
     profiles = validate_profiles(values)
-    path = get_criteria_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(
-        json.dumps(profiles, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
-    temporary.replace(path)
+    save_records("criteria", profiles)
     PROFILES.clear()
     PROFILES.update(profiles)
     return deepcopy(PROFILES)

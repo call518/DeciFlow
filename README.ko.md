@@ -97,14 +97,14 @@ docker compose logs --follow laya-cpu
 같은 호스트에서 **http://127.0.0.1:4000**을 엽니다. **Sources**에서
 **Sample HTTP access** 경로를 `/host-logs/sample-logs/access-100.log`로 수정하고 저장합니다.
 **Tasks**에서 이름을 지정한 **Batch / Manual** Task를 추가하고
-**Sample HTTP access**, **HTTP access** 기준, **Events/Chunk: 1**,
+**Sample HTTP access**, **Sample HTTP access** 기준, **Events/Chunk: 1**,
 **Action: None**을 선택해 저장합니다. Tasks에서 **Run**을 누르고 **Main**의 Task Monitor 목록에서 선택해 결과를 확인하세요.
 
 선택 사항인 GPU 가속은 [Docker 배포 상세](#laya-docker),
 유료 API를 사용하려면 [Jev](#jev)를 참고하세요.
 기본 키 `changeme`는 체험용입니다. 운영 전 `.env`의 키를 변경하세요.
 
-기본 **DeciFlow Server Log** Task는 `DECIFLOW_LOG_DIR/server.log` / `DECIFLOW_LOG_DIR/access.log`를 감시하며 기본 Disable 상태입니다(Run 전에 Enable로 전환). 서버 시작 또는 Task 레지스트리 삭제 시 누락된 기본 설정을 복구합니다. [Tasks](docs/tasks.ko.md)를 참고하세요.
+기본 **DeciFlow Server Log** Task는 `DECIFLOW_LOG_DIR/server.log` / `DECIFLOW_LOG_DIR/access.log`를 감시하며 기본 Disable 상태입니다(Run 전에 Enable로 전환). Reset 후를 포함한 서버 시작 시 누락된 기본 설정을 복구합니다. [Tasks](docs/tasks.ko.md)를 참고하세요.
 
 Classification Results의 **Export Reviewed JSON**으로 선택한 실행에서 사람의
 리뷰 Category가 AI Category와 다른 결과만 내려받을 수 있습니다.
@@ -117,11 +117,11 @@ Classification Results의 **Export Reviewed JSON**으로 선택한 실행에서 
 | 문서 | 내용 |
 | --- | --- |
 | [Tasks](docs/tasks.ko.md) | 재사용 실행 설정·Cron 예약·연속 감시·영속 실행 이력 |
-| [결과 저장](docs/result-storage.ko.md) | SQLite·페이지 조회·기존 이력 이전·백업·DB 확장 |
+| [결과 저장](docs/result-storage.ko.md) | SQLite·페이지 조회·설정·결과 통합 저장·백업·DB 확장 |
 | [Sources](docs/sources.ko.md) | 로컬·SSH 파일 소스 등록, Settings의 SSH 키 관리, 정렬된 풀다운 선택 |
 | [사용법](docs/usage.ko.md) | 입력 모드·판정 기준·필터·수동 검토·재접속·시간 지표 |
 | [설정](docs/configuration.ko.md) | 환경변수·모델·입력 예산 |
-| [Criteria](docs/criteria.ko.md) | 고정 5개 범주 프로필 관리; Default Criteria는 보기 전용 |
+| [Criteria](docs/criteria.ko.md) | 내부 UUID 기반 고정 5개 범주 프로필 관리; Default Criteria는 읽기 전용이며 복제 가능 |
 | [Python Actions](docs/actions.ko.md) | 구성 보기·환경 Status·pip 포함 환경·Reset venv·삭제·소스 할당 |
 | [결과 JSON](docs/results.ko.md) | 현재 요청·결과 예시와 필드 설명 |
 
@@ -134,9 +134,17 @@ Source에는 경로·패턴을 한 줄에 하나씩 여러 개 등록할 수 있
 브라우저는 새 결과만 집계하고 기존 카드를 재사용합니다. Main이나 탭이 숨겨지면
 그리기를 미루며 Task는 계속 실행하고 전체 결과는 유지합니다.
 
-Main 아래에 Source·Criteria·Actions·Tasks, Settings 아래에 SSH Keys·SSH Hosts·Results(기본 페이지 크기 50건)를
+Main 아래에 Source·Criteria·Actions·Tasks, Settings 아래에 SSH Keys·SSH Hosts·Configurations(기본 페이지 크기 50건 및 유지 관리)를
 배치합니다. 사이드바로 재진입하면 목록을 열고 미저장 초안은 버립니다.
 화면 경로·결과 조작·재접속은 [사용법](docs/usage.ko.md)을 참고하세요.
+설정과 실행 결과는 `DECIFLOW_DATA_DIR/deciflow.sqlite3`에서 통합 관리하며 SSH 키·known_hosts·Action 실행 파일은 파일로 유지합니다. 테스트 단계의 저장 구조 변경으로 이전 JSON·DB를 이관하지 않습니다. 사용 전 앱 데이터를 초기화하세요.
+
+최초 초기화·Reset 후 **Elasticsearch** 샘플 Action(Python 3.12, 모듈 `elasticsearch`)을 자동 등록합니다. Task 시작 전에 스크립트·venv·Python·모듈을 자동 준비합니다(다운로드 연결 필요). 실패 원인은 Actions에 표시되며 저장 또는 재시작으로 재시도합니다. Task에는 자동 할당하지 않습니다.
+
+Action 실행 파일은 `actions/<Action UUID>/`에 저장하며 이름 변경으로 venv가 추가 생성되지 않습니다. Action·SSH Key 이름을 수정할 수 있습니다. Task의 Action 선택과 SSH Host의 키 선택은 UUID를 사용하므로 이름을 바꿔도 할당·키 파일·Action 실행 환경은 유지됩니다.
+
+**Settings → Configurations → Reset DeciFlow**는 명시적 확인 후 앱 데이터를 영구
+삭제하고 UI 서버를 재시작합니다. 먼저 백업하고 [초기화 범위와 동작](docs/configuration.ko.md#deciflow-초기화)을 확인하세요.
 
 Settings는 개인키를 **Upload·Path·Paste**로 받아 관리 경로에 복사하고 공개키를
 추출합니다. SSH Hosts에는 접속 정보와 키를 저장합니다. **Test Connection**은 SSH
@@ -280,6 +288,8 @@ Compose는 Docker Hub에 공개된 `call518/deciflow-ui:0.0.1` 이미지를 사�
 마운트하며, 시작할 때 `uv sync --frozen`으로 `deciflow-venv` 볼륨에 의존성을 설치합니다.
 최초 실행에는 네트워크 연결이 필요합니다. Compose가 `.env`를 UI에 전달하며
 `PORT`로 호스트·컨테이너 포트를 함께 지정합니다(기본값: 4000).
+`pull_policy: always`로 `up` 실행 시마다 이미지 업데이트를 확인합니다.
+모든 Compose 서비스는 `extra_hosts`로 `host.docker.internal`을 Docker 호스트 게이트웨이에 연결합니다. 기존 컨테이너에는 재생성 후 적용됩니다.
 
 #### Dockerfile과 Compose의 역할
 

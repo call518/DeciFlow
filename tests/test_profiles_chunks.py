@@ -324,3 +324,14 @@ async def test_overlapping_source_patterns_are_retained_without_duplicate_chunks
     rows = [row async for row in read_configured(paths)]
     assert len(rows) == 2
     assert all(row["sourcePatterns"] == [str(path), pattern] for row in rows)
+
+
+def test_criteria_name_uniqueness_matches_ui() -> None:
+    from copy import deepcopy
+
+    from profiles import DEFAULT_PROFILES, validate_profiles
+
+    profiles = deepcopy(DEFAULT_PROFILES)
+    profiles["application"]["label"] = f"  {profiles['general']['label'].upper()}  "
+    with pytest.raises(ValueError, match="names must be unique"):
+        validate_profiles(profiles)

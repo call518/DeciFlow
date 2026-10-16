@@ -37,19 +37,19 @@ def test_pair_storage_and_deletion(key_storage: Path) -> None:
         "host": "example.com",
         "port": 22,
         "username": "reader",
-        "keyPath": pair["privatePath"],
+        "keyId": pair["id"],
     }
     host = save_host(source)
     save_sources([{**source, "hostId": host["id"]}])
     with pytest.raises(ValueError, match="used"):
-        delete_key("production", [])
+        delete_key(pair["id"], [])
     save_sources([])
     with pytest.raises(ValueError, match="SSH Host"):
-        delete_key("production", [])
+        delete_key(pair["id"], [])
     delete_host(load_hosts()[0]["id"], [])
     with pytest.raises(ValueError, match="used"):
-        delete_key("production", [source])
-    delete_key("production", [])
+        delete_key(pair["id"], [source])
+    delete_key(pair["id"], [])
     assert list_keys() == []
 
 
@@ -100,16 +100,16 @@ async def test_api_origin_secret_responses_and_active_job_guard(
         assert listing.json()["keys"] == [pair]
         job = SimpleNamespace(
             state="running",
-            settings={"sources": [{"type": "ssh", "keyPath": pair["privatePath"]}]},
+            settings={"sources": [{"type": "ssh", "keyId": pair["id"]}]},
         )
         monkeypatch.setattr(server, "JOBS", {"test": job})
         blocked = await client.request(
-            "DELETE", "/api/ssh-keys", headers=headers, json={"name": "test"}
+            "DELETE", "/api/ssh-keys", headers=headers, json={"id": pair["id"]}
         )
         assert blocked.status_code == 400
         job.state = "completed"
         deleted = await client.request(
-            "DELETE", "/api/ssh-keys", headers=headers, json={"name": "test"}
+            "DELETE", "/api/ssh-keys", headers=headers, json={"id": pair["id"]}
         )
         assert deleted.status_code == 200 and deleted.json()["keys"] == []
         invalid = await client.put(
@@ -156,7 +156,7 @@ async def test_registration_methods_copy_key_and_derive_public(
     )
     assert original.read_text() == private
     assert "PRIVATE KEY" not in response.text
-    delete_key(body["name"], [])
+    delete_key(pair["id"], [])
     assert original.read_text() == private
 
 
@@ -197,3 +197,56 @@ async def test_path_and_method_validation(key_storage: Path, tmp_path: Path) -> 
         )
         assert response.status_code == 400 and "SECRET" not in response.text
     assert list_keys() == []
+
+
+@pytest.mark.anyio
+async def test_uuid_key_rename_preserves_host_references_and_key_files(
+    key_storage: Path,
+) -> None:
+    """Renaming/reusing display names must not change connections or key material."""
+    from config_store import load_records
+
+    private = asyncssh.generate_private_key("ssh-ed25519").export_private_key().decode()
+    pair = add_key("Original", private)
+    before = Path(pair["privatePath"]).read_bytes()
+    host = save_host(
+        {
+            "name": "Remote",
+            "host": "localhost",
+            "port": 22,
+            "username": "reader",
+            "keyId": pair["id"],
+        }
+    )
+    assert Path(pair["privatePath"]).parent.name == pair["id"]
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=server.app),
+        base_url="http://localhost",
+        headers={"Origin": "http://localhost"},
+    ) as client:
+        response = await client.patch(
+            "/api/ssh-keys", json={"id": pair["id"], "name": "Renamed"}
+        )
+        assert response.status_code == 200
+        renamed = response.json()["keys"][0]
+        assert (
+            renamed["name"] == "Renamed"
+            and renamed["privatePath"] == pair["privatePath"]
+        )
+        replacement = add_key("Original", private)
+        assert replacement["id"] != pair["id"]
+        assert load_hosts() == [host]
+        assert Path(pair["privatePath"]).read_bytes() == before
+        assert load_records("ssh_keys")[pair["id"]] == {
+            "id": pair["id"],
+            "name": "Renamed",
+        }
+        duplicate = await client.patch(
+            "/api/ssh-keys", json={"id": pair["id"], "name": "original"}
+        )
+        assert duplicate.status_code == 400
+        blocked = await client.request(
+            "DELETE", "/api/ssh-keys", json={"id": pair["id"]}
+        )
+        assert blocked.status_code == 400
+        assert private not in response.text

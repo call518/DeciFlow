@@ -1,5 +1,5 @@
 {
-  "label": "Application",
+  "label": "Sample Application",
   "instructions": "Use the supplied lines to distinguish retries followed by success from final failures.",
   "criteria": {
     "normal": "Successful application operation or routine informational event.",

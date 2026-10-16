@@ -3,12 +3,13 @@
 [English](result-storage.md) | [문서 안내](README.ko.md)
 
 Task 결과·원본 입력·Action 결과·수동 정정·실행 집계는
-`DECIFLOW_DATA_DIR/results.sqlite3`에 저장합니다. 정의는 JSON 파일로 유지하며
-`settings.json`에는 화면 설정을 저장합니다. 별도 DB 서버나 환경변수는 필요 없습니다.
+`DECIFLOW_DATA_DIR/deciflow.sqlite3`에 Source·Criteria·Task·Action·SSH Host·일반
+설정 및 SSH Key 메타데이터와 함께 저장합니다. 설정은 내부 ID를 키로 항목별 레코드로 저장하며 중첩 필드는
+DB 안의 JSON 값으로 보존합니다. 별도 DB 서버나 환경변수는 필요 없습니다.
 
 ## 제한된 결과 로딩
 
-- Settings → Results의 Results per Page는 기본 **50건**이며 10·30·50·100건을 선택합니다.
+- Settings → Configurations의 Results per Page는 기본 **50건**이며 10·30·50·100건을 선택합니다.
 - 서버에서 필터와 커서 페이지 조회를 적용합니다. 브라우저는 현재 페이지만 유지하고
   이전 페이지는 필요할 때 조회합니다.
 - 최신 페이지는 마지막 수신 커서 이후 결과만 요청합니다. Main 이외 화면과 숨겨진
@@ -32,12 +33,12 @@ Task 결과·원본 입력·Action 결과·수동 정정·실행 집계는
 있습니다. 검색 입력은 지연 반영합니다. 디스크 사용량은 계속 늘며 자동 보존기한·정리는
 없습니다. 모든 검색·입력 부하에서 CPU가 일정하다는 보장은 아닙니다.
 
-## 기존 이력 이전과 백업
+## 초기 생성과 백업
 
-기존 `tasks/<task-id>/runs/<run-id>/events.ndjson`는 해당 실행을 열 때 한 번
-이전합니다. 한 트랜잭션에서 스트리밍으로 읽으며 원본 파일을 보존합니다. 이전 실패 시
-롤백하여 재시도할 수 있습니다. 큰 이력의 첫 이전은 시간이 걸리고 다른 저장을 잠시
-지연할 수 있습니다. 새 실행은 SQLite에 직접 저장합니다.
+새 데이터 경로에는 번들 Source·Criteria·Elasticsearch 샘플 Action과 기본 비활성 Task를 SQLite에 생성합니다.
+저장한 빈 목록은 빈 상태를 유지합니다. 설정 JSON·run.json·events.ndjson은 생성하거나
+이관하지 않습니다. 이전 JSON 설정과 구버전 결과 DB는 읽지 않으므로 사용 전 앱 데이터를
+초기화하세요. `profiles/`의 번들 Criteria JSON은 읽기 전용 초기값으로 유지합니다.
 
 로컬 파일시스템의 데이터 경로마다 DeciFlow 프로세스 하나를 사용합니다. SQLite는
 WAL·FULL 동기 커밋·연결 캐시 2MiB를 사용합니다. 활성 DB는 공유 네트워크 파일시스템에
@@ -50,9 +51,13 @@ SQLite 백업 API를 사용합니다. 실행 중 DB 파일 하나만 복사하�
 애플리케이션은 `ResultRepository` 인터페이스를 사용하고 `open_result_store()`가
 구현체를 선택합니다. SQL·트랜잭션은 `SQLiteResultStore`에 분리했습니다.
 PostgreSQL·MySQL 지원은 이 인터페이스 구현과 팩토리 확장, 이전·동시성 검증으로
-추가할 수 있습니다. 현재 구현은 SQLite뿐이며 PostgreSQL·MySQL 접속 설정은 없습니다.
+추가할 수 있습니다. 설정 SQL은 `config_store.py`에 분리되어 있으며 이 저장소도 해당 DB 구현이 필요합니다. 현재 구현은 SQLite뿐이며 PostgreSQL·MySQL 접속 설정은 없습니다.
 
 로컬 합성 데이터 5천 건과 5만 건을 비교했을 때 30건 조회 중앙값은 모두 약 0.37ms였습니다.
 해당 환경의 인덱스 조회 측정이며 추론 전체·텍스트 검색·운영 성능 보장은 아닙니다.
 
-Task 삭제 확인창에서 승인하면 Task 정의·실행 이력·결과·수동 정정·Task 디렉토리를 영구 삭제합니다. 원본 Source 파일은 삭제하지 않습니다. 기존 미등록 Task의 잔여 폴더는 자동 정리하지 않습니다. SQLite의 삭제 공간은 이후 저장에 재사용하며 DB 파일 크기가 즉시 줄지는 않을 수 있습니다.
+Task 삭제 확인창에서 승인하면 Task 정의·실행 이력·결과·수동 정정을 영구 삭제합니다. 원본 Source 파일은 삭제하지 않습니다. SQLite의 삭제 공간은 이후 저장에 재사용하며 DB 파일 크기가 즉시 줄지는 않을 수 있습니다.
+
+전체 초기화는 **Settings → Configurations → Reset DeciFlow**를 사용합니다.
+확인 후 실행 중지·SQLite 종료·앱 데이터 전체 삭제·서버 재시작을 수행합니다.
+[초기화 상세](configuration.ko.md#deciflow-초기화)를 참고하세요.

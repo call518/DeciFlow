@@ -54,8 +54,6 @@ Task의 Source 선택에 `hostIds`를 저장하고 실행할 때 접속 정보�
 적용하며 실행 중인 작업은 기존 설정을 유지합니다. 삭제 시 확인창을 표시하며,
 저장된 Task나 실행 중인 작업에서 사용하는 Host는 삭제할 수 없습니다.
 저장된 Host에서 사용하는 키도 삭제할 수 없습니다.
-기존 Source의 Host 연결은 이를 사용하는 모든 Task로 자동 이전합니다. Source·Task ID,
-known_hosts와 과거 실행 이력은 유지합니다.
 
 다음 필드는 Settings의 Host에 설정합니다:
 
@@ -112,7 +110,7 @@ SHA256 fingerprint를 포함한 `hostKey`도 반환하며 확인 후 `trustedHos
 사이드바의 **Settings → SSH Keys**(`/#settings/ssh-keys`)에서 이름(영문·숫자·공백·밑줄·하이픈)을
 입력하고 등록 방식을 선택하세요. 기본 화면은 이름·개인키 경로·관리 버튼의 목록이며,
 이름으로 검색할 수 있습니다. **Add Key**로 등록폼을 열고 **View**로 상세 내용을
-확인합니다.
+확인하며 **Edit**로 중복되지 않는 이름으로 변경합니다. 키 파일은 교체하지 않습니다.
 
 - **Upload Private Key:** 브라우저를 실행한 컴퓨터의 파일을 선택합니다.
 - **Private Key File Path:** DeciFlow 실행 프로세스에서 읽을 수 있는 파일 경로를
@@ -125,15 +123,17 @@ SHA256 fingerprint를 포함한 `hostKey`도 반환하며 확인 후 `trustedHos
 등록한 키는 **SSH Host**에서 선택하고, Task의 Remote File Source 행에서 해당 Host를
 선택하세요.
 
-키 쌍은 `deciflow-data` 볼륨의 `DECIFLOW_DATA_DIR/ssh-keys/<이름>/`에
+키 쌍은 `deciflow-data` 볼륨의 `DECIFLOW_DATA_DIR/ssh-keys/<key-id>/`에
 `private_key`(0600), `public_key.pub`(0644)로 보관하며 디렉터리 권한은 0700입니다.
+UUID·이름 메타데이터는 SQLite에 저장하고 SSH Host는 `keyId`로 참조합니다.
+실행 시 파일 경로를 확정하며 이름을 바꿔도 파일 위치·Host 연결은 유지합니다.
 Settings에는 개인키 경로와 `****`로 마스킹한 개인키, 공개키 경로와 내용을 표시합니다. 개인키 내용은
 조회 응답에 포함하지 않습니다. 삭제 시 확인창을 띄우며, 저장된 SSH Host나 실행 중인
 작업에서 사용하는 키는 삭제할 수 없습니다. 참조를 먼저 변경하거나 제거하세요.
 삭제하면 두 파일을 영구적으로 제거합니다.
 
 DeciFlow 호스트에 이미 있는 키는 경로 입력으로, 브라우저를 실행한 컴퓨터의 키는
-업로드나 붙여넣기로 등록할 수 있습니다. 마운트된 키 파일 경로를 사용하는 기존 SSH Host도 계속 동작합니다. Settings는 `ssh-keys`의 키 쌍만 관리하며 호스트의 다른 키를
+업로드나 붙여넣기로 등록할 수 있습니다. SSH Host는 등록한 키의 UUID를 선택합니다. Settings는 `ssh-keys`의 키 쌍만 관리하며 호스트의 다른 키를
 자동으로 검색·가져오거나 삭제하지 않습니다.
 
 키는 저장 시 암호화하지 않습니다. Settings·호스트·볼륨 백업의 접근 권한을
@@ -163,14 +163,13 @@ Realtime은 SFTP 디렉터리·패턴 탐색에서 받은 파일 속성을 재�
 ## 저장과 API
 
 SSH Host 목록·등록/수정·삭제는 `/api/ssh-hosts`의 `POST`·`PUT`·`DELETE`를 사용하며
-`DECIFLOW_DATA_DIR/ssh-hosts/hosts.json`에 저장합니다.
-키 목록·등록·삭제는 `/api/ssh-keys`의 `POST`·`PUT`·`DELETE`를 사용하며
+`DECIFLOW_DATA_DIR/deciflow.sqlite3`에 저장합니다.
+키 목록·등록·이름 변경·삭제는 `/api/ssh-keys`의 `POST`·`PUT`·`PATCH`·`DELETE`를 사용하며
 Sources와 같은 신뢰하는 파일 접근 Origin 제한을 적용합니다.
 
-정의는 `DECIFLOW_DATA_DIR/sources/sources.json`에 저장합니다.
-기본값은 `/var/lib/deciflow-data/sources/sources.json`이며 Compose의 `deciflow-data`
-볼륨을 그대로 사용합니다. 저장한 변경은 새 실행에 적용하고, 실행 중인 작업은
-등록을 수정·삭제해도 시작할 때의 소스 설정을 유지합니다.
+정의는 `DECIFLOW_DATA_DIR/deciflow.sqlite3`에 항목별 레코드로 저장합니다.
+Compose의 `deciflow-data` 볼륨을 그대로 사용합니다. 저장은 새 실행에 적용하며
+실행 중 작업은 시작 시점의 소스 스냅샷을 유지합니다.
 
 `POST /api/sources`로 목록을 읽고 `PUT /api/sources`로 전체 목록을 교체합니다.
 두 요청 모두 파일 접근과 같은 로컬·신뢰 UI Origin이 필요합니다. 저장 시 필드와
@@ -182,7 +181,7 @@ Tasks에 소스 ID·hostIds·실행 설정을 저장합니다. 직접 파일 API
 {
   "mode": "batch",
   "sources": [
-    {"sourceId": "<registered-source-id>", "profile": "general", "chunkEvents": 1, "action": "", "hostIds": ["<ssh-host-id>"]}
+    {"sourceId": "<registered-source-id>", "profile": "general", "chunkEvents": 1, "actionId": "", "hostIds": ["<ssh-host-id>"]}
   ],
   "persist": true
 }

@@ -4,22 +4,27 @@
 
 Manage decision profiles under **Criteria** in the sidebar. Both Laya and Jev use them.
 
+**Registered Criteria** lists editable profiles. First startup/reset provides
+**Sample Application**, **Sample Authentication**, **Sample HTTP access**, and
+**Sample Network / tcpdump text**. The Sample prefix identifies bundled examples;
+profile IDs and decision definitions are unchanged. Default Criteria remains separate.
+
 | Task | Steps |
 | --- | --- |
-| List/search | Inspect names and profile IDs; filter with Search by Name |
-| View | Inspect the current configuration, instructions, and five definitions read-only; Cancel dismisses it |
-| Add | Add Profile → enter ID, name, instructions, and five definitions → Save Changes |
-| Edit | Edit → change criteria → Save Changes. Existing IDs stay unchanged |
+| List/search | Inspect names; filter with Search by Name |
+| View | Inspect the current configuration, instructions, and five definitions read-only beneath the selected row; View toggles it closed |
+| Add | Add Profile → enter name, instructions, and five definitions → Save Changes |
+| Clone | Clone opens Add Profile with the original instructions and definitions, preserving normalization. Name defaults to `Original Name (Clone)`; an internal UUID is generated automatically; select Save Changes. Cancel leaves the original unchanged |
+| Edit | Edit → change criteria → Save Changes. Internal IDs stay unchanged |
 | Cancel | Cancel Edit discards the current editor draft |
 | Delete | Delete → Save Changes. Deletion is pending until saved |
 
 - Categories stay fixed at **Normal, Warning, Error, Security, and Other**.
   Profiles customize `choice` only; urgency (`score`) and work-ticket need (`noul`)
   use fixed shared questions. Custom categories are unavailable.
-- IDs start with a lowercase letter and use lowercase letters, digits, `_`, or `-`,
-  up to 64 characters. Names, instructions, and every definition must be nonempty.
+- Names, instructions, and every definition must be nonempty.
 - `general` is the default API profile. It appears separately under **Default Criteria**
-  above the list, with **View** only. Edit/Delete controls are omitted.
+  above the list, with **View** and **Clone**. Edit/Delete controls are omitted.
 - Saved changes apply to new runs. Running jobs retain their original criteria even
   after edits; result JSON `questions.category` records the criteria actually used.
 - Deletion is blocked while saved Tasks reference a profile; update those Tasks first.
@@ -35,11 +40,10 @@ Add/Edit hides the list and shows only the form. Saving or Cancel Edit returns t
 
 ## Storage and access
 
-At startup, if `DECIFLOW_DATA_DIR/criteria/criteria.json` is missing, DeciFlow writes
-the defaults loaded from [`profiles/`](../profiles/). No UI save is needed. If the file
-exists, DeciFlow loads its complete list without overwriting edits or deletions.
-The default path is `/var/lib/deciflow-data/criteria/criteria.json`. Once saved criteria
-exist, editing bundled JSON no longer changes the active criteria.
+At startup, the database initializes missing Criteria from bundled definitions in
+[`profiles/`](../profiles/). Saved edits and deletions are preserved. Configuration
+is stored in `DECIFLOW_DATA_DIR/deciflow.sqlite3`, not a separate JSON registry.
+Bundled JSON supplies initial defaults only; editing it does not replace saved profiles.
 
 Docker Compose shares the `deciflow-data` volume with Actions; no additional
 mount is needed. Direct host startup needs write permission in the shared directory,
@@ -50,3 +54,5 @@ The management API reads profiles with `POST /api/criteria` and replaces the lis
 `PUT /api/criteria`. It applies the same local/trusted UI origin checks as Actions.
 For a remote UI, configure `DECIFLOW_CSRF_TRUSTED_ORIGINS` and protect access with
 proxy authentication.
+
+New profiles and clones receive an internal UUID, independent of Name. IDs are hidden in lists, Views, and forms. Existing IDs remain unchanged to preserve Task and history references. Duplicate names (ignoring case and surrounding whitespace) are reported immediately in red and block saving without discarding the draft. Names may contain non-Latin characters. The server enforces the same duplicate-name rule.
