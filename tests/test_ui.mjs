@@ -2201,11 +2201,24 @@ test('Task Monitor only lists selectable Tasks without management controls or du
   for(const id of ['stop','manage-tasks','monitor-task-info','monitor-task-status','input-limits','data-notice'])assert.ok(!section.includes(`id="${id}"`));
 });
 
+// Extract text from static heading fixtures; this is not an HTML sanitizer.
+function headingText(markup) {
+  return Array.from(markup.matchAll(/(?:^|>)([^<>]+)(?=<|$)/g), match => match[1]).join('');
+}
+
+test('Static heading text extraction preserves text and excludes tag attributes', () => {
+  assert.equal(headingText('Classification Results'), 'Classification Results');
+  assert.equal(headingText('<span class="lowercase">Running</span> Task Monitor'), 'Running Task Monitor');
+  assert.equal(headingText('Sources <strong>and <em>Decisions</em></strong>'), 'Sources and Decisions');
+  assert.equal(headingText('Classifi<strong>cation</strong> Results'), 'Classification Results');
+  assert.equal(headingText('<span id="status"></span>'), '');
+});
+
 test('Static page, section and dialog headings consistently use Title Case', () => {
   const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
   const minorWords=new Set(['a','an','and','as','at','but','by','for','in','of','on','or','the','to']);
   for(const [,markup] of html.matchAll(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/g)) {
-    const title=markup.replace(/<[^>]*>/g,'');
+    const title=headingText(markup);
     const words=title.match(/[A-Za-z]+/g) || [];
     words.forEach((word,index)=>{
       if(index>0 && index<words.length-1 && minorWords.has(word))return;
