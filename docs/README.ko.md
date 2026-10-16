@@ -5,15 +5,19 @@
 DeciFlow와 Laya 실행은 [빠른 시작](../README.ko.md#빠른-시작--docker--laya-cpu)부터
 확인하세요. 필요한 작업에 따라 아래 문서를 선택하면 됩니다.
 
+Remote File은 Settings에서 SSH Keys·SSH Hosts를 먼저 등록합니다. 이후
+Source → Criteria → 선택적 Actions → Tasks 순으로 구성하고 Main에서 실행을 확인합니다.
+
 ## DeciFlow 사용과 설정
 
 | 문서 | 용도 |
 | --- | --- |
-| [Sources](sources.ko.md) | 로컬·SSH 파일 소스 등록과 Main에서 선택 |
+| [Sources](sources.ko.md) | 로컬·SSH 파일 소스 등록과 Tasks에서 선택 |
 | [사용법](usage.ko.md) | 로그 분석·결과 필터·판정 검토·재접속·지표 확인 |
 | [설정](configuration.ko.md) | 환경변수·Laya/Jev 모델·요청 예산 설정 |
 | [Criteria](criteria.ko.md) | 분류 지시문·범주 정의 생성과 관리 |
 | [Python Actions](actions.ko.md) | 판정 후 Python 코드 실행과 실행 환경 관리 |
+| [Tasks](tasks.ko.md) | 재사용 실행 설정·Cron 예약·연속 감시·영속 실행 이력 |
 
 ## 배포와 연동
 

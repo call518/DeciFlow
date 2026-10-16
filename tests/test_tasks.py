@@ -1,0 +1,296 @@
+"""Verify Task scheduling, durable execution, overlap protection, and replay."""
+
+import asyncio
+import json
+from collections.abc import AsyncGenerator, AsyncIterator
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+import httpx
+import pytest
+
+import server
+from classifier import Result
+from jobs import JOBS, Job
+from source_registry import save_sources
+from tasks import (
+    TaskScheduler,
+    get_tasks_directory,
+    load_tasks,
+    next_run,
+    recover_interrupted_runs,
+    save_task,
+    task_runs,
+)
+
+pytestmark = pytest.mark.anyio
+
+
+@pytest.fixture
+async def task_setup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[Result]:
+    monkeypatch.setenv("DECIFLOW_DATA_DIR", str(tmp_path / "data"))
+    path = tmp_path / "input.log"
+    path.write_text("one\ntwo\n")
+    source = save_sources([{"name": "Input", "type": "local", "path": str(path)}])[0]
+    task = save_task(
+        {
+            "name": "Logs",
+            "mode": "batch",
+            "sources": [
+                {"sourceId": source["id"], "profile": "general", "chunkEvents": 1}
+            ],
+        }
+    )
+    try:
+        yield {"task": task, "source": source, "path": path}
+    finally:
+        await asyncio.gather(*(job.stop() for job in JOBS.values()))
+        JOBS.clear()
+        server.TASK_STARTING.clear()
+        server.SCHEDULER.due.clear()
+
+
+async def test_task_validation_and_timezone(task_setup: Result) -> None:
+    task = task_setup["task"]
+    scheduled = save_task({**task, "cron": "0 9 * * *", "timezone": "Asia/Seoul"})
+    assert next_run(scheduled, datetime(2026, 10, 15, 23, tzinfo=UTC)) == datetime(
+        2026, 10, 16, tzinfo=UTC
+    )
+    before = load_tasks()
+    for changes in [
+        {"cron": "bad"},
+        {"cron": "0 * * * * *"},
+        {"timezone": "not/a/timezone"},
+        {"mode": "paste"},
+        {"mode": "realtime", "cron": "* * * * *"},
+        {"enabled": "yes"},
+        {"resumeOnRestart": 1},
+        {"name": ""},
+        {"sources": []},
+        {"sources": [{"sourceId": "missing"}]},
+        {"sources": [{"sourceId": task_setup["source"]["id"], "chunkEvents": 0}]},
+        {"sources": [{"sourceId": task_setup["source"]["id"], "action": "unknown"}]},
+        {"sources": task["sources"] * 2},
+    ]:
+        with pytest.raises((ValueError, TypeError)):
+            save_task({**task, **changes})
+        assert load_tasks() == before
+
+
+@pytest.mark.parametrize("engine", ["laya", "jev"])
+async def test_batch_runs_persist_and_replay_without_reexecution(
+    task_setup: Result,
+    monkeypatch: pytest.MonkeyPatch,
+    engine: str,
+) -> None:
+    monkeypatch.setenv("DECISION_ENGINE", engine)
+    calls: list[str] = []
+
+    async def handle_classify(log: str, *args: object) -> Result:
+        calls.append(log)
+        return {"category": "normal", "review": False, "probabilities": {"normal": 1}}
+
+    monkeypatch.setattr(server, "classify_log", handle_classify)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=server.app),
+        base_url="http://localhost",
+        headers={"Origin": "http://localhost"},
+    ) as client:
+        run = (await client.post(f"/api/tasks/{task_setup['task']['id']}/run")).json()
+        job = JOBS[run["jobId"]]
+        await asyncio.wait_for(job.task, 3)
+        assert job.state == "completed" and job.counts["completed"] == 2
+        assert sorted(calls) == ["one", "two"]
+        assert task_runs(task_setup["task"]["id"])[0]["state"] == "completed"
+        replay = await client.post(f"/api/jobs/{job.id}/events")
+        JOBS.clear()  # Simulate a new server process reading the same volume.
+        archived = await client.post(f"/api/jobs/{job.id}")
+        assert archived.json()["counts"]["completed"] == 2
+        after_restart = await client.post(f"/api/jobs/{job.id}/events")
+        assert after_restart.text == replay.text
+        assert sorted(calls) == ["one", "two"]
+        history = await client.post(f"/api/tasks/{task_setup['task']['id']}/runs")
+        assert len(history.json()["runs"]) == 1
+
+
+async def test_overlapping_manual_and_cron_runs_and_edit_snapshot(
+    task_setup: Result,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate = asyncio.Event()
+
+    async def handle_classify(log: str, *args: object) -> Result:
+        await gate.wait()
+        return {"category": "normal", "review": False}
+
+    monkeypatch.setattr(server, "classify_log", handle_classify)
+    task = task_setup["task"]
+    pending = asyncio.create_task(server.launch_task(task, "manual"))
+    await asyncio.sleep(0)
+    with pytest.raises(ValueError, match="already running"):
+        await server.launch_task(task, "manual")
+    run = await pending
+    skipped = await server.launch_task(task, "cron")
+    assert skipped["state"] == "skipped"
+    saved = save_task(
+        {
+            **task,
+            "name": "Renamed",
+            "sources": [{**task["sources"][0], "chunkEvents": 2}],
+        }
+    )
+    assert JOBS[run["jobId"]].settings["sources"][0]["chunkEvents"] == 1
+    assert saved["sources"][0]["chunkEvents"] == 2
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=server.app),
+        base_url="http://localhost",
+        headers={"Origin": "http://localhost"},
+    ) as client:
+        blocked = await client.request("DELETE", "/api/tasks", json={"id": task["id"]})
+        assert blocked.status_code == 409
+        assert (await client.post(f"/api/tasks/{task['id']}/stop")).status_code == 200
+    assert JOBS[run["jobId"]].state == "stopped"
+    gate.set()
+
+
+async def test_scheduler_cron_pause_skip_downtime_and_single_due(
+    task_setup: Result,
+) -> None:
+    task = save_task({**task_setup["task"], "cron": "* * * * *", "timezone": "UTC"})
+    calls: list[str] = []
+
+    async def launch(task: Result, trigger: str) -> Result:
+        calls.append(trigger)
+        return {"state": "completed"}
+
+    scheduler = TaskScheduler(launch)
+    now = datetime(2026, 10, 16, 0, 0, 30, tzinfo=UTC)
+    await scheduler.tick(now)
+    assert calls == []
+    await scheduler.tick(now + timedelta(seconds=30))
+    await scheduler.tick(now + timedelta(seconds=30))
+    assert calls == ["cron"]
+    # Several missed minutes produce at most one current occurrence, not catch-up.
+    await scheduler.tick(now + timedelta(minutes=10))
+    assert calls == ["cron", "cron"]
+    save_task({**task, "enabled": False})
+    await scheduler.tick(now + timedelta(minutes=11))
+    assert calls == ["cron", "cron"]
+    save_task({**task, "enabled": True})
+    restarted = TaskScheduler(launch)
+    await restarted.tick(now + timedelta(minutes=20))
+    assert calls == ["cron", "cron"]
+
+
+async def test_task_api_origin_and_dependencies_cannot_be_deleted(
+    task_setup: Result,
+) -> None:
+    identity = task_setup["task"]["id"]
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=server.app), base_url="http://localhost"
+    ) as client:
+        for method in ["POST", "PUT", "DELETE"]:
+            assert (
+                await client.request(method, "/api/tasks", json={})
+            ).status_code == 403
+        for operation in ["run", "stop", "runs"]:
+            assert (
+                await client.post(f"/api/tasks/{identity}/{operation}")
+            ).status_code == 403
+        headers = {"Origin": "http://localhost"}
+        denied = await client.put("/api/sources", json=[], headers=headers)
+        assert denied.status_code == 400 and "Task" in denied.json()["error"]
+        listed = await client.post("/api/tasks", headers=headers)
+        assert listed.json()["tasks"][0]["latestRun"] is None
+        removed = await client.request(
+            "DELETE", "/api/tasks", json={"id": identity}, headers=headers
+        )
+        assert removed.status_code == 200 and removed.json()["tasks"] == []
+
+
+async def test_failed_preparation_is_recorded(task_setup: Result) -> None:
+    task_setup["path"].unlink()
+    run = await server.launch_task(task_setup["task"], "cron")
+    assert run["state"] == "failed" and run["error"]
+    assert task_runs(task_setup["task"]["id"])[0]["jobId"] == run["jobId"]
+
+
+@pytest.mark.parametrize("failure", ["decision", "action"])
+async def test_failed_results_or_actions_fail_task(
+    task_setup: Result,
+    failure: str,
+) -> None:
+    async def events() -> AsyncGenerator[str, None]:
+        result = {
+            "log": "one",
+            **(
+                {"error": "engine failed"}
+                if failure == "decision"
+                else {"actionExecution": {"status": "failed"}}
+            ),
+        }
+        for event in [
+            {"type": "result", "index": 0, "result": result},
+            {"type": "done", "elapsedMs": 1},
+        ]:
+            yield json.dumps(event) + "\n"
+
+    job = Job(
+        {"taskId": task_setup["task"]["id"], "mode": "batch", "sources": []},
+        events(),
+        get_tasks_directory() / task_setup["task"]["id"] / "runs",
+    )
+    await job.task
+    assert job.state == "failed"
+    assert task_runs(task_setup["task"]["id"])[0]["state"] == "failed"
+
+
+async def test_interrupted_run_and_opt_in_realtime_restart(task_setup: Result) -> None:
+    task = save_task(
+        {**task_setup["task"], "mode": "realtime", "resumeOnRestart": True}
+    )
+    directory = get_tasks_directory() / task["id"] / "runs" / ("1" * 32)
+    directory.mkdir(parents=True)
+    (directory / "run.json").write_text(
+        json.dumps({"state": "running", "jobId": "1" * 32})
+    )
+    recover_interrupted_runs()
+    assert json.loads((directory / "run.json").read_text())["state"] == "stopped"
+    called = asyncio.Event()
+
+    async def launch(task: Result, trigger: str) -> Result:
+        assert task["mode"] == "realtime" and trigger == "restart"
+        called.set()
+        return {}
+
+    scheduler = TaskScheduler(launch)
+    loop = asyncio.create_task(scheduler.run())
+    await asyncio.wait_for(called.wait(), 2)
+    loop.cancel()
+    await asyncio.gather(loop, return_exceptions=True)
+
+
+async def test_history_write_failure_terminates_stream_instead_of_hanging(
+    task_setup: Result,
+) -> None:
+    gate = asyncio.Event()
+
+    async def events() -> AsyncGenerator[str, None]:
+        await gate.wait()
+        yield json.dumps({"type": "start", "total": 0}) + "\n"
+
+    job = Job(
+        {"taskId": task_setup["task"]["id"], "mode": "batch", "sources": []},
+        events(),
+        get_tasks_directory() / task_setup["task"]["id"] / "runs",
+    )
+    assert job.directory is not None
+    (job.directory / "events.ndjson").mkdir()
+    gate.set()
+    await asyncio.wait_for(job.task, 2)
+    replay = [json.loads(event) async for event in job.stream()]
+    assert job.state == "failed"
+    assert replay[-1]["state"] == "failed"
+    assert "events.ndjson" in replay[-2]["error"]

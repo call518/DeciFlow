@@ -36,7 +36,8 @@ uv run python -m scripts.evaluate_laya --output /tmp/laya-validation.json
 By default, the evaluator uses [36 synthetic cases across five profiles](../tests/fixtures/log_evaluation.json)
 and caps concurrent requests at two. It uses the bundled profile definitions in
 [`profiles/`](../profiles/), not profiles edited and saved through the UI.
-For UI-edited criteria, validate the same labeled logs through the UI.
+For UI-edited criteria, put the labeled logs in a UTF-8 file, register a Local File
+Source, and run a Batch Task with that criteria profile. Inspect its results in Main.
 
 To compare prepared models, repeat `--model` (append these options to the chosen command):
 

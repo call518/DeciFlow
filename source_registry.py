@@ -8,7 +8,7 @@ from pathlib import Path, PurePosixPath
 from uuid import uuid4
 
 from classifier import Result
-from ssh_hosts import import_legacy_host, load_hosts
+from ssh_hosts import import_legacy_host
 
 DEFAULT_SOURCES = [
     {"id": f"{index:032x}", "name": name, "type": "local", "path": path}
@@ -36,43 +36,39 @@ def load_sources() -> list[Result]:
     )
     if not isinstance(values, list):
         raise TypeError("Invalid source registry.")
-    migrated = False
+    legacy_hosts: dict[str, str] = {}
     for source in values:
         if not isinstance(source, dict) or source.get("type") not in {"local", "ssh"}:
             raise ValueError("Invalid source registry.")
-        fields = ("id", "name", "type", "path")
         if any(
             not isinstance(source.get(key), str) or not source[key].strip()
-            for key in fields
+            for key in ("id", "name", "type", "path")
         ):
             raise ValueError("Invalid source registry fields.")
         if source["type"] == "ssh":
-            if "hostId" not in source:
-                source["hostId"] = import_legacy_host(source)
-                migrated = True
-            if not isinstance(source["hostId"], str) or not source["hostId"]:
-                raise ValueError("Invalid SSH host reference in source registry.")
-    hosts = {host["id"]: host for host in load_hosts()}
-    if migrated:
-        _write_sources(
-            [
-                {
-                    key: source[key]
-                    for key in ("id", "name", "type", "path", "hostId")
-                    if key in source
-                }
-                for source in values
-            ]
-        )
-    for source in values:
-        if source["type"] == "ssh":
-            host = hosts.get(source["hostId"])
-            if host is None:
-                raise ValueError("The Source references a missing SSH host.")
-            source.update(
-                {key: host[key] for key in ("host", "port", "username", "keyPath")}
-            )
-            source["hostName"] = host["name"]
+            if source.get("hostId"):
+                legacy_hosts[source["id"]] = source["hostId"]
+            elif source.get("host"):
+                legacy_hosts[source["id"]] = import_legacy_host(source)
+    if legacy_hosts:
+        # Write Tasks first so an interrupted migration can be repeated safely.
+        task_path = path.parent.parent / "tasks" / "tasks.json"
+        if task_path.exists():
+            tasks = json.loads(task_path.read_text(encoding="utf-8"))
+            for task in tasks:
+                for selection in task["sources"]:
+                    identity = selection.get("sourceId")
+                    if identity in legacy_hosts and "hostIds" not in selection:
+                        selection["hostIds"] = [legacy_hosts[identity]]
+            temporary = task_path.with_suffix(".json.tmp")
+            temporary.write_text(json.dumps(tasks, indent=2) + "\n", encoding="utf-8")
+            temporary.replace(task_path)
+        values = [
+            {key: source[key] for key in ("id", "name", "type", "path")}
+            for source in values
+        ]
+        _write_sources(values)
+
     return values
 
 
@@ -102,15 +98,8 @@ def validate_sources(values: object) -> list[Result]:
         identities.add(identity)
         names.add(source["name"].casefold())
         source["id"] = identity
-        if source["type"] == "ssh":
-            identity = value.get("hostId")
-            if not isinstance(identity, str) or not any(
-                host["id"] == identity for host in load_hosts()
-            ):
-                raise ValueError("Select an SSH host registered in Settings.")
-            source["hostId"] = identity
-            if not PurePosixPath(source["path"]).is_absolute():
-                raise ValueError("Remote file paths must be absolute POSIX paths.")
+        if source["type"] == "ssh" and not PurePosixPath(source["path"]).is_absolute():
+            raise ValueError("Remote file paths must be absolute POSIX paths.")
         result.append(source)
     return result
 

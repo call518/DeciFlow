@@ -2,16 +2,10 @@ import { readEvents } from './stream.js';
 
 const $ = id => document.getElementById(id);
 const labels = { normal: 'Normal', warning: 'Warning', error: 'Error', security: 'Security', other: 'Other' };
-const samples = [
-  '2026-10-10T09:00:00 INFO gateway request completed status=200 latency=24ms',
-  '2026-10-10T09:00:01 WARN cache miss rate elevated; fallback succeeded',
-  '2026-10-10T09:00:02 ERROR database connection refused; checkout failed',
-  '2026-10-10T09:00:03 SECURITY repeated unauthorized admin access blocked',
-  '2026-10-10T09:00:04 event=zx17 value=unknown',
-];
+
 const expandedJson = new WeakSet();
 function orderedResult(result) {
-  const metadata = ['requestedAt', 'decidedAt', 'schemaVersion', 'eventId', 'engine', 'engineConnection', 'requestedModel', 'source', 'sourceId', 'sourceName', 'sourceType', 'sourcePatterns', 'line', 'lineEnd', 'lineCount', 'eventCount', 'profile', 'chunkEvents', 'incomplete', 'elapsedMs', 'requestBytes', 'inputBudget', 'httpStatus', 'responseHeaders', 'action', 'actionExecution'];
+  const metadata = ['requestedAt', 'decidedAt', 'schemaVersion', 'eventId', 'engine', 'engineConnection', 'requestedModel', 'source', 'sourceId', 'sourceName', 'sourceType', 'hostId', 'hostName', 'hostAddress', 'hostPort', 'sourceFailure', 'chunkSequence', 'sourcePatterns', 'line', 'lineEnd', 'lineCount', 'eventCount', 'profile', 'chunkEvents', 'incomplete', 'elapsedMs', 'requestBytes', 'inputBudget', 'httpStatus', 'responseHeaders', 'action', 'actionExecution'];
   return Object.fromEntries([
     ...metadata.filter(key => Object.hasOwn(result, key)).map(key => [key, result[key]]),
     ...Object.entries(result).filter(([key]) => !metadata.includes(key)),
@@ -72,7 +66,6 @@ let registeredSources = sampleSources.map(source => ({ ...source }));
 let sourceSnapshots = [];
 const defaultFilePaths = Object.freeze({ batch: sampleSources.map(source => source.id).join('\n'), realtime: sampleSources.map(source => source.id).join('\n') });
 const filePaths = { ...defaultFilePaths };
-$('logs').value = samples.join('\n');
 $('file-path').value = filePaths[sourceMode];
 let engine = 'laya';
 let resultEngine = engine;
@@ -262,14 +255,94 @@ async function handleDeleteKey(name) {
 }
 let sshHosts = [];
 let editingSSHHost = null;
+const sshHostChecks = new Map();
+function hostConnectionKey(host) {
+  return JSON.stringify([host.host,host.port,host.username,host.keyPath]);
+}
+function hostDraft() {
+  return {...(editingSSHHost ? {id:editingSSHHost} : {}),name:$('ssh-host-name').value,host:$('ssh-host-address').value,port:Number($('ssh-host-port').value),username:$('ssh-host-user').value,keyPath:$('ssh-host-key').value};
+}
+function connectionStatus(result) {
+  if(!result)return 'Not checked';
+  if(result.checking)return 'Checking…';
+  return `${result.connected?'Connected (SSH + SFTP)':'Failed'} · ${result.checkedAt ? new Date(result.checkedAt).toLocaleString() : ''}${result.elapsedMs!==undefined ? ` · ${result.elapsedMs}ms` : ''}${result.error ? ` · ${result.error}` : ''}`;
+}
+let hostApprovalQueue = Promise.resolve();
+function handleApproveHostKey(presented) {
+  const approval = hostApprovalQueue.then(() => new Promise(resolve => {
+    const dialog = $('ssh-trust-dialog');
+    $('ssh-trust-host').textContent = `${presented.host}:${presented.port}`;
+    $('ssh-trust-algorithm').textContent = presented.publicKey.split(' ')[0];
+    $('ssh-trust-fingerprint').textContent = presented.fingerprint;
+    dialog.returnValue = 'cancel';
+    dialog.onclose = () => resolve(dialog.returnValue === 'approve');
+    dialog.showModal();
+  }));
+  hostApprovalQueue = approval.catch(() => false);
+  return approval;
+}
+async function handleTestHost(host=null, automatic=false) {
+  const draft=host || hostDraft(); const key=hostConnectionKey(draft);
+  if(sshHostChecks.get(key)?.checking)return;
+  sshHostChecks.set(key,{checking:true});renderSSHHosts();
+  if(!host){$('test-ssh-host').disabled=true;$('ssh-host-test-result').textContent='Checking SSH authentication and SFTP…';}
+  let result;
+  try {
+    const payload=host?{id:host.id}:draft;
+    const request=async body=>{
+      const response=await fetch('/api/ssh-hosts/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      if(response.status===404 || response.status===405)throw new Error('SSH connection test unavailable. Reload hosts or restart the DeciFlow UI server.');
+      const data=await response.json();if(!response.ok)throw new Error(data.error);return data;
+    };
+    result=await request(payload);
+    if(result.hostKey && automatic){
+      result.error='Host key approval required. Use Test Connection to review the fingerprint.';
+    }else if(result.hostKey){
+      const presented=result.hostKey;
+      if(await handleApproveHostKey(presented)){
+        result=await request({...payload,trustedHostKey:presented.publicKey});
+      }else{result.error=`Host key was not approved: ${presented.fingerprint}`;}
+    }
+  }catch(error){result={connected:false,error:error.message};}
+  sshHostChecks.set(key,result);renderSSHHosts();
+  if(!host){$('test-ssh-host').disabled=false;$('ssh-host-test-result').textContent=hostConnectionKey(hostDraft())===key ? connectionStatus(result) : 'Connection settings changed. Test again.';}
+}
+let hostCheckTimer;
+let hostChecksRunning = false;
+function hostChecksVisible() {
+  return currentView === 'settings' && !document.hidden && !$('settings-ssh-hosts').hidden && !$('ssh-host-registry').hidden;
+}
+function handleScheduleHostChecks() {
+  clearTimeout(hostCheckTimer);
+  if (hostChecksVisible()) hostCheckTimer = setTimeout(handleAutoCheckHosts, 0);
+}
+async function handleAutoCheckHosts() {
+  if (hostChecksRunning || !hostChecksVisible()) return;
+  hostChecksRunning = true;
+  clearTimeout(hostCheckTimer);
+  try {
+    for (const host of [...sshHosts].sort(compareNames)) {
+      if (!hostChecksVisible() || $('ssh-trust-dialog').open) break;
+      if (!sshHosts.some(item => item.id === host.id && hostConnectionKey(item) === hostConnectionKey(host))) continue;
+      await handleTestHost(host, true);
+    }
+  } finally {
+    hostChecksRunning = false;
+    if (hostChecksVisible()) hostCheckTimer = setTimeout(handleAutoCheckHosts, 30000);
+  }
+}
+document.addEventListener?.('visibilitychange', handleScheduleHostChecks);
+$('test-ssh-host').onclick=()=>handleTestHost();
+$('ssh-host-form').oninput=()=>{$('ssh-host-test-result').textContent='';};
 function handleCloseHost() {
   editingSSHHost = null; $('ssh-host-registry').hidden = false;
   $('ssh-host-editor').hidden = true; $('ssh-host-view').hidden = true;
+  handleScheduleHostChecks();
 }
 function renderSSHHosts() {
   const list = $('ssh-host-list'); list.replaceChildren();
   const table = element('table', '', 'action-list'); const header = element('tr', '');
-  for (const title of ['Name', 'Connection', 'SSH key', 'Manage']) header.append(element('th', title));
+  for (const title of ['Name', 'Connection', 'SSH key', 'Status', 'Manage']) header.append(element('th', title));
   const head = element('thead', ''); head.append(header); table.append(head);
   const body = element('tbody', ''); const query = $('ssh-host-search').value.toLowerCase();
   for (const host of sshHosts.filter(host => `${host.name} ${host.host} ${host.username}`.toLowerCase().includes(query))) {
@@ -279,7 +352,9 @@ function renderSSHHosts() {
     for (const [caption, handler] of [['View', () => handleViewHost(host)], ['Edit', () => handleEditHost(host)], ['Delete', () => handleDeleteHost(host)]]) {
       const button = element('button', caption, 'quiet'); button.type = 'button'; button.onclick = handler; controls.append(button);
     }
-    row.append(controls); body.append(row);
+    const check=sshHostChecks.get(hostConnectionKey(host));
+    const test=element('button', 'Test Connection', 'quiet'); test.type='button';test.disabled=Boolean(check?.checking);test.onclick=()=>handleTestHost(host);controls.append(test);
+    row.append(element('td',connectionStatus(check),check?.connected?'connection-ok':check && !check.checking?'connection-failed':''),controls); body.append(row);
   }
   table.append(body); list.append(table);
   if (!body.children.length) list.append(element('p', 'No matching SSH hosts.', 'caption'));
@@ -290,12 +365,7 @@ async function handleLoadHosts() {
     if (response.status === 404 || response.status === 405) throw new Error('SSH host API is unavailable. Restart the DeciFlow UI server or container.');
     const data = await response.json(); if (!response.ok) throw new Error(data.error);
     sshHosts = data.hosts; renderSSHHosts();
-    if (sourceFields.hostId) {
-      const input = sourceFields.hostId; const selected = input.value;
-      input.replaceChildren(); input.append(new Option('Select an SSH host from Settings…', ''));
-      for (const host of sshHosts) input.append(new Option(host.name, host.id));
-      input.value = selected;
-    }
+    handleScheduleHostChecks();
   } catch (error) { $('ssh-host-message').textContent = error.message; }
 }
 function handleEditHost(host = null) {
@@ -303,10 +373,11 @@ function handleEditHost(host = null) {
   $('ssh-host-registry').hidden = true; $('ssh-host-editor').hidden = false;
   $('ssh-host-editor-title').textContent = host ? 'Edit SSH host' : 'Add SSH host';
   for (const [id, value] of [['ssh-host-name', host?.name || ''], ['ssh-host-address', host?.host || ''], ['ssh-host-port', host?.port || 22], ['ssh-host-user', host?.username || '']]) $(id).value = String(value);
-  const keys = $('ssh-host-key'); keys.replaceChildren(); keys.append(new Option('Select an SSH key…', ''));
+  const keys = $('ssh-host-key'); keys.replaceChildren();
   for (const key of sshKeys) keys.append(new Option(key.name, key.privatePath));
   if (host?.keyPath && !sshKeys.some(key => key.privatePath === host.keyPath)) keys.append(new Option(host.keyPath, host.keyPath));
   keys.value = host?.keyPath || ''; $('ssh-host-message').textContent = '';
+  $('ssh-host-test-result').textContent='';
 }
 function handleViewHost(host) {
   handleCloseHost(); $('ssh-host-registry').hidden = true;
@@ -327,7 +398,7 @@ $('ssh-host-search').oninput = renderSSHHosts;
 $('ssh-host-form').onsubmit = async event => {
   event.preventDefault(); $('save-ssh-host').disabled = true;
   try {
-    const host = { ...(editingSSHHost ? {id: editingSSHHost} : {}), name: $('ssh-host-name').value, host: $('ssh-host-address').value, port: Number($('ssh-host-port').value), username: $('ssh-host-user').value, keyPath: $('ssh-host-key').value };
+    const host = hostDraft();
     const response = await fetch('/api/ssh-hosts', {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(host)});
     const data = await response.json(); if (!response.ok) throw new Error(data.error);
     sshHosts = data.hosts; renderSSHHosts(); handleCloseHost();
@@ -348,15 +419,205 @@ async function handleDeleteHost(host) {
     sshHosts = data.hosts; renderSSHHosts(); $('ssh-host-message').textContent = 'SSH host deleted.';
   } catch (error) { $('ssh-host-message').textContent = error.message; }
 }
+let registeredTasks = [];
+let selectedTaskId = '';
+let editingTask = null;
+let monitoringPromise = Promise.resolve();
+let monitorSelection = 0;
+let followLatestTask = true;
+let monitoringReady = false;
+
+function taskExecution(task) {
+  return task.mode === 'realtime' ? `Realtime${task.resumeOnRestart ? ' · resume on restart' : ''}` : task.cron ? `Batch · ${task.cron} · ${task.timezone}${task.enabled ? '' : ' · paused'}` : 'Batch · Manual';
+}
+function taskTime(value, timezone = 'UTC') {
+  return value ? new Date(value).toLocaleString('en-GB', {timeZone:timezone,hour12:false}) : '—';
+}
+function renderTaskMonitor() {
+  const list=$('running-tasks'); list.replaceChildren();
+  const running=registeredTasks.filter(task=>task.activeRun || task.starting).sort(compareNames);
+  for(const task of running) {
+    const button=element('button','','running-task'); button.type='button';
+    button.setAttribute('aria-pressed',String(task.id===selectedTaskId));
+    button.append(element('strong',task.name),element('span',`${task.starting?'Starting':'Running'} · ${task.mode==='realtime'?'Realtime':'Batch'}`,'caption'));
+    button.disabled=!task.activeRun;
+    button.onclick=()=>handleSelectTask(task.id);
+    list.append(button);
+  }
+  if(!running.length)list.append(element('p','No Tasks are currently running. Start a Task from Tasks.','caption'));
+  const task=registeredTasks.find(task=>task.id===selectedTaskId);
+  $('monitor-task-info').textContent=task ? `${task.name} · ${taskExecution(task)} · ${task.sources.length} Source(s)` : 'Select a running Task to view its results.';
+  const run=task?.activeRun || task?.latestRun;
+  $('monitor-task-status').textContent=task ? `${task.starting ? 'Starting' : run?.state || 'Idle'}${task.nextRunAt ? ` · Next: ${taskTime(task.nextRunAt,task.timezone)} (${task.timezone})` : ''}${run?.counts ? ` · ${run.counts.completed} completed · ${run.counts.failed} failed requests · ${run.counts.actionFailed} failed Actions` : ''}` : '';
+  $('stop').disabled=!task?.activeRun;
+}
+function renderTasks() {
+  $('task-registry').hidden=editingTask!==null;
+  const list=$('task-list'); list.replaceChildren();
+  const table=element('table','','action-list'); const head=element('tr','');
+  for(const title of ['Name','Execution','Status','Next run','Manage']) head.append(element('th',title));
+  table.append(head); const query=$('task-search').value.toLowerCase();
+  for(const task of registeredTasks.filter(task=>task.name.toLowerCase().includes(query))) {
+    const row=element('tr',''); const run=task.activeRun || task.latestRun;
+    row.append(element('td',task.name),element('td',taskExecution(task)),element('td',task.starting ? 'Starting' : run?.state || 'Idle',`task-state ${task.starting?'running':run?.state || 'idle'}`),element('td',task.nextRunAt ? `${taskTime(task.nextRunAt,task.timezone)} (${task.timezone})` : '—'));
+    const controls=element('td','','action-list-controls');
+    for(const [label,handler] of [['Run',()=>handleRunTask(task.id)],['Stop',()=>handleStopTask(task.id)],['View',()=>handleViewTask(task)],['Edit',()=>handleEditTask(task)],['History',()=>handleTaskHistory(task)],['Delete',()=>handleDeleteTask(task)]]) {
+      const button=element('button',label,'quiet'); button.type='button';button.onclick=handler;
+      if(label==='Run')button.disabled=Boolean(task.activeRun || task.starting);
+      if(label==='Stop')button.disabled=!task.activeRun;
+      controls.append(button);
+    }
+    row.append(controls);table.append(row);
+  }
+  list.append(table);renderTaskMonitor();
+}
+async function handleLoadTasks() {
+  try {
+    const response=await fetch('/api/tasks',{method:'POST'});
+    if(response.status===404 || response.status===405)throw new Error('Tasks API is unavailable. Restart the DeciFlow UI server or container.');
+    const data=await response.json();if(!response.ok)throw new Error(data.error);
+    registeredTasks=data.tasks;renderTasks();
+    const selected=registeredTasks.find(task=>task.id===selectedTaskId);
+    const run=selected?.activeRun || selected?.latestRun;
+    if(monitoringReady && followLatestTask && currentView==='main' && run && run.jobId!==activeJobId)handleWatchRun(run);
+  } catch(error) { $('task-message').textContent=error.message; $('monitor-task-status').textContent=error.message; }
+}
+function handleCloseTask() {
+  editingTask=null; $('task-registry').hidden=false;$('task-editor').hidden=true;$('task-view').hidden=true;$('task-history').hidden=true;
+}
+function handleTaskMode() {
+  const realtime=$('source-mode').value==='realtime'; const cron=!realtime && $('task-trigger').value==='cron';
+  $('task-trigger-field').hidden=realtime;
+  for(const id of ['task-cron-field','task-timezone-field','task-enabled-field'])$(id).hidden=!cron;
+  $('task-resume-field').hidden=!realtime;
+  $('task-mode-note').textContent=realtime ? 'Realtime monitors new data lines until stopped. Automatic restart is opt-in; lines written during downtime are not replayed.' : cron ? 'Each scheduled Batch reads files from the beginning and can repeat Actions for the same data. Overlapping occurrences are skipped. Missed schedules are not replayed. No automatic retries.' : 'Manual Batch reads files from the beginning once, then finishes as Completed or Failed.';
+}
+async function handleEditTask(task=null) {
+  await sourceLoadPromise;
+  await handleLoadHosts();
+  if(!sourcesLoaded){$('task-message').textContent='Load Sources before editing Tasks.';return;}
+  handleCloseTask();editingTask=task?.id || '';
+  $('task-registry').hidden=true;$('task-editor').hidden=false;
+  $('task-editor-title').textContent=task?'Edit Task':'Add Task';$('task-name').value=task?.name || '';
+  $('source-mode').value=task?.mode || 'batch';$('task-trigger').value=task?.cron?'cron':'manual';
+  $('task-cron').value=task?.cron || '';$('task-timezone').value=task?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  $('task-enabled').checked=task?.enabled ?? true;$('task-resume').checked=task?.resumeOnRestart || false;
+  sourcePreferences.clear();
+  for(const source of task?.sources || [])sourcePreferences.set(source.sourceId,{profile:source.profile,chunkEvents:source.chunkEvents,action:source.action || '',hostIds:[...(source.hostIds || [])]});
+  const paths=task?.sources.map(source=>source.sourceId) || registeredSources.slice(0,1).map(source=>source.id);
+  $('file-path').value=paths.join('\n');updateSourceSettings(paths);handleTaskMode();$('task-message').textContent='';
+}
+$('add-task').onclick=()=>handleEditTask();$('cancel-task').onclick=handleCloseTask;$('task-search').oninput=renderTasks;
+$('task-form').onsubmit=async event=>{
+  event.preventDefault();$('save-task').disabled=true;
+  try {
+    const mode=$('source-mode').value;
+    const sources=sourceRows.map(({path,profile,size,action,hostIds})=>({sourceId:path,profile:profile.value,chunkEvents:Number(size.value),action:action.value,...(hostIds?.length?{hostIds:[...hostIds]}:{})}));
+    const task={...(editingTask?{id:editingTask}:{}),name:$('task-name').value,mode,sources,cron:mode==='batch' && $('task-trigger').value==='cron'?$('task-cron').value:'',timezone:$('task-timezone').value || 'UTC',enabled:$('task-enabled').checked,resumeOnRestart:mode==='realtime' && $('task-resume').checked};
+    const response=await fetch('/api/tasks',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(task)});
+    const data=await response.json();if(!response.ok)throw new Error(data.error);
+    registeredTasks=data.tasks;handleCloseTask();renderTasks();$('task-message').textContent='Task saved. Changes apply to new runs.';
+  }catch(error){$('task-message').textContent=error.message;}
+  finally{$('save-task').disabled=false;}
+};
+function handleViewTask(task) {
+  handleCloseTask();$('task-registry').hidden=true;const view=$('task-view');view.replaceChildren();
+  const header=element('div','','card-title');const back=element('button','Back to list','quiet');back.type='button';back.onclick=handleCloseTask;
+  header.append(element('h3',task.name),back);view.append(header);
+  view.append(element('p',taskExecution(task)));
+  const list=element('ul','');for(const source of task.sources){const definition=registeredSources.find(item=>item.id===source.sourceId);list.append(element('li',`${definition?.name || source.sourceId} · ${definition?.path || 'Source unavailable'} · ${profileLabels[source.profile] || source.profile} · ${source.chunkEvents} event(s) · Action: ${source.action || 'None'}${source.hostIds?.length ? ` · Hosts: ${source.hostIds.map(id=>sshHosts.find(host=>host.id===id)?.name || id).join(', ')}` : ''}`));}
+  view.append(list);view.hidden=false;
+}
+async function handleDeleteTask(task) {
+  if(!globalThis.confirm(`Delete Task "${task.name}"? Saved run history will remain on disk. Stop running executions first.`))return;
+  try {
+    const response=await fetch('/api/tasks',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:task.id})});
+    const data=await response.json();if(!response.ok)throw new Error(data.error);
+    registeredTasks=data.tasks;if(selectedTaskId===task.id)selectedTaskId='';renderTasks();
+  }catch(error){$('task-message').textContent=error.message;}
+}
+async function handleTaskHistory(task) {
+  try {
+    const response=await fetch(`/api/tasks/${task.id}/runs`,{method:'POST'});const data=await response.json();if(!response.ok)throw new Error(data.error);
+    handleCloseTask();$('task-registry').hidden=true;const view=$('task-history');view.replaceChildren();
+    const header=element('div','','card-title');const back=element('button','Back to list','quiet');back.type='button';back.onclick=handleCloseTask;
+    const refresh=element('button','Refresh','quiet');refresh.type='button';refresh.onclick=()=>handleTaskHistory(task);
+    header.append(element('h3',`${task.name} · Latest 50 executions`),refresh,back);view.append(header);
+    const table=element('table','','action-list');const head=element('tr','');for(const title of ['Started','Finished','Trigger','State','Results','Manage'])head.append(element('th',title));table.append(head);
+    for(const run of data.runs){const row=element('tr','');row.append(element('td',`${taskTime(run.startedAt,task.timezone)} (${task.timezone})`),element('td',taskTime(run.finishedAt,task.timezone)),element('td',run.settings.trigger),element('td',run.state,`task-state ${run.state}`),element('td',`${run.counts?.completed || 0} chunks · ${run.counts?.failed || 0} failed requests · ${run.counts?.actionFailed || 0} failed Actions${run.error?` · ${run.error}`:''}`));const cell=element('td','');const button=element('button','View results','quiet');button.type='button';button.onclick=()=>{followLatestTask=false;selectedTaskId=task.id;handleNavigation('main');renderTaskMonitor();return handleWatchRun(run);};cell.append(button);row.append(cell);table.append(row);}
+    view.append(table);if(!data.runs.length)view.append(element('p','No executions yet.','caption'));view.hidden=false;
+  }catch(error){$('task-message').textContent=error.message;}
+}
+async function handleWatchRun(job) {
+  if(busy && activeJobId===job.jobId)return monitoringPromise;
+  const selection=++monitorSelection;
+  if(busy){activeRequest?.abort();await monitoringPromise;}
+  if(selection!==monitorSelection)return;
+  monitoringPromise=handleProcessing(job);return monitoringPromise;
+}
+async function handleRunTask(identity) {
+  const task=registeredTasks.find(task=>task.id===identity);
+  if(!task){$('message').textContent='Select a saved Task first.';return;}
+  followLatestTask=true;monitoringReady=true;selectedTaskId=identity;handleNavigation('main');renderTaskMonitor();
+  try {
+    if(task.activeRun)return await handleWatchRun(task.activeRun);
+    const response=await fetch(`/api/tasks/${identity}/run`,{method:'POST'});const job=await response.json();if(!response.ok)throw new Error(job.error);
+    await handleLoadTasks();return await handleWatchRun(job);
+  }catch(error){$('message').className='error-message';$('message').textContent=error.message;}
+}
+async function handleStopTask(identity) {
+  try{const response=await fetch(`/api/tasks/${identity}/stop`,{method:'POST'});const data=await response.json();if(!response.ok)throw new Error(data.error);await handleLoadTasks();}
+  catch(error){$('task-message').textContent=error.message;}
+}
+async function handleSelectTask(identity) {
+  followLatestTask=true;monitoringReady=true;
+  const task=registeredTasks.find(task=>task.id===identity);selectedTaskId=task?.id || '';
+  renderTaskMonitor();
+  if(task?.activeRun || task?.latestRun)return handleWatchRun(task.activeRun || task.latestRun);
+}
+
 let currentView = null;
-function handleNavigation(view) {
+let currentSettingsSection = null;
+function handleMenuNavigation(view, section=null) {
+  if (view === 'sources') {
+    handleCloseConfiguration('source-view'); handleCloseSource();
+  } else if (view === 'actions') {
+    handleCloseConfiguration('action-view'); handleCloseAction();
+  } else if (view === 'criteria') {
+    handleCloseConfiguration('criteria-view'); handleCloseCriteria();
+  } else if (view === 'tasks') {
+    handleCloseTask();
+  } else if (view === 'settings') {
+    handleCloseKey(); handleCloseHost();
+  }
+  handleNavigation(view, section);
+}
+function handleNavigation(view, section=null) {
   currentView = view;
+  currentSettingsSection = view === 'settings' ? section : null;
   if (view === 'settings' || view === 'sources') handleLoadKeys().then(handleLoadHosts);
-  const hash = view === 'main' ? '' : `#${view}`;
+  const hash = view === 'main' ? '' : view === 'settings' && section ? `#settings/${section}` : `#${view}`;
   if (globalThis.location && globalThis.location.hash !== hash) globalThis.location.hash = hash;
   $('main-page').hidden = view !== 'main';
   $('settings-page').hidden = view !== 'settings';
-  $('nav-settings').setAttribute('aria-current', view === 'settings' ? 'page' : 'false');
+  $('nav-settings').setAttribute('aria-current', view === 'settings' && !section ? 'page' : 'false');
+  $('nav-settings').setAttribute('data-active', String(view === 'settings'));
+  const settingsHeading = section === 'ssh-keys'
+    ? ['SSH Keys', 'Manage authentication keys for SSH connections.']
+    : section === 'ssh-hosts'
+      ? ['SSH Hosts', 'Manage remote hosts and test SSH connections.']
+      : ['Settings', 'Manage shared application settings.'];
+  $('settings-title').textContent = settingsHeading[0];
+  $('settings-description').textContent = settingsHeading[1];
+  $('settings-overview').hidden = Boolean(section);
+  for(const id of ['ssh-keys','ssh-hosts']) {
+    $(`settings-${id}`).hidden = view !== 'settings' || section !== id;
+    $(`nav-${id}`).setAttribute('aria-current', view === 'settings' && section===id ? 'page' : 'false');
+  }
+  handleScheduleHostChecks();
+  $('tasks-page').hidden = view !== 'tasks';
+  $('nav-tasks').setAttribute('aria-current', view === 'tasks' ? 'page' : 'false');
+  if (view === 'tasks') { handleLoadTasks(); handleLoadHosts(); }
   $('sources-page').hidden = view !== 'sources';
   $('nav-sources').setAttribute('aria-current', view === 'sources' ? 'page' : 'false');
   $('actions-page').hidden = view !== 'actions';
@@ -365,10 +626,14 @@ function handleNavigation(view) {
   $('nav-main').setAttribute('aria-current', view === 'main' ? 'page' : 'false');
   $('nav-actions').setAttribute('aria-current', view === 'actions' ? 'page' : 'false');
 }
-$('nav-settings').onclick = () => { handleNavigation('settings'); };
+$('nav-settings').onclick = () => { handleMenuNavigation('settings'); };
+$('nav-ssh-keys').onclick = () => handleMenuNavigation('settings','ssh-keys');
+$('nav-ssh-hosts').onclick = () => handleMenuNavigation('settings','ssh-hosts');
+$('nav-tasks').onclick = () => handleMenuNavigation('tasks');
+$('manage-tasks').onclick = () => handleMenuNavigation('tasks');
 $('nav-main').onclick = () => handleNavigation('main');
-$('nav-actions').onclick = () => handleNavigation('actions');
-$('nav-sources').onclick = () => { handleNavigation('sources'); if (!sourcesLoaded) return handleLoadSources(); };
+$('nav-actions').onclick = () => handleMenuNavigation('actions');
+$('nav-sources').onclick = () => { handleMenuNavigation('sources'); if (!sourcesLoaded) return handleLoadSources(); };
 const defaultActionCode = `import json
 import sys
 
@@ -610,23 +875,24 @@ function handleEditCriteria(id) {
 function handleCloseCriteria() {
   editingCriteria = null; criteriaFields = {};
   $('criteria-editor').replaceChildren(); $('criteria-editor').hidden = true;
-  $('cancel-criteria').hidden = true; renderCriteria();
+  $('cancel-criteria').hidden = true;
+  if (criteriaLoaded) renderCriteria();
 }
 function handleCriteriaLabels(profiles) {
   for (const key of Object.keys(profileLabels)) delete profileLabels[key];
   for (const [id, profile] of Object.entries(profiles)) profileLabels[id] = profile.label;
   let missing = false;
-  for (const select of [$('paste-profile'), ...sourceRows.map(row => row.profile)]) {
+  for (const select of sourceRows.map(row => row.profile)) {
     const selected = select.value;
     select.replaceChildren();
-    if (!profileLabels[selected]) { select.append(new Option('Select a criteria profile', '')); missing = true; }
+    if (!profileLabels[selected]) missing = true;
     for (const [id, label] of Object.entries(profileLabels)) select.append(new Option(label, id));
     select.value = profileLabels[selected] ? selected : '';
   }
   return missing;
 }
 $('nav-criteria').onclick = async () => {
-  handleNavigation('criteria');
+  handleMenuNavigation('criteria');
   if (criteriaLoaded) return;
   $('criteria-message').textContent = 'Loading criteria…';
   try {
@@ -657,7 +923,7 @@ $('save-criteria').onclick = async () => {
     if (!response.ok) throw new Error(data.error);
     criteriaProfiles = data.profiles; handleCloseConfiguration('criteria-view'); handleCloseCriteria();
     const missing = handleCriteriaLabels(criteriaProfiles);
-    $('criteria-message').textContent = 'Criteria saved. Changes apply to new runs.' + (missing ? ' Select replacements for deleted profiles in Main.' : '');
+    $('criteria-message').textContent = 'Criteria saved. Changes apply to new runs.' + (missing ? ' Select replacements for deleted profiles in Tasks.' : '');
   } catch (error) { $('criteria-message').textContent = error.message; }
   finally {
     savingCriteria = false; $('save-criteria').disabled = false; $('cancel-criteria').disabled = false;
@@ -670,7 +936,7 @@ let editingSource = null;
 let sourceFields = {};
 let savingSources = false;
 function sourceDescription(source) {
-  return `${source.type === 'ssh' ? `Remote File (SSH) · ${source.username}@${source.host}:${source.port}` : 'Local File'} · ${source.path}`;
+  return `${source.type === 'ssh' ? 'Remote File (SSH)' : 'Local File'} · ${source.path}`;
 }
 function renderSources() {
   $('source-list').hidden = editingSource !== null;
@@ -685,7 +951,7 @@ function renderSources() {
     row.append(element('td', source.name), element('td', sourceDescription(source)));
     const controls = element('td', '', 'action-list-controls');
     for (const [caption, handler] of [
-      ['View', () => handleViewConfiguration('source-view', source.name, [['Type', source.type === 'ssh' ? 'Remote File (SSH)' : 'Local File'], ['Name', source.name], ['Path / pattern', source.path], ['SSH host', source.hostName || sshHosts.find(host => host.id === source.hostId)?.name]])],
+      ['View', () => handleViewConfiguration('source-view', source.name, [['Type', source.type === 'ssh' ? 'Remote File (SSH)' : 'Local File'], ['Name', source.name], ['Path / pattern', source.path]])],
       ['Edit', () => handleEditSource(index)],
       ['Delete', () => { registeredSources.splice(index, 1); handleCloseConfiguration('source-view'); renderSources(); $('source-message').textContent = 'Deletion pending. Save changes to apply.'; }],
     ]) {
@@ -702,15 +968,11 @@ function handleEditSource(index) {
   handleCloseConfiguration('source-view'); editingSource = index;
   const source = registeredSources[index] || { name: '', type: 'local', path: '', port: 22 };
   const form = element('div', '', 'action-registration'); sourceFields = {};
-  for (const [key, caption] of [['type', 'Type'], ['name', 'Name'], ['path', 'File path / pattern'], ['hostId', 'SSH host']]) {
+  for (const [key, caption] of [['type', 'Type'], ['name', 'Name'], ['path', 'File path / pattern']]) {
     const label = element('label', caption);
-    const input = element(key === 'type' || key === 'hostId' ? 'select' : 'input', '');
+    const input = element(key === 'type' ? 'select' : 'input', '');
     if (key === 'type') { input.append(new Option('Local File', 'local'), new Option('Remote File (SSH)', 'ssh')); }
-    else if (key === 'hostId') {
-      input.append(new Option('Select an SSH host from Settings…', ''));
-      for (const host of sshHosts) input.append(new Option(host.name, host.id));
-      if (source.hostId && !sshHosts.some(host => host.id === source.hostId)) input.append(new Option(source.hostName || 'Saved SSH host', source.hostId));
-    } else input.type = 'text';
+    else input.type = 'text';
     input.value = String(source[key] ?? (key === 'port' ? 22 : '')); input.setAttribute('aria-label', caption);
     label.append(input); form.append(label); sourceFields[key] = input;
     if (!['name', 'type', 'path'].includes(key)) label.className = 'ssh-source-field';
@@ -719,7 +981,7 @@ function handleEditSource(index) {
     for (const label of form.children) if (label.className === 'ssh-source-field') label.hidden = sourceFields.type.value !== 'ssh';
   };
   sourceFields.type.onchange = updateFields; updateFields();
-  form.append(element('p', 'Select a connection registered in Settings → SSH Hosts. File paths refer to the remote host. Server verification uses ~/.ssh/known_hosts.', 'caption'));
+  form.append(element('p', 'Remote File defines a common path or pattern. Select one or more SSH Hosts per Source in Tasks. Approve host fingerprints in Settings → SSH Hosts.', 'caption'));
   $('source-editor').replaceChildren(); $('source-editor').append(form);
   $('source-editor').hidden = false; $('cancel-source').hidden = false; renderSources();
 }
@@ -744,32 +1006,62 @@ $('save-sources').onclick = async () => {
     const data = await response.json(); if (!response.ok) throw new Error(data.error);
     registeredSources = data.sources; handleCloseConfiguration('source-view'); handleCloseSource();
     if (!busy) updateSourceSettings(sourceRows.map(row => row.path));
-    $('source-message').textContent = 'Sources saved. Changes apply to new runs. Select replacements for deleted sources in Main.';
+    $('source-message').textContent = 'Sources saved. Changes apply to new runs. Select replacements for deleted sources in Tasks.';
   } catch (error) { $('source-message').textContent = error.message; }
   finally { savingSources = false; $('save-sources').disabled = false; for (const input of Object.values(sourceFields)) input.disabled = false; renderSources(); }
 };
-function searchableInput(items, value, listId, caption) {
-  const input = element('input', ''); input.type = 'search'; input.value = value;
-  input.setAttribute('aria-label', caption); input.setAttribute('list', listId);
-  input.setAttribute('autocomplete', 'off'); input.disabled = busy;
-  const list = element('datalist', ''); list.id = listId;
-  for (const item of items) {
-    const option = new Option(item.name, item.name); option.label = item.label || item.name; list.append(option);
+function compareNames(left, right) {
+  return left.name.localeCompare(right.name, 'ko', {numeric:true, sensitivity:'base'});
+}
+function selectionInput(items, value, caption, placeholder) {
+  const input = element('select', ''); input.disabled = false;
+  input.setAttribute('aria-label', caption);
+  if (placeholder) input.append(new Option(placeholder, ''));
+  for (const item of [...items].sort(compareNames)) {
+    const option = new Option(item.name, item.name);
+    option.title = item.label || item.name;
+    input.append(option);
   }
-  return { input, list };
+  if (value && !items.some(item => item.name === value)) {
+    input.append(new Option(`Unavailable: ${value}`, value));
+  }
+  input.value = value;
+  return input;
 }
 let sourceRows = [];
 let runSourcePatterns = [];
+let runHosts = [];
 function profileSelect(value) {
   const select = element('select', '');
   for (const [key, label] of Object.entries(profileLabels)) select.append(new Option(label, key));
-  if (!profileLabels[value]) select.append(new Option('Select a criteria profile', ''));
   select.value = profileLabels[value] ? value : '';
   return select;
 }
-for (const [key, label] of Object.entries(profileLabels)) $('paste-profile').append(new Option(label, key));
-$('paste-profile').value = 'general';
-$('paste-chunk-events').value = '1';
+function hostPicker(source, save) {
+  const picker=element('details','','host-picker');
+  const summary=element('summary','');
+  const search=element('input','');search.type='search';search.placeholder='Search SSH Hosts…';search.setAttribute('aria-label','Search target SSH Hosts');
+  const tools=element('div','','host-picker-tools');
+  const select=element('button','Select all shown','quiet');select.type='button';
+  const clear=element('button','Clear','quiet');clear.type='button';tools.append(select,clear);
+  const list=element('div','','host-picker-list');
+  const update=()=>{
+    summary.textContent=`SSH Hosts · ${source.hostIds.length} selected`;
+    list.replaceChildren();const query=search.value.toLowerCase();
+    const items=[...sshHosts].sort(compareNames);
+    for(const id of source.hostIds)if(!items.some(host=>host.id===id))items.push({id,name:`Unavailable: ${id}`,host:''});
+    for(const host of items.filter(host=>`${host.name} ${host.host} ${host.username || ''}`.toLowerCase().includes(query))){
+      const label=element('label','','host-picker-option');const input=element('input','');input.type='checkbox';input.checked=source.hostIds.includes(host.id);
+      input.onchange=()=>{source.hostIds=input.checked?[...new Set([...source.hostIds,host.id])]:source.hostIds.filter(id=>id!==host.id);save();update();};
+      label.append(input,element('span',`${host.name}${host.host?` · ${host.host}:${host.port}`:''}`));list.append(label);
+    }
+    if(!list.children.length)list.append(element('p','No matching SSH Hosts. Register hosts in Settings.','caption'));
+  };
+  search.oninput=update;
+  select.onclick=()=>{const query=search.value.toLowerCase();source.hostIds=[...new Set([...source.hostIds,...sshHosts.filter(host=>`${host.name} ${host.host} ${host.username}`.toLowerCase().includes(query)).map(host=>host.id)])];save();update();};
+  clear.onclick=()=>{source.hostIds=[];save();update();};
+  picker.append(summary,search,tools,list);picker.refresh=update;update();return picker;
+}
 function updateSourceSettings(paths = $('file-path').value.split('\n').map(s => s.trim()).filter(Boolean)) {
   $('source-settings').replaceChildren();
   sourceRows = [];
@@ -778,46 +1070,48 @@ function updateSourceSettings(paths = $('file-path').value.split('\n').map(s => 
     const preference = sourcePreferences.get(path) || sourcePreferences.get(definitionForDefaults?.path) || { profile: defaultSourceProfiles[sampleSources.find(source => source.id === path)?.path || definitionForDefaults?.path || path] || 'general', chunkEvents: 1 };
     const row = element('div', '', 'source-setting');
     const definition = [...registeredSources, ...sourceSnapshots].find(source => source.id === path || (source.type === 'local' && source.path === path));
-    const sourcePicker = searchableInput(registeredSources.map(source => ({ name: source.name, label: sourceDescription(source) })), definition?.name || '', `source-choices-${sourceRows.length}`, 'Registered source');
-    const name = sourcePicker.input; name.className = 'source-path-input'; name.placeholder = 'Search registered sources…';
+    const name = selectionInput(registeredSources.map(source => ({ name: source.name, label: sourceDescription(source) })), definition?.name || '', 'Registered source', '');
+    name.className = 'source-path-input';
     const pathLabel = element('label', 'Source ', 'source-path');
     const selectedPath = element('span', definition?.path ? `Path: ${definition.path}` : '', 'source-selected-path');
     selectedPath.hidden = !definition?.path;
     selectedPath.setAttribute('aria-live', 'polite');
-    pathLabel.append(name, sourcePicker.list, selectedPath);
+    pathLabel.append(name, selectedPath);
     const profile = profileSelect(preference.profile);
-    profile.disabled = busy;
+    profile.disabled = false;
     profile.setAttribute('aria-label', `Decision profile for ${path}`);
     const size = element('input', '');
-    size.disabled = busy;
+    size.disabled = false;
     size.type = 'number'; size.min = '1'; size.step = '1'; size.value = String(preference.chunkEvents);
     size.setAttribute('aria-label', `Events per chunk for ${path}`);
     const label = element('label', 'Events/chunk ');
     label.append(size);
     const criteriaLabel = element('label', 'Criteria ', 'criteria-label');
     criteriaLabel.append(profile);
-    const actionPicker = searchableInput(registeredActions.filter(item => item.name), preference.action || '', `action-choices-${sourceRows.length}`, `Action for ${path}`);
-    const action = actionPicker.input; action.placeholder = 'None / search Actions…';
-    const actionLabel = element('label', 'Action '); actionLabel.append(action, actionPicker.list);
+    const action = selectionInput(registeredActions.filter(item => item.name), preference.action || '', `Action for ${path}`, 'None');
+    const actionLabel = element('label', 'Action '); actionLabel.append(action);
     const remove = element('button', 'Remove', 'quiet source-remove');
-    remove.type = 'button'; remove.disabled = busy;
+    remove.type = 'button'; remove.disabled = false;
     row.append(pathLabel, criteriaLabel, label, actionLabel, remove);
     const save = () => {
-      sourcePreferences.set(source.path, { profile: profile.value, chunkEvents: Number(size.value), action: action.value });
+      sourcePreferences.set(source.path, { profile: profile.value, chunkEvents: Number(size.value), action: action.value, hostIds:[...source.hostIds] });
       try { localStorage.setItem('deciflow-source-preferences', JSON.stringify([...sourcePreferences].map(([path, { profile, chunkEvents }]) => [path, { profile, chunkEvents }]))); } catch { /* Preferences remain available for this page session. */ }
     };
-    profile.onchange = save; size.oninput = save; action.onchange = save; action.oninput = save;
-    const source = { path: definition?.id || path, name, profile, size, action, remove };
-    name.oninput = () => {
+    profile.onchange = save; size.oninput = save; action.onchange = save;
+    const source = { path: definition?.id || path, name, profile, size, action, remove, hostIds:[...(preference.hostIds || [])] };
+    const hosts = hostPicker(source, save); hosts.hidden=definition?.type!=='ssh';
+    row.replaceChildren();row.append(pathLabel,criteriaLabel,label,actionLabel,hosts,remove);
+    name.onchange = () => {
       const selected = registeredSources.find(item => item.name === name.value);
       source.path = selected?.id || '';
       selectedPath.textContent = selected?.path ? `Path: ${selected.path}` : '';
       selectedPath.hidden = !selected?.path;
-      save();
+      hosts.hidden=selected?.type!=='ssh';
+      if(hosts.hidden)source.hostIds=[];
+      hosts.refresh();save();
       $('file-path').value = sourceRows.map(item => item.path).join('\n');
     };
     remove.onclick = () => {
-      if (busy) return;
       const remaining = sourceRows.filter(item => item !== source).map(item => item.path);
       $('file-path').value = remaining.join('\n');
       updateSourceSettings(remaining);
@@ -828,12 +1122,10 @@ function updateSourceSettings(paths = $('file-path').value.split('\n').map(s => 
 }
 $('file-path').oninput = () => updateSourceSettings();
 $('add-source').onclick = () => {
-  if (busy) return;
   updateSourceSettings([...sourceRows.map(item => item.path), '']);
   sourceRows.at(-1).name.focus?.();
 };
 $('reset-sources').onclick = () => {
-  if (busy || sourceMode === 'paste') return;
   const available = sampleSources.filter(sample => registeredSources.some(source => source.id === sample.id));
   const defaults = (available.length ? available : registeredSources.slice(0, 1)).map(source => source.id).join('\n');
   for (const path of defaults.split('\n')) sourcePreferences.set(path, { profile: defaultSourceProfiles[sampleSources.find(source => source.id === path)?.path || registeredSources.find(source => source.id === path)?.path] || 'general', chunkEvents: 1, action: '' });
@@ -895,6 +1187,28 @@ for (const key of ['all', 'certain', 'uncertain']) {
   };
 }
 renderCategoryChart();
+function resultHostId(result) {
+  if(result.hostId)return result.hostId;
+  const remote=result.source?.match(/^ssh:\/\/(?:[^@/]+@)?([^/]+)/);
+  return remote ? `legacy:${remote[1]}` : 'local';
+}
+function renderHostFilter() {
+  const select=$('host-filter');const selected=select.value || 'all';
+  const hosts=new Map(runHosts.map(host=>[host.hostId,{name:`${host.hostName} · ${host.hostAddress}:${host.hostPort}`,count:0}]));
+  for(const result of results){
+    if(!result)continue;const id=resultHostId(result);
+    if(!hosts.has(id))hosts.set(id,{name:result.hostName || (id==='local'?'DeciFlow (Local)':id.replace('legacy:','')),count:0});
+    hosts.get(id).count++;
+  }
+  select.replaceChildren();select.append(new Option('All hosts','all'));
+  for(const [id,host] of [...hosts].sort((a,b)=>a[1].name.localeCompare(b[1].name,'ko')))select.append(new Option(`${host.name} (${host.count})`,id));
+  select.value=hosts.has(selected)?selected:'all';select.disabled=!hosts.size;
+  const status=$('host-status');status.replaceChildren();
+  for(const host of runHosts){
+    const counts=results.filter(result=>result?.hostId===host.hostId);
+    status.append(element('p',`${host.hostName} · Collection: ${host.collectionState || 'pending'} · ${counts.filter(result=>!result.error).length} classified · ${counts.filter(result=>result.error).length} failed${host.error?` · ${host.error}`:''}`,host.collectionState==='failed'?'connection-failed':'caption'));
+  }
+}
 function renderSourceFilter() {
   const select = $('source-filter');
   const selected = select.value || 'all';
@@ -924,6 +1238,7 @@ function formatDuration(milliseconds) {
 }
 function render(updateList = true) {
   renderSourceFilter();
+  renderHostFilter();
   renderCategoryChart();
   $('summary').replaceChildren();
   const processingMs = results.reduce((sum, result) => sum + result.elapsedMs, 0);
@@ -967,7 +1282,8 @@ function render(updateList = true) {
     return (review === 'all' || (review === 'needs-review' ? needsReview(r) : !r.error && !needsReview(r)))
       && (category === 'all' || (category === 'failed' ? Boolean(r.error) : !r.error && r.category === category))
       && r.log.toLowerCase().includes(search)
-      && (source === 'all' || r.sourcePatterns?.includes(source) || r.source === source);
+      && (source === 'all' || r.sourcePatterns?.includes(source) || r.source === source)
+      && (($('host-filter').value || 'all') === 'all' || resultHostId(r) === $('host-filter').value);
   });
   const pages = Math.max(1, Math.ceil(visible.length / 100));
   page = Math.min(page, pages - 1);
@@ -976,31 +1292,56 @@ function render(updateList = true) {
   $('next').disabled = page >= pages - 1;
   for (const result of visible.slice(page * 100, (page + 1) * 100)) {
     const row = element('article', '', 'result');
-    const top = element('div', '', 'result-top');
-    top.append(element('span', result.error ? 'Request failed' : `${result.uncertain ? 'Uncertain · ' : ''}${labels[result.category]}`, `badge ${result.error ? 'error' : result.category || 'other'}${result.uncertain ? ' uncertain' : ''}`));
-    top.append(element('span', result.error ? `${result.elapsedMs}ms` : `${((result.answerProbability ?? result.probabilities?.[result.category] ?? 0) * 100).toFixed(1)}% category probability · ${result.elapsedMs}ms`));
-    if (result.uncertain) top.title = `Provisional model choice. ${result.candidates?.map(key => `${labels[key]} ${(result.probabilities[key] * 100).toFixed(1)}%`).join(' vs ') || 'Low confidence'}. Not a confirmed incident.`;
-    if (needsReview(result)) top.append(element('span', 'Needs review', 'review'));
-    row.append(top, element('p', result.log, 'log'));
-    if (!result.error && result.urgency != null && result.ticketProbability != null) {
-      row.append(element('p', `Urgency: ${result.urgency.toFixed(2)} / 3 (Low → Critical) · Work ticket: ${(result.ticketProbability * 100).toFixed(1)}% Yes probability`, 'caption'));
+    const top = element('div', '', result.error ? 'result-top' : 'result-summary');
+    if (result.error) {
+      top.append(element('span', result.sourceFailure?'Source failed':'Request failed', 'badge error'), element('span', `${result.elapsedMs}ms`));
+    } else {
+      const decisions = element('div', '', 'decision-grid');
+      decisions.setAttribute('role', 'group'); decisions.setAttribute('aria-label', 'Decision results');
+      const probability = ((result.answerProbability ?? result.probabilities?.[result.category] ?? 0) * 100).toFixed(1);
+      for (const [title, value, detail, badgeClass, probabilities] of [
+        ['Category (Choice)', `${result.uncertain ? 'Uncertain · ' : ''}${labels[result.category]}`, `${probability}% category probability`, `${result.category || 'other'}${result.uncertain ? ' uncertain' : ''}`, Object.entries(result.probabilities || {}).map(([key, value]) => [labels[key], value])],
+        ['Urgency (Score)', Number.isFinite(result.urgency) ? `${result.urgency.toFixed(2)} / 3` : 'Not available', '0 Low → 3 Critical', 'decision-score', Object.entries(result.urgencyProbabilities || {}).map(([level, probability]) => [`${level} · ${result.urgencyLegend?.[level]?.split(':')[0] || ['Low', 'Medium', 'High', 'Critical'][Number(level)]}`, probability])],
+        ['Work ticket (Noul)', Number.isFinite(result.ticketProbability) ? `${(result.ticketProbability * 100).toFixed(1)}%` : 'Not available', 'Yes probability · 0% No → 100% Yes', 'decision-noul', Number.isFinite(result.ticketProbability) ? [['Yes', result.ticketProbability], ['No', 1 - result.ticketProbability]] : []],
+      ]) {
+        const card = element('section', '', 'decision-card');
+        const badge = element('span', value, `badge ${badgeClass}`); badge.title = `${title}: ${value}`;
+        card.append(element('span', title, 'decision-label'), badge, element('span', detail, 'decision-detail'));
+        if (probabilities.length) {
+          const distribution = element('dl', '', 'decision-probabilities');
+          distribution.setAttribute('aria-label', `${title} probabilities`);
+          for (const [label, probability] of probabilities) {
+            const entry = element('div', '');
+            entry.append(element('dt', label), element('dd', `${(probability * 100).toFixed(1)}%`));
+            distribution.append(entry);
+          }
+          card.append(distribution);
+        }
+        decisions.append(card);
+      }
+      if (result.uncertain) decisions.children[0].title = `Provisional model choice. ${result.candidates?.map(key => `${labels[key]} ${(result.probabilities[key] * 100).toFixed(1)}%`).join(' vs ') || 'Low confidence'}. Not a confirmed incident.`;
+      if (result.uncertain) decisions.children[0].append(element('p', `Category (Choice) provisional: ${result.candidates?.map(key => `${labels[key]} ${(result.probabilities[key] * 100).toFixed(1)}%`).join(' vs ') || 'Low confidence'} · ${result.reviewReasons?.map(reason => ({ low_answer_probability: 'category probability below 70%', low_confidence: 'legacy provider confidence below 70%', close_probabilities: 'close category probabilities', collapsed_options: 'option descriptions lost distinction during token rendering', other_category: 'insufficient context / Other' })[reason]).join('; ') || 'review needed'}`, 'uncertainty-note'));
+      const metadata = element('div', '', 'result-top');
+      metadata.append(element('span', `Processing: ${result.elapsedMs}ms`));
+      if (needsReview(result)) metadata.append(element('span', 'Category needs review', 'review'));
+      top.append(decisions, metadata);
     }
+    row.append(top, element('p', result.log, 'log'));
     if (result.actionExecution) {
       const execution = result.actionExecution;
-      row.append(element('p', `Action: ${execution.name} · ${execution.status} · ${execution.elapsedMs}ms${execution.exitCode != null ? ` · exit ${execution.exitCode}` : ''}${execution.error ? ` · ${execution.error}` : ''}`, execution.status === 'failed' ? 'error-message' : 'caption'));
+      row.append(element('p', `Action execution: ${execution.name} · ${execution.status} · ${execution.elapsedMs}ms${execution.exitCode != null ? ` · exit ${execution.exitCode}` : ''}${execution.error ? ` · ${execution.error}` : ''}`, execution.status === 'failed' ? 'error-message' : 'caption'));
     }
-    if (result.uncertain) row.append(element('p', `Provisional: ${result.candidates?.map(key => `${labels[key]} ${(result.probabilities[key] * 100).toFixed(1)}%`).join(' vs ') || 'Low confidence'} · ${result.reviewReasons?.map(reason => ({ low_answer_probability: 'category probability below 70%', low_confidence: 'legacy provider confidence below 70%', close_probabilities: 'close category probabilities', collapsed_options: 'option descriptions lost distinction during token rendering', other_category: 'insufficient context / Other' })[reason]).join('; ') || 'review needed'}`, 'uncertainty-note'));
     if (result.source) {
       const end = result.lineEnd || result.line;
       const multiple = end !== result.line;
       const realtime = resultSourceMode === 'realtime';
-      const location = element('p', `${result.source} · ${realtime ? 'Observed' : 'File'} ${multiple ? 'lines' : 'line'} ${multiple ? `${result.line}–${end}` : result.line}${result.incomplete ? ' · Incomplete line at rotation' : ''}`, 'caption');
+      const location = element('p', `${result.hostName ? `Host: ${result.hostName} (${result.hostAddress}:${result.hostPort}) · ` : ''}Source: ${result.source}${result.sourceFailure ? '' : ` · ${realtime ? 'Observed' : 'File'} ${multiple ? 'lines' : 'line'} ${multiple ? `${result.line}–${end}` : result.line}${result.incomplete ? ' · Incomplete line at rotation' : ''}`}`, 'caption');
       if (realtime) location.title = 'Sequence since monitoring started or the file rotated; not an absolute file line number.';
       row.append(location);
     }
     if (result.profile) {
       const count = result.eventCount || 1;
-      row.append(element('p', `${profileLabels[result.profile]} · ${count} ${count === 1 ? 'event' : 'events'} (max ${result.chunkEvents || 1})`, 'caption'));
+      row.append(element('p', `Category criteria (Choice): ${profileLabels[result.profile]} · Chunk: ${count} ${count === 1 ? 'event' : 'events'} (max ${result.chunkEvents || 1})`, 'caption'));
     }
     const jsonView = element('details', '', 'result-json');
     const jsonText = element('pre', '', 'json-content');
@@ -1035,8 +1376,7 @@ function render(updateList = true) {
     };
     if (result.error) row.append(element('p', result.error, 'error-message'));
     else {
-      row.append(element('div', Object.entries(result.probabilities).map(([key, value]) => `${labels[key]} ${Math.round(value * 100)}%`).join(' · '), 'probabilities'));
-      const label = element('label', 'Reviewer category: ', 'reviewer-category');
+      const label = element('label', 'Reviewer category (Choice): ', 'reviewer-category');
       const select = element('select', '', 'correction');
       select.setAttribute('aria-label', `Reviewer category: ${result.log}`);
       select.append(new Option('Not reviewed', ''));
@@ -1070,32 +1410,16 @@ $('pause-updates').onclick = () => {
   if (updatesPaused) render(false);
   else { pausedOrder = []; render(); }
 };
-$('sample').onclick = () => { $('logs').value = samples.join('\n'); };
-$('source-mode').onchange = () => {
-  if (sourceMode !== 'paste') filePaths[sourceMode] = $('file-path').value;
-  sourceMode = $('source-mode').value;
-  if (sourceMode !== 'paste') $('file-path').value = filePaths[sourceMode];
-  updateSourceSettings();
-  $('paste-input').hidden = sourceMode !== 'paste';
-  $('sample').hidden = sourceMode !== 'paste';
-  $('file-input').hidden = sourceMode === 'paste';
-  $('file-notes').hidden = sourceMode === 'paste';
-  $('classify').textContent = 'Run';
-};
+$('source-mode').onchange = handleTaskMode;
+$('task-trigger').onchange = handleTaskMode;
 $('stop').onclick = async () => {
+  if (!selectedTaskId) return;
   $('stop').disabled = true;
-  $('message').textContent = 'Stopping processing…';
-  if (!activeJobId) { activeRequest?.abort(); return; }
-  const connected = busy;
   try {
-    const response = await fetch(`/api/jobs/${activeJobId}/stop`, { method: 'POST' });
-    if (!response.ok) throw new Error((await response.json()).error);
-    activeJobState = 'stopped';
-    if (!connected) await handleRestoreJob();
-  } catch (error) {
-    $('message').className = 'error-message'; $('message').textContent = error.message;
-    $('stop').disabled = false;
-  }
+    const response = await fetch(`/api/tasks/${selectedTaskId}/stop`, {method:'POST'});
+    const data = await response.json(); if (!response.ok) throw new Error(data.error);
+    await handleLoadTasks();
+  } catch(error) { $('message').textContent=error.message; $('stop').disabled=false; }
 };
 async function handleRestoreJob() {
   if (busy || restoringJob) return;
@@ -1107,73 +1431,35 @@ async function handleRestoreJob() {
     const response = await fetch(`/api/jobs/${id}`, { method: 'POST' });
     if (response.status === 404) {
       activeJobId = undefined; activeJobState = undefined;
-      $('classify').textContent = 'Run'; $('stop').disabled = true;
+      $('stop').disabled = true;
       try { jobStorage.removeItem('deciflow-job-id'); } catch { /* Storage may be disabled. */ }
       $('message').textContent = 'Previous job is unavailable. The server may have restarted.';
       return;
     }
     if (!response.ok) throw new Error((await response.json()).error);
     const job = await response.json();
-    const settings = job.settings;
-    $('source-mode').value = settings.mode;
-    if (settings.mode === 'paste') {
-      $('logs').value = settings.text;
-      $('paste-profile').value = settings.profile;
-      $('paste-chunk-events').value = String(settings.chunkEvents);
-    } else {
-      sourceSnapshots = settings.sources.filter(source => source.sourceId).map(source => ({ ...source, id: source.sourceId }));
-      filePaths[settings.mode] = settings.sources.map(source => source.sourceId || source.path).join('\n');
-      for (const source of settings.sources) sourcePreferences.set(source.sourceId || source.path, { profile: source.profile, chunkEvents: source.chunkEvents, action: job.state === 'running' ? source.action || '' : '' });
-    }
-    sourceMode = 'paste';
-    $('source-mode').onchange();
-    await handleProcessing(job);
+    if (job.settings.taskId) selectedTaskId = job.settings.taskId;
+    renderTaskMonitor();
+    await handleWatchRun(job);
   } finally { restoringJob = false; }
 }
-$('classify').onclick = () => restoringJob ? undefined : activeJobId && activeJobState === 'running' ? handleRestoreJob().catch(error => { $('message').textContent = error.message; }) : handleProcessing();
-async function handleProcessing(job = null) {
+async function handleProcessing(job) {
   if (busy) return;
-  if (!job && sourceMode !== 'paste' && !sourcesLoaded) { $('message').textContent = 'Sources are not loaded. Open Sources to retry.'; return; }
-  const sources = sourceRows.map(({ path, profile, size, action }) => ({ sourceId: path, profile: profile.value, chunkEvents: Number(size.value), action: action.value }));
-  if (sourceMode !== 'paste' && (!sources.length || sources.some(source => !registeredSources.some(item => item.id === source.sourceId))) && !job) {
-    $('message').className = 'error-message';
-    $('message').textContent = 'Select a registered source for each row. Add sources in Sources first.'; return;
-  }
-  if (!job && sourceMode !== 'paste' && sources.some(source => source.action && !registeredActions.some(action => action.name === source.action))) {
-    $('message').className = 'error-message'; $('message').textContent = 'Select a registered Action or leave it empty for None.'; return;
-  }
-  const chunkEvents = Number($('paste-chunk-events').value);
-  if ((sourceMode === 'paste' ? [chunkEvents] : sources.map(s => s.chunkEvents)).some(n => !Number.isInteger(n) || n < 1)) {
-    $('message').className = 'error-message';
-    $('message').textContent = 'Events per chunk must be a positive integer.'; return;
-  }
+  const sources = job.settings.sources || [];
+  $('result-context').textContent=`${job.settings.taskName || registeredTasks.find(task=>task.id===job.settings.taskId)?.name || 'Task execution'} · Started: ${taskTime(job.startedAt)} (UTC) · Run: ${job.jobId}`;
+  sourceMode = job.settings.mode;
   busy = true;
-  for (const { name, profile, size, action, remove } of sourceRows) { name.disabled = true; profile.disabled = true; size.disabled = true; action.disabled = true; remove.disabled = true; }
-  $('add-source').disabled = true; $('reset-sources').disabled = true;
+  renderTaskMonitor();
   activeRequest = new AbortController();
-  for (const id of ['classify', 'sample', 'export', 'source-mode', 'file-path', 'paste-profile', 'paste-chunk-events']) $(id).disabled = true;
+  $('export').disabled = true;
   $('stop').disabled = false;
   $('message').className = '';
-  $('message').textContent = `${engineLabel} is classifying your logs…`;
+  $('message').textContent = `${engineLabel} is classifying your data…`;
   let started = false;
   try {
-    let response;
-    if (job) { activeJobId = job.jobId; activeJobState = job.state; }
-    else {
-      response = await fetch(sourceMode === 'paste' ? '/api/classify' : '/api/file-source', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        signal: activeRequest.signal,
-        body: JSON.stringify(sourceMode === 'paste' ? { text: $('logs').value, profile: $('paste-profile').value, chunkEvents, persist: true } : { mode: sourceMode, sources, persist: true }),
-      });
-      if (!response.ok) throw new Error((await response.json()).error);
-      if (response.status === 202) {
-        job = await response.json(); activeJobId = job.jobId; activeJobState = job.state; rememberJob(activeJobId);
-      }
-    }
-    if (job) {
-      response = await fetch(`/api/jobs/${activeJobId}/events`, { method: 'POST', signal: activeRequest.signal });
-      if (!response.ok) throw new Error((await response.json()).error);
-    }
+    activeJobId = job.jobId; activeJobState = job.state; rememberJob(activeJobId);
+    const response = await fetch(`/api/jobs/${activeJobId}/events`, { method: 'POST', signal: activeRequest.signal });
+    if (!response.ok) throw new Error((await response.json()).error);
     await readEvents(response.body, event => {
       if (event.activeProcessingMs !== undefined) activeProcessingMs = event.activeProcessingMs;
       if (event.elapsedMs !== undefined) elapsedMs = event.elapsedMs;
@@ -1181,8 +1467,9 @@ async function handleProcessing(job = null) {
         started = true;
         resultEngine = event.engine;
         resultSourceMode = event.mode || sourceMode;
-        runSourcePatterns = sourceMode === 'paste' ? [] : [...new Set(event.sourcePatterns || sources.map(source => registeredSources.find(item => item.id === source.sourceId)?.path || source.sourceId))];
+        runSourcePatterns = [...new Set(event.sourcePatterns || sources.map(source => source.path || registeredSources.find(item => item.id === source.sourceId)?.path || source.sourceId))];
         $('source-filter').value = 'all';
+        $('host-filter').value='all';runHosts=event.hosts || sources.filter(source=>source.hostId).map(source=>({hostId:source.hostId,hostName:source.hostName,hostAddress:source.host,hostPort:source.port,collectionState:'pending'}));
         total = event.total;
         completed = 0;
         results = total === null ? [] : new Array(total);
@@ -1195,6 +1482,8 @@ async function handleProcessing(job = null) {
         recentCompletions = [];
         page = 0;
         render(false);
+      } else if (event.type === 'host-status') {
+        runHosts=event.hosts;renderHostFilter();
       } else if (event.type === 'result') {
         results[event.index] = event.result;
         completionOrder.push(event.index);
@@ -1207,31 +1496,28 @@ async function handleProcessing(job = null) {
         elapsedMs = event.elapsedMs;
         activeJobState = event.state || 'completed';
       } else if (event.type === 'error') {
-        activeJobState = 'failed';
+        activeJobState = job.state === 'skipped' ? 'skipped' : 'failed';
         throw new Error(event.error);
       }
-      $('message').textContent = total === null ? `${sourceMode === 'realtime' ? 'Realtime' : 'Batch'} · ${completed.toLocaleString('en-US')} chunks completed${completed ? '' : ' · Waiting for logs…'}` : `Classifying · ${completed.toLocaleString('en-US')} / ${total.toLocaleString('en-US')} chunks · ${total.toLocaleString('en-US')} ${engineLabel} requests planned`;
+      $('message').textContent = total === null ? `${sourceMode === 'realtime' ? 'Realtime' : 'Batch'} · ${completed.toLocaleString('en-US')} chunks completed${completed ? '' : ' · Waiting for data…'}` : `Classifying · ${completed.toLocaleString('en-US')} / ${total.toLocaleString('en-US')} chunks · ${total.toLocaleString('en-US')} ${engineLabel} requests planned`;
       scheduleRender();
     });
-    $('message').textContent = `${activeJobState === 'stopped' ? 'Processing stopped' : 'Classification complete'} · ${results.filter(r => r.error).length} failed`;
+    $('message').textContent = `${activeJobState === 'stopped' ? 'Stopped' : activeJobState === 'failed' ? 'Failed' : 'Completed'} · ${results.filter(r => r.error).length} failed requests · ${results.filter(r => r.actionExecution?.status === 'failed').length} failed Actions`;
   } catch (error) {
     $('message').className = error.name === 'AbortError' ? '' : 'error-message';
     $('message').textContent = `${error.name === 'AbortError' ? 'Processing stopped' : error.message} · ${started ? `${completed} completed results have been retained.` : 'Previous results have been retained.'}`;
   } finally {
     busy = false;
-    for (const { name, profile, size, action, remove } of sourceRows) { name.disabled = false; profile.disabled = false; size.disabled = false; action.disabled = false; remove.disabled = false; }
-    $('add-source').disabled = false; $('reset-sources').disabled = false;
     activeRequest.abort();
     activeRequest = undefined;
     $('stop').disabled = activeJobState !== 'running';
     clearTimeout(renderTimer);
     renderTimer = undefined;
-    for (const id of ['classify', 'sample', 'source-mode', 'file-path', 'paste-profile', 'paste-chunk-events']) $(id).disabled = false;
     if (started || completed) render(false);
     $('export').disabled = !completed || activeJobState === 'running';
+    handleLoadTasks();
     if (activeJobState === 'running') {
-      $('classify').textContent = 'Reconnect';
-      $('message').textContent += ' · Server job continues. Reconnect to receive results.';
+      $('message').textContent += ' · Server job continues. Click its Task in the running list to reconnect.';
     }
   }
 }
@@ -1243,6 +1529,7 @@ $('review-filter').onchange = handleResultFilter;
 $('category-filter').onchange = handleResultFilter;
 $('log-search').oninput = handleResultFilter;
 $('source-filter').onchange = handleResultFilter;
+$('host-filter').onchange = handleResultFilter;
 $('previous').onclick = () => { page--; render(); };
 $('next').onclick = () => { page++; render(); };
 $('export').onclick = () => {
@@ -1266,10 +1553,6 @@ fetch('/api/status').then(async response => {
   if (data.profiles) {
     for (const key of Object.keys(profileLabels)) delete profileLabels[key];
     Object.assign(profileLabels, data.profiles);
-    const selected = $('paste-profile').value;
-    $('paste-profile').replaceChildren();
-    for (const [key, label] of Object.entries(profileLabels)) $('paste-profile').append(new Option(label, key));
-    $('paste-profile').value = profileLabels[selected] ? selected : 'general';
   }
   engine = data.engine;
   engineLabel = engine === 'laya' ? 'Laya' : 'Jev';
@@ -1283,22 +1566,21 @@ fetch('/api/status').then(async response => {
   $('status').append(element('strong', data.model, 'selected-model'));
   if (!data.configured) $('status').append(element('span', ' · API key required'));
   $('powered-by').textContent = `Powered by ${engineLabel}`;
-  $('source-mode').onchange();
-  $('classify').disabled = !data.configured;
-  $('data-notice').textContent = engine === 'laya' ? 'Classification sends logs to your configured Laya server. Laya inference has no Jev API usage fees. Remove passwords, tokens, and sensitive data before sending logs to a remote server.' : 'Classification sends your logs to the TypeSafe API and may incur usage charges. Remove passwords, tokens, and sensitive data first.';
+  renderTaskMonitor();
+  $('data-notice').textContent = engine === 'laya' ? 'Classification sends data to your configured Laya server. Laya inference has no Jev API usage fees. Remove passwords, tokens, and sensitive data before sending data to a remote server.' : 'Classification sends your data to the TypeSafe API and may incur usage charges. Remove passwords, tokens, and sensitive data first.';
   const limits = data.limits;
-  $('source-directory').textContent = `Absolute paths are supported. Relative paths start at: ${data.workingDirectory}`;
   $('input-limits').textContent = engine === 'laya' ? `Three decisions per chunk · Laya ${data.model} · ${limits.context_tokens.toLocaleString('en-US')} tokens including each question. Truncated predictions are discarded and original events retained for review.` : `Three decisions per chunk · ${data.model}: ${limits.context_tokens.toLocaleString('en-US')} tokens for state + questions · Local preflight budget: ${limits.max_jev_input_bytes.toLocaleString('en-US')} bytes per Jev request (not a token count). Oversized events are retained for review.`;
   await sourceLoadPromise;
-  handleRestoreJob().catch(error => { $('message').className = 'error-message'; $('message').textContent = error.message; });
+  handleRestoreJob().then(()=>{monitoringReady=true;handleLoadTasks();}).catch(error => { $('message').className = 'error-message'; $('message').textContent = error.message; });
 }).catch(error => { $('status').textContent = error.message || 'Server connection failed'; });
 
 function handleRoute() {
   const hash = globalThis.location?.hash;
-  const view = hash === '#settings' ? 'settings' : hash === '#sources' ? 'sources' : hash === '#criteria' ? 'criteria' : hash === '#actions' ? 'actions' : 'main';
-  if (view === currentView) return;
+  const section = hash === '#settings/ssh-keys' ? 'ssh-keys' : hash === '#settings/ssh-hosts' ? 'ssh-hosts' : null;
+  const view = hash === '#tasks' ? 'tasks' : hash === '#settings' || section ? 'settings' : hash === '#sources' ? 'sources' : hash === '#criteria' ? 'criteria' : hash === '#actions' ? 'actions' : 'main';
+  if (view === currentView && section === currentSettingsSection) return;
   if (view === 'criteria') return $('nav-criteria').onclick();
-  handleNavigation(view);
+  handleMenuNavigation(view, section);
 }
 if (globalThis.location) {
   globalThis.addEventListener('hashchange', handleRoute);
@@ -1317,7 +1599,7 @@ async function handleLoadSources() {
         const keys = filePaths[mode].split('\n').filter(key => registeredSources.some(source => source.id === key));
         filePaths[mode] = (keys.length ? keys : registeredSources.slice(0, 1).map(source => source.id)).join('\n');
       }
-      if (sourceMode !== 'paste') $('file-path').value = filePaths[sourceMode];
+      $('file-path').value = filePaths.batch;
     }
     renderSources(); $('save-sources').disabled = false; $('source-message').textContent = '';
     if (!busy && !restoringJob) updateSourceSettings();
@@ -1325,3 +1607,6 @@ async function handleLoadSources() {
 }
 renderSources();
 const sourceLoadPromise = handleLoadSources();
+
+handleLoadTasks();
+if (globalThis.setInterval) globalThis.setInterval(() => { if (!document.hidden) handleLoadTasks(); }, 5000);

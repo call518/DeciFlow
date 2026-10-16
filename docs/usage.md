@@ -2,54 +2,36 @@
 
 [English](usage.md) | [한국어](usage.ko.md) | [Documentation](README.md) | [README](../README.md)
 
-On wide screens, the left **40%** shows **Classification overview → Log input**;
-the right **60%** shows **Classification results**. Narrow screens stack the panels.
+On wide screens, the left **40%** shows **Classification overview → Task monitor**;
+the right **60%** shows **Classification results**. On wide screens, the left information panel and right results panel scroll independently. Narrow screens stack the panels and use normal page scrolling.
 The sidebar identifies the DeciFlow reader host by hostname, detected IPs, and
 OS/version. In WSL or containers, these identify that environment, not its host OS;
-IPs are not a full interface inventory. SSH log hosts are shown in Sources. The status in parentheses after the engine name, e.g. **Laya (Connected)**, reports the last actual request: Not checked
+IPs are not a full interface inventory. Target SSH log hosts are selected per Source in Tasks. The status in parentheses after the engine name, e.g. **Laya (Connected)**, reports the last actual request: Not checked
 before a request, then Connected, Disconnected, Timed out, or API error. It is not
 a continuous health check; local input rejections do not change the status.
 
-### Input and criteria
+### Tasks and criteria
 
-Register reusable inputs in **Sources**: Local File for logs on the DeciFlow node,
-or Remote File (SSH) for logs read over key-authenticated SFTP. See
-[Sources](sources.md) for registration fields, SSH key mounts, and requirements.
-Main selects saved Sources by searchable name; Action selection also supports
-search. Leave Action empty for None. A typed name must match a registered entry.
+Register inputs in **Sources**, then save their Criteria, Events/chunk, and Action
+assignments in **Tasks**. Main lists currently running Tasks in name order. Click one to show its execution;
+a fresh page has no selection. Tasks supports manual Batch, cron Batch with a timezone,
+and continuous Realtime; there is no Paste input. Saving does not start analysis.
+Use Run, Stop, View, Edit, History, and Delete from the Task list.
+See [Tasks](tasks.md) for scheduling, restart behavior, and storage.
 
-**Reset selections**, beside Add source, restores available sample sources (or the
-first registered source), their sample criteria, one event per chunk, and Action
-None. It is disabled during processing. Initial sample registrations are:
-
-| Source | Path | Criteria |
-| --- | --- | --- |
-| System messages | `/host-logs/var/log/messages` | General system |
-| Sample HTTP access | `/host-logs/sample-logs/access-1k.log` | HTTP access |
-| Sample SSH authentication | `/host-logs/sample-logs/SSH_2k.log` | Authentication |
-
-**Batch** is selected by default. Paste starts with editable example text.
-
-| Mode | What DeciFlow reads |
-| --- | --- |
-| Realtime | New lines after existing files' end; new/replacement files from the beginning |
-| Batch | Matching files from the beginning to EOF |
-| Paste | Pasted text grouped into chunks |
-
-Mode identifiers are `realtime`, `batch`, and `paste`. Add or remove selection rows
-in Main; each row has Source, Criteria, Events/chunk, and Action. Sources and their
-log files are accessed by DeciFlow, not the Laya server or browser. File access
-requires a local/trusted UI Origin and readable UTF-8 regular files. Source
-registrations persist on the server; Batch and Realtime keep separate selections
-for the page session. Criteria/chunk preferences are stored by source ID in the
-browser. Missing/deleted registrations must be replaced before starting a new run.
+**Reset selections** in the Task editor selects available sample Sources (or the
+first registration), sample criteria, one event per chunk, and Action None.
+Saved configuration is server-side; unsaved drafts are browser-only.
+Sources are read by DeciFlow, not the browser or Laya server. File access requires
+a local/trusted UI Origin and readable UTF-8 regular files.
 
 Batch reads selected files concurrently and interleaves ready chunks, preserving
-each file's line order, profile, and chunk size. Engine concurrency limits apply
+each file's collection order, profile, and chunk size. Results appear newest
+completion first, so parallel requests can finish out of collection order. Engine concurrency limits apply
 to the entire run, not separately to each file. A limit of 1 serializes requests.
 Remote connections use the same engine and Action flow as local files.
 
-Choose **Criteria** and **Events/chunk** for each selected Source or for Paste.
+Choose **Criteria** and **Events/chunk** for each selected Source.
 Defaults: **General system**, **1 event per chunk**. Currently, each nonempty line
 is one event; multiline boundaries are not yet detected. Every profile uses `choice` with
 **Normal, Warning, Error, Security, Other**; only the descriptions and instructions
@@ -57,8 +39,16 @@ differ. Laya and Jev use the same selected profile. Type detection is manual;
 `score` also evaluates urgency (0–3: Low, Medium, High, Critical), and `noul`
 returns the probability that a work ticket is needed, in the same request.
 These shared operational questions are fixed across profiles and engines.
-The UI shows the continuous urgency score and ticket Yes probability; no ticket
-is created automatically. Missing or invalid answers fail the whole decision.
+Each result shows **Category (Choice)**, **Urgency (Score)** as a continuous 0–3
+value, and **Work ticket (Noul)** as the Yes probability in three cards by default.
+The cards stack on narrow panels. All three badges use the same compact size
+(132 × 22 px); there is no separate summary or expand/collapse control.
+Processing time and category review status follow the cards. Each has its own probability
+distribution: category options, urgency levels 0–3, or ticket Yes/No (`No = 1 − Yes`).
+These are separate judgments, not a combined probability. Category uncertainty
+reasons stay inside the Category card; **Category needs review** applies only to
+Choice. Action execution, Source, category criteria, and chunk size are labeled
+separately. No ticket is created automatically. Missing or invalid answers fail the whole decision.
 
 | Criteria profile | Focus |
 | --- | --- |
@@ -71,7 +61,7 @@ is created automatically. Missing or invalid answers fail the whole decision.
 Use **Criteria** in the sidebar to add, edit, or delete profiles.
 Result categories remain Normal, Warning, Error, Security, and Other; `general` cannot
 be deleted. **Save changes** applies to new runs; running jobs keep their original
-criteria. See [Criteria management](criteria.md) for storage and source reassignment.
+criteria. See [Criteria management](criteria.md) for storage and deletion restrictions on Task references.
 Describe outcomes and evidence; keep specific log strings in evaluation samples.
 
 The resulting log chunk is sent as the request `state` string: one event, or
@@ -155,10 +145,18 @@ Filter **All results / Needs review / No review needed**. Both review groups inc
 only successful classifications. To inspect failures, choose All results and the
 Request failed category. Category filtering
 and case-insensitive literal search of original log text combine with the review
-filter. **Source**, after Search logs, filters by an entered path/pattern and shows
+filter. **Source**, after Search data, filters by an entered path/pattern and shows
 completed counts, including failures. Overlapping patterns retain all matches in
 `sourcePatterns`; files are still processed once. Filters affect the list only,
 not metrics, chart, or JSON export.
+
+**Host** filters the selected run by its saved host identity and combines with Source,
+category, review, and log-text filters. It does not change metrics, charts, or export.
+Host collection states (Pending, Reading, Completed, Failed, Stopped) are separate
+from decision counts: collection can finish while inference is still running.
+SSH connect/read failures appear as **Source failed** records, with host details
+and no AI probabilities; use All results / Request failed to find them. Other
+remote readers continue. See [multi-host execution](tasks.md#multiple-target-hosts).
 
 | Control | Behavior |
 | --- | --- |
@@ -201,34 +199,37 @@ Laya name: inspect `providerResponse.routing` for the actual checkpoint.
 
 ### Refresh and reconnect
 
-Sidebar routes are Main `/`, Sources `/#sources`, Criteria `/#criteria`, and Actions `/#actions`.
-Reloading opens the view specified by the URL; browser back/forward also switches
-views. Unsaved editor drafts do not survive a reload.
+Sidebar routes are Main `/`, Source `/#sources`, Criteria `/#criteria`,
+Actions `/#actions`, Tasks `/#tasks`, and Settings `/#settings`.
+Source, Criteria, Actions, and Tasks are Main submenus. Settings has SSH Keys
+`/#settings/ssh-keys` and SSH Hosts `/#settings/ssh-hosts`; selecting one shows
+only that section. Settings itself lists links to SSH Keys and SSH Hosts.
+Every page uses a title and a short caption above its content cards. Main keeps
+the engine connection status at the right; SSH pages have no duplicate section header.
+Selecting a sidebar menu always returns to its list and closes any View, Edit, or
+History screen. Unsaved editor drafts are discarded; saved settings and running
+Tasks are unchanged.
+Task executions continue after disconnecting or closing the browser. Refreshing
+reconnects to the same execution; History → View results replays saved results
+without repeating classification or Actions. Main follows new executions of the
+selected Task; explicitly viewing a historical run keeps that run selected.
 
-UI runs (Batch, Realtime, and Paste) continue in **server memory** when the browser
-refreshes or disconnects. Each browser tab remembers its latest job ID in session
-storage. Refreshing the same tab restores its source settings and completed results,
-then follows new results without repeating classification or Actions. Completed and
-stopped jobs can also be restored while the same server process is running.
-**Stop** explicitly cancels the server job and retains completed results. After a
-connection failure, **Reconnect** attaches to the same job rather than starting one.
-Closing a tab does not stop its job; stop it before leaving if it should not continue.
-Reopening a closed tab is not a supported recovery mechanism.
+Task definitions, run status, settings snapshots, results, and Action outcomes
+persist under `DECIFLOW_DATA_DIR/tasks`. A restart marks interrupted executions
+Stopped. Batch is not automatically retried; Realtime starts a new run only when
+Resume on restart is enabled. See [Tasks](tasks.md).
 
-No DB or disk history is used. Server/container restart loses all jobs; the UI
-reports that the previous job is unavailable. Use one server worker. Results from
-all jobs remain in RAM until server shutdown; large batches and long Realtime runs
-increase memory use. Timing ticks keep only their latest snapshot. Reviewer edits,
-filters, pagination, and unsaved editor drafts remain browser-only and are not
-restored. Export to preserve results beyond a server restart. No job-history browser
-or JSON import is provided.
+Use one DeciFlow server process/instance per data directory. Results also remain
+in RAM until shutdown; large batches and long Realtime runs increase memory use.
+No automatic history retention limit is applied. Reviewer edits, filters,
+pagination, and unsaved drafts remain browser-only; export to preserve edits.
 
-API clients can send `persist: true` to `/api/classify` or `/api/file-source` to
-receive HTTP 202 with `jobId`, `state`, and validated `settings`. POST
-`/api/jobs/<jobId>` inspects the job, `/api/jobs/<jobId>/events` replays and follows
-NDJSON, and `/api/jobs/<jobId>/stop` stops it. These requests use the same origin
-checks as analysis; file jobs also require a local/trusted UI origin. Without
-`persist: true`, existing APIs retain their connection-scoped streaming behavior.
+The low-level `/api/classify` text API and `/api/file-source` file API remain
+available. With `persist: true`, they return a browser-independent **in-memory**
+job (HTTP 202), not a saved Task or durable run. `/api/jobs/<jobId>` inspects a run,
+`/events` replays/follows NDJSON, and `/stop` stops a live run (POST). Without
+`persist: true`, direct APIs stream for the connection lifetime. Trusted-origin
+checks still apply; file access requires a local/trusted UI Origin.
 
 ### Timing metrics
 

@@ -44,7 +44,8 @@ from config import (
     get_jev_input_bytes,
 )
 from configured_sources import follow_configured, read_configured
-from jobs import JOBS, Job
+from host_sources import host_metadata, read_host_sources
+from jobs import JOBS, Job, read_archived_run, replay_archived_run
 from profiles import (
     PROFILES,
     load_profiles,
@@ -52,17 +53,26 @@ from profiles import (
     use_profile_snapshot,
     validate_settings,
 )
-from remote_sources import read_remote
 from source_registry import load_sources, save_sources, source_pattern
 from source_settings import parse_source_settings, resolve_configured_sources
-from sources import follow_sources, merge_batch, read_sources
-from ssh_hosts import delete_host, load_hosts, save_host
+from sources import follow_sources, read_sources
+from ssh_hosts import delete_host, load_hosts, save_host, test_host_connection
 from ssh_keys import (
     add_key,
     add_key_from_path,
     delete_key,
     get_keys_directory,
     list_keys,
+)
+from tasks import (
+    TaskScheduler,
+    delete_task,
+    get_tasks_directory,
+    load_tasks,
+    next_run,
+    record_unstarted_run,
+    save_task,
+    task_runs,
 )
 
 ROOT = Path(__file__).resolve().parent
@@ -219,7 +229,7 @@ async def handle_events(
     profile: str = "general",
     chunk_events: int = 1,
     profile_snapshot: dict[str, Result] | None = None,
-) -> AsyncIterator[str]:
+) -> AsyncGenerator[str, None]:
     """Stream progress and cancel in-flight engine calls on client disconnect."""
 
     snapshot = profile_snapshot if profile_snapshot is not None else deepcopy(PROFILES)
@@ -367,11 +377,18 @@ async def handle_file_events(
             profile_snapshot if profile_snapshot is not None else deepcopy(PROFILES)
         )
         clock = _ProcessingClock()
+        host_states = {
+            spec["hostId"]: {**host_metadata(spec), "collectionState": "pending"}
+            for spec in specs or []
+            if spec.get("type") == "ssh"
+        }
+        last_host_states = ""
         yield _encode(
             {
                 "type": "start",
                 "total": None,
                 "mode": mode,
+                "hosts": list(host_states.values()),
                 "engine": engine.name,
                 "sources": [str(path) for path in paths],
                 "sourcePatterns": [source_pattern(spec) for spec in specs]
@@ -390,15 +407,8 @@ async def handle_file_events(
                 follow_sources(values) if mode == "realtime" else read_sources(paths)
             )
         if specs and any(spec.get("type") == "ssh" for spec in specs):
-            records = merge_batch(
-                [
-                    records,
-                    *(
-                        read_remote(spec, live=mode == "realtime")
-                        for spec in specs
-                        if spec.get("type") == "ssh"
-                    ),
-                ]
+            records = read_host_sources(
+                records, specs, live=mode == "realtime", statuses=host_states
             )
         try:
             async with httpx.AsyncClient(timeout=engine.timeout) as client:
@@ -439,16 +449,64 @@ async def handle_file_events(
                     aclosing(_timed_results(acted, clock)) as events,
                 ):
                     async for event in events:
+                        serialized = json.dumps(host_states)
+                        if host_states and serialized != last_host_states:
+                            last_host_states = serialized
+                            yield _encode(
+                                {
+                                    "type": "host-status",
+                                    "hosts": list(host_states.values()),
+                                }
+                            )
                         yield event
         except (OSError, UnicodeError, ValueError) as error:
             yield _encode({"type": "error", "error": f"File source stopped: {error}"})
         finally:
             await records.aclose()
+        if host_states:
+            yield _encode({"type": "host-status", "hosts": list(host_states.values())})
         yield _encode({"type": "done", **clock.snapshot()})
 
 
+class EngineUnavailableError(ValueError):
+    """Indicate a provider configuration problem before a run can start."""
+
+
+async def prepare_file_execution(
+    mode: str, values: object
+) -> tuple[Result, AsyncGenerator[str, None]]:
+    """Resolve settings once for both direct file requests and saved Tasks."""
+    specs = parse_source_settings(values)
+    profile_snapshot = deepcopy(PROFILES)
+    actions = load_actions() if any(spec.get("action") for spec in specs) else []
+    names = {action["name"] for action in actions}
+    if any(spec.get("action") and spec["action"] not in names for spec in specs):
+        raise ValueError("Select a registered action or None.")
+    selected = {spec.get("action") for spec in specs}
+    actions = [action for action in actions if action["name"] in selected]
+    ensure_actions_available(actions)
+    paths = await anyio.to_thread.run_sync(
+        partial(resolve_configured_sources, specs, follow=mode == "realtime"),
+        abandon_on_cancel=True,
+    )
+    ensure_actions_available(actions)
+
+    try:
+        engine = get_engine()
+    except ValueError as error:
+        raise EngineUnavailableError(str(error)) from error
+    if engine.name == "jev" and not engine.api_key:
+        raise EngineUnavailableError(
+            "Set the JEV_API_KEY environment variable on the server."
+        )
+    settings = {"mode": mode, "sources": specs}
+    return settings, handle_file_events(
+        values, paths, mode, engine, specs, actions, profile_snapshot
+    )
+
+
 async def handle_file_source(request: Request) -> Response:
-    """Start explicitly selected server files through a local same-origin request."""
+    """Start selected files, sharing the same preparation as Task executions."""
     if not _allowed_origin(request, files=True):
         return _json(
             403,
@@ -466,41 +524,122 @@ async def handle_file_source(request: Request) -> Response:
             raise ValueError("Select Batch or Realtime mode.")
         mode = "realtime" if body["mode"] == "follow" else body["mode"]
         values = body.get("sources", body.get("paths", body.get("path")))
-        specs = parse_source_settings(values)
-        profile_snapshot = deepcopy(PROFILES)
-        actions = load_actions() if any(spec.get("action") for spec in specs) else []
-        names = {action["name"] for action in actions}
-        if any(spec.get("action") and spec["action"] not in names for spec in specs):
-            raise ValueError("Select a registered action or None.")
-        selected = {spec.get("action") for spec in specs}
-        actions = [action for action in actions if action["name"] in selected]
-        ensure_actions_available(actions)
-        paths = await anyio.to_thread.run_sync(
-            partial(resolve_configured_sources, specs, follow=mode == "realtime"),
-            abandon_on_cancel=True,
-        )
-        ensure_actions_available(actions)
+        settings, events = await prepare_file_execution(mode, values)
+    except EngineUnavailableError as error:
+        return _json(503, {"error": str(error)})
     except (ValueError, TypeError, OSError) as error:
         return _json(400, {"error": str(error)})
-    try:
-        engine = get_engine()
-    except ValueError as error:
-        return _json(503, {"error": str(error)})
-    if engine.name == "jev" and not engine.api_key:
-        return _json(
-            503,
-            {"error": "Set the JEV_API_KEY environment variable on the server."},
-        )
-    events = handle_file_events(
-        values, paths, mode, engine, specs, actions, profile_snapshot
-    )
     if body.get("persist") is True:
-        return _start_job({"mode": mode, "sources": specs}, events)
-    return StreamingResponse(
-        events,
-        media_type="application/x-ndjson",
-        headers=HEADERS,
+        return _start_job(settings, events)
+    return StreamingResponse(events, media_type="application/x-ndjson", headers=HEADERS)
+
+
+TASK_STARTING: set[str] = set()
+
+
+def active_task_job(identity: str) -> Job | None:
+    """Find a Task execution which has not finished cleanup."""
+    return next(
+        (
+            job
+            for job in JOBS.values()
+            if job.settings.get("taskId") == identity and not job.task.done()
+        ),
+        None,
     )
+
+
+async def launch_task(task: Result, trigger: str) -> Result:
+    """Start a nonoverlapping Task with frozen settings and persistent events."""
+    identity = task["id"]
+    if identity in TASK_STARTING or active_task_job(identity):
+        if trigger != "manual":
+            return record_unstarted_run(
+                task, "skipped", trigger, "Previous execution is still running."
+            )
+        raise ValueError("This Task is already running.")
+    TASK_STARTING.add(identity)
+    try:
+        try:
+            settings, events = await prepare_file_execution(
+                task["mode"], task["sources"]
+            )
+            settings.update(taskId=identity, taskName=task["name"], trigger=trigger)
+            job = Job(settings, events, get_tasks_directory() / identity / "runs")
+            JOBS[job.id] = job
+            return job.snapshot()
+        except (ValueError, TypeError, OSError) as error:
+            return record_unstarted_run(task, "failed", trigger, str(error))
+    finally:
+        TASK_STARTING.discard(identity)
+
+
+SCHEDULER = TaskScheduler(launch_task)
+
+
+async def handle_tasks(request: Request) -> Response:
+    """Manage Tasks and execute them only from trusted file-access origins."""
+    if not _allowed_origin(request, files=True):
+        return _json(403, {"error": "Task management requires a trusted UI origin."})
+    try:
+        if request.method == "PUT":
+            save_task(await request.json())
+        elif request.method == "DELETE":
+            body = await request.json()
+            if not isinstance(body, dict) or not isinstance(body.get("id"), str):
+                raise ValueError("Select a Task.")
+            identity = body["id"]
+            if identity in TASK_STARTING or active_task_job(identity):
+                return _json(409, {"error": "Stop the Task before deleting it."})
+            delete_task(identity)
+        tasks = []
+        for task in load_tasks():
+            active = active_task_job(task["id"])
+            runs = task_runs(task["id"], limit=1)
+            pending = SCHEDULER.due.get(task["id"])
+            upcoming = (
+                (
+                    pending[1]
+                    if pending and pending[0] == (task["cron"], task["timezone"])
+                    else next_run(task, datetime.now(UTC))
+                )
+                if task["mode"] == "batch" and task["cron"] and task["enabled"]
+                else None
+            )
+            tasks.append(
+                {
+                    **task,
+                    "latestRun": runs[0] if runs else None,
+                    "activeRun": active.snapshot() if active else None,
+                    "starting": task["id"] in TASK_STARTING,
+                    "nextRunAt": upcoming.isoformat() if upcoming else None,
+                }
+            )
+        return _json(200, {"tasks": tasks})
+    except (ValueError, TypeError, OSError) as error:
+        return _json(400, {"error": str(error)})
+
+
+async def handle_task_operation(request: Request) -> Response:
+    """Start, stop, or list executions of a registered Task."""
+    if not _allowed_origin(request, files=True):
+        return _json(403, {"error": "Task access requires a trusted UI origin."})
+    identity = request.path_params["task_id"]
+    task = next((item for item in load_tasks() if item["id"] == identity), None)
+    if task is None:
+        return _json(404, {"error": "Task not found."})
+    operation = request.url.path.rsplit("/", 1)[-1]
+    try:
+        if operation == "runs":
+            return _json(200, {"runs": task_runs(identity)})
+        if operation == "stop":
+            job = active_task_job(identity)
+            if job:
+                await job.stop()
+            return _json(200, job.snapshot() if job else {"state": "idle"})
+        return _json(202, await launch_task(task, "manual"))
+    except (ValueError, TypeError, OSError) as error:
+        return _json(409, {"error": str(error)})
 
 
 async def _action_results(
@@ -524,6 +663,28 @@ async def _action_results(
         yield index, result
 
 
+async def handle_test_ssh_host(request: Request) -> Response:
+    """Test saved or draft SSH settings only from trusted file-access origins."""
+    if not _allowed_origin(request, files=True):
+        return _json(403, {"error": "SSH host testing requires a trusted UI origin."})
+    try:
+        value = await request.json()
+        trusted_key = value.get("trustedHostKey") if isinstance(value, dict) else None
+        if (
+            isinstance(value, dict)
+            and set(value) <= {"id", "trustedHostKey"}
+            and "id" in value
+        ):
+            value = next(
+                (host for host in load_hosts() if host["id"] == value["id"]), None
+            )
+            if value is None:
+                return _json(404, {"error": "SSH host not found."})
+        return _json(200, await test_host_connection(value, trusted_key))
+    except (ValueError, TypeError, OSError) as error:
+        return _json(400, {"error": str(error)})
+
+
 async def handle_ssh_hosts(request: Request) -> Response:
     """Manage shared SSH connections from trusted file-access origins."""
     if not _allowed_origin(request, files=True):
@@ -544,7 +705,13 @@ async def handle_ssh_hosts(request: Request) -> Response:
                 if job.state == "running"
                 for source in job.settings.get("sources", [])
             ]
-            delete_host(body.get("id"), [*load_sources(), *active])
+            saved = [
+                {"hostId": identity}
+                for task in load_tasks()
+                for source in task["sources"]
+                for identity in source.get("hostIds", [])
+            ]
+            delete_host(body.get("id"), [*saved, *active])
         return _json(200, {"hosts": load_hosts()})
     except (ValueError, TypeError, OSError) as error:
         return _json(400, {"error": str(error)})
@@ -596,11 +763,23 @@ async def handle_sources(request: Request) -> Response:
     if not _allowed_origin(request, files=True):
         return _json(403, {"error": "Source management requires a trusted UI origin."})
     try:
-        sources = (
-            save_sources(await request.json())
-            if request.method == "PUT"
-            else load_sources()
-        )
+        if request.method == "PUT":
+            values = await request.json()
+            if isinstance(values, list):
+                identities = {
+                    source.get("id") for source in values if isinstance(source, dict)
+                }
+                for task in load_tasks():
+                    if any(
+                        source["sourceId"] not in identities
+                        for source in task["sources"]
+                    ):
+                        raise ValueError(
+                            f"A Source is used by Task '{task['name']}'. Update the Task before deleting it."
+                        )
+            sources = save_sources(values)
+        else:
+            sources = load_sources()
     except (ValueError, TypeError, OSError) as error:
         return _json(400, {"error": str(error)})
     return _json(200, {"sources": sources})
@@ -613,11 +792,19 @@ async def handle_criteria(request: Request) -> Response:
             403, {"error": "Criteria management requires a trusted UI origin."}
         )
     try:
-        profiles = (
-            save_profiles(await request.json())
-            if request.method == "PUT"
-            else deepcopy(PROFILES)
-        )
+        if request.method == "PUT":
+            values = await request.json()
+            if isinstance(values, dict):
+                for task in load_tasks():
+                    if any(
+                        source["profile"] not in values for source in task["sources"]
+                    ):
+                        raise ValueError(
+                            f"Criteria is used by Task '{task['name']}'. Update the Task before deleting it."
+                        )
+            profiles = save_profiles(values)
+        else:
+            profiles = deepcopy(PROFILES)
     except (ValueError, TypeError, OSError) as error:
         return _json(400, {"error": str(error)})
     return _json(200, {"profiles": profiles})
@@ -668,7 +855,20 @@ async def handle_actions(request: Request) -> Response:
                         script.read_text(encoding="utf-8") if script.is_file() else ""
                     )
         else:
-            actions = await save_actions(await request.json())
+            values = await request.json()
+            if isinstance(values, list):
+                names = {
+                    action.get("name") for action in values if isinstance(action, dict)
+                }
+                for task in load_tasks():
+                    if any(
+                        source.get("action") and source["action"] not in names
+                        for source in task["sources"]
+                    ):
+                        raise ValueError(
+                            f"An Action is used by Task '{task['name']}'. Update the Task before deleting or renaming it."
+                        )
+            actions = await save_actions(values)
     except (ValueError, TypeError, OSError) as error:
         return _json(400, {"error": str(error)})
     return _json(
@@ -682,7 +882,7 @@ async def handle_actions(request: Request) -> Response:
     )
 
 
-def _start_job(settings: Result, events: AsyncIterator[str]) -> Response:
+def _start_job(settings: Result, events: AsyncGenerator[str, None]) -> Response:
     job = Job(settings, events)
     JOBS[job.id] = job
     return _json(202, {"jobId": job.id, "state": job.state, "settings": settings})
@@ -694,6 +894,20 @@ async def handle_job(request: Request) -> Response:
         return _json(403, {"error": "Job access requires a trusted UI origin."})
     job = JOBS.get(request.path_params["job_id"])
     if job is None:
+        archived = read_archived_run(
+            get_tasks_directory(), request.path_params["job_id"]
+        )
+        if archived:
+            if not _allowed_origin(request, files=True):
+                return _json(403, {"error": "Job access requires a trusted UI origin."})
+            snapshot, directory = archived
+            if request.url.path.endswith("/events"):
+                return StreamingResponse(
+                    replay_archived_run(directory),
+                    media_type="application/x-ndjson",
+                    headers=HEADERS,
+                )
+            return _json(200, snapshot)
         return _json(
             404, {"error": "Job no longer exists. The server may have restarted."}
         )
@@ -706,7 +920,7 @@ async def handle_job(request: Request) -> Response:
         return StreamingResponse(
             job.stream(), media_type="application/x-ndjson", headers=HEADERS
         )
-    return _json(200, {"jobId": job.id, "state": job.state, "settings": job.settings})
+    return _json(200, job.snapshot())
 
 
 @asynccontextmanager
@@ -714,9 +928,12 @@ async def lifespan(application: Starlette) -> AsyncIterator[None]:
     """Stop background analysis jobs when the server shuts down."""
     load_profiles()
     get_keys_directory()
+    scheduler = asyncio.create_task(SCHEDULER.run())
     try:
         yield
     finally:
+        scheduler.cancel()
+        await asyncio.gather(scheduler, return_exceptions=True)
         await asyncio.gather(*(job.stop() for job in JOBS.values()))
         JOBS.clear()
 
@@ -736,10 +953,15 @@ async def handle_asset(request: Request) -> Response:
 app = Starlette(
     lifespan=lifespan,
     routes=[
+        Route("/api/tasks", handle_tasks, methods=["POST", "PUT", "DELETE"]),
+        Route("/api/tasks/{task_id}/run", handle_task_operation, methods=["POST"]),
+        Route("/api/tasks/{task_id}/stop", handle_task_operation, methods=["POST"]),
+        Route("/api/tasks/{task_id}/runs", handle_task_operation, methods=["POST"]),
         Route("/api/jobs/{job_id}", handle_job, methods=["POST"]),
         Route("/api/jobs/{job_id}/events", handle_job, methods=["POST"]),
         Route("/api/jobs/{job_id}/stop", handle_job, methods=["POST"]),
         Route("/api/ssh-keys", handle_ssh_keys, methods=["POST", "PUT", "DELETE"]),
+        Route("/api/ssh-hosts/test", handle_test_ssh_host, methods=["POST"]),
         Route("/api/ssh-hosts", handle_ssh_hosts, methods=["POST", "PUT", "DELETE"]),
         Route("/api/sources", handle_sources, methods=["POST", "PUT"]),
         Route("/api/criteria", handle_criteria, methods=["POST", "PUT"]),

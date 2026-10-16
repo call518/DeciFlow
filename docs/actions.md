@@ -17,9 +17,9 @@ name, Python version, modules, environment Status, and **View**/**Edit**/**Reset
 **Search by Name** filters names by a case-insensitive partial match.
 **Edit** opens one handler;
 **Cancel edit** discards its draft. Removal takes effect when you save. Return to
-**Main** to assign an Action or **None** to each log file or pattern and start
-Batch/Realtime. Switching views preserves ongoing analysis and editor drafts.
-Paste mode does not run Actions.
+**Tasks** to assign an Action or **None** to each log file or pattern and start
+Batch/Realtime. Analysis continues when changing pages. Re-entering Actions from
+the sidebar returns to the list and discards unsaved drafts. Assignments are saved per Task.
 
 Modules accept one package per line, with optional extras or version constraints
 (e.g. `httpx==0.28.1`, `requests>=2.32,<3`). URLs, local paths, index options,
@@ -44,12 +44,11 @@ Actions use `actions/` under the shared `DECIFLOW_DATA_DIR` root. The default is
 `/var/lib/deciflow-data/actions` for both Python and Docker. Direct host startup needs write
 permission; set the shared root to `./data` if needed. For Docker, keep the shared data
 root and volume destination identical. Registrations, code,
-projects, lockfiles, and venvs are stored together. New analysis sources default to **None**, including sources with older stored
-assignments. Reconnecting to a running job displays its original Action settings
-and continues that same job. Restored completed jobs default to **None** for a new run. Action selections persist only during the
-current page session; users must explicitly select them again after reload.
-Criteria and chunk sizes remain in browser local storage. Changing this directory does not migrate
-existing data automatically.
+projects, lockfiles, and venvs are stored together. New Task Source rows default to
+**None**. Action assignments, Criteria, and chunk sizes are saved in the Task on
+the server and survive page reloads. Each run keeps its original settings snapshot;
+edits affect new runs. Changing the data directory does not migrate existing data
+automatically.
 
 `actions.json` stores the current configuration at the Actions storage root.
 Each UI-managed Action uses `<initial-name>-<Action UUID>/`, with unsafe name
@@ -79,7 +78,8 @@ An Action cannot be changed, reset, or deleted while analysis uses it. Stop that
 analysis first. Saving unchanged Actions and editing other Actions remain allowed.
 New runs cannot use an Action while its configuration is being changed.
 Saving is serialized within one DeciFlow process; multiple writers sharing a
-volume are not supported. After removing an Action, check its source assignments.
+volume are not supported. Deletion is also blocked by saved Task references;
+change those Tasks to another Action or None before deleting the Action.
 
 **Reset venv** deletes the saved Action's current `.venv` and rebuilds it from its
 Python/module settings and `uv.lock`, including pip. Code, registrations, and lockfiles
@@ -105,7 +105,9 @@ including log text, source, line range, profile, probabilities, and review flags
 plus `schemaVersion: 1`, `eventId`, UTC `decidedAt`, and `engine`. The event ID
 identifies this execution; rerunning a batch creates new IDs. Filter categories
 or review flags in your code. Both Laya and Jev use the same contract. Provider
-failures and unassigned sources do not trigger Actions.
+failures, Source read failures, and unassigned sources do not trigger Actions.
+Remote input also includes `hostId`, `hostName`, `hostAddress`, `hostPort`, and
+`chunkSequence`; these identify the source host without changing the log text.
 
 You can copy the [Python handler example](../examples/action_print.py) into the editor.
 
@@ -117,8 +119,9 @@ retry. A slow Action delays result delivery and reduces throughput; failure is
 recorded without stopping subsequent decisions. **Stop** cancels the current
 Action process; browser disconnects leave UI jobs running. Cancellation cannot
 undo external effects. Scripts must manage
-any subprocesses they spawn. Execution history is retained in the UI and JSON
-export, not a durable job queue.
+any subprocesses they spawn. Task run history stores Action outcomes on disk and
+exposes them in the UI and JSON export. This is execution history, without a
+durable Action queue or automatic retries.
 
 Only register trusted scripts: Actions run with DeciFlow's OS permissions,
 environment, and working directory, without a sandbox. Registration uses the same

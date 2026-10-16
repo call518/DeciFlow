@@ -5,15 +5,19 @@
 Start with the [quick start](../README.md#quick-start--docker--laya-cpu) to run
 DeciFlow and Laya. Use the guides below for the task you need.
 
+For Remote File, register SSH Keys and SSH Hosts in Settings first. Then follow
+Source → Criteria → optional Actions → Tasks, and monitor running Tasks in Main.
+
 ## Use and configure DeciFlow
 
 | Guide | Read it when you need to… |
 | --- | --- |
-| [Sources](sources.md) | Register local or SSH file sources and select them in Main |
+| [Sources](sources.md) | Register local or SSH file sources and select them in Tasks |
 | [Usage](usage.md) | Analyze logs, filter results, review predictions, reconnect, or understand metrics |
 | [Configuration](configuration.md) | Set environment variables, choose Laya/Jev models, or adjust request budgets |
 | [Criteria](criteria.md) | Create and manage category instructions and definitions |
 | [Python Actions](actions.md) | Run Python code after classification and manage execution environments |
+| [Tasks](tasks.md) | Reusable executions, cron schedules, continuous monitoring, and durable run history |
 
 ## Deploy and integrate
 

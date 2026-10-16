@@ -19,7 +19,7 @@ import server
 from classifier import Result
 from source_registry import load_sources, save_sources, source_pattern
 from source_settings import parse_source_settings
-from ssh_hosts import save_host
+from ssh_hosts import get_hosts_path, save_host
 
 
 @pytest.fixture
@@ -72,7 +72,8 @@ async def ssh_source(
     home = tmp_path / "home"
     (home / ".ssh").mkdir(parents=True)
     monkeypatch.setenv("HOME", str(home))
-    known_hosts = home / ".ssh" / "known_hosts"
+    known_hosts = get_hosts_path().parent / "known_hosts"
+    known_hosts.parent.mkdir(parents=True, exist_ok=True)
     known_hosts.write_text(
         f"[127.0.0.1]:{port} {host_key.export_public_key().decode()}"
     )
@@ -89,7 +90,9 @@ async def ssh_source(
     saved = save_sources([{**source, "hostId": connection["id"]}])[0]
     try:
         yield {
-            **saved,
+            **parse_source_settings(
+                [{"sourceId": saved["id"], "hostIds": [connection["id"]]}]
+            )[0],
             "sourceId": saved["id"],
             "profile": "general",
             "chunkEvents": 1,
@@ -143,11 +146,11 @@ def test_registry_roundtrip_and_no_secret_contents(
 @pytest.mark.parametrize(
     "changes",
     [
-        {"hostId": ""},
-        {"hostId": True},
+        {"name": ""},
+        {"path": None},
         {"path": "relative.log"},
-        {"hostId": "missing"},
-        {"hostId": None},
+        {"name": None},
+        {"path": ""},
         {"type": "http"},
         {"id": "../../outside"},
     ],
@@ -184,7 +187,7 @@ async def test_sftp_rejects_unknown_hosts_wrong_keys_and_missing_files(
 ) -> None:
     spec = {**ssh_source}
     if failure == "host":
-        (Path.home() / ".ssh" / "known_hosts").write_text("")
+        (get_hosts_path().parent / "known_hosts").write_text("")
     elif failure == "key":
         wrong = tmp_path / "wrong_key"
         asyncssh.generate_private_key("ssh-ed25519").write_private_key(wrong)
@@ -261,7 +264,15 @@ async def test_mixed_registered_sources_share_provider_and_run_settings(
             json={
                 "mode": "batch",
                 "sources": [
-                    {"sourceId": source["id"], "profile": "application"}
+                    {
+                        "sourceId": source["id"],
+                        "profile": "application",
+                        **(
+                            {"hostIds": [ssh_source["hostId"]]}
+                            if source["type"] == "ssh"
+                            else {}
+                        ),
+                    }
                     for source in (remote, local_def)
                 ],
             },
@@ -281,7 +292,9 @@ async def test_source_api_persists_edits_and_freezes_run_definition(
     ssh_source: Result,
 ) -> None:
     original = load_sources()[0]
-    snapshot = parse_source_settings([{"sourceId": original["id"]}])[0]
+    snapshot = parse_source_settings(
+        [{"sourceId": original["id"], "hostIds": [ssh_source["hostId"]]}]
+    )[0]
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=server.app), base_url="http://localhost"
     ) as client:

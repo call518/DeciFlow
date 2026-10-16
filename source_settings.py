@@ -6,6 +6,7 @@ from typing import Any
 from profiles import validate_settings
 from source_registry import load_sources
 from sources import resolve_sources
+from ssh_hosts import load_hosts
 
 
 def parse_source_settings(values: object) -> list[dict[str, Any]]:
@@ -15,6 +16,7 @@ def parse_source_settings(values: object) -> list[dict[str, Any]]:
     if not isinstance(values, list) or not values:
         raise ValueError("Enter at least one source path or pattern.")
     sources = []
+    hosts = {host["id"]: host for host in load_hosts()}
     registered = {source["id"]: source for source in load_sources()}
     for value in values:
         if isinstance(value, str):
@@ -41,15 +43,45 @@ def parse_source_settings(values: object) -> list[dict[str, Any]]:
         action = value.get("action", "")
         if not isinstance(action, str):
             raise TypeError("Action must be a registered action name.")
-        sources.append(
-            {
-                **definition,
-                "path": path.strip(),
-                "profile": profile,
-                "chunkEvents": events,
-                **({"action": action.strip()} if action.strip() else {}),
-            }
-        )
+        spec = {
+            **definition,
+            "path": path.strip(),
+            "profile": profile,
+            "chunkEvents": events,
+            **({"action": action.strip()} if action.strip() else {}),
+        }
+        if definition.get("type") != "ssh":
+            if value.get("hostIds"):
+                raise ValueError("Local File Sources cannot select SSH Hosts.")
+            sources.append(spec)
+            continue
+        host_ids = value.get("hostIds")
+        if (
+            not isinstance(host_ids, list)
+            or not host_ids
+            or any(
+                not isinstance(identity, str) or identity not in hosts
+                for identity in host_ids
+            )
+            or len(set(host_ids)) != len(host_ids)
+        ):
+            raise ValueError(
+                "Select one or more distinct SSH Hosts for each Remote File Source."
+            )
+        for identity in host_ids:
+            host = hosts[identity]
+            sources.append(
+                {
+                    **spec,
+                    "hostId": identity,
+                    "hostName": host["name"],
+                    "host": host["host"],
+                    "port": host["port"],
+                    "username": host["username"],
+                    "keyPath": host["keyPath"],
+                }
+            )
+
     return sources
 
 

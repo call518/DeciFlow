@@ -21,9 +21,10 @@ Manage decision profiles under **Criteria** in the sidebar. Both Laya and Jev us
 - `general` is the default API profile. It appears separately under **Default Criteria**
   above the list, with **View** only. Edit/Delete controls are omitted.
 - Saved changes apply to new runs. Running jobs retain their original criteria even
-  after edits/deletion; result JSON `questions.category` records the criteria actually used.
-- Select replacement profiles for sources assigned to deleted profiles. Refresh the
-  page to load changes saved in another browser. Switching views preserves editor drafts.
+  after edits; result JSON `questions.category` records the criteria actually used.
+- Deletion is blocked while saved Tasks reference a profile; update those Tasks first.
+  Refresh to load changes saved in another browser. Re-entering Criteria from the
+  sidebar opens the list and discards unsaved drafts.
 - Describe observed outcomes and evidence. Keep specific log strings in evaluation
   samples and validate model accuracy separately.
 

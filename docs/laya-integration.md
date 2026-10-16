@@ -19,6 +19,10 @@ Jev share the request construction, result validation, and UI behavior in
 Jev receives its own model name and no Laya token-budget fields. Engine selection
 is explicit; DeciFlow never falls back automatically to paid Jev.
 
+Multi-host Tasks use the same request contract: host identity stays in result
+metadata and is not added to `state`. Concurrency is shared across the run, while
+host readers receive rotating opportunities. See [Tasks](tasks.md#multiple-target-hosts).
+
 ## Input and response validation
 
 Budgets are caps, not fixed allocations. Actual log space depends on the rendered

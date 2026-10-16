@@ -23,13 +23,15 @@ DeciFlow는 로그 이벤트를 청크로 묶어 Laya 또는 Jev로
 Laya 또는 Jev 요청 하나로 **`choice` 분류**, **`score` 긴급도**
 (0–3: Low, Medium, High, Critical), **`noul` 작업 티켓 발행 필요 확률**을 함께 받습니다.
 긴급도는 반올림한 등급이 아닌 확률 가중 점수입니다. 화면에 두 값을 표시하고
-JSON에 모든 답변을 보존합니다. 티켓을 자동 생성하지는 않습니다.
+JSON에 모든 답변을 보존합니다. 결과 상단에는 Category·Urgency·Work ticket을
+동일한 크기의 작은 배지와 각각의 확률 분포로 기본 표시합니다. 분류 검토 표시는
+Choice에만 해당하며 티켓을 자동 생성하지는 않습니다.
 
 **DeciFlow**는 로그가 있는 노드에서 실행해 이벤트를 읽고 브라우저에 결과를 표시합니다.
 **Laya 서버**는 같은 호스트 또는 별도 호스트에서 판정 모델을 실행하며, **Jev 서비스**는 대신 선택할 수
 있는 외부 판정 API입니다. DeciFlow는 선택한 엔진에 이벤트를 보내고 판정 결과를 받습니다.
 
-- **로그가 있는 곳에서 바로 시작합니다.** 텍스트를 붙여 넣거나 로컬·SSH 원격 파일을 Sources에
+- **로그가 있는 곳에서 바로 시작합니다.** 로컬·SSH 원격 파일을 Sources에
   등록해 선택합니다. 와일드카드 패턴도 지원합니다.
 - **일회성 분석과 실시간 감시를 함께 제공합니다.** Batch로 기존 로그를 읽거나
   Realtime으로 새 줄과 파일 회전을 감시합니다. 최근 판정 완료 결과부터 표시합니다.
@@ -92,11 +94,11 @@ docker compose logs --follow laya-cpu
 
 ### 4. 샘플 로그 분석
 
-같은 호스트에서 **http://127.0.0.1:4000**을 열고 **Batch**를 선택합니다.
-**Sources**에서 **Sample HTTP access** 경로를
-`/host-logs/sample-logs/access-100.log`로 수정하고 저장합니다. Main으로 돌아와
-**Sample HTTP access** 하나만 남기고 **HTTP access** 기준,
-**Events/chunk: 1**, **Action: None**으로 분석을 시작하세요.
+같은 호스트에서 **http://127.0.0.1:4000**을 엽니다. **Sources**에서
+**Sample HTTP access** 경로를 `/host-logs/sample-logs/access-100.log`로 수정하고 저장합니다.
+**Tasks**에서 이름을 지정한 **Batch / Manual** Task를 추가하고
+**Sample HTTP access**, **HTTP access** 기준, **Events/chunk: 1**,
+**Action: None**을 선택해 저장합니다. Tasks에서 **Run**을 누르고 **Main**의 실행 중 Task 목록에서 선택해 결과를 확인하세요.
 
 선택 사항인 GPU 가속은 [Docker 배포 상세](#laya-docker),
 유료 API를 사용하려면 [Jev](#jev)를 참고하세요.
@@ -109,29 +111,38 @@ docker compose logs --follow laya-cpu
 
 | 문서 | 내용 |
 | --- | --- |
-| [Sources](docs/sources.ko.md) | 로컬·SSH 파일 소스 등록, Settings의 SSH 키 관리, 검색 선택 |
+| [Tasks](docs/tasks.ko.md) | 재사용 실행 설정·Cron 예약·연속 감시·영속 실행 이력 |
+| [Sources](docs/sources.ko.md) | 로컬·SSH 파일 소스 등록, Settings의 SSH 키 관리, 정렬된 풀다운 선택 |
 | [사용법](docs/usage.ko.md) | 입력 모드·판정 기준·필터·수동 검토·재접속·시간 지표 |
 | [설정](docs/configuration.ko.md) | 환경변수·모델·입력 예산 |
 | [Criteria](docs/criteria.ko.md) | 고정 5개 범주 프로필 관리; Default Criteria는 보기 전용 |
 | [Python Actions](docs/actions.ko.md) | 구성 보기·환경 Status·pip 포함 환경·Reset venv·삭제·소스 할당 |
 | [결과 JSON](docs/results.ko.md) | 현재 요청·결과 예시와 필드 설명 |
 
-사이드바 화면은 URL에 반영됩니다: Main `/`, Sources `/#sources`, Criteria `/#criteria`, Actions `/#actions`, Settings `/#settings`.
-Settings는 한 화면에서 설정을 독립된 섹션으로 구분합니다.
-**SSH Keys**는 검색 가능한 목록과 Add·View·Delete 버튼으로 관리합니다.
-SSH 개인키를 붙여넣기·서버/컨테이너 파일 경로·업로드로 등록할 수
-있습니다. 개인키 내용은 마스킹하고 공개키는 자동으로 추출합니다.
-**SSH Hosts**에 접속 정보와 키를 등록하면 Remote File Source는 Host와 파일 경로만
-지정합니다. Host는 Add·View·Edit·Delete 버튼으로 관리합니다.
-새로고침·뒤로가기·직접 링크에서도 해당 화면을 유지합니다.
+사이드바 화면은 URL에 반영됩니다: Main `/`, Source `/#sources`, Criteria `/#criteria`, Actions `/#actions`, Tasks `/#tasks`, Settings `/#settings`.
+준비 흐름은 Sources → Criteria → 선택적 Actions → Tasks이며 Main에서 실행 결과를 확인합니다.
+원격 Source는 재사용할 경로를 정의하고 Task에서 Source별 SSH Host를 하나 이상
+선택합니다. 호스트별로 독립 수집하고 판정 차례를 공정하게 배분하며, 실행별 통합
+결과에 Host 필터·호스트 수집 상태를 제공합니다.
 
-- **Paste:** 텍스트를 붙여 넣어 분석합니다.
+Main 아래에 Source·Criteria·Actions·Tasks, Settings 아래에 SSH Keys·SSH Hosts를
+배치합니다. 사이드바로 재진입하면 목록을 열고 미저장 초안은 버립니다.
+화면 경로·결과 조작·재접속은 [사용법](docs/usage.ko.md)을 참고하세요.
+
+Settings는 개인키를 **Upload·Path·Paste**로 받아 관리 경로에 복사하고 공개키를
+추출합니다. SSH Hosts에는 접속 정보와 키를 저장합니다. **Test Connection**은 SSH
+인증·SFTP를 확인하며, 열린 호스트 목록도 순서대로 확인하고 한 회차 종료 30초 후
+반복합니다. 미등록 fingerprint는 사이트 확인창에서 승인합니다. 승인 키는 사용자
+SSH와 별개인 `DECIFLOW_DATA_DIR/ssh-hosts/known_hosts`에만 보존합니다.
+설정·신뢰 관리는 [Sources와 SSH 설정](docs/sources.ko.md)을 참고하세요.
+
+- **Tasks:** 소스·판정 기준·청크·Action 설정을 저장합니다. Batch는 수동·Cron, Realtime은 연속 실행합니다. [Tasks](docs/tasks.ko.md)를 참고하세요.
 - **Batch:** 등록한 로컬·SSH 파일을 분석합니다. Docker에서 호스트 `/var/log`는 `/host-logs/var/log`입니다.
 - **Realtime:** 새 로그를 감시합니다. 소스별 판정 기준과 청크 크기를 선택합니다.
 - **처리 지표:** Success / Failed / Total로 성공·실패·처리 완료 전체 청크를 표시합니다. Action Success / Failed / Total은 후속 작업을 별도 집계합니다. Needs review는 성공 판정만 집계합니다.
   엔진·모델 옆 연결 상태는 마지막 실제 요청 기준이며 요청 전에는 Not checked입니다.
 - **검토:** Needs review로 결과를 추리고 수동 정정·JSON 내보내기를 사용합니다.
-  Certain은 정확도 보장이 아닙니다. 서버 재시작 시 작업·결과가 사라지므로 필요하면 내보내세요.
+  Certain은 정확도 보장이 아닙니다. Task 정의·실행 이력은 데이터 볼륨에 보존하며 수동 정정은 브라우저에만 남습니다.
 
 ## Docker 배포 상세
 
@@ -291,7 +302,7 @@ UI는 호스트의 모든 인터페이스에 공개합니다. 로컬 접속만 �
 UI 포트 매핑을 `127.0.0.1:${PORT:-4000}:${PORT:-4000}`으로 변경하세요.
 기본 포트에서는 **http://127.0.0.1:4000**, 원격에서는 DeciFlow 호스트 IP로 접속합니다.
 `deciflow-data` 볼륨은 `DECIFLOW_DATA_DIR`(기본값: `/var/lib/deciflow-data`)에
-Sources·Actions·Criteria·SSH 키 쌍·SSH Host를 저장하고, `deciflow-logs`는 서버 로그를 저장합니다.
+Sources·Tasks와 실행 이력·Actions·Criteria·SSH 키 쌍·SSH Host를 저장하고, `deciflow-logs`는 서버 로그를 저장합니다.
 사용자 지정 데이터·로그 디렉터리는 컨테이너 안의 절대 경로로 설정하세요.
 
 #### 호스트 로그 디렉터리 연결
@@ -304,8 +315,8 @@ Sources·Actions·Criteria·SSH 키 쌍·SSH Host를 저장하고, `deciflow-log
       - /your/logs:/host-logs/custom:ro
 ```
 
-`docker compose up -d ui`로 마운트 변경을 적용합니다. UI 재생성 시 서버 메모리의
-작업·결과가 사라지므로 필요한 결과는 먼저 내보내세요. UI에서는 컨테이너 경로
+`docker compose up -d ui`로 마운트 변경을 적용합니다. UI 재생성은 진행 중 실행을
+중단하며 Task 이력은 데이터 볼륨에 보존합니다. UI에서는 컨테이너 경로
 `/host-logs/custom/app.log`를 사용합니다. 프로세스에는 호스트 파일을 읽을 권한이 필요합니다.
 
 #### 연결 설정과 재시작
@@ -338,7 +349,8 @@ ngrok·리버스 프록시로 파일을 처리하려면 `DECIFLOW_CSRF_TRUSTED_O
 - **Jev:** `jev-1.13.0`, [state + 가장 긴 질문 32k, 전체 요청 64k 토큰](https://docs.typesafe.ai/models).
   바이트 예산은 보수적 검사이며 정확한 토큰 수나 수용 보장이 아닙니다.
 - 거절 이벤트는 원문을 검토 대상으로 남기고 다른 이벤트는 계속 처리합니다.
-  소스 읽기·UTF-8 오류는 처리를 중단하고 완료 결과를 보존합니다.
+  로컬 파일 읽기·UTF-8 오류는 실행을 중단합니다. SSH 읽기 실패는 Source/Host별로
+  기록하고 다른 수집은 계속하며, 완료된 결과는 보존합니다.
 - 청크마다 한 번 요청하며 엔진별 동시 요청 수는 실행당 기본 4개입니다.
   제한 시간은 Laya 120초, Jev 30초입니다. 동시 요청을 늘려도 병렬 추론이나 처리량
   증가를 보장하지 않으며 서버 처리 여력과 수용 제한이 적용됩니다.
@@ -347,11 +359,11 @@ ngrok·리버스 프록시로 파일을 처리하려면 `DECIFLOW_CSRF_TRUSTED_O
   누락될 수 있습니다. 파일 중복 제거는 내용 중복을 제거하지 않으므로 활성 로그와
   회전 복사본을 함께 매칭하지 않도록 주의하세요.
 - Laya는 설정한 서버로, Jev는 TypeSafe로 로그를 전송하며 Jev API 비용이 발생합니다.
-  DeciFlow는 서버 디스크에 로그·결과를 저장하지 않습니다. 전송 전 민감 정보를
-  제거하고 `.env`를 커밋하지 마세요. 공개 배포에는 인증과 사용량 제한이 필요합니다.
+  Task 이력은 원본 로그·결과·Action 실행 결과를 데이터 볼륨에 저장합니다.
+  볼륨과 백업의 접근 권한을 관리하고 전송 전 민감 정보를 제거하며 `.env`를 커밋하지 마세요. 공개 배포에는 인증과 사용량 제한이 필요합니다.
 
 `Ctrl+C`로 DeciFlow를 종료하면 최대 2초 대기 후 남은 요청을 취소합니다.
-백그라운드 작업도 종료하며 서버 메모리의 작업과 결과는 사라집니다.
+백그라운드 작업도 종료하며 Task 이력은 디스크에 보존하며 중단된 Batch는 자동 재시도하지 않습니다.
 
 ## Appendix — 추가 활용 가능성
 

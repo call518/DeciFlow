@@ -351,6 +351,8 @@ async def classify_stream(
     async def handle_record(record: Result, number: int) -> tuple[int, Result]:
         start = perf_counter()
         try:
+            if record.get("sourceFailure"):
+                return number, {**record, "review": False, "elapsedMs": 0}
             decision = (
                 await classify_record(record)
                 if classify_record is not None

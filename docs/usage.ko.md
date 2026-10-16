@@ -2,60 +2,49 @@
 
 [English](usage.md) | [한국어](usage.ko.md) | [문서 안내](README.ko.md) | [README](../README.ko.md)
 
-넓은 화면에서는 왼쪽 **40%**에 **Classification overview → Log input**, 오른쪽
-**60%**에 **Classification results**를 배치합니다. 좁은 화면은 세로로 표시합니다.
+넓은 화면에서는 왼쪽 **40%**에 **Classification overview → Task monitor**, 오른쪽
+**60%**에 **Classification results**를 배치하고 좌우 패널을 독립적으로 스크롤합니다.
+좁은 화면은 세로 배치와 일반 페이지 스크롤을 사용합니다.
 사이드바에는 로그를 읽는 DeciFlow 노드의 hostname, 확인된 IP, OS·버전을 표시합니다.
 WSL·컨테이너에서는 해당 환경의 정보이며 호스트 OS 정보가 아닙니다. IP는 전체
-인터페이스 목록이 아닙니다. SSH 로그 호스트는 Sources에서 확인합니다. 엔진명 뒤 괄호의 상태는 마지막 실제 엔진 요청 결과입니다. 예: **Laya (Connected)**. 요청 전에는
+인터페이스 목록이 아닙니다. 대상 SSH 로그 호스트는 Tasks의 Source별로 지정합니다. 엔진명 뒤 괄호의 상태는 마지막 실제 엔진 요청 결과입니다. 예: **Laya (Connected)**. 요청 전에는
 Not checked, 이후에는 Connected·Disconnected·Timed out·API error를 표시합니다.
 지속적인 상태 검사는 아니며 로컬 입력 거절은 연결 상태를 바꾸지 않습니다.
 
-### 입력과 판정 기준
+### Tasks와 판정 기준
 
-먼저 **Sources**에 입력을 등록하세요. Local File은 DeciFlow 노드의 로그,
-Remote File (SSH)은 키 인증 SFTP로 읽을 원격 로그입니다. 등록 필드·SSH 키 마운트·
-요구사항은 [Sources](sources.ko.md)를 참고하세요. Main에서는 저장한 Source 이름을
-검색해 선택하며 Action도 같은 검색 방식을 사용합니다. Action 빈 값은 None이며,
-입력한 이름은 등록 항목과 일치해야 합니다.
+**Sources**에 입력을 등록한 후 **Tasks**에 소스별 Criteria·Events/chunk·Action을
+저장합니다. Main은 실행 중인 Task를 이름순 목록으로 표시하며 클릭한 실행의 결과를 보여줍니다. 처음에는 선택하지 않은 상태입니다.
+수동 Batch, 시간대를 지정하는 Cron Batch, 연속 Realtime을 지원하며 Paste 입력은
+제거했습니다. 저장만으로 분석을 시작하지 않습니다. Task 목록에서 Run·Stop·View·Edit·History·Delete를
+사용합니다. 예약·재시작·저장 정책은 [Tasks](tasks.ko.md)를 참고하세요.
 
-Add source 옆의 **Reset selections**는 사용 가능한 샘플 소스 또는 첫 등록 소스와
-샘플 기준·청크당 1이벤트·Action None을 복원합니다. 처리 중에는 비활성화합니다.
-초기 샘플 등록은 다음과 같습니다:
-
-| Source | 경로 | Criteria |
-| --- | --- | --- |
-| System messages | `/host-logs/var/log/messages` | General system |
-| Sample HTTP access | `/host-logs/sample-logs/access-1k.log` | HTTP access |
-| Sample SSH authentication | `/host-logs/sample-logs/SSH_2k.log` | Authentication |
-
-기본 모드는 **Batch**이며 Paste에는 수정 가능한 예시 텍스트를 제공합니다.
-
-| 모드 | 읽기 방식 |
-| --- | --- |
-| Realtime | 기존 파일 끝 이후의 새 줄. 새 파일·교체 파일은 처음부터 |
-| Batch | 일치한 파일의 처음부터 EOF까지 |
-| Paste | 붙여 넣은 텍스트를 청크로 처리 |
-
-모드 ID는 `realtime`·`batch`·`paste`입니다. Main에서 선택 행을 추가·제거하며
-행마다 Source·Criteria·Events/chunk·Action을 설정합니다. 소스와 파일은 Laya 서버나
-브라우저가 아닌 DeciFlow가 접근합니다. 파일 접근에는 로컬·신뢰 UI Origin과 읽을 수
-있는 UTF-8 일반 파일이 필요합니다. 소스 등록은 서버에 보존하고 Batch·Realtime
-선택은 페이지 세션에서 따로 유지합니다. Criteria·청크 설정은 소스 ID 기준으로
-브라우저에 보관합니다. 새 실행 전에 없거나 삭제한 등록 항목을 대체해야 합니다.
+Task 편집의 **Reset selections**는 사용 가능한 샘플 Source 또는 첫 등록 항목과
+샘플 기준·청크당 1이벤트·Action None을 선택합니다. 저장한 설정은 서버에 보관하고
+저장하지 않은 초안은 브라우저에만 남습니다. 파일은 브라우저나 Laya가 아닌
+DeciFlow가 읽으며 로컬·신뢰 UI Origin과 읽을 수 있는 UTF-8 일반 파일이 필요합니다.
 
 Batch는 선택한 파일을 동시에 읽고 준비된 청크를 교차 공급하며 파일별 순서·프로필·
-청크 크기는 유지합니다. 엔진 동시 요청 제한은 파일별이 아닌 전체 실행에 적용하고
+청크 크기는 유지합니다. 결과는 완료한 최신 순서이므로 병렬 요청은 수집 순서와
+다르게 완료될 수 있습니다. 엔진 동시 요청 제한은 파일별이 아닌 전체 실행에 적용하고
 값이 1이면 순차 요청합니다. 원격 입력도 로컬 파일과 같은 엔진·Action 흐름을 사용합니다.
 
-선택한 Source 또는 Paste에 **Criteria**와 **Events/chunk**를 지정하세요.
+선택한 Source에 **Criteria**와 **Events/chunk**를 지정하세요.
 기본값은 **General system**, **청크당 1이벤트**입니다. 현재 비어 있지 않은
 한 줄이 1이벤트이며 멀티라인 경계는 아직 자동 인식하지 않습니다. 모든 프로필은
 `choice`로 **Normal, Warning, Error, Security, Other** 중 하나를 선택하며 설명과
 지시문만 다릅니다. Laya·Jev에 동일한 선택 기준을 적용합니다. 유형은 사용자가
 선택합니다. 같은 요청에서 `score`로 긴급도(0–3: Low, Medium, High, Critical),
 `noul`로 작업 티켓 발행 필요 확률도 평가합니다. 이 두 운영 질문은 모든
-프로필·엔진에서 고정입니다. 화면에는 연속 긴급도 점수와 티켓 Yes 확률을
-표시하며 티켓을 자동 생성하지 않습니다. 답변 누락·오류는 전체 판정 실패로 처리합니다.
+프로필·엔진에서 고정입니다. 각 결과 상단에는 **Category (Choice)**,
+**Urgency (Score)** 연속 점수(0–3), **Work ticket (Noul)** Yes 확률의 상세 카드를
+기본 표시하고 좁은 영역에서는 세로로 배치합니다. 배지는 모두 같은 작은 크기
+(132×22px)이며 간략 보기나 접기·펼치기 전환은 없습니다. 처리 시간·분류 검토 상태는
+카드 아래에 표시합니다. 각 카드에는 범주별·긴급도 단계별(0–3)·티켓 Yes/No의
+확률 분포를 각각 표시합니다. No 확률은 `1 − Yes`로 계산하며 세 판단을 합친
+확률이 아닙니다. 분류 불확실성 사유는 Category 카드 안에 표시하며
+**Category needs review**는 Choice만의 검토 표시입니다. Action 실행·Source·분류 기준·
+청크 크기는 별도 라벨로 구분합니다. 티켓을 자동 생성하지 않습니다. 답변 누락·오류는 전체 판정 실패로 처리합니다.
 
 | Criteria 프로필 | 판정 대상 |
 | --- | --- |
@@ -68,7 +57,7 @@ Batch는 선택한 파일을 동시에 읽고 준비된 청크를 교차 공급�
 프로필은 사이드바의 **Criteria**에서 추가·수정·삭제합니다.
 결과 범주는 Normal·Warning·Error·Security·Other로 고정하며 `general`은 삭제할 수 없습니다.
 **Save changes** 후 다음 분석부터 적용하고, 실행 중인 작업은 기존 기준을 유지합니다.
-저장 위치와 삭제 후 소스 재선택은 [Criteria 관리](criteria.ko.md)를 참고하세요.
+저장 위치와 Task 참조에 따른 삭제 제한은 [Criteria 관리](criteria.ko.md)를 참고하세요.
 기준에는 사건의 결과와 증거를 설명하고 특정 로그 문자열은 검증 샘플에서 다룹니다.
 
 로그 청크는 요청의 `state` 문자열로 전달합니다. 이벤트 하나 또는 여러 이벤트를
@@ -149,9 +138,16 @@ Needs review와 No review needed는 성공 판정만 표시합니다. 실패는 
 범주 필터와 원본 로그의 대소문자 구분 없는 문자열 검색을 함께 적용할 수 있습니다.
 목록에만 적용하며 지표·차트·JSON 내보내기는 전체 결과 기준입니다.
 
-**Source**는 Search logs 다음에서 입력한 경로·패턴별 결과를 필터링하고 실패를 포함한
+**Source**는 Search data 다음에서 입력한 경로·패턴별 결과를 필터링하고 실패를 포함한
 처리 건수를 표시합니다. 중복 매칭은 JSON의 `sourcePatterns`에 모두 남기며 파일은
 한 번만 처리합니다. 필터는 목록에만 적용하고 지표·차트·내보내기에는 영향을 주지 않습니다.
+
+**Host**는 선택한 실행에 저장된 호스트별로 필터링하며 Source·범주·검토·로그 검색과
+함께 적용합니다. 지표·차트·내보내기는 바뀌지 않습니다. 호스트 수집 상태
+(Pending·Reading·Completed·Failed·Stopped)는 판정 건수와 별개입니다. 수집 완료
+후에도 판정이 진행 중일 수 있습니다. SSH 접속·읽기 실패는 호스트 정보와 함께
+**Source failed**로 표시하고 AI 확률을 만들지 않습니다. All results / Request failed로
+확인하며 다른 원격 수집은 계속합니다. [다중 호스트 실행](tasks.ko.md#여러-대상-hosts)을 참고하세요.
 
 | 조작 | 동작 |
 | --- | --- |
@@ -190,33 +186,36 @@ Needs review와 No review needed는 성공 판정만 표시합니다. 실패는 
 
 ### 새로고침과 재접속
 
-사이드바는 Main `/`, Sources `/#sources`, Criteria `/#criteria`, Actions `/#actions`를 사용합니다.
-새로고침하면 URL에 해당하는 화면을 열며 브라우저 뒤로가기·앞으로가기도 지원합니다.
-저장하지 않은 편집 초안은 새로고침 시 보존하지 않습니다.
+사이드바 경로는 Main `/`, Source `/#sources`, Criteria `/#criteria`,
+Actions `/#actions`, Tasks `/#tasks`, Settings `/#settings`입니다.
+Source·Criteria·Actions·Tasks는 Main의 하위 메뉴입니다. Settings의 SSH Keys
+`/#settings/ssh-keys`·SSH Hosts `/#settings/ssh-hosts`는 선택한 섹션만 표시하며
+Settings 자체는 SSH Keys·SSH Hosts로 이동하는 목록을 표시합니다.
+모든 화면은 제목·짧은 설명 아래에 본문 카드를 배치합니다. Main의 엔진 연결 상태는
+오른쪽에 유지하며 SSH 화면에는 중복 섹션 제목을 표시하지 않습니다.
+사이드바 메뉴를 선택하면 항상 목록으로 돌아가며 View·Edit·History 화면을 닫습니다.
+미저장 편집 초안은 버리고 저장된 설정과 실행 중인 Task는 유지합니다.
+연결이 끊기거나 브라우저를 닫아도 Task는 계속 실행합니다. 새로고침은 같은 실행에
+재접속하며 History → View results는 판정·Action을 반복하지 않고 저장된 결과를
+재생합니다. Main은 선택한 Task의 새 실행을 따라가며 이력에서 특정 실행을 열면
+해당 실행을 유지합니다.
 
-UI의 Batch·Realtime·Paste 작업은 새로고침하거나 연결이 끊겨도 **서버 메모리**에서
-계속 실행합니다. 브라우저 탭별 session storage에 최근 작업 ID를 보관합니다.
-같은 탭을 새로고침하면 소스 설정과 완료 결과를 복원하고 새 결과를 이어 받습니다.
-판정이나 Action을 다시 실행하지 않습니다. 같은 서버 프로세스가 실행 중이면
-완료·중지된 작업도 복원됩니다. **Stop**은 서버 작업을 명시적으로 취소하고 완료
-결과를 유지합니다. 연결 오류 후 **Reconnect**는 새 작업 대신 같은 작업에
-재접속합니다. 탭을 닫아도 작업은 중지되지 않으므로 계속 실행할 필요가 없다면
-먼저 Stop을 누르세요. 닫힌 탭을 다시 여는 방식의 복구는 지원하지 않습니다.
+Task 정의·실행 상태·설정 스냅샷·결과·Action 실행 결과를
+`DECIFLOW_DATA_DIR/tasks`에 보존합니다. 재시작 시 중단된 실행은 Stopped로 표시합니다.
+Batch는 자동 재시도하지 않으며 Realtime은 Resume on restart가 켜진 경우에만
+새 실행을 시작합니다. [Tasks](tasks.ko.md)를 참고하세요.
 
-DB나 디스크 이력은 사용하지 않습니다. 서버·컨테이너 재시작 시 모든 작업이
-사라지며 UI에 이전 작업이 없다는 안내를 표시합니다. 서버 worker는 하나를
-사용합니다. 모든 작업의 결과를 서버 종료까지 RAM에 보관하므로 큰 Batch나
-장시간 Realtime은 메모리 사용량을 늘립니다. 시간 갱신 이벤트는 최신 값만 유지합니다.
-수동 정정·필터·페이지 위치·저장하지 않은 코드 초안은 브라우저에만 남아 복원되지
-않습니다. 서버 재시작 이후에도 결과를 보존하려면 내보내세요. 작업 이력 조회 화면과
-JSON 가져오기는 제공하지 않습니다.
+데이터 경로마다 DeciFlow 서버 프로세스·인스턴스 하나를 사용합니다. 결과는 종료까지
+RAM에도 보관하므로 큰 Batch·장시간 Realtime은 메모리 사용량을 늘립니다.
+자동 이력 정리는 없습니다. 수동 정정·필터·페이지·미저장 초안은 브라우저에만
+남으므로 정정 내용을 보존하려면 내보내세요.
 
-API에서 `/api/classify` 또는 `/api/file-source`에 `persist: true`를 보내면
-HTTP 202로 `jobId`·`state`·검증된 `settings`를 받습니다.
-`/api/jobs/<jobId>`에 POST하면 작업 정보, `/api/jobs/<jobId>/events`는 기존 결과와
-새 결과의 NDJSON 스트림, `/api/jobs/<jobId>/stop`은 중지를 제공합니다.
-분석과 동일한 출처 검사를 적용하고 파일 작업은 로컬·신뢰 UI 출처도 확인합니다.
-`persist: true`가 없으면 기존 API의 연결 단위 스트리밍 동작을 유지합니다.
+저수준 `/api/classify` 텍스트 API와 `/api/file-source` 파일 API는 유지합니다.
+`persist: true`는 HTTP 202로 브라우저와 독립된 **메모리 작업**을 생성하며
+저장된 Task나 영속 실행을 만들지 않습니다. `/api/jobs/<jobId>`는 조회,
+`/events`는 NDJSON 재생·수신, `/stop`은 실행 중지를 제공합니다(POST).
+`persist: true`가 없으면 연결 단위 스트리밍입니다. 출처 검사는 동일하며
+파일 접근에는 로컬·신뢰 UI Origin이 필요합니다.
 
 ### 시간 지표
 

@@ -2,11 +2,12 @@
 
 [English](sources.md) | [한국어](sources.ko.md) | [Documentation](README.md) | [README](../README.md)
 
-Use **Sources** below Main in the sidebar to register reusable log inputs. Choose
-**Add source**, enter a name, type, and path, then **Save changes**. Search by name,
-path, or host; use View, Edit, or Delete to manage entries. Deletion takes effect
+Use **Source** in the sidebar to register reusable data inputs. Choose
+**Add source**, enter Type, Name, and File path / pattern in that order, then **Save changes**. Search by name,
+or path; use View, Edit, or Delete to manage entries. Deletion takes effect
 when saved and does not delete log files, SSH hosts, SSH keys, or known_hosts files.
-For Remote File, select a saved **SSH host** and enter the remote file path;
+For Remote File, enter a reusable remote path; choose target **SSH Hosts** per
+Source in Tasks, using searchable checkboxes, Select all shown, and Clear.
 connection credentials are managed in **Settings → SSH Hosts**.
 
 | Type | Location and requirements |
@@ -19,21 +20,21 @@ match multiple files. Initial examples are System messages, Sample HTTP access,
 and Sample SSH authentication; edit them for your environment. Registered names
 and IDs must be unique. Renaming preserves the ID.
 
-## Select sources in Main
+## Select sources in Tasks
 
-In Batch or Realtime, add a selection row and type a registered Source name to
-filter suggestions. Suggestions include its type, path, and SSH host. Select an
-existing entry; free text does not create a source. The selected file path or
-pattern is displayed below the Source selector. Action selection uses the same
-searchable suggestions; leave it empty for None. Unknown Action names are rejected.
+In Batch or Realtime, add a selection row and choose a registered Source from
+the dropdown. Source and Action dropdowns always show all available entries in
+alphabetical/Korean name order, including when an entry is already selected.
+The selected file path or pattern appears below Source; option tooltips include
+its type and path. Select None for no Action. Text filtering is not used.
 
-Choose Criteria, Events/chunk, and Action per row. These belong to the run, not the
+Choose Criteria, Events/chunk, and Action per row. These are saved in the Task, not the
 source registration. Batch reads matching files to EOF; Realtime skips existing
 content, follows new lines, and discovers new matching files from their beginning.
-Paste remains direct text input and does not need a registered source.
+Main lists running Tasks; click one to inspect its results. Open completed runs
+through Tasks → History → View results. There is no Paste input mode.
 **Reset selections** selects available sample sources (or the first registered
-source) with one event per chunk and Action None. Criteria/chunk preferences are
-stored by source ID in browser storage; Action selections last for the page session.
+source) with one event per chunk and Action None. Save the Task to retain these settings on the server.
 
 Local overlapping matches with identical settings are deduplicated; conflicting
 settings are rejected. Remote registrations are read independently, so avoid
@@ -45,12 +46,12 @@ files. Local and remote inputs use the same Laya/Jev classification and Action f
 In Settings, **SSH Hosts** follows **SSH Keys**. Use Add host to save a name,
 address, port, SSH user, and key. The searchable list provides View, Edit, and
 Delete controls. Multiple Sources can share a Host and use different file paths.
-Sources store a `hostId` reference; connection details are resolved for each new
-run. Host edits apply to new runs, while running jobs keep their snapshots.
-Deletion requires confirmation and is blocked while a saved Source or running job
+Task Source selections store `hostIds`; connection details are resolved and frozen
+for each new run. Host edits apply to new runs, while running jobs keep their snapshots.
+Deletion requires confirmation and is blocked while a saved Task or running job
 references the Host. A key referenced by any saved Host cannot be deleted.
-Existing inline SSH Source settings are automatically moved into Host entries;
-identical connections share one Host and Source IDs are preserved.
+Existing Source host bindings are automatically moved into every referencing Task.
+Source and Task IDs, known_hosts, and previous run history are preserved.
 
 These fields belong to a Host in Settings:
 
@@ -62,23 +63,49 @@ These fields belong to a Host in Settings:
 | SSH key | Select a key registered in Settings; existing file-path registrations remain supported |
 
 Use a key which can be loaded without a passphrase prompt. Password authentication,
-agent authentication, interactive prompts, and disabling host verification are not
+agent authentication, interactive login prompts, and disabling host verification are not
 supported. Add the matching public key to the remote account's authorized_keys.
-Verify the server's host-key fingerprint through a trusted channel and prepare the
-known_hosts entry in `~/.ssh/known_hosts` for the DeciFlow process user before running. For nonstandard ports, the entry uses
-`[hostname]:port`. Unknown or mismatched host keys fail the connection.
+Use Test Connection to review and approve an unknown server fingerprint through a
+trusted channel. Approvals are stored in `DECIFLOW_DATA_DIR/ssh-hosts/known_hosts`
+and shared by connection testing and Remote File reads. DeciFlow does not read or modify
+`~/.ssh/known_hosts` or `/etc/ssh/ssh_known_hosts`. CLI approvals are separate. Nonstandard ports use `[hostname]:port`. Changed or revoked
+keys are rejected; verify the host and repair the relevant known_hosts entry.
+
 
 DeciFlow uses SFTP, not remote shell commands, and never stores key contents or
-passwords in the registry. SSH/SFTP failures stop the run with an error; there is
-no automatic reconnect. Stop closes the SFTP session and pending reads.
+passwords in the registry. SSH/SFTP failures record a Source/Host error while other
+hosts continue; there is no automatic reconnect. Stop closes the SFTP session and pending reads.
 
 Remote Realtime detects truncation and replacement using file size and a leading
 byte comparison. A replacement with the same leading bytes and size at least the
 previous offset can be missed. Confirm rotation behavior for your log writer.
 
+### Test Connection
+
+Use **Test Connection** on each SSH Hosts row or in Add/Edit before saving.
+The test checks SSH key authentication, host verification, and SFTP access with a
+15-second overall timeout. It closes the connection, reads no logs, and does not
+save draft settings. Unknown fingerprints require confirmation before retrying;
+only the explicitly approved key is trusted and persisted after SSH authentication.
+It uses the same settings as Remote File.
+The list shows Not checked, Checking, Connected, or Failed with the last check time
+and error. While the SSH Hosts list is open, automatic checks run sequentially in name order,
+repeating 30 seconds after the full pass. Leaving Settings, opening an editor or
+detail view, or hiding the browser tab pauses checks after the current request.
+Automatic checks never approve unknown fingerprints or open dialogs: use manual
+Test Connection to approve a new key. Results reset when the page reloads. Changing connection details invalidates the displayed
+result. A successful test does not verify any particular log path or file permissions.
+
+`POST /api/ssh-hosts/test` accepts `{ "id": "saved-host-id" }` or complete
+unsaved host fields, using the same trusted-origin checks as host management.
+It returns `connected`, `checkedAt`, `elapsedMs`, and `error` on connection failure.
+An unknown key also returns `hostKey` with its public key and SHA256 fingerprint.
+After verifying it, repeat the request with `trustedHostKey` set to that public key.
+
+
 ## SSH keys in Settings
 
-Open **Settings** at the bottom of the sidebar (`/#settings`). Enter a key name
+Open **Settings → SSH Keys** in the sidebar (`/#settings/ssh-keys`). Enter a key name
 (letters, digits, spaces, underscores, or hyphens) and select one registration method.
 The default view is a searchable list of names, private-key paths, and management
 buttons. **Add key** opens the registration form; **View** opens details.
@@ -91,19 +118,19 @@ buttons. **Add key** opens the registration form; **View** opens details.
 
 All three methods accept a dedicated private key without a passphrase, up to
 64 KiB, and automatically derive its public key. Original files are unchanged.
-Select the registered key in a Remote File Source's **SSH key** field.
+Select the registered key in an **SSH Host**, then select that Host in the Task's
+Remote File Source row.
 
 Pairs persist under `DECIFLOW_DATA_DIR/ssh-keys/<name>/` in the `deciflow-data`
 volume: `private_key` (0600) and `public_key.pub` (0644), in a directory with 0700
 permissions. Settings shows the private key's path with its contents masked as
 `****`, and the public key's path and contents. It never returns private key
 contents. Deleting a pair requires a
-confirmation and is rejected while a saved Source or running job references it.
+confirmation and is rejected while a saved SSH Host or running job references it.
 Remove or change those references first. Deletion permanently removes both files.
 
 For an existing key on the DeciFlow host, use the file-path method; for a key on
-your browser computer, use upload or paste. An existing Source referencing a
-mounted key path continues to work. Settings only manages pairs in `ssh-keys`;
+your browser computer, use upload or paste. Existing SSH Host registrations using mounted key paths remain usable. Settings only manages pairs in `ssh-keys`;
 it does not automatically scan or delete keys elsewhere on the host.
 
 Keys are stored without encryption at rest. Protect access to Settings, the host,
@@ -111,17 +138,14 @@ and volume backups; Python Actions run with DeciFlow permissions and can access
 these files. The volume backup includes private keys. Browser uploads should use
 HTTPS when accessing DeciFlow over a network.
 
-Host verification still uses the DeciFlow process user's `~/.ssh/known_hosts`.
-For the default root-based Docker image, mount a prepared file read-only by adding
-this entry under `services.ui.volumes` in `docker-compose.yml`:
+Host verification uses only `DECIFLOW_DATA_DIR/ssh-hosts/known_hosts`
+(default `/var/lib/deciflow-data/ssh-hosts/known_hosts`). No user SSH-file mount is
+needed. Test Connection opens an in-app fingerprint dialog with Cancel and Trust & connect.
+It stores approved keys here; the same key reconnects without another prompt.
+Scheduled/background Tasks cannot show a prompt: approve a new Host with Test
+Connection before running a Task. Existing approved keys remain across restarts.
+No SSH executable is required; AsyncSSH is a project dependency.
 
-```yaml
-      - /opt/deciflow-ssh/known_hosts:/root/.ssh/known_hosts:ro
-```
-
-Create this host file first, verify server fingerprints through a trusted channel,
-then run `docker compose up -d ui`. Adjust the container path if changing the
-process user. No SSH executable is required; AsyncSSH is a project dependency.
 
 ## Storage and API
 
@@ -138,14 +162,15 @@ their source settings even if the registration is edited or deleted.
 
 Management uses `POST /api/sources` to read and `PUT /api/sources` to replace the
 list. Both require the same local/trusted UI Origin as file access. Saving validates
-fields and the SSH Host reference without connecting to the SSH host.
-Main sends source IDs with per-run settings to `POST /api/file-source`:
+the Source name, type, and path without connecting to SSH.
+Tasks saves source IDs and hostIds with execution settings. Remote File example
+for `POST /api/file-source` (Local File omits hostIds):
 
 ```json
 {
   "mode": "batch",
   "sources": [
-    {"sourceId": "<registered-source-id>", "profile": "general", "chunkEvents": 1, "action": ""}
+    {"sourceId": "<registered-source-id>", "profile": "general", "chunkEvents": 1, "action": "", "hostIds": ["<ssh-host-id>"]}
   ],
   "persist": true
 }
@@ -154,6 +179,8 @@ Main sends source IDs with per-run settings to `POST /api/file-source`:
 The server resolves IDs from the registry; supplied connection/path overrides are
 ignored. The file API also supports explicit local paths for programmatic clients.
 Results include `sourceId`, `sourceName`, and `sourceType` for registered inputs.
+Remote results and Action input also include `hostId`, `hostName`, `hostAddress`,
+`hostPort`, and `chunkSequence`. Host filtering does not repeat inference.
 Remote `source` and `sourcePatterns` use `ssh://user@host:port/path` to distinguish
 hosts. Credentials and SSH key paths are not added to classification requests or
 result records. See [request/result JSON](results.md).

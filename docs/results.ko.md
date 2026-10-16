@@ -225,6 +225,12 @@ Uncertain이 아닙니다. 이는 DeciFlow의 고정 검토 기준이며 정답 
 }
 ```
 
+원격 Source/Host 정보는 결과·Action 입력의 메타데이터이며 엔진의 `state`에
+붙이지 않습니다. `chunkSequence`는 Source/Host 스트림마다 1부터 시작하는 수집 순서로,
+병렬 요청의 완료 순서는 다를 수 있습니다. SSH 수집 실패에는 `sourceFailure: true`,
+`error`, 호스트·소스 정보를 남기고 Category·Urgency·Ticket 답변은 만들지 않습니다.
+Task 실행 정보와 호스트별 수집 상태는 실행 이력에 별도로 저장합니다. [Tasks](tasks.ko.md)를 참고하세요.
+
 ## 필드 설명
 
 | 필드 | 의미 |
@@ -233,6 +239,8 @@ Uncertain이 아닙니다. 이는 DeciFlow의 고정 검토 기준이며 정답 
 | `decisionInput` / `inputNormalization` | 전처리로 모델 입력이 바뀐 경우에만 표시. 원본은 log에 유지. |
 | `source` | 로컬 파일의 실제 경로 또는 원격 입력의 ssh://사용자@호스트:포트/경로. |
 | `sourceId` / `sourceName` / `sourceType` | 등록 소스 ID·이름 스냅샷·local 또는 ssh 타입. 명시적 경로 API 입력에는 생략. |
+| `hostId` / `hostName` / `hostAddress` / `hostPort` | 원격 호스트 식별·이름·접속 주소 스냅샷. Action 입력에도 포함. |
+| `chunkSequence` / `sourceFailure` | 원격 Source/Host별 청크 순번. sourceFailure는 엔진 판정 없이 발생한 접속·읽기 실패. |
 | `sourcePatterns` | 해당 파일을 선택한 로컬 경로·패턴 또는 호스트를 포함한 SSH 패턴. |
 | `line` / `lineEnd` | 원본 시작·끝 줄 번호. Batch는 파일 줄 번호, Realtime은 감시 시작·회전 이후 관찰 순번. |
 | `lineCount` | 실제 포함된 줄 수. 시작·끝 줄 번호 차이와 다를 수 있음. |

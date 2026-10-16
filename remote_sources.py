@@ -10,6 +10,7 @@ from chunks import chunk_records
 from classifier import Result
 from source_registry import source_pattern
 from sources import merge_batch
+from ssh_hosts import ssh_connection_options
 
 
 async def _paths(sftp: asyncssh.SFTPClient, pattern: str) -> list[str]:
@@ -138,16 +139,7 @@ async def read_remote(
         async with (
             asyncssh.connect(
                 spec["host"],
-                port=spec["port"],
-                username=spec["username"],
-                client_keys=[spec["keyPath"]],
-                agent_path=None,
-                config=None,
-                preferred_auth="publickey",
-                connect_timeout=15,
-                login_timeout=15,
-                keepalive_interval=15,
-                keepalive_count_max=2,
+                **ssh_connection_options(spec),
             ) as connection,
             connection.start_sftp_client() as sftp,
         ):

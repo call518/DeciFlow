@@ -228,6 +228,13 @@ There is no standalone `question` field.
 }
 ```
 
+Remote Source/Host identity is metadata on each result and Action input; it is not
+prepended to the provider's `state`. `chunkSequence` starts at 1 per Source/Host
+stream and follows collection order; parallel requests may finish out of order.
+SSH collection failures have `sourceFailure: true`, an `error`, and host/source
+metadata, without fabricated category, urgency, or ticket answers. Task run context
+and per-host collection status are stored separately in run history; see [Tasks](tasks.md).
+
 ## Field reference
 
 | Field | Meaning |
@@ -236,6 +243,8 @@ There is no standalone `question` field.
 | `decisionInput` / `inputNormalization` | Present only when preprocessing changed model input; the original stays in log. |
 | `source` | Resolved local file path, or ssh://user@host:port/path for remote input. |
 | `sourceId` / `sourceName` / `sourceType` | Registered source ID, name snapshot, and local or ssh type; omitted for explicit-path API input. |
+| `hostId` / `hostName` / `hostAddress` / `hostPort` | Remote host identity and connection-address snapshot; also included in Action input. |
+| `chunkSequence` / `sourceFailure` | Remote Source/Host chunk order; sourceFailure marks a read/connect failure without an engine decision. |
 | `sourcePatterns` | Local paths/patterns or qualified SSH patterns matching this file. |
 | `line` / `lineEnd` | First/last source line; Batch uses file lines, Realtime uses observed sequence numbers. |
 | `lineCount` | Number of lines included, not the span between line and lineEnd. |

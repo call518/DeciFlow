@@ -10,7 +10,7 @@ Laya 서버 설정은 Laya 호스트에서 관리하며, Compose는 `LAYA_API_KE
 | --- | --- | --- |
 | `COMPOSE_PROFILES` | 미설정(UI만 실행) | Compose 전용. cpu·cuda 중 하나만 선택. .env.example은 cpu 지정 |
 | `DECISION_ENGINE` | `laya` | `laya` 또는 `jev` |
-| `DECIFLOW_DATA_DIR` | `/var/lib/deciflow-data` | Sources·Actions·Criteria·SSH 키·호스트 공통 저장 루트; 쓰기 권한 필요 |
+| `DECIFLOW_DATA_DIR` | `/var/lib/deciflow-data` | Sources·Tasks/이력·Actions·Criteria·SSH 키·호스트 공통 저장 루트; 쓰기 권한 필요 |
 | `DECIFLOW_CSRF_TRUSTED_ORIGINS` | 빈 값 | 쉼표로 구분한 신뢰 UI 출처. https://*.ngrok-free.app 지원. 출처 검사이며 인증 기능은 아님 |
 | `DECIFLOW_LOG_DIR` | `/var/log/deciflow` | 서버·접근 로그. 빈 값은 파일 기록 비활성화. Compose는 deciflow-logs에 보존 |
 | `PORT` | `4000` | DeciFlow 웹 포트 |
@@ -63,7 +63,7 @@ URL·경로는 받지 않습니다. 응답의 `routing.model`이 지정한 사�
 확인해 주지 않으면 거절하여 다른 모델로 조용히 전환되는 것을 막습니다.
 DeciFlow가 모델을 설치하거나 학습하지는 않습니다.
 
-동시 요청 수는 Paste·Batch·Realtime 모두에 적용됩니다. Laya v0.4.1 추론 워커는
+동시 요청 수는 Batch·Realtime Task와 직접 API 요청에 적용됩니다. Laya v0.4.1 추론 워커는
 1개입니다. `LAYA_CONCURRENCY`는 클라이언트 요청 수, 서버 `LAYA_MAX_CONCURRENT`는
 수용 제한입니다(기본 16, 초과하면 503). GPU 추론 병렬도 설정은 아닙니다.
 잘림·라우팅 정보를 위해 서버 `LAYA_JEV_STRICT=0`을 유지하고 CPU `LAYA_THREADS`는
@@ -89,3 +89,24 @@ uv run python -m scripts.evaluate_laya --output /tmp/laya-validation.json
 `--model NAME`으로 비교할 체크포인트를 지정합니다. Laya만 사용하며 유료 Jev는
 호출하지 않습니다.
 
+
+## 애플리케이션 영구 데이터
+
+`DECIFLOW_DATA_DIR` 아래에서 다음 파일을 관리합니다:
+
+| 경로 | 내용 |
+| --- | --- |
+| `sources/sources.json` | Source 이름·타입·재사용 경로/패턴 |
+| `tasks/tasks.json` | Task·Source/Host 할당·예약 설정 |
+| `tasks/<task-id>/runs/<run-id>/run.json` | 실행 상태·설정 스냅샷·처리 수·호스트 수집 상태 |
+| `tasks/<task-id>/runs/<run-id>/events.ndjson` | 원본 로그·판정·오류·Action 실행 결과 |
+| `criteria/criteria.json` | 저장한 판정 프로필 |
+| `actions/` | 등록 정보와 Action별 코드·venv·프로젝트·lockfile |
+| `ssh-keys/<name>/` | 관리 개인키와 추출한 공개키 |
+| `ssh-hosts/hosts.json` | SSH 접속 정의 |
+| `ssh-hosts/known_hosts` | DeciFlow에서 명시적으로 승인한 호스트 키 |
+
+전체 디렉터리를 백업하고 접근 권한을 관리하세요. 원본 로그·개인키가 포함됩니다.
+실행 이력은 자동 정리하지 않으며 데이터 경로마다 DeciFlow 프로세스 하나를 사용합니다.
+엔진 동시 요청 제한은 실행의 모든 대상 Hosts가 공유하고 서로 다른 Task는 별도 제한을
+사용합니다. 예약·저장 제약은 [Tasks](tasks.ko.md)를 참고하세요.

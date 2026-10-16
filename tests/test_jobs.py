@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from pathlib import Path
 
 import httpx
@@ -94,7 +94,7 @@ async def test_stop_preserves_results_and_closes_producer() -> None:
     closed = asyncio.Event()
     entered = asyncio.Event()
 
-    async def handle_events() -> AsyncIterator[str]:
+    async def handle_events() -> AsyncGenerator[str, None]:
         try:
             yield server._encode({"type": "start", "total": None})
             yield server._encode(
@@ -140,7 +140,7 @@ async def test_job_access_denied_and_server_restart_forgets_jobs(
 ) -> None:
     monkeypatch.setenv("DECIFLOW_DATA_DIR", str(tmp_path / "data"))
 
-    async def handle_events() -> AsyncIterator[str]:
+    async def handle_events() -> AsyncGenerator[str, None]:
         yield server._encode({"type": "start"})
         await asyncio.Event().wait()
 
@@ -168,7 +168,7 @@ async def test_job_access_denied_and_server_restart_forgets_jobs(
 
 @pytest.mark.anyio
 async def test_stop_before_producer_starts_and_timing_is_not_accumulated() -> None:
-    async def handle_events() -> AsyncIterator[str]:
+    async def handle_events() -> AsyncGenerator[str, None]:
         yield server._encode({"type": "start"})
         await asyncio.Event().wait()
 

@@ -23,14 +23,16 @@ It receives three decisions in one Laya or Jev request: **`choice` for category*
 **`score` for urgency** (0–3: Low, Medium, High, Critical), and **`noul` for the
 probability that a work ticket is needed**. Urgency is a probability-weighted score,
 not a rounded grade. Results show both values and retain all answers in JSON.
-DeciFlow does not create tickets automatically.
+Each result shows Category, Urgency, and Work ticket together with their separate
+probability distributions. All three use equally sized compact badges. Category review flags
+apply to Choice only. DeciFlow does not create tickets automatically.
 
 **DeciFlow** runs on the node containing your logs, reads events, and displays
 results in a browser. The **Laya server** runs the decision model on the same or a separate
 host; **Jev** is an alternative hosted decision API. DeciFlow sends events to the
 selected engine and receives predictions.
 
-- **Use logs where they live.** Paste text or register local files and SSH remote files,
+- **Use logs where they live.** Register local files and SSH remote files,
   including wildcard patterns; select saved Sources without retyping paths.
 - **Switch from investigation to monitoring.** Read existing files in batches or
   monitor new lines and file rotation. Newest completed predictions appear first.
@@ -93,11 +95,11 @@ Wait for the initial model download/loading, then press `Ctrl+C` to leave the lo
 
 ### 4. Analyze sample logs
 
-Open **http://127.0.0.1:4000** on the same host and select **Batch**.
-In **Sources**, edit **Sample HTTP access** to use
-`/host-logs/sample-logs/access-100.log` and save. Return to Main, keep only
-**Sample HTTP access**, select **HTTP access** criteria,
-**Events/chunk: 1**, and **Action: None**, then start analysis.
+Open **http://127.0.0.1:4000** on the same host. In **Sources**, edit
+**Sample HTTP access** to use `/host-logs/sample-logs/access-100.log` and save.
+In **Tasks**, add a named **Batch / Manual** Task, select **Sample HTTP access**,
+**HTTP access** criteria, **Events/chunk: 1**, and **Action: None**, then save.
+Click **Run** in Tasks; select the running Task in **Main** to view its results.
 
 For optional GPU acceleration, see [Docker deployment details](#laya-docker);
 for a paid API, see [Jev](#jev).
@@ -110,29 +112,38 @@ and request/result examples.
 
 | Guide | Contents |
 | --- | --- |
-| [Sources](docs/sources.md) | Register local/SSH sources, manage SSH keys in Settings, and search selections |
+| [Tasks](docs/tasks.md) | Reusable executions, cron schedules, continuous monitoring, and durable run history |
+| [Sources](docs/sources.md) | Register local/SSH sources, manage SSH keys in Settings, and select sorted dropdown entries |
 | [Usage](docs/usage.md) | Input modes, criteria, filters, human review, reconnecting, timing |
 | [Configuration](docs/configuration.md) | Environment variables, models, input budgets |
 | [Criteria](docs/criteria.md) | Manage fixed-category profiles; Default Criteria is view-only |
 | [Python Actions](docs/actions.md) | Configuration viewing, environment Status, pip-enabled environments, Reset venv, deletion, source assignment |
 | [Result JSON](docs/results.md) | Current request/result examples and field reference |
 
-Sidebar views have URLs: Main `/`, Sources `/#sources`, Criteria `/#criteria`, Actions `/#actions`, Settings `/#settings`.
-Reloading, browser history, and direct links retain the selected view.
-Settings groups configuration into separate sections on one page.
-The **SSH Keys** section uses a searchable list with Add, View, and
-Delete controls. It accepts SSH private keys by paste, server/container file path, or upload;
-private contents are masked and public keys are derived automatically.
-**SSH Hosts** saves connection details and a key; Remote File Sources select a
-Host and specify only their file path. Hosts use Add, View, Edit, and Delete controls.
+Configure Sources → Criteria → optional Actions → Tasks, then monitor running
+Tasks in Main. Remote Sources define reusable paths; each Task chooses one or more
+SSH Hosts per Source. Hosts collect independently, share classification slots
+fairly, and produce unified results with Host filtering and collection status.
 
-- **Paste:** Analyze pasted text.
+Main groups Source, Criteria, Actions, and Tasks; Settings groups SSH Keys and
+SSH Hosts. Returning through the sidebar opens lists and discards unsaved drafts.
+[Usage](docs/usage.md) covers navigation, result controls, and reconnecting.
+
+Settings accepts private keys by **Upload, Path, or Paste**, copies them into managed
+storage, and derives public keys. SSH Hosts save connection details and a key.
+**Test Connection** checks SSH authentication and SFTP; the visible host list also
+checks sequentially and repeats 30 seconds after each pass. Unknown fingerprints
+require approval in an in-app dialog. Approved host keys persist only in
+`DECIFLOW_DATA_DIR/ssh-hosts/known_hosts`, separately from user SSH.
+See [Sources and SSH settings](docs/sources.md) for setup and trust management.
+
+- **Tasks:** Save source/criteria/chunk/Action settings. Run Batch manually or with cron; run Realtime continuously. See [Tasks](docs/tasks.md).
 - **Batch:** Analyze registered local or SSH files. Docker maps host `/var/log` to `/host-logs/var/log`.
 - **Realtime:** Follow new logs; choose criteria and chunk size per source.
 - **Processing status:** Success / Failed / Total shows classified, failed, and total completed chunks. Action Success / Failed / Total counts follow-up executions separately. Needs review
   counts successful classifications only. Engine connection shows the last actual request; initially Not checked.
 - **Review:** Filter Needs review, record corrections, and export JSON. Certain does not
-  guarantee accuracy. Export results you need to keep: restarting the server loses jobs/results.
+  guarantee accuracy. Task definitions and run history persist in the data volume; reviewer edits remain browser-only.
 
 ## Docker deployment details
 
@@ -292,7 +303,7 @@ check Laya readiness before analyzing logs. There is no automatic paid fallback.
 The UI is published on all host interfaces. For local-only access, change its
 Compose port mapping to `127.0.0.1:${PORT:-4000}:${PORT:-4000}`.
 Open **http://127.0.0.1:4000** with the default port; use the DeciFlow host IP for remote access.
-The `deciflow-data` volume stores Sources, Actions, Criteria, SSH key pairs, and SSH Hosts at `DECIFLOW_DATA_DIR`
+The `deciflow-data` volume stores Sources, Tasks and run history, Actions, Criteria, SSH key pairs, and SSH Hosts at `DECIFLOW_DATA_DIR`
 (default: `/var/lib/deciflow-data`); `deciflow-logs` stores server logs.
 Use absolute container paths for custom data/log directories.
 
@@ -306,8 +317,8 @@ Host `/var/log` and repository `sample-logs` are mounted read-only at
       - /your/logs:/host-logs/custom:ro
 ```
 
-Apply mount changes with `docker compose up -d ui`. Export needed results first;
-recreating the UI loses server-memory jobs/results. In the UI, use the container
+Apply mount changes with `docker compose up -d ui`. Recreating the UI interrupts
+active executions; Task history remains in the data volume. In the UI, use the container
 path `/host-logs/custom/app.log`. The process needs permission to read host files.
 
 #### Connection settings and restart
@@ -343,7 +354,8 @@ access with proxy authentication.
 - **Jev:** `jev-1.13.0`, [32k state + longest question, 64k full request](https://docs.typesafe.ai/models).
   The byte budget is a conservative guard, not a token count or acceptance guarantee.
 - Rejected events retain their original text for review; other events continue.
-  Source read/UTF-8 errors stop processing and preserve completed results.
+  Local file read/UTF-8 errors stop the run. SSH read failures are recorded per
+  Source/Host while other readers continue; completed results are retained.
 - Each chunk makes one request. Engine concurrency settings default to 4 per run;
   timeouts are Laya 120s and Jev 30s. Higher client concurrency does not guarantee
   parallel inference or higher throughput; server capacity and admission limits apply.
@@ -352,12 +364,13 @@ access with proxy authentication.
   copy-truncate/regrowth can lose events. File deduplication does not remove duplicate
   contents; avoid matching both active logs and their rotated copies.
 - Laya sends logs to your server; Jev sends them to TypeSafe and incurs API charges.
-  DeciFlow does not save logs/results to server disk. Remove sensitive data before
-  submission and never commit `.env`. Public deployment needs authentication and
+  Task history saves original logs, results, and Action outcomes to the data volume.
+  Protect that volume and its backups, remove sensitive data before submission,
+  and never commit `.env`. Public deployment needs authentication and
   usage limits.
 
 `Ctrl+C` stops DeciFlow, waiting up to two seconds before cancelling remaining
-requests and background jobs. Server-memory jobs and results are lost on shutdown.
+requests and background jobs. Task history remains on disk; interrupted Batch runs are not retried automatically.
 
 ## Appendix — Potential applications
 

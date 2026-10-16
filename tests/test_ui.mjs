@@ -3,6 +3,11 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { test } from 'node:test';
 
+const workspaceContexts = new WeakMap();
+function runTask(nodes) {
+  return vm.runInContext('handleRunTask(selectedTaskId)', workspaceContexts.get(nodes));
+}
+
 function workspace(events, status, storage = { getItem: () => null, setItem() {} }, criteria = null, navigation = null) {
   const nodes = new Map();
   const requests = [];
@@ -32,6 +37,16 @@ function workspace(events, status, storage = { getItem: () => null, setItem() {}
         if (!criteria) return { ok: false, json: async () => ({ error: 'Unavailable' }) };
         return { ok: true, json: async () => ({ profiles: options.method === 'PUT' ? JSON.parse(options.body) : criteria }) };
       }
+      if (path === '/api/tasks') return {ok:true,json:async()=>({tasks:vm.runInContext('registeredTasks.map(task=>({...task}))',context)})};
+      if (path === '/api/tasks/test-task/run') {
+        const sources=vm.runInContext('sourceRows.map(({path,profile,size,action})=>({sourceId:path,profile:profile.value,chunkEvents:Number(size.value),action:action.value}))',context);
+        const mode=nodes.get('source-mode').value || 'batch';
+        const error=vm.runInContext('!sourcesLoaded',context)?'Sources are not loaded.':sources.some(source=>!vm.runInContext('registeredSources.map(s=>s.id)',context).includes(source.sourceId))?'Select a registered source.':sources.some(source=>!Number.isInteger(source.chunkEvents)||source.chunkEvents<1)?'Events per chunk must be a positive integer.':null;
+        if(error)return {ok:false,json:async()=>({error})};
+        requests.push({mode,sources,persist:true});
+        return {ok:true,status:202,json:async()=>({jobId:'test-job',state:'running',settings:{mode,sources,taskId:'test-task'}})};
+      }
+      if (path === '/api/jobs/test-job/events')return {ok:true,body:{}};
       if (path === '/api/ssh-hosts') return {ok:true,json:async()=>({hosts:[]})};
       if (path === '/api/ssh-keys') return { ok: true, json: async () => ({ keys: [] }) };
       if (path === '/api/sources') return { ok: true, json: async () => ({ sources: options.method === 'PUT' ? JSON.parse(options.body).map((source,index)=>({...source,id:source.id || String(index+4).padStart(32,'0')})) : vm.runInContext('sampleSources.map(source=>({...source}))',context) }) };
@@ -46,7 +61,8 @@ function workspace(events, status, storage = { getItem: () => null, setItem() {}
   context.document.getElementById('category-filter').value = 'all';
   const source = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
   vm.runInContext(source.replace(/^import .*;\n/, ''), context);
-  vm.runInContext('sourcesLoaded = true', context);
+  vm.runInContext("sourcesLoaded = true; registeredTasks=[{id:'test-task',name:'Test Task',mode:'batch',sources:[],timezone:'UTC',cron:'',enabled:true}];selectedTaskId='test-task';renderTaskMonitor()", context);
+  workspaceContexts.set(nodes, context);
   return { nodes, context, requests, listeners };
 }
 
@@ -56,6 +72,10 @@ function result(index, review = true) {
     result: { log: `log-${index}`, category: 'normal', confidence: .9,
       elapsedMs: 1, probabilities: { normal: 1 }, review },
   };
+}
+
+function decisionCards(row) {
+  return row.children[0].children[0].children;
 }
 
 function logs(nodes) {
@@ -68,7 +88,7 @@ test('arrival order, filtering, corrections, pagination and restart', async () =
     ...Array.from({ length: 102 }, (_, i) => result(i + 3)),
     { type: 'done', elapsedMs: 100 }];
   const { nodes, context } = workspace(events);
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.equal(logs(nodes)[0], 'log-104');
   assert.equal(logs(nodes).length, 100);
   nodes.get('next').onclick();
@@ -84,7 +104,7 @@ test('arrival order, filtering, corrections, pagination and restart', async () =
   assert.equal(nodes.get('results').children[0].children.at(-2).children[0].value,
     'warning');
   events.splice(0, events.length, { type: 'start', engine: 'jev', total: 1 }, result(0));
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.deepEqual(logs(nodes), ['log-0']);
 });
 
@@ -99,14 +119,14 @@ test('average request duration includes failures, ignores filters, and resets', 
   const average = () => nodes.get('summary').children[5].children[0].textContent;
   vm.runInContext('render()', context);
   assert.equal(average(), '0 ms');
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.equal(average(), '200 ms');
   nodes.get('review-filter').value = 'needs-review';
   nodes.get('review-filter').onchange();
   assert.equal(average(), '200 ms');
   assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
   events.splice(0, events.length, { type: 'start', engine: 'jev', total: 1 }, result(0));
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.equal(average(), '1 ms');
 });
 
@@ -116,7 +136,7 @@ test('review filters exclude failures without changing success and failure total
     { type: 'result', index: 2, elapsedMs: 2,
       result: { log: 'failed-log', error: 'timeout', elapsedMs: 2, review: true } }];
   const { nodes } = workspace(events);
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.deepEqual(logs(nodes), ['failed-log', 'log-1', 'log-0']);
   for (const [filter, expected] of [
     ['needs-review', ['log-1']],
@@ -131,37 +151,29 @@ test('review filters exclude failures without changing success and failure total
   }
   nodes.get('review-filter').value = 'no-review';
   events.splice(0, events.length, { type: 'start', engine: 'jev', total: 1 }, result(0));
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
 });
 
-test('analysis modes show operator-oriented labels and actions', () => {
-  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-  for (const [value, label] of [['paste', 'Paste'], ['batch', 'Batch'],
-    ['realtime', 'Realtime']]) {
-    assert.ok(html.includes(`<option value="${value}"${value === 'batch' ? ' selected' : ''}>${label}</option>`));
-  }
-  const { nodes } = workspace([]);
-  for (const [mode, action] of [['paste', 'Run'],
-    ['batch', 'Run'],
-    ['realtime', 'Run']]) {
-    nodes.get('source-mode').value = mode;
-    nodes.get('source-mode').onchange();
-    assert.equal(nodes.get('classify').textContent, action);
-    assert.equal(nodes.get('file-input').hidden, mode === 'paste');
-    assert.equal(nodes.get('file-notes').hidden, mode === 'paste');
-    assert.equal(nodes.get('paste-input').hidden, mode !== 'paste');
-  }
+test('Tasks expose Manual Batch, Cron Batch and Realtime without Paste', async () => {
+  const {nodes,context}=workspace([]);await vm.runInContext('handleEditTask()',context);
+  assert.equal(nodes.get('source-mode').value,'batch');
+  nodes.get('task-trigger').value='cron';nodes.get('task-trigger').onchange();
+  assert.equal(nodes.get('task-cron-field').hidden,false);
+  assert.match(nodes.get('task-mode-note').textContent,/repeat Actions/);
+  nodes.get('source-mode').value='realtime';nodes.get('source-mode').onchange();
+  assert.equal(nodes.get('task-cron-field').hidden,true);
+  assert.equal(nodes.get('task-resume-field').hidden,false);
 });
 
-test('log input explains each analysis mode before the selector', () => {
-  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-  const help = html.slice(html.indexOf('class="mode-help"'), html.indexOf('class="source-controls"'));
-  for (const description of [
-    'Paste:</strong> Paste log text for analysis.',
-    'Batch:</strong> Analyze existing log files from the beginning.',
-    'Realtime:</strong> Monitor and analyze new log events as they arrive.',
-  ]) assert.ok(help.includes(description));
+test('Task saves registered Source settings without starting a run', async () => {
+  const {nodes,context}=workspace([]);await vm.runInContext('handleEditTask()',context);
+  nodes.get('task-name').value='Nightly logs';nodes.get('task-trigger').value='cron';nodes.get('task-cron').value='0 2 * * *';nodes.get('task-timezone').value='Asia/Seoul';
+  let payload;context.fetch=async(path,options)=>{assert.equal(path,'/api/tasks');payload=JSON.parse(options.body);return {ok:true,json:async()=>({tasks:[{...payload,id:'saved'}]})};};
+  await nodes.get('task-form').onsubmit({preventDefault(){}});
+  assert.equal(payload.cron,'0 2 * * *');assert.equal(payload.timezone,'Asia/Seoul');
+  assert.ok(payload.sources[0].sourceId);assert.equal(payload.resumeOnRestart,false);
+  assert.equal(nodes.get('task-editor').hidden,true);
 });
 
 test('active time uses server intervals, updates while idle, and resets', async () => {
@@ -176,17 +188,17 @@ test('active time uses server intervals, updates while idle, and resets', async 
   const active = () => nodes.get('summary').children[4].children[0].textContent;
   vm.runInContext('render()', context);
   assert.equal(active(), '0 ms (N/A)');
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.equal(active(), '150 ms (15.0%)');
   assert.ok(nodes.get('summary').children[4].title.includes('not CPU utilization'));
   nodes.get('review-filter').value = 'no-review';
   nodes.get('review-filter').onchange();
   assert.equal(active(), '150 ms (15.0%)');
   events.at(-1).elapsedMs = 200;
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.equal(active(), '150 ms (75.0%)');
   events.splice(0, events.length, { type: 'start', engine: 'jev', total: 1 }, result(0));
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.equal(active(), '0 ms (N/A)');
 });
 
@@ -195,63 +207,31 @@ test('connection status shares the title row without a breadcrumb header', () =>
   assert.ok(!html.includes('Workspace / Log classification'));
   assert.ok(!html.includes('<header>'));
   const title = html.match(/<div class="intro-title">(.*?)<\/div>/s)[1];
-  assert.ok(title.includes('<h1>Turn logs into decisions.</h1>'));
+  assert.ok(title.includes('<h1>Main</h1>'));
+  assert.ok(!html.includes('LOG INTELLIGENCE'));
+  assert.ok(!html.includes('LOG COLLECTION'));
   assert.ok(title.includes('id="status"'));
   assert.equal((html.match(/id="status"/g) || []).length, 1);
 });
 
-test('Batch is the default mode before server status loads', () => {
-  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-  assert.ok(html.includes('<option value="batch" selected>Batch</option>'));
-  assert.ok(html.includes('<div id="file-input">'));
-  assert.ok(html.includes('<div id="paste-input" hidden>'));
-  const { context } = workspace([]);
-  assert.equal(vm.runInContext('sourceMode', context), 'batch');
+test('New Tasks default to one-time Batch and do not auto-resume', async () => {
+  const {nodes,context}=workspace([]);await vm.runInContext('handleEditTask()',context);
+  assert.equal(nodes.get('source-mode').value,'batch');assert.equal(nodes.get('task-trigger').value,'manual');
+  assert.equal(nodes.get('task-resume').checked,false);assert.equal(nodes.get('task-cron-field').hidden,true);
 });
 
-test('each mode has editable sample input and retains its own edits', () => {
-  const { nodes, context } = workspace([]);
-  assert.equal(vm.runInContext("sourceRows.map(row => row.profile.value).join(',')", context), 'general,http_access,authentication');
-  assert.equal(nodes.get('file-path').value, vm.runInContext('defaultFilePaths.batch', context));
-  nodes.get('source-mode').value = 'realtime';
-  nodes.get('source-mode').onchange();
-  assert.equal(nodes.get('file-path').value, vm.runInContext('defaultFilePaths.batch', context));
-  assert.equal(nodes.get('logs').value.split('\n').length, 5);
-  nodes.get('file-path').value = '/custom/live.log';
-  nodes.get('source-mode').value = 'batch';
-  nodes.get('source-mode').onchange();
-  assert.equal(nodes.get('file-path').value, vm.runInContext('defaultFilePaths.batch', context));
-  nodes.get('file-path').value = '/custom/batch.log';
-  nodes.get('source-mode').value = 'paste';
-  nodes.get('source-mode').onchange();
-  nodes.get('logs').value = 'custom pasted log';
-  nodes.get('source-mode').value = 'realtime';
-  nodes.get('source-mode').onchange();
-  assert.equal(nodes.get('file-path').value, '/custom/live.log');
-  nodes.get('source-mode').value = 'batch';
-  nodes.get('source-mode').onchange();
-  assert.equal(nodes.get('file-path').value, '/custom/batch.log');
-  nodes.get('source-mode').value = 'paste';
-  nodes.get('source-mode').onchange();
-  assert.equal(nodes.get('logs').value, 'custom pasted log');
-  nodes.get('source-mode').value = 'realtime';
-  nodes.get('source-mode').onchange();
-  nodes.get('file-path').value = '';
-  nodes.get('source-mode').value = 'batch';
-  nodes.get('source-mode').onchange();
-  nodes.get('source-mode').value = 'realtime';
-  nodes.get('source-mode').onchange();
-  assert.equal(nodes.get('file-path').value, '');
+test('Changing Task modes retains the Source configuration draft', async () => {
+  const {nodes,context}=workspace([]);await vm.runInContext('handleEditTask()',context);
+  vm.runInContext("sourceRows[0].profile.value='http_access';sourceRows[0].size.value='5';sourceRows[0].action.value='Notify'",context);
+  nodes.get('source-mode').value='realtime';nodes.get('source-mode').onchange();nodes.get('source-mode').value='batch';nodes.get('source-mode').onchange();
+  assert.equal(vm.runInContext('sourceRows[0].profile.value',context),'http_access');assert.equal(vm.runInContext('sourceRows[0].size.value',context),'5');
 });
 
-test('mode selector and descriptions use Batch, Realtime, Paste order', () => {
-  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-  const selector = html.match(/<select id="source-mode">(.*?)<\/select>/s)[1];
-  assert.deepEqual([...selector.matchAll(/>(Realtime|Batch|Paste)<\/option>/g)]
-    .map(match => match[1]), ['Batch', 'Realtime', 'Paste']);
-  const help = html.match(/<div class="mode-help">(.*?)<\/div>/s)[1];
-  assert.deepEqual([...help.matchAll(/<strong>(Realtime|Batch|Paste):/g)]
-    .map(match => match[1]), ['Batch', 'Realtime', 'Paste']);
+test('Main monitors Tasks and Source configuration lives only in Tasks', () => {
+  const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
+  const main=html.slice(html.indexOf('id="main-page"'),html.indexOf('id="tasks-page"'));
+  assert.ok(main.includes('id="running-tasks"'));assert.ok(!main.includes('id="source-settings"'));
+  assert.ok(!html.includes('id="paste-input"'));assert.ok(!html.includes('<option value="paste">Paste</option>'));
 });
 
  test('sidebar identifies the DeciFlow reader host', async () => {
@@ -266,21 +246,9 @@ test('mode selector and descriptions use Batch, Realtime, Paste order', () => {
   assert.equal(nodes.get('host-addresses').textContent, '192.168.35.10\n10.0.0.2');
 });
 
-test('source profile and chunk settings reach the API and survive mode changes', async () => {
-  const { nodes, context, requests } = workspace([]);
-  nodes.get('file-path').value = vm.runInContext("sampleSources.slice(0,2).map(source=>source.id).join('\\n')", context);
-  nodes.get('file-path').oninput();
-  vm.runInContext(`sourceRows[0].profile.value = 'authentication'; sourceRows[0].profile.onchange(); sourceRows[0].size.value = '3'; sourceRows[0].size.oninput(); sourceRows[1].profile.value = 'http_access'; sourceRows[1].profile.onchange();`, context);
-  await nodes.get('classify').onclick();
-  assert.equal(requests[0].sources[0].profile, 'authentication');
-  assert.equal(requests[0].sources[0].chunkEvents, 3);
-  assert.equal(requests[0].sources[1].profile, 'http_access');
-  nodes.get('source-mode').value = 'paste'; nodes.get('source-mode').onchange();
-  nodes.get('paste-profile').value = 'network'; nodes.get('paste-chunk-events').value = '4';
-  await nodes.get('classify').onclick();
-  assert.equal(requests[1].profile, 'network'); assert.equal(requests[1].chunkEvents, 4);
-  nodes.get('source-mode').value = 'batch'; nodes.get('source-mode').onchange();
-  assert.equal(vm.runInContext('sourceRows[0].size.value', context), '3');
+test('Editing an existing Task restores saved per-Source criteria, chunk size and Action', async () => {
+  const {context}=workspace([]);await vm.runInContext("handleEditTask({id:'saved',name:'Logs',mode:'batch',timezone:'UTC',cron:'',sources:[{sourceId:sampleSources[0].id,profile:'http_access',chunkEvents:3,action:'notify'}]})",context);
+  assert.equal(vm.runInContext('sourceRows[0].profile.value',context),'http_access');assert.equal(vm.runInContext('sourceRows[0].size.value',context),'3');assert.equal(vm.runInContext('sourceRows[0].action.value',context),'notify');
 });
 
 test('individual JSON reflects review changes and stays open after rendering', async () => {
@@ -289,7 +257,7 @@ test('individual JSON reflects review changes and stays open after rendering', a
   const failed = result(1);
   failed.result = { log: 'bad input', error: 'request failed', review: true, elapsedMs: 1, profile: 'network' };
   const { nodes, context } = workspace([{ type: 'start', total: 2, engine: 'laya' }, event, failed]);
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   const row = nodes.get('results').children[1];
   const details = row.children.at(-1);
   assert.equal(details.children[0].textContent, 'View JSON');
@@ -318,7 +286,7 @@ test('pause freezes rows while analysis continues; resume includes pending resul
     receive = callback;
     await new Promise(resolve => { finish = resolve; });
   };
-  const run = nodes.get('classify').onclick();
+  const run = runTask(nodes);
   await new Promise(resolve => setImmediate(resolve));
   receive({ type: 'start', engine: 'laya', total: null });
   receive(result(0, false));
@@ -356,14 +324,14 @@ test('pause freezes rows while analysis continues; resume includes pending resul
   context.readEvents = async (_, callback) => {
     callback({ type: 'start', engine: 'laya', total: 1 }); callback(result(0));
   };
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.equal(nodes.get('pause-updates').textContent, 'Pause updates');
   assert.deepEqual(logs(nodes), ['log-0']);
 });
 
 test('pause excludes received results that have not yet been displayed', async () => {
   const { nodes, context } = workspace([{ type: 'start', total: null, engine: 'laya' }, result(0)]);
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   vm.runInContext("results[1] = { log: 'queued', elapsedMs: 1, review: true }; completionOrder.push(1); completed++;", context);
   nodes.get('pause-updates').onclick();
   nodes.get('review-filter').onchange();
@@ -378,18 +346,18 @@ test('file line labels distinguish batch from observed realtime sequences', asyn
     const second = result(1);
     Object.assign(second.result, { source: '/var/log/secure', line: 10, lineEnd: 12, lineCount: 3, profile: 'authentication', eventCount: 1, chunkEvents: 5 });
     const { nodes, context } = workspace([{ type: 'start', engine: 'laya', total: null, mode }, first, second]);
-    await nodes.get('classify').onclick();
+    await runTask(nodes);
     const rows = nodes.get('results').children;
     const prefix = mode === 'realtime' ? 'Observed' : 'File';
-    assert.equal(rows[1].children[2].textContent, `/var/log/secure · ${prefix} line 1`);
-    assert.equal(rows[0].children[2].textContent, `/var/log/secure · ${prefix} lines 10–12`);
-    assert.equal(rows[1].children[3].textContent, 'General system · 1 event (max 1)');
-    assert.equal(rows[0].children[3].textContent, 'Authentication · 1 event (max 5)');
+    assert.equal(rows[1].children[2].textContent, `Source: /var/log/secure · ${prefix} line 1`);
+    assert.equal(rows[0].children[2].textContent, `Source: /var/log/secure · ${prefix} lines 10–12`);
+    assert.equal(rows[1].children[3].textContent, 'Category criteria (Choice): General system · Chunk: 1 event (max 1)');
+    assert.equal(rows[0].children[3].textContent, 'Category criteria (Choice): Authentication · Chunk: 1 event (max 5)');
     if (mode === 'realtime') assert.ok(rows[1].children[2].title.includes('not an absolute'));
     nodes.get('source-mode').value = mode === 'realtime' ? 'batch' : 'realtime';
     nodes.get('source-mode').onchange();
     vm.runInContext('render()', context);
-    assert.equal(nodes.get('results').children[1].children[2].textContent, `/var/log/secure · ${prefix} line 1`);
+    assert.equal(nodes.get('results').children[1].children[2].textContent, `Source: /var/log/secure · ${prefix} line 1`);
   }
 });
 
@@ -400,7 +368,7 @@ test('realtime can pause before receiving its first result', async () => {
     receive = callback;
     await new Promise(resolve => { finish = resolve; });
   };
-  const run = nodes.get('classify').onclick();
+  const run = runTask(nodes);
   await new Promise(resolve => setImmediate(resolve));
   receive({ type: 'start', engine: 'laya', mode: 'realtime', total: null });
   assert.equal(nodes.get('pause-updates').disabled, false);
@@ -422,7 +390,7 @@ test('profile selectors have visible Criteria labels', () => {
     assert.equal(row.children[1].children.length, 1);
   }
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-  assert.ok(html.includes('<label>Criteria <select id="paste-profile">'));
+  assert.ok(html.includes('Sources and decisions'));
 });
 
 test('category chart counts all sources, separates failures, and ignores filters and edits', async () => {
@@ -438,7 +406,7 @@ test('category chart counts all sources, separates failures, and ignores filters
   const { nodes, context } = workspace(events);
   const values = () => nodes.get('category-chart').children.map(row => row.children[2].textContent);
   assert.deepEqual(values(), Array(5).fill('0 (0.0%)'));
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.deepEqual(values(), ['2 (33.3%)', '1 (16.7%)', '1 (16.7%)', '1 (16.7%)', '1 (16.7%)']);
   assert.equal(nodes.get('category-chart').children[0].children[1].children[0].attributes.style, 'width:100%');
   assert.equal(nodes.get('category-chart').children[1].children[1].children[0].attributes.style, 'width:50%');
@@ -450,13 +418,13 @@ test('category chart counts all sources, separates failures, and ignores filters
   vm.runInContext("results[7] = {category: 'security', elapsedMs: 1}; completionOrder.push(7); completed++; render(false);", context);
   assert.equal(values()[3], '2 (28.6%)');
   events.splice(0, events.length, { type: 'start', engine: 'laya', total: 0 });
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.deepEqual(values(), Array(5).fill('0 (0.0%)'));
 });
 
 test('category overview precedes Log input and Classification results', () => {
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-  assert.ok(html.indexOf('Classification overview') < html.indexOf('Log input'));
+  assert.ok(html.indexOf('Classification overview') < html.indexOf('Task monitor'));
   assert.ok(html.indexOf('Classification overview') < html.indexOf('Classification results'));
 });
 
@@ -466,11 +434,11 @@ test('uncertain category is explicitly provisional without changing the model ch
     candidates: ['error', 'other'], reviewReasons: ['low_confidence', 'close_probabilities'],
     probabilities: { normal: .01, warning: .18, error: .41, security: 0, other: .4 } });
   const { nodes } = workspace([{ type: 'start', engine: 'jev', total: 1 }, event]);
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   const row = nodes.get('results').children[0];
-  assert.equal(row.children[0].children[0].textContent, 'Uncertain · Error');
-  assert.ok(row.children[2].textContent.includes('Error 41.0% vs Other 40.0%'));
-  assert.ok(row.children[2].textContent.includes('close category probabilities'));
+  assert.equal(decisionCards(row)[0].children[1].textContent, 'Uncertain · Error');
+  assert.ok(decisionCards(row)[0].children.at(-1).textContent.includes('Error 41.0% vs Other 40.0%'));
+  assert.ok(decisionCards(row)[0].children.at(-1).textContent.includes('close category probabilities'));
   const details = row.children.at(-1); details.open = true; details.ontoggle();
   assert.equal(JSON.parse(details.children[1].children[1].textContent).category, 'error');
   assert.equal(nodes.get('category-chart').children[2].children[2].textContent, '1 (100.0%)');
@@ -483,7 +451,7 @@ test('workspace places input and overview in the 40% column beside 60% results',
   const leftEnd = html.indexOf('</div>\n      <section class="card output">', leftStart);
   assert.ok(leftStart >= 0 && leftEnd > leftStart);
   const left = html.slice(leftStart, leftEnd);
-  assert.ok(left.includes('Log input'));
+  assert.ok(left.includes('Task monitor'));
   assert.ok(left.includes('Classification overview'));
   assert.ok(!left.includes('Classification results'));
   assert.ok(css.includes('grid-template-columns:minmax(0,2fr) minmax(0,3fr)'));
@@ -499,7 +467,7 @@ test('category, review and literal log search combine and retain full aggregates
   const failed = { type: 'result', index: 2, elapsedMs: 3,
     result: { log: 'Service request failed', error: 'timeout', review: true, elapsedMs: 2 } };
   const { nodes } = workspace([{ type: 'start', engine: 'laya', total: 3 }, normal, warning, failed]);
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   nodes.get('log-search').value = 'SERVICE'; nodes.get('log-search').oninput();
   assert.equal(logs(nodes).length, 3);
   nodes.get('category-filter').value = 'normal'; nodes.get('category-filter').onchange();
@@ -533,7 +501,7 @@ test('chart certainty groups partition classified results without treating failu
   }
   events.push({ type: 'result', index: 3, result: { log: 'failed', error: 'timeout', review: true, elapsedMs: 1 } });
   const { nodes } = workspace(events);
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   const values = () => nodes.get('category-chart').children.map(row => row.children[2].textContent);
   const options = () => ['all', 'certain', 'uncertain'].map(key => nodes.get(`chart-${key}`).textContent);
   assert.deepEqual(options(), ['All · 3', 'Certain · 2 (66.7%)', 'Uncertain · 1 (33.3%)']);
@@ -563,7 +531,7 @@ test('truncated count includes rejected responses across chart filters and pause
     { type: 'result', index: 1, result: { log: 'too long', error: 'truncated', review: true, elapsedMs: 1, providerResponse: { usage: { truncated: true } } } },
     { type: 'result', index: 2, result: { log: 'timeout', error: 'timeout', review: true, elapsedMs: 1 } }];
   const { nodes, context } = workspace(events);
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.equal(nodes.get('chart-truncated').textContent, 'Truncated: 1');
   nodes.get('chart-certain').onclick();
   assert.equal(nodes.get('chart-truncated').textContent, 'Truncated: 1');
@@ -577,8 +545,8 @@ test('result label uses selected category probability rather than provider confi
   const event = result(0, false);
   Object.assign(event.result, { confidence: .16, answerProbability: .9 });
   const { nodes } = workspace([{ type: 'start', engine: 'laya', total: 1 }, event]);
-  await nodes.get('classify').onclick();
-  assert.equal(nodes.get('results').children[0].children[0].children[1].textContent, '90.0% category probability · 1ms');
+  await runTask(nodes);
+  assert.equal(decisionCards(nodes.get('results').children[0])[0].children[2].textContent, '90.0% category probability');
 });
 
 test('collapsed options show the rendering integrity warning', async () => {
@@ -587,8 +555,8 @@ test('collapsed options show the rendering integrity warning', async () => {
     uncertain: true, candidates: ['normal'], reviewReasons: ['collapsed_options'],
   });
   const { nodes } = workspace([{ type: 'start', engine: 'laya', total: 1 }, event]);
-  await nodes.get('classify').onclick();
-  const texts = nodes.get('results').children[0].children.map(child => child.textContent || '');
+  await runTask(nodes);
+  const texts = decisionCards(nodes.get('results').children[0])[0].children.map(child => child.textContent || '');
   assert.ok(texts.some(text => text.includes('option descriptions lost distinction')));
 });
 
@@ -598,7 +566,7 @@ test('Copy JSON copies current reviewer edits and reports success or failure', a
   ]);
   let copied;
   context.navigator = { clipboard: { writeText: async text => { copied = text; } } };
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   const row = nodes.get('results').children[0];
   const reviewer = row.children.at(-2).children[0];
   reviewer.value = 'warning';
@@ -646,10 +614,10 @@ test('quiet actions and JSON disclosure have visible button borders', () => {
 test('stream errors are red and a new successful run clears the error style', async () => {
   const events = [{ type: 'error', error: 'File access denied' }];
   const { nodes } = workspace(events);
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.equal(nodes.get('message').className, 'error-message');
   events.splice(0, events.length, { type: 'start', engine: 'laya', total: 1 }, result(0));
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.equal(nodes.get('message').className, '');
 });
 
@@ -690,10 +658,10 @@ test('uncertain results retain their category color class', async () => {
       return event;
     });
     const { nodes } = workspace(events);
-    await nodes.get('classify').onclick();
+    await runTask(nodes);
     for (const [index, row] of nodes.get('results').children.entries()) {
       const category = categories[categories.length - 1 - index];
-      const badge = row.children[0].children[0];
+      const badge = decisionCards(row)[0].children[1];
       assert.equal(badge.className, `badge ${category}${uncertain ? ' uncertain' : ''}`);
       assert.equal(badge.textContent.startsWith('Uncertain · '), uncertain);
     }
@@ -723,17 +691,17 @@ test('throughput tracks a rolling five-second window and resets between runs', a
     { type: 'timing', elapsedMs: 7000 }];
   const { nodes } = workspace(events);
   const rate = () => nodes.get('summary').children[6].children[0].textContent;
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.equal(rate(), '0.2 chunks/s');
   nodes.get('review-filter').value = 'no-review';
   nodes.get('review-filter').onchange();
   assert.equal(rate(), '0.2 chunks/s');
   events.push({ type: 'timing', elapsedMs: 11000 });
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.equal(rate(), '0.0 chunks/s');
   events.splice(0, events.length, { type: 'start', engine: 'jev', total: 1 },
     success(0, 1000));
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.equal(rate(), '1.0 chunks/s');
 });
 
@@ -747,7 +715,7 @@ test('source filtering uses input patterns with counts and combines with other f
     sourcePatterns: ['/logs/access*.log', '/logs/*', '/logs/messages', '/logs/empty.log'] },
     first, second];
   const { nodes } = workspace(events);
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   const select = nodes.get('source-filter');
   assert.ok(select.children.some(option => option.text === '/logs/messages (1)'));
   assert.ok(select.children.some(option => option.text === '/logs/empty.log (0)'));
@@ -763,7 +731,7 @@ test('source filtering uses input patterns with counts and combines with other f
   assert.deepEqual(logs(nodes), ['service failed']);
   events.splice(0, events.length, { type: 'start', engine: 'laya', total: null,
     sourcePatterns: ['/logs/new.log'] });
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.equal(select.value, 'all');
   assert.ok(!select.children.some(option => option.value === '/logs/messages'));
 });
@@ -777,12 +745,12 @@ test('file Actions are assigned in requests and execution failures are visible',
   await new Promise(resolve => setImmediate(resolve));
   vm.runInContext("registeredActions = [{name: 'notify', python: '/venv/bin/python', script: '/actions/notify.py'}]; renderActions(); updateSourceSettings();", context);
   const selector = nodes.get('source-settings').children[0].children[3].children[0];
-  assert.equal(selector.type, 'search');
-  assert.deepEqual(nodes.get('source-settings').children[0].children[3].children[1].children.map(option => option.text), ['notify']);
+  assert.match(selector.attributes['aria-label'], /^Action for /);
+  assert.deepEqual(selector.children.map(option => option.text), ['None', 'notify']);
   selector.value = 'notify'; selector.onchange();
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.equal(requests[0].sources[0].action, 'notify');
-  assert.ok(nodes.get('results').children[0].children.some(node => node.textContent?.includes('Action: notify · failed · 12ms · exit 7')));
+  assert.ok(nodes.get('results').children[0].children.some(node => node.textContent?.includes('Action execution: notify · failed · 12ms · exit 7')));
   assert.equal(selector.disabled, false);
 });
 
@@ -822,7 +790,7 @@ test('Action editor sends Python versions and module lists and recovers from pre
 });
 
 
-test('sidebar switches Main and Actions without losing editor content', async () => {
+test('sidebar returns to the Actions list and discards an unsaved editor', async () => {
   const { nodes } = workspace([]);
   await new Promise(resolve => setImmediate(resolve));
   nodes.get('nav-actions').onclick();
@@ -834,7 +802,9 @@ test('sidebar switches Main and Actions without losing editor content', async ()
   code.value = 'print("editor draft")';
   nodes.get('nav-main').onclick();
   nodes.get('nav-actions').onclick();
-  assert.equal(code.value, 'print("editor draft")');
+  assert.equal(nodes.get('action-editor').hidden,true);
+  assert.equal(nodes.get('action-editor').children.length,0);
+  assert.equal(nodes.get('action-list').hidden,false);
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   assert.ok(html.indexOf('id="action-registry"') > html.indexOf('id="actions-page"'));
   assert.ok(!html.includes('Python script path'));
@@ -898,11 +868,12 @@ test('Action name search ignores case and retains original edit and delete targe
 
 test('source rows select registered sources, reject unknown text, and retain settings across modes', async () => {
   const { nodes, context, requests } = workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
   assert.equal(nodes.get('source-settings').children.length, 3);
   const first = nodes.get('source-settings').children[0];
   const path = first.children[0].children[0];
   assert.equal(path.value, 'System messages');
-  path.value = '/custom/access*.log'; path.oninput();
+  path.value = '/custom/access*.log'; path.onchange();
   const profile = first.children[1].children[0];
   profile.value = 'http_access'; profile.onchange();
   first.children.at(-1).onclick();
@@ -910,17 +881,17 @@ test('source rows select registered sources, reject unknown text, and retain set
   nodes.get('add-source').onclick();
   const added = nodes.get('source-settings').children[2].children[0].children[0];
   assert.equal(added.value, '');
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.equal(requests.length, 0);
   assert.match(nodes.get('message').textContent, /Select a registered source/);
-  added.value = 'System messages'; added.oninput();
+  added.value = 'System messages'; added.onchange();
   vm.runInContext("sourceRows[2].profile.value = 'http_access'; sourceRows[2].profile.onchange();", context);
   assert.equal(vm.runInContext('sourceRows[2].path', context), '1'.padStart(32,'0'));
   nodes.get('source-mode').value = 'realtime'; nodes.get('source-mode').onchange();
   nodes.get('source-mode').value = 'batch'; nodes.get('source-mode').onchange();
   assert.equal(nodes.get('source-settings').children[2].children[0].children[0].value, 'System messages');
   assert.equal(vm.runInContext('sourceRows[2].profile.value', context), 'http_access');
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.equal(requests[0].sources.length, 3);
   assert.equal(requests[0].sources[2].sourceId, '1'.padStart(32,'0'));
   assert.equal(Object.hasOwn(requests[0].sources[2], 'path'), false);
@@ -952,7 +923,7 @@ test('stored Action assignments never run by default; explicit selections last o
   assert.equal(selector().value, '');
   assert.equal(vm.runInContext('sourceRows[0].profile.value', context), 'http_access');
   assert.equal(vm.runInContext('sourceRows[0].size.value', context), '3');
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.ok(requests[0].sources.every(source => source.action === ''));
   selector().value = 'notify'; selector().onchange();
   assert.ok(saved.every(([, preference]) => !Object.hasOwn(preference, 'action')));
@@ -975,19 +946,20 @@ test('new jobs persist their ID and reload replays results without submitting an
   let submissions = 0;
   const settings = {mode:'batch', sources:[{path:'/custom/log', profile:'http_access', chunkEvents:2, action:'notify'}]};
   first.context.fetch = async (path, options) => {
-    if (path === '/api/file-source') {
+    if (path === '/api/tasks/test-task/run') {
       submissions++;
-      assert.equal(JSON.parse(options.body).persist, true);
       return {ok:true, status:202, json:async () => ({jobId:'job1',state:'running',settings})};
     }
+    if(path==='/api/tasks')return {ok:true,json:async()=>({tasks:vm.runInContext('registeredTasks',first.context)})};
     assert.equal(path, '/api/jobs/job1/events');
     return {ok:true, body:{}};
   };
-  await first.nodes.get('classify').onclick();
+  await runTask(first.nodes);
   assert.equal(stored.get('deciflow-job-id'), 'job1');
   const reloaded = workspace(events, undefined, storage);
   await new Promise(resolve => setImmediate(resolve));
   reloaded.context.fetch = async path => {
+    if(path==='/api/tasks')return {ok:true,json:async()=>({tasks:vm.runInContext('registeredTasks',reloaded.context)})};
     if (path === '/api/jobs/job1') return {ok:true,json:async () => ({jobId:'job1', state:'completed', settings})};
     assert.equal(path, '/api/jobs/job1/events');
     return {ok:true,body:{}};
@@ -995,8 +967,8 @@ test('new jobs persist their ID and reload replays results without submitting an
   await vm.runInContext('handleRestoreJob()', reloaded.context);
   assert.equal(submissions, 1);
   assert.equal(vm.runInContext('completed', reloaded.context), 1);
-  assert.equal(vm.runInContext('sourceRows[0].path', reloaded.context), '/custom/log');
-  assert.equal(vm.runInContext('sourceRows[0].profile.value', reloaded.context), 'http_access');
+  assert.equal(vm.runInContext('sourceRows[0].path', reloaded.context), '1'.padStart(32,'0'));
+  assert.equal(vm.runInContext('sourceRows[0].profile.value', reloaded.context), 'general');
   assert.equal(vm.runInContext('sourceRows[0].action.value', reloaded.context), '');
   assert.equal(reloaded.nodes.get('stop').disabled, true);
   reloaded.context.fetch = async () => ({ok:false,status:404});
@@ -1011,23 +983,24 @@ test('Stop calls the server job endpoint instead of aborting the browser stream'
   await new Promise(resolve => setImmediate(resolve));
   let finish;
   context.fetch = async path => {
-    if (path === '/api/file-source') return {ok:true,status:202,json:async () => ({jobId:'running',state:'running'})};
+    if (path === '/api/tasks/test-task/run') return {ok:true,status:202,json:async () => ({jobId:'running',state:'running',settings:{mode:'batch',sources:[]}})};
+    if(path==='/api/tasks')return {ok:true,json:async()=>({tasks:vm.runInContext('registeredTasks',context)})};
     if (path.endsWith('/events')) return {ok:true,body:{}};
-    assert.equal(path, '/api/jobs/running/stop');
+    assert.equal(path, '/api/tasks/test-task/stop');
     assert.equal(vm.runInContext('activeRequest.signal.aborted', context), false);
     finish();
-    return {ok:true};
+    return {ok:true,json:async()=>({state:'stopped'})};
   };
   context.readEvents = async (body, receive) => {
     receive({type:'start',engine:'laya',mode:'batch',total:null});
     await new Promise(resolve => {finish=resolve;});
     receive({type:'done',state:'stopped',elapsedMs:100});
   };
-  const running = nodes.get('classify').onclick();
+  const running = runTask(nodes);
   await new Promise(resolve => setImmediate(resolve));
   await nodes.get('stop').onclick();
   await running;
-  assert.match(nodes.get('message').textContent, /Processing stopped/);
+  assert.match(nodes.get('message').textContent, /Stopped/);
 });
 
 
@@ -1039,15 +1012,16 @@ test('status initialization automatically restores the remembered job after refr
   nodes.get('source-mode').value = 'batch';
   const paths = [];
   context.fetch = async path => {
+    if(path==='/api/tasks')return {ok:true,json:async()=>({tasks:vm.runInContext('registeredTasks',context)})};
     paths.push(path);
-    if (path === '/api/jobs/remembered') return {ok:true,json:async () => ({jobId:'remembered',state:'completed',settings:{mode:'paste',text:'restored log',profile:'general',chunkEvents:1}})};
+    if (path === '/api/jobs/remembered') return {ok:true,json:async () => ({jobId:'remembered',state:'completed',settings:{mode:'batch',sources:[]}})};
     assert.equal(path, '/api/jobs/remembered/events');
     return {ok:true,body:{}};
   };
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(paths, ['/api/jobs/remembered', '/api/jobs/remembered/events']);
   assert.equal(requests.length, 0);
-  assert.equal(nodes.get('logs').value, 'restored log');
+  assert.equal(logs(nodes)[0],'log-0');
   assert.equal(vm.runInContext('completed', context), 1);
 });
 
@@ -1071,7 +1045,7 @@ test('Export stays visibly disabled during processing and enables only with down
 });
 
 
-test('Criteria management preserves drafts, saves edits, and clears deleted source selections', async () => {
+test('Criteria management resets drafts on menu entry, saves edits, and clears deleted source selections', async () => {
   const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, `${key} evidence`]));
   const profiles = {
     general: { label: 'General system', instructions: 'General instructions', criteria: definitions },
@@ -1088,7 +1062,10 @@ test('Criteria management preserves drafts, saves edits, and clears deleted sour
   vm.runInContext("criteriaFields.id.value='new_profile'; criteriaFields.label.value='New profile'; criteriaFields.instructions.value='New instructions';", context);
   nodes.get('nav-main').onclick();
   await nodes.get('nav-criteria').onclick();
-  assert.equal(vm.runInContext('criteriaFields.label.value', context), 'New profile');
+  assert.equal(nodes.get('criteria-editor').hidden,true);
+  assert.equal(vm.runInContext('editingCriteria', context),null);
+  nodes.get('add-criteria').onclick();
+  vm.runInContext("criteriaFields.id.value='new_profile'; criteriaFields.label.value='New profile'; criteriaFields.instructions.value='New instructions';", context);
   await nodes.get('save-criteria').onclick();
   assert.equal(vm.runInContext("profileLabels.new_profile", context), 'New profile');
   vm.runInContext("handleEditCriteria('custom'); criteriaFields.instructions.value='Edited custom';", context);
@@ -1096,11 +1073,9 @@ test('Criteria management preserves drafts, saves edits, and clears deleted sour
   await nodes.get('save-criteria').onclick();
   assert.equal(vm.runInContext('criteriaProfiles.custom.instructions', context), 'Edited custom');
   vm.runInContext("sourceRows[0].profile.value='custom';", context);
-  nodes.get('paste-profile').value = 'custom';
   vm.runInContext("delete criteriaProfiles.custom; renderCriteria();", context);
   await nodes.get('save-criteria').onclick();
   assert.equal(vm.runInContext('sourceRows[0].profile.value', context), '');
-  assert.equal(nodes.get('paste-profile').value, '');
   assert.match(nodes.get('criteria-message').textContent, /Select replacements/);
   assert.equal(nodes.get('criteria-editor').hidden, true);
 });
@@ -1257,7 +1232,7 @@ test('engine connection follows actual requests for both providers without local
       });
       receive({ type: 'done', elapsedMs: 100 });
     };
-    await nodes.get('classify').onclick();
+    await runTask(nodes);
     assert.equal(nodes.get('summary').children[0].textContent, 'Success / Failed / Total');
     assert.equal(nodes.get('summary').children[0].children[0].children.map(node => node.textContent).join(''), '2 / 4 / 6');
     assert.equal(nodes.get('summary').children[2].children[0].textContent, '2');
@@ -1425,13 +1400,13 @@ test('Reset selections restores registered samples and clears Action assignments
   const stored = new Map(JSON.parse(values.get('deciflow-source-preferences')));
   assert.deepEqual(stored.get('1'.padStart(32,'0')), { profile:'general', chunkEvents:1 });
   nodes.get('source-mode').value = 'realtime'; nodes.get('source-mode').onchange();
-  assert.equal(nodes.get('file-path').value, '/my/live.log');
+  assert.equal(nodes.get('file-path').value, vm.runInContext('defaultFilePaths.batch',context));
   nodes.get('reset-sources').onclick();
   assert.equal(nodes.get('file-path').value, vm.runInContext('defaultFilePaths.realtime', context));
   vm.runInContext('busy=true', context);
   nodes.get('file-path').value = '/keep.log';
   nodes.get('reset-sources').onclick();
-  assert.equal(nodes.get('file-path').value, '/keep.log');
+  assert.equal(nodes.get('file-path').value, vm.runInContext('defaultFilePaths.batch',context));
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   assert.ok(html.includes('Add source</button><button id="reset-sources"'));
 });
@@ -1448,7 +1423,7 @@ test('Action metrics count completed executions separately from decision outcome
   const counts = index => nodes.get('summary').children[index].children[0].children.map(node => node.textContent).join('');
   vm.runInContext('render()', context);
   assert.equal(counts(1), '0 / 0 / 0');
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.equal(nodes.get('summary').children[1].textContent, 'Action Success / Failed / Total');
   assert.equal(counts(0), '3 / 1 / 4');
   assert.equal(counts(1), '1 / 1 / 2');
@@ -1491,10 +1466,12 @@ test('results display urgency and ticket need probability', async () => {
     { type: 'start', engine: 'laya', total: 1 }, event,
     { type: 'done', elapsedMs: 10 },
   ]);
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   const row = nodes.get('results').children[0];
-  assert.ok(row.children.some(child => child.textContent ===
-    'Urgency: 2.37 / 3 (Low → Critical) · Work ticket: 91.0% Yes probability'));
+  const cards = decisionCards(row);
+  assert.deepEqual(cards.map(card => card.children[0].textContent), ['Category (Choice)', 'Urgency (Score)', 'Work ticket (Noul)']);
+  assert.equal(cards[1].children[1].textContent, '2.37 / 3');
+  assert.equal(cards[2].children[1].textContent, '91.0%');
 });
 
 test('Sources navigation and SSH registration feed searchable Main choices by ID', async () => {
@@ -1506,44 +1483,39 @@ test('Sources navigation and SSH registration feed searchable Main choices by ID
   assert.equal(nodes.get('sources-page').hidden, false);
   assert.equal(navigation.hash, '#sources');
   nodes.get('add-registered-source').onclick();
-  vm.runInContext(`sourceFields.name.value='Production logs'; sourceFields.type.value='ssh'; sourceFields.type.onchange(); sourceFields.path.value='/var/log/app/*.log'; sourceFields.hostId.value='host-1';`, context);
-  assert.equal(nodes.get('source-editor').children[0].children[3].hidden, false);
+  vm.runInContext(`sourceFields.name.value='Production logs'; sourceFields.type.value='ssh'; sourceFields.type.onchange(); sourceFields.path.value='/var/log/app/*.log';`, context);
+  assert.equal(vm.runInContext('Object.keys(sourceFields).join(",")',context),'type,name,path');
   let saved;
   context.fetch = async (path,options) => {
     if (path === '/api/sources') {
       saved=JSON.parse(options.body);
       return {ok:true,json:async()=>({sources:saved.map((source,i)=>({...source,id:source.id || String(i+1).padStart(32,'0'),...(source.type==='ssh'?{host:'logs.example',username:'reader',port:2222}:{} )}))})};
     }
-    requests.push(JSON.parse(options.body)); return {ok:true,body:{}};
+    if(path==='/api/tasks')return {ok:true,json:async()=>({tasks:vm.runInContext('registeredTasks',context)})};
+    if(path==='/api/tasks/test-task/run'){const sources=vm.runInContext('sourceRows.map(row=>({sourceId:row.path}))',context);requests.push({sources});return {ok:true,status:202,json:async()=>({jobId:'test-job',state:'running',settings:{mode:'batch',sources}})};}
+    return {ok:true,body:{}};
   };
   await nodes.get('save-sources').onclick();
-  assert.equal(saved[3].hostId, 'host-1');
+  assert.equal(Object.hasOwn(saved[3], 'hostId'), false);
   assert.equal(Object.hasOwn(saved[3], 'keyPath'), false);
   assert.equal(Object.hasOwn(saved[3], 'password'), false);
   vm.runInContext("registeredActions=[{name:'Notify'}]; updateSourceSettings([registeredSources[3].id]);",context);
   const picker=nodes.get('source-settings').children[0].children[0];
-  assert.equal(picker.children[0].type, 'search');
+  assert.equal(picker.children[0].attributes['aria-label'], 'Registered source');
   assert.equal(picker.children[0].value, 'Production logs');
-  assert.match(picker.children[1].children[3].label,/logs.example:2222/);
+  assert.match(picker.children[0].children.find(option=>option.value==='Production logs').title,/Remote File.*app/);
   nodes.get('nav-main').onclick();
-  await nodes.get('classify').onclick();
+  await runTask(nodes);
   assert.equal(requests[0].sources[0].sourceId,'4'.padStart(32,'0'));
   assert.equal(Object.hasOwn(requests[0].sources[0], 'keyPath'),false);
   assert.equal(Object.hasOwn(requests[0].sources[0], 'host'),false);
 });
 
-test('Source loading failure blocks saving and unregistered Action text cannot run', async () => {
-  const {nodes,context,requests} = workspace([]);
-  await new Promise(resolve => setImmediate(resolve));
-  context.fetch=async()=>({ok:false,json:async()=>({error:'Source storage unavailable'})});
-  vm.runInContext('sourcesLoaded=false',context);
-  await vm.runInContext('handleLoadSources()',context);
-  await nodes.get('save-sources').onclick();
-  assert.equal(nodes.get('source-message').textContent,'Load Sources before saving.');
-  vm.runInContext('sourcesLoaded=true; updateSourceSettings(); sourceRows[0].action.value="not registered";',context);
-  await nodes.get('classify').onclick();
-  assert.match(nodes.get('message').textContent,/Select a registered Action/);
-  assert.equal(requests.length,0);
+test('Source loading failure blocks Source saving and Task editing', async () => {
+  const {nodes,context}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
+  context.fetch=async()=>({ok:false,json:async()=>({error:'Source storage unavailable'})});vm.runInContext('sourcesLoaded=false',context);
+  await nodes.get('save-sources').onclick();assert.equal(nodes.get('source-message').textContent,'Load Sources before saving.');
+  await vm.runInContext('handleEditTask()',context);assert.match(nodes.get('task-message').textContent,/Load Sources/);
 });
 
 test('Saved source edits keep identity, and source search filters host and path', async () => {
@@ -1566,10 +1538,11 @@ test('Running jobs can show deleted source snapshots but new runs require a save
   const {nodes,context}=workspace(events);
   await new Promise(resolve=>setImmediate(resolve));
   vm.runInContext("registeredSources=[];sourceSnapshots=[{id:'a'.repeat(32),name:'Deleted source',type:'local',path:'/old/app.log'}]; updateSourceSettings(['a'.repeat(32)]);",context);
-  context.fetch=async()=>({ok:true,body:{}});
-  await vm.runInContext("handleProcessing({jobId:'existing',state:'running'})",context);
+  const originalFetch=context.fetch;context.fetch=async()=>({ok:true,body:{}});
+  await vm.runInContext("handleProcessing({jobId:'existing',state:'running',settings:{mode:'batch',sources:[]}})",context);
   assert.equal(logs(nodes)[0],'log-0');
-  await nodes.get('classify').onclick();
+  context.fetch=originalFetch;
+  await runTask(nodes);
   assert.match(nodes.get('message').textContent,/Select a registered source/);
 });
 
@@ -1615,7 +1588,7 @@ test('SSH key import clears file and Sources select managed keys', async () => {
   assert.equal(nodes.get('ssh-key-file').value, '');
   assert.equal(nodes.get('ssh-key-name').value, '');
   vm.runInContext('handleEditHost()', context);
-  assert.equal(nodes.get('ssh-host-key').children[1].value, key.privatePath);
+  assert.equal(nodes.get('ssh-host-key').children[0].value, key.privatePath);
 });
 
 
@@ -1702,7 +1675,7 @@ test('SSH Hosts CRUD and Remote File selection share saved connection settings',
   vm.runInContext("sshKeys=[{name:'logs',privatePath:'/keys/logs/private_key'}]",context);
   get('open-add-ssh-host').onclick();
   assert.equal(get('ssh-host-editor').hidden, false);
-  assert.equal(get('ssh-host-key').children[1].value, '/keys/logs/private_key');
+  assert.equal(get('ssh-host-key').children[0].value, '/keys/logs/private_key');
   get('ssh-host-name').value='Production'; get('ssh-host-address').value='logs.example';
   get('ssh-host-port').value='2222'; get('ssh-host-user').value='reader';
   get('ssh-host-key').value='/keys/logs/private_key';
@@ -1717,20 +1690,19 @@ test('SSH Hosts CRUD and Remote File selection share saved connection settings',
   assert.equal(get('ssh-host-registry').hidden,false);
   const row=get('ssh-host-list').children[0].children[1].children[0];
   assert.equal(row.children[1].textContent,'reader@logs.example:2222');
-  row.children[3].children[0].onclick();
+  row.children[4].children[0].onclick();
   assert.equal(get('ssh-host-view').hidden,false);
-  row.children[3].children[1].onclick();
+  row.children[4].children[1].onclick();
   assert.equal(get('ssh-host-name').value,'Production');
   get('ssh-host-port').value='22';
   await get('ssh-host-form').onsubmit({preventDefault(){}});
   assert.equal(JSON.parse(requests[1].options.body).id,'host-1');
   vm.runInContext('handleEditSource(registeredSources.length)',context);
-  assert.equal(vm.runInContext('Object.keys(sourceFields).join(",")',context),'type,name,path,hostId');
-  assert.equal(vm.runInContext('sourceFields.hostId.children[1].value',context),'host-1');
+  assert.equal(vm.runInContext('Object.keys(sourceFields).join(",")',context),'type,name,path');
   context.confirm=()=>false;
-  await row.children[3].children[2].onclick(); assert.equal(requests.length,2);
+  await row.children[4].children[2].onclick(); assert.equal(requests.length,2);
   context.confirm=()=>true;
-  await row.children[3].children[2].onclick(); assert.equal(requests[2].options.method,'DELETE');
+  await row.children[4].children[2].onclick(); assert.equal(requests[2].options.method,'DELETE');
   assert.equal(get('ssh-host-message').textContent,'SSH host deleted.');
 });
 
@@ -1739,11 +1711,403 @@ test('Selected Source shows its path or pattern and updates without stale text',
   const {nodes,context} = workspace([], null);
   vm.runInContext("registeredSources=[{id:'one',name:'Local logs',type:'local',path:'/var/log/app/*.log'},{id:'two',name:'Remote logs',type:'ssh',path:'/srv/logs/**/*.json'}];updateSourceSettings(['one'])",context);
   const label=nodes.get('source-settings').children[0].children[0];
-  const input=label.children[0]; const path=label.children[2];
+  const input=label.children[0]; const path=label.children[1];
   assert.equal(path.textContent,'Path: /var/log/app/*.log');
   assert.equal(path.hidden,false);
-  input.value='Remote logs'; input.oninput();
+  input.value='Remote logs'; input.onchange();
   assert.equal(path.textContent,'Path: /srv/logs/**/*.json');
-  input.value='Unregistered'; input.oninput();
+  input.value='Unregistered'; input.onchange();
   assert.equal(path.textContent,''); assert.equal(path.hidden,true);
+});
+
+
+for (const engine of ['laya', 'jev']) {
+  test(`${engine} presents three equal core decisions including zero and endpoint probabilities`, async () => {
+    const event = result(0, false);
+    event.result.urgency = 0; event.result.ticketProbability = 0;
+    const {nodes,context} = workspace([{type:'start',engine,total:1},event,{type:'done',elapsedMs:1}]);
+    await runTask(nodes);
+    let cards=decisionCards(nodes.get('results').children[0]);
+    assert.equal(cards.length,3);
+    assert.ok(cards.every(card=>card.className==='decision-card'));
+    assert.equal(cards[1].children[1].textContent,'0.00 / 3');
+    assert.equal(cards[2].children[1].textContent,'0.0%');
+    assert.equal(cards[2].children[2].textContent,'Yes probability · 0% No → 100% Yes');
+    vm.runInContext('results[0].urgency=3;results[0].ticketProbability=1;render(false)',context);
+    cards=decisionCards(nodes.get('results').children[0]);
+    assert.equal(cards[1].children[1].textContent,'3.00 / 3');
+    assert.equal(cards[2].children[1].textContent,'100.0%');
+  });
+}
+
+test('Missing legacy scores remain unavailable and failed requests show no predictions', async () => {
+  const {nodes,context} = workspace([result(0,false)]);
+  await runTask(nodes);
+  const cards=decisionCards(nodes.get('results').children[0]);
+  assert.equal(cards[1].children[1].textContent,'Not available');
+  assert.equal(cards[2].children[1].textContent,'Not available');
+  vm.runInContext("results[0].error='request failed';render(false)",context);
+  const header=nodes.get('results').children[0].children[0];
+  assert.equal(header.className,'result-top');
+  assert.equal(header.children[0].textContent,'Request failed');
+});
+
+
+for (const engine of ['laya', 'jev']) {
+  test(`${engine} scopes probability distributions and review notes to each decision`, async () => {
+    const event=result(0);
+    Object.assign(event.result,{
+      category:'normal',uncertain:true,candidates:['normal','error'],reviewReasons:['low_answer_probability','close_probabilities'],
+      probabilities:{normal:.275,warning:.2,error:.251,security:.11,other:.164},
+      urgency:2,urgencyProbabilities:{0:.1,1:.2,2:.3,3:.4},
+      urgencyLegend:{0:'Low: routine',1:'Medium: scheduled',2:'High: prompt',3:'Critical: immediate'},
+      ticketProbability:.275,
+    });
+    const {nodes}=workspace([{type:'start',engine,total:1},event]);
+    await runTask(nodes);
+    const header=nodes.get('results').children[0].children[0];
+    const cards=header.children[0].children;
+    const distribution=card=>card.children.find(child=>child.className==='decision-probabilities');
+    const entries=card=>distribution(card).children.map(entry=>entry.children.map(value=>value.textContent).join(': '));
+    assert.deepEqual(entries(cards[0]),['Normal: 27.5%','Warning: 20.0%','Error: 25.1%','Security: 11.0%','Other: 16.4%']);
+    assert.deepEqual(entries(cards[1]),['0 · Low: 10.0%','1 · Medium: 20.0%','2 · High: 30.0%','3 · Critical: 40.0%']);
+    assert.deepEqual(entries(cards[2]),['Yes: 27.5%','No: 72.5%']);
+    assert.match(cards[0].children.at(-1).textContent,/Category \(Choice\) provisional:/);
+    assert.equal(cards[1].children.some(child=>child.className==='uncertainty-note'),false);
+    assert.equal(cards[2].children.some(child=>child.className==='uncertainty-note'),false);
+    assert.equal(header.children[1].children.find(child=>child.className==='review').textContent,'Category needs review');
+  });
+}
+
+
+test('Three decisions show details by default without duplicate badges or toggles', async () => {
+  const event=result(0,false);
+  event.result.urgency=1.41; event.result.ticketProbability=.299;
+  const {nodes,context}=workspace([event]);
+  await runTask(nodes);
+  const header=()=>nodes.get('results').children[0].children[0];
+  const badges=()=>decisionCards(nodes.get('results').children[0]).map(card=>card.children[1]);
+  assert.equal(header().children[0].className,'decision-grid');
+  assert.deepEqual(badges().map(badge=>badge.textContent),['Normal','1.41 / 3','29.9%']);
+  assert.match(badges()[1].title,/Urgency \(Score\)/);
+  assert.match(badges()[2].title,/Work ticket \(Noul\)/);
+  assert.equal(header().children.some(child=>child.className==='decision-details'),false);
+  vm.runInContext('render(false)',context);
+  assert.equal(decisionCards(nodes.get('results').children[0]).length,3);
+});
+
+test('Main follows a selected Task new scheduled run but keeps explicit history selection', async () => {
+  const {context}=workspace([]);
+  vm.runInContext(`
+    currentView='main'; monitoringReady=true; activeJobId='previous';
+    registeredTasks[0].latestRun={jobId:'scheduled-run',state:'completed'};
+    globalThis.watched=[]; handleWatchRun=async job=>{watched.push(job.jobId);activeJobId=job.jobId;};
+  `,context);
+  await vm.runInContext('handleLoadTasks()',context);
+  assert.equal(vm.runInContext('watched.join()',context),'scheduled-run');
+  vm.runInContext('followLatestTask=false;watched=[]',context);
+  await vm.runInContext('handleLoadTasks()',context);
+  assert.equal(vm.runInContext('watched.length',context),0);
+});
+
+test('Task navigation lists registered Tasks and exposes their run history', async () => {
+  const {nodes,context}=workspace([]);
+  vm.runInContext('handleNavigation("tasks");renderTasks()',context);
+  assert.equal(nodes.get('tasks-page').hidden,false);
+  assert.equal(nodes.get('main-page').hidden,true);
+  const controls=nodes.get('task-list').children[0].children[1].children.at(-1);
+  assert.deepEqual(controls.children.map(button=>button.textContent),['Run','Stop','View','Edit','History','Delete']);
+  assert.equal(controls.children[1].disabled,true);
+});
+
+test('Source and Action dropdowns retain every sorted option with an existing selection', async () => {
+  const {nodes,context}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext(`
+    registeredTasks=['Zulu','가나다','Alpha','나다라'].map((name,index)=>({id:String(index),name,mode:'batch',sources:[]}));
+    selectedTaskId='0'; renderTaskMonitor();
+    registeredSources=['Zulu','가나다','Alpha','나다라'].map((name,index)=>({id:String(index),name,type:'local',path:'/logs/'+index}));
+    registeredActions=[{name:'Zulu'},{name:'Alpha'}];
+    sourcePreferences.set('0',{profile:'general',chunkEvents:1,action:'Zulu'});
+    updateSourceSettings(['0']);
+  `,context);
+  const row=nodes.get('source-settings').children[0];
+  const source=row.children[0].children[0]; const action=row.children[3].children[0];
+  const expected=['가나다','나다라','Alpha','Zulu'];
+  assert.deepEqual(source.children.map(option=>option.value),expected);
+  assert.equal(source.value,'Zulu');
+  assert.deepEqual(action.children.map(option=>option.value),['','Alpha','Zulu']);
+  assert.equal(action.value,'Zulu');
+  const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
+  assert.ok(html.includes('id="running-tasks"'));
+  assert.equal(html.includes('Select a Task…'),false);
+  assert.equal(html.includes('monitor-task-options'),false);
+});
+
+test('Main lists only running Tasks in name order and clicking changes the displayed run', async () => {
+  const {nodes,context}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext(`
+    selectedTaskId='';
+    registeredTasks=[
+      {id:'z',name:'Zulu',mode:'realtime',sources:[],activeRun:{jobId:'run-z'}},
+      {id:'idle',name:'Idle Task',mode:'batch',sources:[],latestRun:{jobId:'old'}},
+      {id:'a',name:'Alpha',mode:'batch',sources:[],activeRun:{jobId:'run-a'}}
+    ];
+    globalThis.watched=[]; handleWatchRun=async job=>watched.push(job.jobId);
+    renderTaskMonitor();
+  `,context);
+  const buttons=nodes.get('running-tasks').children;
+  assert.deepEqual(buttons.map(button=>button.children[0].textContent),['Alpha','Zulu']);
+  assert.ok(buttons.every(button=>button.attributes['aria-pressed']==='false'));
+  await buttons[1].onclick();
+  assert.equal(vm.runInContext('selectedTaskId',context),'z');
+  assert.equal(vm.runInContext('watched.join()',context),'run-z');
+  assert.equal(nodes.get('running-tasks').children[1].attributes['aria-pressed'],'true');
+  vm.runInContext('registeredTasks=[];renderTaskMonitor()',context);
+  assert.match(nodes.get('running-tasks').children[0].textContent,/No Tasks are currently running/);
+});
+
+test('Wide Main panels scroll independently and narrow layouts retain page scrolling', () => {
+  const css=readFileSync(new URL('../public/style.css',import.meta.url),'utf8');
+  assert.match(css,/@media \(min-width: 1051px\)[\s\S]*#main-page \.input-column, #main-page \.output[^}]*overflow-y: auto/);
+  assert.match(css,/overscroll-behavior-y: contain/);
+});
+
+test('Required selectors omit Select placeholders without silently choosing a default', async () => {
+  const {nodes,context}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext(`
+    sshKeys=[{name:'Key',privatePath:'/keys/private_key'}];handleEditHost();
+    registeredSources=[{id:'source',name:'Logs',type:'local',path:'/logs/app.log'}];
+    updateSourceSettings(['']);
+  `,context);
+  const key=nodes.get('ssh-host-key');
+  assert.deepEqual(key.children.map(option=>option.text),['Key']);
+  assert.equal(key.value,'');
+  const source=nodes.get('source-settings').children[0].children[0].children[0];
+  assert.deepEqual(source.children.map(option=>option.text),['Logs']);
+  assert.equal(source.value,'');
+  const script=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
+  assert.doesNotMatch(script,/new Option\('Select /);
+  assert.equal(script.includes('Select a Source…'),false);
+});
+
+test('Main uses Task row clicks for viewing and has no duplicate Run button', () => {
+  const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
+  assert.equal(html.includes('id="classify"'),false);
+  const script=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
+  assert.equal(script.includes('View running'),false);
+  assert.match(script,/button.onclick=\(\)=>handleSelectTask\(task.id\)/);
+  assert.match(script,/Click its Task in the running list to reconnect/);
+});
+
+test('Sidebar places DeciFlow host information above Main and keeps SSH management in Settings', () => {
+  const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
+  assert.ok(html.indexOf('class="host-info"')<html.indexOf('id="nav-main"'));
+  assert.ok(html.indexOf('id="nav-settings"')<html.indexOf('id="settings-page"'));
+  assert.ok(html.indexOf('id="settings-ssh-keys"')>html.indexOf('id="settings-page"'));
+});
+
+test('SSH connection tests work from unsaved editor and saved rows with status feedback', async () => {
+  const {nodes,context}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext("sshKeys=[{name:'Key',privatePath:'/keys/private'}];handleEditHost()",context);
+  nodes.get('ssh-host-name').value='Draft';nodes.get('ssh-host-address').value='logs.example';
+  nodes.get('ssh-host-port').value='2222';nodes.get('ssh-host-user').value='reader';nodes.get('ssh-host-key').value='/keys/private';
+  const calls=[];
+  context.fetch=async(path,options)=>{calls.push({path,body:JSON.parse(options.body)});return {ok:true,json:async()=>({connected:true,checkedAt:'2026-10-16T00:00:00Z',elapsedMs:12})};};
+  await nodes.get('test-ssh-host').onclick();
+  assert.equal(calls[0].path,'/api/ssh-hosts/test');
+  assert.equal(calls[0].body.port,2222);
+  assert.match(nodes.get('ssh-host-test-result').textContent,/Connected \(SSH \+ SFTP\)/);
+  assert.equal(vm.runInContext('sshHosts.length',context),0);
+  vm.runInContext("sshHosts=[{...hostDraft(),id:'saved'}];renderSSHHosts()",context);
+  let row=nodes.get('ssh-host-list').children[0].children[1].children[0];
+  assert.match(row.children[3].textContent,/Connected/);
+  context.fetch=async(path,options)=>{calls.push({path,body:JSON.parse(options.body)});return {ok:true,json:async()=>({connected:false,error:'Permission denied',checkedAt:'2026-10-16T00:01:00Z',elapsedMs:5})};};
+  await row.children[4].children[3].onclick();
+  assert.deepEqual(calls[1].body,{id:'saved'});
+  row=nodes.get('ssh-host-list').children[0].children[1].children[0];
+  assert.match(row.children[3].textContent,/Failed.*Permission denied/);
+  vm.runInContext("sshHosts[0].port=22;renderSSHHosts()",context);
+  assert.equal(nodes.get('ssh-host-list').children[0].children[1].children[0].children[3].textContent,'Not checked');
+});
+
+for(const approve of [false,true]) {
+  test(`SSH unknown fingerprint requires approval before trusting (${approve})`, async () => {
+    const {nodes,context}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
+    vm.runInContext("handleEditHost();",context);
+    nodes.get('ssh-host-name').value='Draft';nodes.get('ssh-host-address').value='logs.example';
+    nodes.get('ssh-host-port').value='22';nodes.get('ssh-host-user').value='reader';nodes.get('ssh-host-key').value='/keys/private';
+    const calls=[]; const dialog=context.document.getElementById('ssh-trust-dialog');
+    dialog.showModal=()=>{};context.confirm=()=>{throw new Error('Native confirmation must not be used');};
+    context.fetch=async(path,options)=>{const payload=JSON.parse(options.body);calls.push(payload);return {ok:true,json:async()=>payload.trustedHostKey ? {connected:true} : {connected:false,error:'Host key is not trusted',hostKey:{host:'logs.example',port:22,fingerprint:'SHA256:expected',publicKey:'ssh-ed25519 PUBLIC'}}};};
+    const pending=nodes.get('test-ssh-host').onclick();
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(nodes.get('ssh-trust-fingerprint').textContent,'SHA256:expected');
+    assert.equal(nodes.get('ssh-trust-host').textContent,'logs.example:22');
+    assert.equal(nodes.get('ssh-trust-algorithm').textContent,'ssh-ed25519');
+    dialog.returnValue=approve?'approve':'cancel';dialog.onclose();
+    await pending;
+    assert.equal(calls.length,approve?2:1);
+    if(approve)assert.equal(calls[1].trustedHostKey,'ssh-ed25519 PUBLIC');
+    else assert.match(nodes.get('ssh-host-test-result').textContent,/not approved/);
+  });
+}
+
+test('SSH approval modal queues simultaneous hosts and dismisses without approval', async () => {
+  const {nodes,context}=workspace([]);
+  const dialog=context.document.getElementById('ssh-trust-dialog');let opened=0;
+  dialog.showModal=()=>{opened++;};
+  const first=vm.runInContext("handleApproveHostKey({host:'first',port:22,publicKey:'ssh-ed25519 A',fingerprint:'SHA256:first'})",context);
+  const second=vm.runInContext("handleApproveHostKey({host:'second',port:2222,publicKey:'ssh-rsa B',fingerprint:'SHA256:second'})",context);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(opened,1);assert.equal(nodes.get('ssh-trust-host').textContent,'first:22');
+  assert.equal(dialog.returnValue,'cancel');dialog.onclose();assert.equal(await first,false);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(opened,2);assert.equal(nodes.get('ssh-trust-host').textContent,'second:2222');
+  dialog.returnValue='approve';dialog.onclose();assert.equal(await second,true);
+  const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
+  assert.match(html,/<dialog id="ssh-trust-dialog"[^>]*aria-labelledby="ssh-trust-title"/);
+  assert.match(html,/<form method="dialog">/);
+  assert.match(html,/id="ssh-trust-cancel"[^>]*autofocus/);
+});
+
+test('Visible SSH Hosts auto-check sequentially, prevent duplicate passes, and repeat after 30 seconds', async () => {
+  const {nodes,context}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext("currentView='settings';sshHosts=[{id:'b',name:'Beta',host:'b',port:22,username:'u',keyPath:'/key'},{id:'a',name:'Alpha',host:'a',port:22,username:'u',keyPath:'/key'}]",context);
+  context.document.getElementById('ssh-host-registry').hidden=false;
+  let release;const gate=new Promise(resolve=>release=resolve);const calls=[];const delays=[];let active=0,maxActive=0;
+  context.setTimeout=(handler,delay)=>{delays.push(delay);return 1;};
+  context.fetch=async(path,options)=>{const body=JSON.parse(options.body);calls.push(body.id);active++;maxActive=Math.max(active,maxActive);if(body.id==='a')await gate;active--;return {ok:true,json:async()=>({connected:true})};};
+  const pass=vm.runInContext('handleAutoCheckHosts()',context);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(calls,['a']);
+  await vm.runInContext('handleAutoCheckHosts()',context);assert.deepEqual(calls,['a']);
+  release();await pass;
+  assert.deepEqual(calls,['a','b']);assert.equal(maxActive,1);assert.equal(delays.at(-1),30000);
+  context.document.hidden=true;
+  await vm.runInContext('handleAutoCheckHosts()',context);assert.equal(calls.length,2);
+  context.document.hidden=false;nodes.get('ssh-host-registry').hidden=true;
+  await vm.runInContext('handleAutoCheckHosts()',context);assert.equal(calls.length,2);
+});
+
+test('Automatic host checks leave unknown keys unapproved and stop after leaving Settings', async () => {
+  const {nodes,context}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext("currentView='settings';sshHosts=[{id:'a',name:'Alpha',host:'a',port:22,username:'u',keyPath:'/key'},{id:'b',name:'Beta',host:'b',port:22,username:'u',keyPath:'/key'}]",context);
+  context.document.getElementById('ssh-host-registry').hidden=false;
+  const calls=[];let prompts=0;
+  context.document.getElementById('ssh-trust-dialog').showModal=()=>{prompts++;};
+  context.fetch=async(path,options)=>{calls.push(JSON.parse(options.body));vm.runInContext("currentView='main'",context);return {ok:true,json:async()=>({connected:false,hostKey:{host:'a',port:22,fingerprint:'SHA256:test',publicKey:'ssh-ed25519 TEST'}})};};
+  await vm.runInContext('handleAutoCheckHosts()',context);
+  assert.equal(calls.length,1);assert.equal(prompts,0);assert.equal(calls[0].trustedHostKey,undefined);
+  assert.match(vm.runInContext('sshHostChecks.values().next().value.error',context),/Use Test Connection/);
+});
+
+test('Nested Settings navigation opens individual sections and restores deep links', async () => {
+  const location={hash:''};const {nodes,context,listeners}=workspace([],null,undefined,null,location);
+  await new Promise(resolve=>setImmediate(resolve));
+  nodes.get('nav-ssh-keys').onclick();
+  assert.equal(location.hash,'#settings/ssh-keys');
+  assert.equal(nodes.get('settings-title').textContent,'SSH Keys');
+  assert.equal(nodes.get('settings-overview').hidden,true);
+  assert.equal(nodes.get('settings-page').hidden,false);
+  assert.equal(nodes.get('settings-ssh-keys').hidden,false);
+  assert.equal(nodes.get('settings-ssh-hosts').hidden,true);
+  assert.equal(nodes.get('nav-ssh-keys').attributes['aria-current'],'page');
+  assert.equal(vm.runInContext('hostChecksVisible()',context),false);
+  location.hash='#settings/ssh-hosts';listeners.get('hashchange')();
+  assert.equal(nodes.get('settings-ssh-keys').hidden,true);
+  assert.equal(nodes.get('settings-ssh-hosts').hidden,false);
+  assert.equal(nodes.get('nav-ssh-hosts').attributes['aria-current'],'page');
+  assert.equal(nodes.get('settings-title').textContent,'SSH Hosts');
+  nodes.get('nav-settings').onclick();
+  assert.equal(location.hash,'#settings');
+  assert.equal(nodes.get('settings-ssh-keys').hidden,true);
+  assert.equal(nodes.get('settings-ssh-hosts').hidden,true);
+  assert.equal(nodes.get('settings-overview').hidden,false);
+  assert.equal(nodes.get('settings-title').textContent,'Settings');
+  assert.equal(vm.runInContext('hostChecksVisible()',context),false);
+  nodes.get('nav-main').onclick();
+  assert.equal(location.hash,'');assert.equal(nodes.get('main-page').hidden,false);
+});
+
+test('Source Action and Criteria menu entries close both editor and View without changing saved data', async () => {
+  const definitions=Object.fromEntries(['normal','warning','error','security','other'].map(key=>[key,key]));
+  const profiles={general:{label:'General',instructions:'Instructions',criteria:definitions},custom:{label:'Custom',instructions:'Instructions',criteria:definitions}};
+  const {nodes,context}=workspace([],undefined,undefined,profiles);
+  await new Promise(resolve=>setImmediate(resolve));await nodes.get('nav-criteria').onclick();
+  const original=vm.runInContext('JSON.stringify([registeredSources,registeredActions,criteriaProfiles])',context);
+  for(const [nav,edit,kind,list] of [
+    ['nav-sources','handleEditSource(0)','source','source-list'],
+    ['nav-actions','handleEditAction(registeredActions.length)','action','action-list'],
+    ['nav-criteria',"handleEditCriteria('custom')",'criteria','criteria-list'],
+  ]) {
+    vm.runInContext(edit,context);
+    vm.runInContext(`handleViewConfiguration('${kind}-view','Details',[['Name','Saved item']])`,context);
+    nodes.get('nav-main').onclick();await nodes.get(nav).onclick();
+    assert.equal(nodes.get(`${kind}-view`).hidden,true);
+    assert.equal(nodes.get(`${kind}-editor`).hidden,true);
+    assert.equal(nodes.get(list).hidden,false);
+  }
+  assert.equal(vm.runInContext('JSON.stringify([registeredSources,registeredActions,criteriaProfiles])',context),original);
+});
+
+test('Tasks and Settings menus reopen their lists instead of editor detail or history', async () => {
+  const {nodes,context}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
+  await vm.runInContext('handleEditTask(registeredTasks[0])',context);
+  vm.runInContext('handleViewTask(registeredTasks[0])',context);
+  context.document.getElementById('task-history').hidden=false;
+  nodes.get('nav-main').onclick();nodes.get('nav-tasks').onclick();
+  assert.equal(nodes.get('task-registry').hidden,false);
+  for(const id of ['task-editor','task-view','task-history'])assert.equal(nodes.get(id).hidden,true);
+  vm.runInContext("handleAddKey();pastedPrivateKey='unsaved private key';",context);
+  nodes.get('nav-main').onclick();nodes.get('nav-ssh-keys').onclick();
+  assert.equal(nodes.get('ssh-key-registry').hidden,false);
+  assert.equal(nodes.get('ssh-key-editor').hidden,true);
+  assert.equal(nodes.get('ssh-key-view').hidden,true);
+  assert.equal(vm.runInContext('pastedPrivateKey',context),'');
+  vm.runInContext('handleEditHost()',context);
+  nodes.get('nav-main').onclick();nodes.get('nav-ssh-hosts').onclick();
+  assert.equal(nodes.get('ssh-host-registry').hidden,false);
+  assert.equal(nodes.get('ssh-host-editor').hidden,true);
+  assert.equal(nodes.get('ssh-host-view').hidden,true);
+});
+
+test('Task assigns multiple Hosts per remote Source and submits only selected IDs', async () => {
+  const {nodes,context}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext("registeredSources=[{id:'remote',name:'Common logs',type:'ssh',path:'/var/log/*.log'}]",context);
+  let submitted;
+  context.fetch=async(path,options)=>{
+    if(path==='/api/ssh-hosts')return {ok:true,json:async()=>({hosts:[{id:'a',name:'Alpha',host:'a',port:22,username:'u'},{id:'b',name:'Beta',host:'b',port:22,username:'u'}]})};
+    if(path==='/api/tasks' && options.method==='PUT')submitted=JSON.parse(options.body);
+    return {ok:true,json:async()=>({tasks:[]})};
+  };
+  await vm.runInContext("handleEditTask({id:'test-task',name:'Fleet',mode:'batch',sources:[{sourceId:'remote',profile:'general',chunkEvents:1,hostIds:['a']}]})",context);
+  const row=nodes.get('source-settings').children[0];const picker=row.children[4];
+  assert.equal(picker.hidden,false);assert.equal(picker.children[0].textContent,'SSH Hosts · 1 selected');
+  picker.children[1].value='Beta';picker.children[1].oninput();
+  assert.equal(picker.children[3].children.length,1);
+  picker.children[2].children[0].onclick();
+  assert.equal(picker.children[0].textContent,'SSH Hosts · 2 selected');
+  await nodes.get('task-form').onsubmit({preventDefault(){}});
+  assert.deepEqual(submitted.sources[0].hostIds,['a','b']);
+  assert.equal(Object.hasOwn(submitted.sources[0],'host'),false);
+  assert.equal(vm.runInContext('registeredSources[0].hostId',context),undefined);
+});
+
+test('Host filter combines with Source filters and retains host failure diagnostics', async () => {
+  const a=result(0,false),b=result(1,false),failed=result(2,false);
+  a.result.hostId='a';a.result.hostName='Alpha';a.result.hostAddress='a';a.result.hostPort=22;a.result.source='/same';
+  b.result.hostId='b';b.result.hostName='Beta';b.result.hostAddress='b';b.result.hostPort=22;b.result.source='/same';
+  failed.result={log:'',error:'Host unavailable',sourceFailure:true,hostId:'b',hostName:'Beta',hostAddress:'b',hostPort:22,source:'ssh://b/logs'};
+  const {nodes}=workspace([{type:'start',engine:'laya',total:null,hosts:[{hostId:'a',hostName:'Alpha',hostAddress:'a',hostPort:22},{hostId:'b',hostName:'Beta',hostAddress:'b',hostPort:22}]},a,b,failed,{type:'host-status',hosts:[{hostId:'b',hostName:'Beta',hostAddress:'b',hostPort:22,collectionState:'failed',error:'Host unavailable'}]},{type:'done',state:'failed',elapsedMs:4}]);
+  await runTask(nodes);
+  nodes.get('host-filter').value='b';nodes.get('host-filter').onchange();
+  assert.deepEqual(logs(nodes),['','log-1']);
+  assert.match(nodes.get('host-status').children[0].textContent,/Beta.*failed.*Host unavailable/);
+  assert.equal(nodes.get('results').children[0].children[0].children[0].textContent,'Source failed');
+  nodes.get('source-filter').value='/same';nodes.get('source-filter').onchange();
+  assert.deepEqual(logs(nodes),['log-1']);
 });

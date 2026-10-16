@@ -10,7 +10,7 @@ with DeciFlow. `COMPOSE_PROFILES` selects `cpu` or `cuda`; empty starts only the
 | --- | --- | --- |
 | `COMPOSE_PROFILES` | Unset (UI only) | Compose only: set cpu or cuda, exactly one; .env.example selects cpu |
 | `DECISION_ENGINE` | `laya` | `laya` or `jev` |
-| `DECIFLOW_DATA_DIR` | `/var/lib/deciflow-data` | Shared Sources/Actions/Criteria/SSH key/host storage root; must be writable |
+| `DECIFLOW_DATA_DIR` | `/var/lib/deciflow-data` | Shared Sources/Tasks/history/Actions/Criteria/SSH key/host storage root; must be writable |
 | `DECIFLOW_CSRF_TRUSTED_ORIGINS` | Empty | Comma-separated trusted UI origins, including optional https://*.ngrok-free.app; origin check only, not authentication |
 | `DECIFLOW_LOG_DIR` | `/var/log/deciflow` | Server/access logs; empty disables file logging. Compose persists logs in deciflow-logs |
 | `PORT` | `4000` | DeciFlow web port |
@@ -63,7 +63,7 @@ letter; URLs/paths are not accepted. The response must confirm the requested
 custom name in `routing.model`; silent routing to another model is rejected.
 DeciFlow does not install or train models.
 
-Concurrency applies to Paste, Batch, and Realtime. Laya v0.4.1 uses one inference
+Concurrency applies to Batch and Realtime Tasks and direct API requests. Laya v0.4.1 uses one inference
 worker: `LAYA_CONCURRENCY` controls client requests, while server
 `LAYA_MAX_CONCURRENT` controls admission (default 16; excess returns 503).
 Neither is GPU inference parallelism. Keep server `LAYA_JEV_STRICT=0` for
@@ -89,3 +89,24 @@ production accuracy estimate. Use `--cases PATH` for your own labeled JSON cases
 (`log`, `expected`, optional `profile`), or `--model NAME` to compare checkpoints.
 Evaluation uses only Laya, never paid Jev.
 
+
+## Persistent application data
+
+`DECIFLOW_DATA_DIR` contains the following application-managed files:
+
+| Path | Contents |
+| --- | --- |
+| `sources/sources.json` | Source names, types, and reusable paths/patterns |
+| `tasks/tasks.json` | Tasks, Source/Host assignments, and schedules |
+| `tasks/<task-id>/runs/<run-id>/run.json` | Run state, settings snapshot, counts, and host collection status |
+| `tasks/<task-id>/runs/<run-id>/events.ndjson` | Original logs, decisions, errors, and Action outcomes |
+| `criteria/criteria.json` | Saved decision profiles |
+| `actions/` | Registrations and each Action's code, venv, project, and lockfile |
+| `ssh-keys/<name>/` | Managed private key and derived public key |
+| `ssh-hosts/hosts.json` | Saved SSH connection definitions |
+| `ssh-hosts/known_hosts` | Host keys explicitly approved in DeciFlow |
+
+Back up and protect the whole directory; it contains raw logs and private keys.
+No automatic run-history cleanup is applied. Use one DeciFlow process per data
+directory. Per-run engine concurrency is shared by all target Hosts; different
+Tasks have separate limits. See [Tasks](tasks.md) for scheduling and storage limits.
