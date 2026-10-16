@@ -29,8 +29,8 @@ JSON에 모든 답변을 보존합니다. 티켓을 자동 생성하지는 않�
 **Laya 서버**는 같은 호스트 또는 별도 호스트에서 판정 모델을 실행하며, **Jev 서비스**는 대신 선택할 수
 있는 외부 판정 API입니다. DeciFlow는 선택한 엔진에 이벤트를 보내고 판정 결과를 받습니다.
 
-- **로그가 있는 곳에서 바로 시작합니다.** 붙여 넣기부터 여러 디렉터리의 파일·
-  와일드카드 입력까지 지원하므로 파일을 수동으로 합칠 필요가 없습니다.
+- **로그가 있는 곳에서 바로 시작합니다.** 텍스트를 붙여 넣거나 로컬·SSH 원격 파일을 Sources에
+  등록해 선택합니다. 와일드카드 패턴도 지원합니다.
 - **일회성 분석과 실시간 감시를 함께 제공합니다.** Batch로 기존 로그를 읽거나
   Realtime으로 새 줄과 파일 회전을 감시합니다. 최근 판정 완료 결과부터 표시합니다.
 - **최종 검토는 사람이 합니다.** 불확실한 판정을 필터링하고 검토자 수정값을 기록해
@@ -93,7 +93,9 @@ docker compose logs --follow laya-cpu
 ### 4. 샘플 로그 분석
 
 같은 호스트에서 **http://127.0.0.1:4000**을 열고 **Batch**를 선택합니다.
-소스는 `/host-logs/sample-logs/access-100.log` 하나만 남기고 **HTTP access** 기준,
+**Sources**에서 **Sample HTTP access** 경로를
+`/host-logs/sample-logs/access-100.log`로 수정하고 저장합니다. Main으로 돌아와
+**Sample HTTP access** 하나만 남기고 **HTTP access** 기준,
 **Events/chunk: 1**, **Action: None**으로 분석을 시작하세요.
 
 선택 사항인 GPU 가속은 [Docker 배포 상세](#laya-docker),
@@ -107,17 +109,24 @@ docker compose logs --follow laya-cpu
 
 | 문서 | 내용 |
 | --- | --- |
+| [Sources](docs/sources.ko.md) | 로컬·SSH 파일 소스 등록, Settings의 SSH 키 관리, 검색 선택 |
 | [사용법](docs/usage.ko.md) | 입력 모드·판정 기준·필터·수동 검토·재접속·시간 지표 |
 | [설정](docs/configuration.ko.md) | 환경변수·모델·입력 예산 |
 | [Criteria](docs/criteria.ko.md) | 고정 5개 범주 프로필 관리; Default Criteria는 보기 전용 |
 | [Python Actions](docs/actions.ko.md) | 구성 보기·환경 Status·pip 포함 환경·Reset venv·삭제·소스 할당 |
 | [결과 JSON](docs/results.ko.md) | 현재 요청·결과 예시와 필드 설명 |
 
-사이드바 화면은 URL에 반영됩니다: Main `/`, Criteria `/#criteria`, Actions `/#actions`.
+사이드바 화면은 URL에 반영됩니다: Main `/`, Sources `/#sources`, Criteria `/#criteria`, Actions `/#actions`, Settings `/#settings`.
+Settings는 한 화면에서 설정을 독립된 섹션으로 구분합니다.
+**SSH Keys**는 검색 가능한 목록과 Add·View·Delete 버튼으로 관리합니다.
+SSH 개인키를 붙여넣기·서버/컨테이너 파일 경로·업로드로 등록할 수
+있습니다. 개인키 내용은 마스킹하고 공개키는 자동으로 추출합니다.
+**SSH Hosts**에 접속 정보와 키를 등록하면 Remote File Source는 Host와 파일 경로만
+지정합니다. Host는 Add·View·Edit·Delete 버튼으로 관리합니다.
 새로고침·뒤로가기·직접 링크에서도 해당 화면을 유지합니다.
 
 - **Paste:** 텍스트를 붙여 넣어 분석합니다.
-- **Batch:** 기존 파일을 분석합니다. Docker에서 호스트 `/var/log`는 `/host-logs/var/log`입니다.
+- **Batch:** 등록한 로컬·SSH 파일을 분석합니다. Docker에서 호스트 `/var/log`는 `/host-logs/var/log`입니다.
 - **Realtime:** 새 로그를 감시합니다. 소스별 판정 기준과 청크 크기를 선택합니다.
 - **처리 지표:** Success / Failed / Total로 성공·실패·처리 완료 전체 청크를 표시합니다. Action Success / Failed / Total은 후속 작업을 별도 집계합니다. Needs review는 성공 판정만 집계합니다.
   엔진·모델 옆 연결 상태는 마지막 실제 요청 기준이며 요청 전에는 Not checked입니다.
@@ -259,6 +268,7 @@ Compose는 Docker Hub에 공개된 `call518/deciflow-ui:0.0.1` 이미지를 사�
 미리 포함하지 않습니다. 시작 명령은 `uv sync --frozen --no-dev --no-install-project --no-cache`
 이후 `server.main(host='0.0.0.0')`을 실행합니다. 따라서 공개된 UI 이미지에도 복제한
 저장소를 `/app`에 마운트해야 합니다. 추론은 UI 이미지가 아닌 Laya 또는 Jev가 처리합니다.
+SSH 키 관리와 원격 파일 요구사항은 [Sources](docs/sources.ko.md)를 참고하세요.
 
 [`docker-compose.yml`](docker-compose.yml)은 실행 구성을 제공합니다:
 
@@ -281,7 +291,7 @@ UI는 호스트의 모든 인터페이스에 공개합니다. 로컬 접속만 �
 UI 포트 매핑을 `127.0.0.1:${PORT:-4000}:${PORT:-4000}`으로 변경하세요.
 기본 포트에서는 **http://127.0.0.1:4000**, 원격에서는 DeciFlow 호스트 IP로 접속합니다.
 `deciflow-data` 볼륨은 `DECIFLOW_DATA_DIR`(기본값: `/var/lib/deciflow-data`)에
-Actions·Criteria를 저장하고, `deciflow-logs`는 서버 로그를 저장합니다.
+Sources·Actions·Criteria·SSH 키 쌍·SSH Host를 저장하고, `deciflow-logs`는 서버 로그를 저장합니다.
 사용자 지정 데이터·로그 디렉터리는 컨테이너 안의 절대 경로로 설정하세요.
 
 #### 호스트 로그 디렉터리 연결

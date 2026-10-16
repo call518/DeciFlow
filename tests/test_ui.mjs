@@ -32,6 +32,9 @@ function workspace(events, status, storage = { getItem: () => null, setItem() {}
         if (!criteria) return { ok: false, json: async () => ({ error: 'Unavailable' }) };
         return { ok: true, json: async () => ({ profiles: options.method === 'PUT' ? JSON.parse(options.body) : criteria }) };
       }
+      if (path === '/api/ssh-hosts') return {ok:true,json:async()=>({hosts:[]})};
+      if (path === '/api/ssh-keys') return { ok: true, json: async () => ({ keys: [] }) };
+      if (path === '/api/sources') return { ok: true, json: async () => ({ sources: options.method === 'PUT' ? JSON.parse(options.body).map((source,index)=>({...source,id:source.id || String(index+4).padStart(32,'0')})) : vm.runInContext('sampleSources.map(source=>({...source}))',context) }) };
       if (path === '/api/actions') return { ok: true, json: async () => ({ actions: [] }) };
       if (path === '/api/status') return status ? { ok: true, json: async () => status } : new Promise(() => {});
       requests.push(JSON.parse(options.body));
@@ -43,6 +46,7 @@ function workspace(events, status, storage = { getItem: () => null, setItem() {}
   context.document.getElementById('category-filter').value = 'all';
   const source = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
   vm.runInContext(source.replace(/^import .*;\n/, ''), context);
+  vm.runInContext('sourcesLoaded = true', context);
   return { nodes, context, requests, listeners };
 }
 
@@ -208,15 +212,15 @@ test('Batch is the default mode before server status loads', () => {
 test('each mode has editable sample input and retains its own edits', () => {
   const { nodes, context } = workspace([]);
   assert.equal(vm.runInContext("sourceRows.map(row => row.profile.value).join(',')", context), 'general,http_access,authentication');
-  assert.equal(nodes.get('file-path').value, '/host-logs/var/log/messages\n/host-logs/sample-logs/access-1k.log\n/host-logs/sample-logs/SSH_2k.log');
+  assert.equal(nodes.get('file-path').value, vm.runInContext('defaultFilePaths.batch', context));
   nodes.get('source-mode').value = 'realtime';
   nodes.get('source-mode').onchange();
-  assert.equal(nodes.get('file-path').value, '/host-logs/var/log/messages\n/host-logs/sample-logs/access-1k.log\n/host-logs/sample-logs/SSH_2k.log');
+  assert.equal(nodes.get('file-path').value, vm.runInContext('defaultFilePaths.batch', context));
   assert.equal(nodes.get('logs').value.split('\n').length, 5);
   nodes.get('file-path').value = '/custom/live.log';
   nodes.get('source-mode').value = 'batch';
   nodes.get('source-mode').onchange();
-  assert.equal(nodes.get('file-path').value, '/host-logs/var/log/messages\n/host-logs/sample-logs/access-1k.log\n/host-logs/sample-logs/SSH_2k.log');
+  assert.equal(nodes.get('file-path').value, vm.runInContext('defaultFilePaths.batch', context));
   nodes.get('file-path').value = '/custom/batch.log';
   nodes.get('source-mode').value = 'paste';
   nodes.get('source-mode').onchange();
@@ -250,7 +254,7 @@ test('mode selector and descriptions use Batch, Realtime, Paste order', () => {
     .map(match => match[1]), ['Batch', 'Realtime', 'Paste']);
 });
 
- test('sidebar identifies the local log source host', async () => {
+ test('sidebar identifies the DeciFlow reader host', async () => {
   const { nodes } = workspace([], {
     host: { hostname: 'log-node', addresses: ['192.168.35.10', '10.0.0.2'], os: 'Rocky Linux 8.10' },
     engine: 'laya', configured: true, model: 'multilingual',
@@ -264,7 +268,7 @@ test('mode selector and descriptions use Batch, Realtime, Paste order', () => {
 
 test('source profile and chunk settings reach the API and survive mode changes', async () => {
   const { nodes, context, requests } = workspace([]);
-  nodes.get('file-path').value = '/var/log/secure\n/var/log/nginx/access*.log';
+  nodes.get('file-path').value = vm.runInContext("sampleSources.slice(0,2).map(source=>source.id).join('\\n')", context);
   nodes.get('file-path').oninput();
   vm.runInContext(`sourceRows[0].profile.value = 'authentication'; sourceRows[0].profile.onchange(); sourceRows[0].size.value = '3'; sourceRows[0].size.oninput(); sourceRows[1].profile.value = 'http_access'; sourceRows[1].profile.onchange();`, context);
   await nodes.get('classify').onclick();
@@ -773,7 +777,8 @@ test('file Actions are assigned in requests and execution failures are visible',
   await new Promise(resolve => setImmediate(resolve));
   vm.runInContext("registeredActions = [{name: 'notify', python: '/venv/bin/python', script: '/actions/notify.py'}]; renderActions(); updateSourceSettings();", context);
   const selector = nodes.get('source-settings').children[0].children[3].children[0];
-  assert.deepEqual(selector.children.map(option => option.text), ['None', 'notify']);
+  assert.equal(selector.type, 'search');
+  assert.deepEqual(nodes.get('source-settings').children[0].children[3].children[1].children.map(option => option.text), ['notify']);
   selector.value = 'notify'; selector.onchange();
   await nodes.get('classify').onclick();
   assert.equal(requests[0].sources[0].action, 'notify');
@@ -891,12 +896,12 @@ test('Action name search ignores case and retains original edit and delete targe
 });
 
 
-test('source rows edit paths, remove samples, add sources, and retain settings across modes', async () => {
+test('source rows select registered sources, reject unknown text, and retain settings across modes', async () => {
   const { nodes, context, requests } = workspace([]);
   assert.equal(nodes.get('source-settings').children.length, 3);
   const first = nodes.get('source-settings').children[0];
   const path = first.children[0].children[0];
-  assert.equal(path.value, '/host-logs/var/log/messages');
+  assert.equal(path.value, 'System messages');
   path.value = '/custom/access*.log'; path.oninput();
   const profile = first.children[1].children[0];
   profile.value = 'http_access'; profile.onchange();
@@ -907,17 +912,18 @@ test('source rows edit paths, remove samples, add sources, and retain settings a
   assert.equal(added.value, '');
   await nodes.get('classify').onclick();
   assert.equal(requests.length, 0);
-  assert.match(nodes.get('message').textContent, /Enter a file path/);
-  added.value = '/custom/access*.log'; added.oninput();
+  assert.match(nodes.get('message').textContent, /Select a registered source/);
+  added.value = 'System messages'; added.oninput();
   vm.runInContext("sourceRows[2].profile.value = 'http_access'; sourceRows[2].profile.onchange();", context);
-  assert.equal(vm.runInContext('sourceRows[2].path', context), '/custom/access*.log');
+  assert.equal(vm.runInContext('sourceRows[2].path', context), '1'.padStart(32,'0'));
   nodes.get('source-mode').value = 'realtime'; nodes.get('source-mode').onchange();
   nodes.get('source-mode').value = 'batch'; nodes.get('source-mode').onchange();
-  assert.equal(nodes.get('source-settings').children[2].children[0].children[0].value, '/custom/access*.log');
+  assert.equal(nodes.get('source-settings').children[2].children[0].children[0].value, 'System messages');
   assert.equal(vm.runInContext('sourceRows[2].profile.value', context), 'http_access');
   await nodes.get('classify').onclick();
   assert.equal(requests[0].sources.length, 3);
-  assert.equal(requests[0].sources[2].path, '/custom/access*.log');
+  assert.equal(requests[0].sources[2].sourceId, '1'.padStart(32,'0'));
+  assert.equal(Object.hasOwn(requests[0].sources[2], 'path'), false);
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   assert.ok(!html.includes('Server-side file paths or patterns'));
 });
@@ -1405,7 +1411,7 @@ test('duration metrics use readable units without changing millisecond data', ()
 });
 
 
-test('Reset sources restores current mode samples and clears Action assignments', () => {
+test('Reset selections restores registered samples and clears Action assignments', () => {
   const values = new Map();
   const storage = { getItem: key => values.get(key) || null, setItem: (key, value) => values.set(key, value) };
   const { nodes, context } = workspace([], undefined, storage);
@@ -1415,9 +1421,9 @@ test('Reset sources restores current mode samples and clears Action assignments'
   assert.equal(nodes.get('file-path').value, vm.runInContext('defaultFilePaths.batch', context));
   assert.equal(nodes.get('source-settings').children.length, 3);
   assert.equal(vm.runInContext('filePaths.realtime', context), '/my/live.log');
-  assert.equal(vm.runInContext("sourceRows.every(row => row.profile.value===defaultSourceProfiles[row.path] && row.size.value==='1' && row.action.value==='')", context), true);
+  assert.equal(vm.runInContext("sourceRows.every(row => row.profile.value===defaultSourceProfiles[registeredSources.find(source=>source.id===row.path)?.path] && row.size.value==='1' && row.action.value==='')", context), true);
   const stored = new Map(JSON.parse(values.get('deciflow-source-preferences')));
-  assert.deepEqual(stored.get('/host-logs/var/log/messages'), { profile:'general', chunkEvents:1 });
+  assert.deepEqual(stored.get('1'.padStart(32,'0')), { profile:'general', chunkEvents:1 });
   nodes.get('source-mode').value = 'realtime'; nodes.get('source-mode').onchange();
   assert.equal(nodes.get('file-path').value, '/my/live.log');
   nodes.get('reset-sources').onclick();
@@ -1489,4 +1495,255 @@ test('results display urgency and ticket need probability', async () => {
   const row = nodes.get('results').children[0];
   assert.ok(row.children.some(child => child.textContent ===
     'Urgency: 2.37 / 3 (Low → Critical) · Work ticket: 91.0% Yes probability'));
+});
+
+test('Sources navigation and SSH registration feed searchable Main choices by ID', async () => {
+  const navigation = { hash: '' };
+  const {nodes,context,requests} = workspace([], undefined, undefined, null, navigation);
+  await new Promise(resolve => setImmediate(resolve));
+  nodes.get('nav-sources').onclick();
+  assert.equal(nodes.get('main-page').hidden, true);
+  assert.equal(nodes.get('sources-page').hidden, false);
+  assert.equal(navigation.hash, '#sources');
+  nodes.get('add-registered-source').onclick();
+  vm.runInContext(`sourceFields.name.value='Production logs'; sourceFields.type.value='ssh'; sourceFields.type.onchange(); sourceFields.path.value='/var/log/app/*.log'; sourceFields.hostId.value='host-1';`, context);
+  assert.equal(nodes.get('source-editor').children[0].children[3].hidden, false);
+  let saved;
+  context.fetch = async (path,options) => {
+    if (path === '/api/sources') {
+      saved=JSON.parse(options.body);
+      return {ok:true,json:async()=>({sources:saved.map((source,i)=>({...source,id:source.id || String(i+1).padStart(32,'0'),...(source.type==='ssh'?{host:'logs.example',username:'reader',port:2222}:{} )}))})};
+    }
+    requests.push(JSON.parse(options.body)); return {ok:true,body:{}};
+  };
+  await nodes.get('save-sources').onclick();
+  assert.equal(saved[3].hostId, 'host-1');
+  assert.equal(Object.hasOwn(saved[3], 'keyPath'), false);
+  assert.equal(Object.hasOwn(saved[3], 'password'), false);
+  vm.runInContext("registeredActions=[{name:'Notify'}]; updateSourceSettings([registeredSources[3].id]);",context);
+  const picker=nodes.get('source-settings').children[0].children[0];
+  assert.equal(picker.children[0].type, 'search');
+  assert.equal(picker.children[0].value, 'Production logs');
+  assert.match(picker.children[1].children[3].label,/logs.example:2222/);
+  nodes.get('nav-main').onclick();
+  await nodes.get('classify').onclick();
+  assert.equal(requests[0].sources[0].sourceId,'4'.padStart(32,'0'));
+  assert.equal(Object.hasOwn(requests[0].sources[0], 'keyPath'),false);
+  assert.equal(Object.hasOwn(requests[0].sources[0], 'host'),false);
+});
+
+test('Source loading failure blocks saving and unregistered Action text cannot run', async () => {
+  const {nodes,context,requests} = workspace([]);
+  await new Promise(resolve => setImmediate(resolve));
+  context.fetch=async()=>({ok:false,json:async()=>({error:'Source storage unavailable'})});
+  vm.runInContext('sourcesLoaded=false',context);
+  await vm.runInContext('handleLoadSources()',context);
+  await nodes.get('save-sources').onclick();
+  assert.equal(nodes.get('source-message').textContent,'Load Sources before saving.');
+  vm.runInContext('sourcesLoaded=true; updateSourceSettings(); sourceRows[0].action.value="not registered";',context);
+  await nodes.get('classify').onclick();
+  assert.match(nodes.get('message').textContent,/Select a registered Action/);
+  assert.equal(requests.length,0);
+});
+
+test('Saved source edits keep identity, and source search filters host and path', async () => {
+  const {nodes,context}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  nodes.get('source-search').value='access-1k'; nodes.get('source-search').oninput();
+  assert.equal(nodes.get('source-registry').children[0].children.length,2);
+  const controls=nodes.get('source-registry').children[0].children[1].children[2];
+  controls.children[1].onclick();
+  vm.runInContext("sourceFields.name.value='Renamed HTTP'; sourceFields.path.value='/new/access*.log';",context);
+  await nodes.get('save-sources').onclick();
+  assert.equal(vm.runInContext('registeredSources[1].name',context),'Renamed HTTP');
+  assert.equal(vm.runInContext('registeredSources[1].id',context),'2'.padStart(32,'0'));
+  assert.equal(vm.runInContext('sourceRows[1].name.value',context),'Renamed HTTP');
+  assert.equal(vm.runInContext('sourceRows[1].profile.value',context),'http_access');
+});
+
+test('Running jobs can show deleted source snapshots but new runs require a saved source', async () => {
+  const events=[{type:'start',engine:'laya',total:1},result(0),{type:'done',state:'completed',elapsedMs:1}];
+  const {nodes,context}=workspace(events);
+  await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext("registeredSources=[];sourceSnapshots=[{id:'a'.repeat(32),name:'Deleted source',type:'local',path:'/old/app.log'}]; updateSourceSettings(['a'.repeat(32)]);",context);
+  context.fetch=async()=>({ok:true,body:{}});
+  await vm.runInContext("handleProcessing({jobId:'existing',state:'running'})",context);
+  assert.equal(logs(nodes)[0],'log-0');
+  await nodes.get('classify').onclick();
+  assert.match(nodes.get('message').textContent,/Select a registered source/);
+});
+
+
+test('Settings uses a compact key list, opens details and confirms deletion', async () => {
+  const { nodes, context } = workspace([], null, undefined, null, { hash: '#settings' });
+  assert.equal(nodes.get('settings-page').hidden, false);
+  vm.runInContext(`sshKeys = [{name:'production',privatePath:'/data/private_key',publicPath:'/data/public_key.pub',publicKey:'ssh-ed25519 PUBLIC'}]; renderSSHKeys();`, context);
+  const row = nodes.get('ssh-key-list').children[0].children[1].children[0];
+  assert.equal(row.children[0].textContent, 'production');
+  assert.equal(row.children[1].textContent, '/data/private_key');
+  assert.equal(row.children[2].children.length, 2);
+  row.children[2].children[0].onclick();
+  const card = nodes.get('ssh-key-view').children[1];
+  assert.equal(card.children[2].children[0].value, 'ssh-ed25519 PUBLIC');
+  assert.equal(card.children[3].children[0].value, '****');
+  assert.equal(nodes.get('ssh-key-registry').hidden, true);
+  const calls = [];
+  context.fetch = async (path, options) => {
+    calls.push({path, options});
+    return {ok:true, json:async()=>({keys:[]})};
+  };
+  context.confirm = () => false;
+  await row.children[2].children[1].onclick();
+  assert.equal(calls.length, 0);
+  context.confirm = () => true;
+  await row.children[2].children[1].onclick();
+  assert.equal(calls[0].options.method, 'DELETE');
+});
+
+test('SSH key import clears file and Sources select managed keys', async () => {
+  const { nodes, context } = workspace([], null);
+  const key = {name:'production',privatePath:'/data/ssh-keys/production/private_key',publicPath:'/data/ssh-keys/production/public_key.pub',publicKey:'ssh-ed25519 PUBLIC'};
+  context.fetch = async (path, options) => {
+    assert.equal(path, '/api/ssh-keys');
+    assert.equal(JSON.parse(options.body).privateKey, 'PRIVATE test input');
+    return {ok:true,json:async()=>({keys:[key]})};
+  };
+  context.document.getElementById('ssh-key-method').value = 'upload';
+  context.document.getElementById('ssh-key-name').value = 'production';
+  context.document.getElementById('ssh-key-file').files = [{size:18,text:async()=> 'PRIVATE test input'}];
+  await nodes.get('ssh-key-form').onsubmit({preventDefault(){}});
+  assert.equal(nodes.get('ssh-key-file').value, '');
+  assert.equal(nodes.get('ssh-key-name').value, '');
+  vm.runInContext('handleEditHost()', context);
+  assert.equal(nodes.get('ssh-host-key').children[1].value, key.privatePath);
+});
+
+
+test('SSH key methods mask pasted multiline keys and send paths without contents', async () => {
+  const {nodes, context} = workspace([], null);
+  const get = id => context.document.getElementById(id);
+  const bodies = [];
+  context.fetch = async (path, options) => {
+    bodies.push(JSON.parse(options.body));
+    return {ok:true,json:async()=>({keys:[]})};
+  };
+  get('ssh-key-method').value = 'paste';
+  get('ssh-key-method').onchange();
+  const privateKey = '-----BEGIN OPENSSH PRIVATE KEY-----\nSECRET\n-----END OPENSSH PRIVATE KEY-----';
+  get('ssh-key-paste').onpaste({preventDefault(){},clipboardData:{getData:()=>privateKey}});
+  assert.equal(get('ssh-key-paste').value, '****');
+  assert.equal(get('ssh-key-paste-field').hidden, false);
+  assert.equal(get('ssh-key-upload-field').hidden, true);
+  get('ssh-key-name').value = 'pasted';
+  await get('ssh-key-form').onsubmit({preventDefault(){}});
+  assert.equal(bodies[0].privateKey, privateKey);
+  assert.equal(bodies[0].inputMethod, 'paste');
+  assert.equal(get('ssh-key-paste').value, '');
+  get('ssh-key-method').value = 'path'; get('ssh-key-method').onchange();
+  assert.equal(get('ssh-key-paste').required, false);
+  assert.equal(get('ssh-key-path').required, true);
+  get('ssh-key-name').value = 'path'; get('ssh-key-path').value = '/run/keys/existing';
+  await get('ssh-key-form').onsubmit({preventDefault(){}});
+  assert.equal(bodies[1].privateKeyPath, '/run/keys/existing');
+  assert.equal(Object.hasOwn(bodies[1], 'privateKey'), false);
+  vm.runInContext("sshKeys=[{name:'test',privatePath:'/keys/private',publicPath:'/keys/public',publicKey:'PUBLIC'}];renderSSHKeys()",context);
+  vm.runInContext('handleViewKey(sshKeys[0])', context);
+  const card = nodes.get('ssh-key-view').children[1];
+  assert.equal(card.children[3].children[0].value, '****');
+  assert.equal(card.children[2].children[0].value, 'PUBLIC');
+});
+
+
+test('SSH key form accepts spaced names and reports input and unavailable API errors', async () => {
+  const {nodes, context} = workspace([], null);
+  const get = id => context.document.getElementById(id);
+  const requests = [];
+  context.fetch = async (path, options) => {
+    if (options.body) requests.push(JSON.parse(options.body));
+    return {ok:false,status:405,json:async()=>{throw new SyntaxError('Method Not Allowed')}};
+  };
+  get('ssh-key-method').value = 'path';
+  get('ssh-key-name').value = 'DeciFlow SSH Key';
+  get('ssh-key-path').value = '/root/.ssh/id_ed25519';
+  await get('ssh-key-form').onsubmit({preventDefault(){}});
+  assert.equal(requests[0].name, 'DeciFlow SSH Key');
+  assert.match(get('ssh-key-message').textContent, /Restart the DeciFlow UI/);
+  assert.equal(get('add-ssh-key').disabled, false);
+  get('ssh-key-name').value = '../bad';
+  await get('ssh-key-form').onsubmit({preventDefault(){}});
+  assert.equal(requests.length, 1);
+  assert.match(get('ssh-key-message').textContent, /Enter a name/);
+  await vm.runInContext('handleLoadKeys()', context);
+  assert.match(get('ssh-key-message').textContent, /Restart the DeciFlow UI/);
+  const markup = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.match(markup, /<form id="ssh-key-form"[^>]*novalidate/);
+});
+
+
+test('SSH key Add, cancel and search keep the default screen compact', async () => {
+  const { nodes, context } = workspace([], null);
+  const get = id => context.document.getElementById(id);
+  get('open-add-ssh-key').onclick();
+  assert.equal(get('ssh-key-editor').hidden, false);
+  assert.equal(get('ssh-key-registry').hidden, true);
+  get('cancel-ssh-key').onclick();
+  assert.equal(get('ssh-key-editor').hidden, true);
+  vm.runInContext("sshKeys=[{name:'one',privatePath:'/one'},{name:'two',privatePath:'/two'}];renderSSHKeys()",context);
+  get('ssh-key-search').value = 'two'; get('ssh-key-search').oninput();
+  const rows = get('ssh-key-list').children[0].children[1].children;
+  assert.equal(rows.length, 1); assert.equal(rows[0].children[0].textContent, 'two');
+});
+
+
+test('SSH Hosts CRUD and Remote File selection share saved connection settings', async () => {
+  const {nodes,context} = workspace([], null);
+  await new Promise(resolve=>setImmediate(resolve));
+  const get = id => context.document.getElementById(id);
+  vm.runInContext("sshKeys=[{name:'logs',privatePath:'/keys/logs/private_key'}]",context);
+  get('open-add-ssh-host').onclick();
+  assert.equal(get('ssh-host-editor').hidden, false);
+  assert.equal(get('ssh-host-key').children[1].value, '/keys/logs/private_key');
+  get('ssh-host-name').value='Production'; get('ssh-host-address').value='logs.example';
+  get('ssh-host-port').value='2222'; get('ssh-host-user').value='reader';
+  get('ssh-host-key').value='/keys/logs/private_key';
+  const requests=[];
+  context.fetch=async(path,options)=>{
+    requests.push({path,options});
+    if(options.method==='DELETE')return {ok:true,json:async()=>({hosts:[]})};
+    return {ok:true,json:async()=>({hosts:[{...JSON.parse(options.body),id:'host-1'}]})};
+  };
+  await get('ssh-host-form').onsubmit({preventDefault(){}});
+  assert.equal(JSON.parse(requests[0].options.body).port,2222);
+  assert.equal(get('ssh-host-registry').hidden,false);
+  const row=get('ssh-host-list').children[0].children[1].children[0];
+  assert.equal(row.children[1].textContent,'reader@logs.example:2222');
+  row.children[3].children[0].onclick();
+  assert.equal(get('ssh-host-view').hidden,false);
+  row.children[3].children[1].onclick();
+  assert.equal(get('ssh-host-name').value,'Production');
+  get('ssh-host-port').value='22';
+  await get('ssh-host-form').onsubmit({preventDefault(){}});
+  assert.equal(JSON.parse(requests[1].options.body).id,'host-1');
+  vm.runInContext('handleEditSource(registeredSources.length)',context);
+  assert.equal(vm.runInContext('Object.keys(sourceFields).join(",")',context),'type,name,path,hostId');
+  assert.equal(vm.runInContext('sourceFields.hostId.children[1].value',context),'host-1');
+  context.confirm=()=>false;
+  await row.children[3].children[2].onclick(); assert.equal(requests.length,2);
+  context.confirm=()=>true;
+  await row.children[3].children[2].onclick(); assert.equal(requests[2].options.method,'DELETE');
+  assert.equal(get('ssh-host-message').textContent,'SSH host deleted.');
+});
+
+
+test('Selected Source shows its path or pattern and updates without stale text', () => {
+  const {nodes,context} = workspace([], null);
+  vm.runInContext("registeredSources=[{id:'one',name:'Local logs',type:'local',path:'/var/log/app/*.log'},{id:'two',name:'Remote logs',type:'ssh',path:'/srv/logs/**/*.json'}];updateSourceSettings(['one'])",context);
+  const label=nodes.get('source-settings').children[0].children[0];
+  const input=label.children[0]; const path=label.children[2];
+  assert.equal(path.textContent,'Path: /var/log/app/*.log');
+  assert.equal(path.hidden,false);
+  input.value='Remote logs'; input.oninput();
+  assert.equal(path.textContent,'Path: /srv/logs/**/*.json');
+  input.value='Unregistered'; input.oninput();
+  assert.equal(path.textContent,''); assert.equal(path.hidden,true);
 });

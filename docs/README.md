@@ -9,6 +9,7 @@ DeciFlow and Laya. Use the guides below for the task you need.
 
 | Guide | Read it when you need to… |
 | --- | --- |
+| [Sources](sources.md) | Register local or SSH file sources and select them in Main |
 | [Usage](usage.md) | Analyze logs, filter results, review predictions, reconnect, or understand metrics |
 | [Configuration](configuration.md) | Set environment variables, choose Laya/Jev models, or adjust request budgets |
 | [Criteria](criteria.md) | Create and manage category instructions and definitions |

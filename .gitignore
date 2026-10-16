@@ -237,3 +237,6 @@ __marimo__/
 
 # Rotated HTTP/server logs
 *.log.[0-9]*
+
+# SSH key storage
+ssh-keys/

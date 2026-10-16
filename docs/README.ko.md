@@ -9,6 +9,7 @@ DeciFlow와 Laya 실행은 [빠른 시작](../README.ko.md#빠른-시작--docker
 
 | 문서 | 용도 |
 | --- | --- |
+| [Sources](sources.ko.md) | 로컬·SSH 파일 소스 등록과 Main에서 선택 |
 | [사용법](usage.ko.md) | 로그 분석·결과 필터·판정 검토·재접속·지표 확인 |
 | [설정](configuration.ko.md) | 환경변수·Laya/Jev 모델·요청 예산 설정 |
 | [Criteria](criteria.ko.md) | 분류 지시문·범주 정의 생성과 관리 |

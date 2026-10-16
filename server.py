@@ -52,8 +52,18 @@ from profiles import (
     use_profile_snapshot,
     validate_settings,
 )
+from remote_sources import read_remote
+from source_registry import load_sources, save_sources, source_pattern
 from source_settings import parse_source_settings, resolve_configured_sources
-from sources import follow_sources, read_sources
+from sources import follow_sources, merge_batch, read_sources
+from ssh_hosts import delete_host, load_hosts, save_host
+from ssh_keys import (
+    add_key,
+    add_key_from_path,
+    delete_key,
+    get_keys_directory,
+    list_keys,
+)
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_LOG_DIR = "/var/log/deciflow"
@@ -364,16 +374,31 @@ async def handle_file_events(
                 "mode": mode,
                 "engine": engine.name,
                 "sources": [str(path) for path in paths],
-                "sourcePatterns": [spec["path"] for spec in specs] if specs else values,
+                "sourcePatterns": [source_pattern(spec) for spec in specs]
+                if specs
+                else values,
             }
         )
         if specs is not None and mode == "realtime":
-            records = follow_configured(specs)
+            records = follow_configured(
+                [spec for spec in specs if spec.get("type") != "ssh"]
+            )
         elif isinstance(paths, dict):
             records = read_configured(paths)
         else:
             records = (
                 follow_sources(values) if mode == "realtime" else read_sources(paths)
+            )
+        if specs and any(spec.get("type") == "ssh" for spec in specs):
+            records = merge_batch(
+                [
+                    records,
+                    *(
+                        read_remote(spec, live=mode == "realtime")
+                        for spec in specs
+                        if spec.get("type") == "ssh"
+                    ),
+                ]
             )
         try:
             async with httpx.AsyncClient(timeout=engine.timeout) as client:
@@ -499,6 +524,88 @@ async def _action_results(
         yield index, result
 
 
+async def handle_ssh_hosts(request: Request) -> Response:
+    """Manage shared SSH connections from trusted file-access origins."""
+    if not _allowed_origin(request, files=True):
+        return _json(
+            403, {"error": "SSH host management requires a trusted UI origin."}
+        )
+    try:
+        load_sources()  # Migrate existing Source connections before listing hosts.
+        if request.method == "PUT":
+            save_host(await request.json())
+        elif request.method == "DELETE":
+            body = await request.json()
+            if not isinstance(body, dict):
+                raise ValueError("Select an SSH host.")
+            active = [
+                source
+                for job in JOBS.values()
+                if job.state == "running"
+                for source in job.settings.get("sources", [])
+            ]
+            delete_host(body.get("id"), [*load_sources(), *active])
+        return _json(200, {"hosts": load_hosts()})
+    except (ValueError, TypeError, OSError) as error:
+        return _json(400, {"error": str(error)})
+
+
+async def handle_ssh_keys(request: Request) -> Response:
+    """Manage key pairs only from trusted file-access UI origins."""
+    if not _allowed_origin(request, files=True):
+        return _json(403, {"error": "SSH key management requires a trusted UI origin."})
+    try:
+        if request.method != "POST":
+            chunks = bytearray()
+            async for chunk in request.stream():
+                chunks.extend(chunk)
+                if len(chunks) > 131072:
+                    return _json(413, {"error": "SSH key request is too large."})
+            body = json.loads(chunks)
+            if not isinstance(body, dict):
+                raise ValueError("Enter SSH key details.")
+            if request.method == "PUT":
+                method = body.get("inputMethod", "upload")
+                if method == "path":
+                    add_key_from_path(body.get("name"), body.get("privateKeyPath"))
+                elif method in {"paste", "upload"}:
+                    add_key(body.get("name"), body.get("privateKey"))
+                else:
+                    raise ValueError("Select a private key input method.")
+            else:
+                active = [
+                    source
+                    for job in JOBS.values()
+                    if job.state == "running"
+                    for source in job.settings.get("sources", [])
+                ]
+                delete_key(body.get("name"), active)
+        return _json(200, {"keys": list_keys()})
+    except (ValueError, TypeError, OSError):
+        return _json(
+            400,
+            {
+                "error": "Could not manage SSH keys. Check the key name, "
+                "unencrypted key file, storage permissions, and Host/Source/job references."
+            },
+        )
+
+
+async def handle_sources(request: Request) -> Response:
+    """Read or replace source definitions using trusted file-access origins."""
+    if not _allowed_origin(request, files=True):
+        return _json(403, {"error": "Source management requires a trusted UI origin."})
+    try:
+        sources = (
+            save_sources(await request.json())
+            if request.method == "PUT"
+            else load_sources()
+        )
+    except (ValueError, TypeError, OSError) as error:
+        return _json(400, {"error": str(error)})
+    return _json(200, {"sources": sources})
+
+
 async def handle_criteria(request: Request) -> Response:
     """Manage fixed-category profiles with the same trusted-origin rules as Actions."""
     if not _allowed_origin(request, files=True):
@@ -606,6 +713,7 @@ async def handle_job(request: Request) -> Response:
 async def lifespan(application: Starlette) -> AsyncIterator[None]:
     """Stop background analysis jobs when the server shuts down."""
     load_profiles()
+    get_keys_directory()
     try:
         yield
     finally:
@@ -631,6 +739,9 @@ app = Starlette(
         Route("/api/jobs/{job_id}", handle_job, methods=["POST"]),
         Route("/api/jobs/{job_id}/events", handle_job, methods=["POST"]),
         Route("/api/jobs/{job_id}/stop", handle_job, methods=["POST"]),
+        Route("/api/ssh-keys", handle_ssh_keys, methods=["POST", "PUT", "DELETE"]),
+        Route("/api/ssh-hosts", handle_ssh_hosts, methods=["POST", "PUT", "DELETE"]),
+        Route("/api/sources", handle_sources, methods=["POST", "PUT"]),
         Route("/api/criteria", handle_criteria, methods=["POST", "PUT"]),
         Route("/api/actions/{action_id}/reset", handle_reset_action, methods=["POST"]),
         Route("/api/actions", handle_actions, methods=["GET", "POST", "PUT"]),

@@ -11,7 +11,9 @@ RUN printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d \
       ca-certificates \
       tcpdump \
       net-tools \
+      iputils-ping \
       dnsutils \
+      openssh-client \
       wget \
       curl \
       tree \

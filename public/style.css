@@ -896,7 +896,7 @@ footer {
 }
 
 .input-column .source-setting {
-  grid-template-columns: minmax(0,300px) 140px
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr))
 }
 
 .input-column .source-setting>label {
@@ -908,10 +908,14 @@ footer {
 }
 
 .input-column .source-setting input {
-  /* Events/chunk input width: change both values together. */
-  width: 100px;
-  flex: 0 0 50px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  flex: 1 1 70px;
 }
+
+.input-column .source-setting input[type="number"] { max-width: 100px; }
+.input-column .source-setting select { min-width: 0; flex: 1; }
 
 .input-column .source-path {
   grid-column: 1/-1
@@ -1150,8 +1154,8 @@ footer {
 
 [hidden] { display: none !important; }
 .sidebar-nav { display: grid; gap: 8px; margin-top: 14px; }
-.sidebar-nav .nav { margin-top: 0; text-align: left; color: #effaf3; background: transparent; border: 1px solid #49665c; }
-.sidebar-nav .nav[aria-current="page"] { background: #25453b; font-weight: 700; }
+.sidebar-nav .nav, #nav-settings { margin-top: 0; text-align: left; color: #effaf3; background: transparent; border: 1px solid #49665c; }
+.sidebar-nav .nav[aria-current="page"], #nav-settings[aria-current="page"] { background: #25453b; font-weight: 700; }
 .actions-manager { max-width: 1050px; }
 .actions-manager .action-registration { padding: 20px; border: 1px solid #dce6df; border-radius: 9px; gap: 16px; background: #fbfdfb; }
 .actions-manager .action-code-label { flex-basis: 100%; }
@@ -1160,6 +1164,25 @@ footer {
 .actions-manager .action-registration input { padding: 10px; border: 1px solid #dce6df; border-radius: 6px; margin-top: 6px; }
 .actions-manager .action-registration textarea { margin-top: 6px; }
 .actions-manager .action-registration button { flex: 0 0 auto; padding: 8px 16px; }
+
+#sources-page .action-registration { display: grid; grid-template-columns: minmax(0, 1fr); }
+#sources-page .action-registration label { min-width: 0; }
+#source-editor .action-registration input,
+#source-editor .action-registration select {
+  display: block;
+  width: 100%;
+  min-height: 40px;
+  box-sizing: border-box;
+  margin-top: 6px;
+  padding: 10px;
+  border: 1px solid #dce6df;
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  font-weight: 400;
+}
+#source-editor .action-registration .caption { margin: 0; line-height: 1.5; }
 
 .action-list { width: 100%; border-collapse: collapse; margin: 10px 0; }
 .action-list th, .action-list td { text-align: left; padding: 8px; border-bottom: 1px solid #dce6df; }
@@ -1172,7 +1195,7 @@ footer {
 #action-registry { overflow-x: auto; }
 .action-search-row { display: flex; align-items: center; gap: 8px; margin: 6px 0 10px; }
 .action-search-row label { margin: 0; }
-#action-search { width: 320px; max-width: 100%; min-width: 0; margin: 0; }
+#action-search, #ssh-key-search { width: 320px; max-width: 100%; min-width: 0; margin: 0; }
 #cancel-action, #cancel-criteria { margin-bottom: 12px; }
 
 .input-column .source-setting .source-path-input { width: 100%; flex: 1 1 auto; min-width: 0; box-sizing: border-box; font: 13px monospace; padding: 8px; }
@@ -1207,3 +1230,52 @@ footer {
 .count-total { color: #0057ff; }
 
 #reset-sources { width: auto; margin: 4px 0 0 8px; padding: 7px 10px; }
+
+.aside-bottom #nav-settings { width: 100%; margin: 0 0 14px; text-align: left; }
+#settings-page .action-registration { display: grid; grid-template-columns: minmax(0, 1fr); }
+#settings-page .action-registration .caption { margin: 0; }
+.ssh-key-card { display: grid; gap: 12px; margin: 16px 0; padding: 16px; border: 1px solid #dce6df; border-radius: 9px; }
+.ssh-key-card label { display: grid; gap: 6px; font-size: 13px; font-weight: 600; min-width: 0; }
+.ssh-key-card textarea { width: 100%; box-sizing: border-box; height: auto; background: #f4f7f5; }
+
+#settings-page .action-registration select { display: block; width: 100%; box-sizing: border-box; margin-top: 6px; padding: 10px; border: 1px solid #dce6df; border-radius: 6px; background: #fff; color: inherit; font: inherit; font-weight: 400; }
+
+.settings-section { margin-bottom: 20px; padding: 0; }
+.settings-section-header {
+  padding: 20px;
+  border-left: 4px solid #24634a;
+  border-bottom: 1px solid #cbded2;
+  border-radius: 12px 12px 0 0;
+  background: #eaf3ed;
+}
+.settings-section-header h2 { font-size: 22px; color: #194c37; }
+.settings-section-header p { margin: 6px 0 0; color: #486555; font-size: 13px; }
+.settings-section-body { padding: 20px; }
+.settings-section-body > .caption { margin: 0 0 24px; }
+.settings-section h3 { margin: 0 0 14px; font-size: 16px; }
+.settings-subsection + .settings-subsection { margin-top: 24px; padding-top: 24px; border-top: 1px solid #dce6df; }
+#settings-page .settings-subsection .action-registration { margin: 0; background: #f4f8f5; }
+#ssh-key-message:empty { display: none; }
+
+#ssh-key-message:not(:empty) { padding: 12px; margin: 16px 0 0; border-left: 3px solid #607d80; background: #f0f4f2; color: #203f32; font-size: 13px; overflow-wrap: anywhere; }
+
+#ssh-key-list { overflow-x: auto; }
+#ssh-key-material { display: grid; gap: 16px; }
+#ssh-key-editor { margin-top: 0; padding-top: 0; border-top: 0; }
+
+#ssh-host-list { overflow-x: auto; }
+#ssh-host-search { width: 320px; max-width: 100%; min-width: 0; margin: 0; }
+#ssh-host-message:not(:empty) { padding: 12px; border-left: 3px solid #607d80; background: #f0f4f2; color: #203f32; font-size: 13px; }
+
+.input-column .source-setting > .source-path {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  white-space: normal;
+}
+.source-selected-path {
+  grid-column: 1 / -1;
+  color: #607d80;
+  font: 12px monospace;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}

@@ -218,7 +218,10 @@ Uncertain이 아닙니다. 이는 DeciFlow의 고정 검토 기준이며 정답 
   "profile": "http_access",
   "chunkEvents": 1,
   "incomplete": false,
-  "elapsedMs": 120
+  "elapsedMs": 120,
+  "sourceId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "sourceName": "Example HTTP access",
+  "sourceType": "local"
 }
 ```
 
@@ -228,8 +231,9 @@ Uncertain이 아닙니다. 이는 DeciFlow의 고정 검토 기준이며 정답 
 | --- | --- |
 | `log` | 한 청크로 제출한 원본 로그 내용. |
 | `decisionInput` / `inputNormalization` | 전처리로 모델 입력이 바뀐 경우에만 표시. 원본은 log에 유지. |
-| `source` | DeciFlow 노드에서 읽은 실제 파일 경로. |
-| `sourcePatterns` | 해당 파일을 선택한 입력 경로·패턴. |
+| `source` | 로컬 파일의 실제 경로 또는 원격 입력의 ssh://사용자@호스트:포트/경로. |
+| `sourceId` / `sourceName` / `sourceType` | 등록 소스 ID·이름 스냅샷·local 또는 ssh 타입. 명시적 경로 API 입력에는 생략. |
+| `sourcePatterns` | 해당 파일을 선택한 로컬 경로·패턴 또는 호스트를 포함한 SSH 패턴. |
 | `line` / `lineEnd` | 원본 시작·끝 줄 번호. Batch는 파일 줄 번호, Realtime은 감시 시작·회전 이후 관찰 순번. |
 | `lineCount` | 실제 포함된 줄 수. 시작·끝 줄 번호 차이와 다를 수 있음. |
 | `eventCount` | 청크에 포함된 실제 이벤트 수. 현재 비어 있지 않은 한 줄이 한 이벤트. |

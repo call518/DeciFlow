@@ -130,5 +130,8 @@
   "profile": "http_access",
   "chunkEvents": 1,
   "incomplete": false,
-  "elapsedMs": 120
+  "elapsedMs": 120,
+  "sourceId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "sourceName": "Example HTTP access",
+  "sourceType": "local"
 }

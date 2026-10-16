@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Streaming log classification with Laya and Jev"
 requires-python = ">=3.11"
 dependencies = [
+    "asyncssh>=2.24.1",
     "httpx>=0.28.1",
     "pre-commit>=4.6.2",
     "python-dotenv>=1.2.4",
@@ -27,7 +28,7 @@ testpaths = ["tests"]
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
-include = ["actions.py", "classifier.py", "config.py", "server.py", "sources.py", "laya_server.py", "profiles", "chunks.py", "source_settings.py", "configured_sources.py", "tests"]
+include = ["actions.py", "classifier.py", "config.py", "server.py", "sources.py", "laya_server.py", "profiles", "chunks.py", "source_settings.py", "source_registry.py", "remote_sources.py", "configured_sources.py", "tests"]
 exclude = [".venv", "vendor"]
 pythonVersion = "3.11"
 

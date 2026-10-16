@@ -4,49 +4,50 @@
 
 넓은 화면에서는 왼쪽 **40%**에 **Classification overview → Log input**, 오른쪽
 **60%**에 **Classification results**를 배치합니다. 좁은 화면은 세로로 표시합니다.
-사이드바에는 DeciFlow 로그 소스 노드의 hostname, 확인된 IP, OS·버전을 표시합니다.
+사이드바에는 로그를 읽는 DeciFlow 노드의 hostname, 확인된 IP, OS·버전을 표시합니다.
 WSL·컨테이너에서는 해당 환경의 정보이며 호스트 OS 정보가 아닙니다. IP는 전체
-인터페이스 목록이 아닙니다. 엔진명 뒤 괄호의 상태는 마지막 실제 엔진 요청 결과입니다. 예: **Laya (Connected)**. 요청 전에는
+인터페이스 목록이 아닙니다. SSH 로그 호스트는 Sources에서 확인합니다. 엔진명 뒤 괄호의 상태는 마지막 실제 엔진 요청 결과입니다. 예: **Laya (Connected)**. 요청 전에는
 Not checked, 이후에는 Connected·Disconnected·Timed out·API error를 표시합니다.
 지속적인 상태 검사는 아니며 로컬 입력 거절은 연결 상태를 바꾸지 않습니다.
 
 ### 입력과 판정 기준
 
-**Reset sources**는 Add source 옆에서 현재 Batch·Realtime의 기본 샘플 경로와
-각 경로의 Criteria·Events/chunk 1·Action None을 복원합니다. 분석 중에는 비활성화합니다.
+먼저 **Sources**에 입력을 등록하세요. Local File은 DeciFlow 노드의 로그,
+Remote File (SSH)은 키 인증 SFTP로 읽을 원격 로그입니다. 등록 필드·SSH 키 마운트·
+요구사항은 [Sources](sources.ko.md)를 참고하세요. Main에서는 저장한 Source 이름을
+검색해 선택하며 Action도 같은 검색 방식을 사용합니다. Action 빈 값은 None이며,
+입력한 이름은 등록 항목과 일치해야 합니다.
 
-Batch와 Realtime은 다음 기본값을 함께 사용합니다.
+Add source 옆의 **Reset selections**는 사용 가능한 샘플 소스 또는 첫 등록 소스와
+샘플 기준·청크당 1이벤트·Action None을 복원합니다. 처리 중에는 비활성화합니다.
+초기 샘플 등록은 다음과 같습니다:
 
-| 경로 | Criteria |
+| Source | 경로 | Criteria |
+| --- | --- | --- |
+| System messages | `/host-logs/var/log/messages` | General system |
+| Sample HTTP access | `/host-logs/sample-logs/access-1k.log` | HTTP access |
+| Sample SSH authentication | `/host-logs/sample-logs/SSH_2k.log` | Authentication |
+
+기본 모드는 **Batch**이며 Paste에는 수정 가능한 예시 텍스트를 제공합니다.
+
+| 모드 | 읽기 방식 |
 | --- | --- |
-| `/host-logs/var/log/messages` | General system |
-| `/host-logs/sample-logs/access-1k.log` | HTTP access |
-| `/host-logs/sample-logs/SSH_2k.log` | Authentication |
+| Realtime | 기존 파일 끝 이후의 새 줄. 새 파일·교체 파일은 처음부터 |
+| Batch | 일치한 파일의 처음부터 EOF까지 |
+| Paste | 붙여 넣은 텍스트를 청크로 처리 |
 
-기본 모드는 **Batch**이며, 각 모드에 수정 가능한 예시가 입력되어 있습니다.
+모드 ID는 `realtime`·`batch`·`paste`입니다. Main에서 선택 행을 추가·제거하며
+행마다 Source·Criteria·Events/chunk·Action을 설정합니다. 소스와 파일은 Laya 서버나
+브라우저가 아닌 DeciFlow가 접근합니다. 파일 접근에는 로컬·신뢰 UI Origin과 읽을 수
+있는 UTF-8 일반 파일이 필요합니다. 소스 등록은 서버에 보존하고 Batch·Realtime
+선택은 페이지 세션에서 따로 유지합니다. Criteria·청크 설정은 소스 ID 기준으로
+브라우저에 보관합니다. 새 실행 전에 없거나 삭제한 등록 항목을 대체해야 합니다.
 
-| 모드 | DeciFlow가 읽는 데이터 |
-| --- | --- |
-| Realtime | 기존 파일 끝 이후의 새 줄; 새 파일·교체 파일은 처음부터 |
-| Batch | 매칭 파일의 처음부터 EOF까지 |
-| Paste | 붙여 넣은 텍스트를 청크로 묶어 처리 |
+Batch는 선택한 파일을 동시에 읽고 준비된 청크를 교차 공급하며 파일별 순서·프로필·
+청크 크기는 유지합니다. 엔진 동시 요청 제한은 파일별이 아닌 전체 실행에 적용하고
+값이 1이면 순차 요청합니다. 원격 입력도 로컬 파일과 같은 엔진·Action 흐름을 사용합니다.
 
-UI·내보내기 JSON의 모드명은 `realtime`, `batch`, `paste`입니다.
-
-파일은 **Laya 호스트가 아닌 DeciFlow 실행 노드**에 있어야 합니다. 파일 입력에는
-로컬 브라우저 접속(`localhost`·`127.0.0.1`)과 읽기 가능한 UTF-8 일반 파일이
-필요합니다. 각 소스 항목의 입력폼에 경로·패턴을 입력합니다. 샘플 3개가 미리
-입력되며 **Remove**로 제거하거나 **Add source**로 추가합니다. **Path** 라벨과
-입력폼은 한 줄에 표시하며, 각 항목에 Criteria·Events/chunk·Action을 지정합니다.
-수정한 경로는 페이지를 사용하는 동안 Batch·Realtime 모드별로 유지됩니다.
-분석을 시작하기 전에 모든 소스 항목에 경로를 입력해야 합니다. 절대 경로, 여러 디렉터리, `*`, `?`,
-`[abc]`, 재귀 `**`를 지원합니다. 상대 경로는 DeciFlow 실행 디렉터리 기준입니다.
-Batch는 매칭 파일이 필요하고 Realtime은 새 매칭 파일을 기다릴 수 있습니다.
-Batch는 선택한 파일을 동시에 읽고 준비된 청크를 교차 공급합니다. 파일별 라인 순서·
-분류 기준·청크 크기는 유지합니다. 엔진 동시 요청 제한은 파일별이 아닌 전체 실행에
-적용하며, 값을 1로 설정하면 판정 요청은 순차 처리됩니다.
-
-각 경로·패턴 또는 Paste에 **Criteria**와 **Events/chunk**를 지정하세요.
+선택한 Source 또는 Paste에 **Criteria**와 **Events/chunk**를 지정하세요.
 기본값은 **General system**, **청크당 1이벤트**입니다. 현재 비어 있지 않은
 한 줄이 1이벤트이며 멀티라인 경계는 아직 자동 인식하지 않습니다. 모든 프로필은
 `choice`로 **Normal, Warning, Error, Security, Other** 중 하나를 선택하며 설명과
@@ -76,9 +77,10 @@ Batch는 선택한 파일을 동시에 읽고 준비된 청크를 교차 공급�
 
 서로 다른 파일의 이벤트는 섞지 않습니다. Batch는 EOF 잔여분을, Realtime은 설정한
 이벤트 수가 차거나 새 이벤트가 1초 동안 없으면 제출하며 파일 회전 경계도 분리합니다.
-빈 줄은 제외하고 이벤트 경계를 자동 인식하지는 않습니다. 겹치는 경로는 설정이
+빈 줄은 제외하고 이벤트 경계를 자동 인식하지는 않습니다. 겹치는 로컬 경로는 설정이
 같으면 실제 경로 기준으로 중복 제거하고, 다르면 오류로 알립니다. 청크로 묶어도
-모델 입력 예산은 그대로 적용됩니다.
+모델 입력 예산은 그대로 적용됩니다. 원격 회전은 크기·앞부분 비교를 사용하므로
+[SSH 제약](sources.ko.md#ssh-설정)도 확인하세요.
 
 General system은 정상 동작(Normal), 복구 가능한 문제(Warning), 명시적 실패(Error),
 악용·정책 위반의 증거(Security)를 구분합니다. 서비스명·IP·보안 관련 주제만으로
@@ -188,7 +190,7 @@ Needs review와 No review needed는 성공 판정만 표시합니다. 실패는 
 
 ### 새로고침과 재접속
 
-사이드바는 Main `/`, Criteria `/#criteria`, Actions `/#actions`를 사용합니다.
+사이드바는 Main `/`, Sources `/#sources`, Criteria `/#criteria`, Actions `/#actions`를 사용합니다.
 새로고침하면 URL에 해당하는 화면을 열며 브라우저 뒤로가기·앞으로가기도 지원합니다.
 저장하지 않은 편집 초안은 새로고침 시 보존하지 않습니다.
 

@@ -30,8 +30,8 @@ results in a browser. The **Laya server** runs the decision model on the same or
 host; **Jev** is an alternative hosted decision API. DeciFlow sends events to the
 selected engine and receives predictions.
 
-- **Use logs where they live.** Paste text or select multiple files across
-  directories with wildcard patterns; no manual file merging.
+- **Use logs where they live.** Paste text or register local files and SSH remote files,
+  including wildcard patterns; select saved Sources without retyping paths.
 - **Switch from investigation to monitoring.** Read existing files in batches or
   monitor new lines and file rotation. Newest completed predictions appear first.
 - **Keep people in control.** Filter uncertain predictions, record reviewer
@@ -94,7 +94,9 @@ Wait for the initial model download/loading, then press `Ctrl+C` to leave the lo
 ### 4. Analyze sample logs
 
 Open **http://127.0.0.1:4000** on the same host and select **Batch**.
-Keep only `/host-logs/sample-logs/access-100.log`, select **HTTP access** criteria,
+In **Sources**, edit **Sample HTTP access** to use
+`/host-logs/sample-logs/access-100.log` and save. Return to Main, keep only
+**Sample HTTP access**, select **HTTP access** criteria,
 **Events/chunk: 1**, and **Action: None**, then start analysis.
 
 For optional GPU acceleration, see [Docker deployment details](#laya-docker);
@@ -108,17 +110,24 @@ and request/result examples.
 
 | Guide | Contents |
 | --- | --- |
+| [Sources](docs/sources.md) | Register local/SSH sources, manage SSH keys in Settings, and search selections |
 | [Usage](docs/usage.md) | Input modes, criteria, filters, human review, reconnecting, timing |
 | [Configuration](docs/configuration.md) | Environment variables, models, input budgets |
 | [Criteria](docs/criteria.md) | Manage fixed-category profiles; Default Criteria is view-only |
 | [Python Actions](docs/actions.md) | Configuration viewing, environment Status, pip-enabled environments, Reset venv, deletion, source assignment |
 | [Result JSON](docs/results.md) | Current request/result examples and field reference |
 
-Sidebar views have URLs: Main `/`, Criteria `/#criteria`, Actions `/#actions`.
+Sidebar views have URLs: Main `/`, Sources `/#sources`, Criteria `/#criteria`, Actions `/#actions`, Settings `/#settings`.
 Reloading, browser history, and direct links retain the selected view.
+Settings groups configuration into separate sections on one page.
+The **SSH Keys** section uses a searchable list with Add, View, and
+Delete controls. It accepts SSH private keys by paste, server/container file path, or upload;
+private contents are masked and public keys are derived automatically.
+**SSH Hosts** saves connection details and a key; Remote File Sources select a
+Host and specify only their file path. Hosts use Add, View, Edit, and Delete controls.
 
 - **Paste:** Analyze pasted text.
-- **Batch:** Analyze existing files. Docker maps host `/var/log` to `/host-logs/var/log`.
+- **Batch:** Analyze registered local or SSH files. Docker maps host `/var/log` to `/host-logs/var/log`.
 - **Realtime:** Follow new logs; choose criteria and chunk size per source.
 - **Processing status:** Success / Failed / Total shows classified, failed, and total completed chunks. Action Success / Failed / Total counts follow-up executions separately. Needs review
   counts successful classifications only. Engine connection shows the last actual request; initially Not checked.
@@ -261,6 +270,7 @@ It does not copy application source or preinstall project dependencies. Its star
 command runs `uv sync --frozen --no-dev --no-install-project --no-cache`, then starts
 `server.main(host='0.0.0.0')`. The published UI image therefore still needs the cloned
 repository mounted at `/app`. UI inference runs on Laya or Jev, not inside this image.
+For SSH key management and remote file requirements, see [Sources](docs/sources.md).
 
 [`docker-compose.yml`](docker-compose.yml) supplies the runtime configuration:
 
@@ -282,7 +292,7 @@ check Laya readiness before analyzing logs. There is no automatic paid fallback.
 The UI is published on all host interfaces. For local-only access, change its
 Compose port mapping to `127.0.0.1:${PORT:-4000}:${PORT:-4000}`.
 Open **http://127.0.0.1:4000** with the default port; use the DeciFlow host IP for remote access.
-The `deciflow-data` volume stores Actions and Criteria at `DECIFLOW_DATA_DIR`
+The `deciflow-data` volume stores Sources, Actions, Criteria, SSH key pairs, and SSH Hosts at `DECIFLOW_DATA_DIR`
 (default: `/var/lib/deciflow-data`); `deciflow-logs` stores server logs.
 Use absolute container paths for custom data/log directories.
 

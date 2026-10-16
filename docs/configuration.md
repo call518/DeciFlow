@@ -10,7 +10,7 @@ with DeciFlow. `COMPOSE_PROFILES` selects `cpu` or `cuda`; empty starts only the
 | --- | --- | --- |
 | `COMPOSE_PROFILES` | Unset (UI only) | Compose only: set cpu or cuda, exactly one; .env.example selects cpu |
 | `DECISION_ENGINE` | `laya` | `laya` or `jev` |
-| `DECIFLOW_DATA_DIR` | `/var/lib/deciflow-data` | Shared Actions/Criteria storage root; must be writable |
+| `DECIFLOW_DATA_DIR` | `/var/lib/deciflow-data` | Shared Sources/Actions/Criteria/SSH key/host storage root; must be writable |
 | `DECIFLOW_CSRF_TRUSTED_ORIGINS` | Empty | Comma-separated trusted UI origins, including optional https://*.ngrok-free.app; origin check only, not authentication |
 | `DECIFLOW_LOG_DIR` | `/var/log/deciflow` | Server/access logs; empty disables file logging. Compose persists logs in deciflow-logs |
 | `PORT` | `4000` | DeciFlow web port |

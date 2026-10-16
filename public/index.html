@@ -8,19 +8,91 @@
   <title>DeciFlow · Log decisions</title><link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <aside><a class="brand" href="/"><img src="/logo.png" alt="DeciFlow" width="2172" height="724"></a><p class="caption">DECISION WORKSPACE</p><nav class="sidebar-nav" aria-label="Workspace"><button id="nav-main" class="nav" type="button" aria-current="page">Main</button><button id="nav-criteria" class="nav" type="button">Criteria</button><button id="nav-actions" class="nav" type="button">Actions</button></nav><section class="host-info" aria-label="Log source host"><div class="host-label">LOG SOURCE HOST</div><strong id="host-name">Loading…</strong><div id="host-addresses">—</div><div id="host-os">—</div></section><div class="aside-bottom"><span id="powered-by">Loading engine…</span><br><span>Small decisions. Faster flow.</span></div></aside>
+  <aside><a class="brand" href="/"><img src="/logo.png" alt="DeciFlow" width="2172" height="724"></a><p class="caption">DECISION WORKSPACE</p><nav class="sidebar-nav" aria-label="Workspace"><button id="nav-main" class="nav" type="button" aria-current="page">Main</button><button id="nav-sources" class="nav" type="button">Sources</button><button id="nav-criteria" class="nav" type="button">Criteria</button><button id="nav-actions" class="nav" type="button">Actions</button></nav><section class="host-info" aria-label="DeciFlow host"><div class="host-label">DECIFLOW HOST</div><strong id="host-name">Loading…</strong><div id="host-addresses">—</div><div id="host-os">—</div></section><div class="aside-bottom"><button id="nav-settings" class="nav" type="button">Settings</button><br><span id="powered-by">Loading engine…</span><br><span>Small decisions. Faster flow.</span></div></aside>
   <main>
     <div id="main-page">
     <section class="intro"><p class="eyebrow">LOG INTELLIGENCE</p><div class="intro-title"><h1>Turn logs into decisions.</h1><span id="status" class="pill" role="status">Checking connection</span></div><p>Classify complex events and focus on what needs your attention.</p></section>
     <div class="workspace">
       <div class="input-column">
       <section class="card category-overview" aria-labelledby="chart-title"><div class="card-title"><h2 id="chart-title">Classification overview</h2><span id="chart-totals" class="caption">0 classified chunks · 0 failed requests</span></div><div class="filter chart-filter"><span>Show chart:</span><div class="chart-groups" role="group" aria-label="Chart certainty"><button id="chart-all" type="button" aria-pressed="true">All · 0</button><button id="chart-certain" type="button" aria-pressed="false" title="Certain means no Uncertain flag; it does not guarantee accuracy">Certain · 0 (0.0%)</button><button id="chart-uncertain" type="button" aria-pressed="false">Uncertain · 0 (0.0%)</button></div></div><span id="chart-truncated" class="caption" title="All responses reporting usage.truncated=true; included in failed requests">Truncated: 0</span><p class="chart-note">All sources · AI category counts per chunk · Percentages within selected group · Failed requests and reviewer edits excluded. Certain means no Uncertain flag, not verified accuracy.</p><div id="category-chart" class="category-chart" role="list" aria-label="Classified chunks by category"></div></section>
-      <section class="card input"><div class="card-title"><h2>Log input</h2><button id="sample" class="quiet" hidden>Load sample logs</button></div><div class="mode-help"><p><strong>Batch:</strong> Analyze existing log files from the beginning.</p><p><strong>Realtime:</strong> Monitor and analyze new log events as they arrive.</p><p><strong>Paste:</strong> Paste log text for analysis.</p></div><div class="source-controls"><label for="source-mode">Analysis mode</label><select id="source-mode"><option value="batch" selected>Batch</option><option value="realtime">Realtime</option><option value="paste">Paste</option></select></div><div id="file-input"><button id="add-source" type="button" class="primary">Add source</button><button id="reset-sources" type="button" class="quiet" title="Restore sample paths and criteria, one event per chunk, and no Actions">Reset sources</button><textarea id="file-path" hidden aria-hidden="true"></textarea><div id="source-settings" class="source-settings"></div></div><div id="paste-input" hidden><div class="paste-settings"><label>Criteria <select id="paste-profile"></select></label><label>Events per chunk <input id="paste-chunk-events" type="number" min="1" step="1" value="1"></label></div><label for="logs" class="sr-only">Logs to classify</label><textarea id="logs" spellcheck="false" placeholder="2026-10-10T09:00:00 INFO service started&#10;2026-10-10T09:00:01 ERROR connection refused"></textarea></div><div class="input-notes"><p class="caption">Currently, 1 event = 1 nonempty line. Multiline event boundaries are not yet detected.</p><div id="file-notes"><p id="source-directory" class="caption"></p><p class="caption">Edit the examples to match files on your DeciFlow node. One path or pattern per source. Supports *, ?, [abc], and **. Choose a profile and events per chunk for each path below. Overlapping matches with identical settings are deduplicated; conflicting settings are rejected. Batch reads matching files once. Realtime also discovers new matching files. UTF-8 text only.</p></div><p id="input-limits">Loading input limits…</p><p id="data-notice" class="notice">Loading engine data handling…</p></div><div class="input-actions"><button id="classify" class="primary" disabled>Loading engine…</button><button id="stop" class="stop-button" disabled>Stop</button></div></section>
+      <section class="card input"><div class="card-title"><h2>Log input</h2><button id="sample" class="quiet" hidden>Load sample logs</button></div><div class="mode-help"><p><strong>Batch:</strong> Analyze existing log files from the beginning.</p><p><strong>Realtime:</strong> Monitor and analyze new log events as they arrive.</p><p><strong>Paste:</strong> Paste log text for analysis.</p></div><div class="source-controls"><label for="source-mode">Analysis mode</label><select id="source-mode"><option value="batch" selected>Batch</option><option value="realtime">Realtime</option><option value="paste">Paste</option></select></div><div id="file-input"><button id="add-source" type="button" class="primary">Add source</button><button id="reset-sources" type="button" class="quiet" title="Select available sample sources, one event per chunk, and no Actions">Reset selections</button><textarea id="file-path" hidden aria-hidden="true"></textarea><div id="source-settings" class="source-settings"></div></div><div id="paste-input" hidden><div class="paste-settings"><label>Criteria <select id="paste-profile"></select></label><label>Events per chunk <input id="paste-chunk-events" type="number" min="1" step="1" value="1"></label></div><label for="logs" class="sr-only">Logs to classify</label><textarea id="logs" spellcheck="false" placeholder="2026-10-10T09:00:00 INFO service started&#10;2026-10-10T09:00:01 ERROR connection refused"></textarea></div><div class="input-notes"><p class="caption">Currently, 1 event = 1 nonempty line. Multiline event boundaries are not yet detected.</p><div id="file-notes"><p id="source-directory" class="caption"></p><p class="caption">Register Local File or Remote File (SSH) entries in Sources, then search and select them here. Choose Criteria, Events/chunk, and Action for each selection. Batch reads existing files; Realtime follows new lines and discovers matching files. UTF-8 text only.</p></div><p id="input-limits">Loading input limits…</p><p id="data-notice" class="notice">Loading engine data handling…</p></div><div class="input-actions"><button id="classify" class="primary" disabled>Loading engine…</button><button id="stop" class="stop-button" disabled>Stop</button></div></section>
       </div>
       <section class="card output"><div class="card-title"><h2>Classification results</h2><div class="result-actions"><button id="pause-updates" class="quiet" aria-pressed="false" title="Pause list updates while analysis continues" disabled>Pause updates</button><button id="export" class="quiet" disabled>Export JSON ↓</button></div></div><div id="message" role="status" aria-live="polite"></div><div id="summary" class="summary"></div><div class="result-filters"><label class="filter" for="review-filter">Show results: <select id="review-filter"><option value="all">All results</option><option value="needs-review">Needs review</option><option value="no-review">No review needed</option></select></label><label class="filter" for="category-filter">Category: <select id="category-filter"><option value="all">All categories</option><option value="normal">Normal</option><option value="warning">Warning</option><option value="error">Error</option><option value="security">Security</option><option value="other">Other</option><option value="failed">Request failed</option></select></label><label class="filter log-search" for="log-search">Search logs: <input id="log-search" type="search" placeholder="Contains text…" title="Case-insensitive literal search in original log text"></label><label class="filter source-filter" for="source-filter">Source: <select id="source-filter"><option value="all">All sources</option></select></label></div><div id="results"><div class="empty"><h3>Ready for your next decision</h3><p>Enter your logs and classify them with the selected engine.</p></div></div><div class="card-title"><button id="previous" class="quiet" disabled>← Previous</button><span id="page-info" class="caption">100 results per page</span><button id="next" class="quiet" disabled>Next →</button></div></section>
     </div>
     <footer>Results below 70% selected category probability, with a top-two probability gap below 10 percentage points, or classified as Other need review. Uncertain categories are provisional. Category probability is a model estimate, not measured accuracy.</footer>
     </div>
+    <section id="settings-page" hidden aria-labelledby="settings-title">
+      <section class="intro"><p class="eyebrow">CONFIGURATION</p><h1 id="settings-title">Settings</h1><p>Manage application settings by section.</p></section>
+      <section id="settings-ssh-keys" class="card actions-manager settings-section" aria-labelledby="settings-ssh-keys-title">
+        <header class="settings-section-header">
+          <h2 id="settings-ssh-keys-title">SSH Keys</h2>
+          <p>Manage authentication keys for Remote File sources.</p>
+        </header>
+        <div class="settings-section-body">
+        <p class="caption">Key pairs are stored in deciflow-data/ssh-keys. Private key contents are never displayed. Public keys are derived automatically. Keys used by SSH Hosts, saved Sources, or running jobs cannot be deleted.</p>
+        <section id="ssh-key-registry" class="settings-subsection" aria-labelledby="registered-ssh-keys-title">
+          <div class="card-title"><h3 id="registered-ssh-keys-title">Registered keys</h3><button id="open-add-ssh-key" type="button" class="quiet">Add key</button></div>
+          <div class="action-search-row"><label for="ssh-key-search">Search keys</label><input id="ssh-key-search" type="search" placeholder="Key name…"></div>
+          <div id="ssh-key-list"></div>
+        </section>
+        <section id="ssh-key-view" class="configuration-view" hidden aria-label="SSH key details"></section>
+        <section id="ssh-key-editor" class="settings-subsection" hidden aria-labelledby="add-ssh-key-title">
+        <div class="card-title"><h3 id="add-ssh-key-title">Add SSH key</h3><button id="cancel-ssh-key" type="button" class="quiet">Cancel</button></div>
+        <form id="ssh-key-form" class="action-registration" novalidate>
+          <label>Name<input id="ssh-key-name" type="text" required maxlength="64" autocomplete="off"></label>
+          <div id="ssh-key-material">
+          <label>Registration method<select id="ssh-key-method"><option value="upload">Upload private key</option><option value="path">Private key file path</option><option value="paste">Paste private key</option></select></label>
+          <label id="ssh-key-paste-field" hidden>Private key<input id="ssh-key-paste" type="password" autocomplete="new-password" spellcheck="false" placeholder="Paste the complete private key"></label>
+          <label id="ssh-key-path-field" hidden>Private key file path<input id="ssh-key-path" type="text" placeholder="/path/to/private_key" autocomplete="off"></label>
+          <label id="ssh-key-upload-field">Private key file<input id="ssh-key-file" type="file" required></label>
+          <p class="caption">Use a dedicated key without a passphrase. File paths refer to the DeciFlow server or container. All methods copy the key into managed storage and derive its public key; the original file is unchanged.</p>
+          </div>
+          <button id="add-ssh-key" type="submit" class="primary">Add key</button>
+        </form>
+        </section>
+        <p id="ssh-key-message" role="status" class="caption"></p>
+        </div>
+      </section>
+      <section id="settings-ssh-hosts" class="card actions-manager settings-section" aria-labelledby="settings-ssh-hosts-title">
+        <header class="settings-section-header"><h2 id="settings-ssh-hosts-title">SSH Hosts</h2><p>Save SSH connections and select them in Remote File sources.</p></header>
+        <div class="settings-section-body">
+          <div id="ssh-host-registry">
+            <div class="card-title"><h3>Registered hosts</h3><button id="open-add-ssh-host" type="button" class="quiet">Add host</button></div>
+            <div class="action-search-row"><label for="ssh-host-search">Search hosts</label><input id="ssh-host-search" type="search" placeholder="Name or address…"></div>
+            <div id="ssh-host-list"></div>
+          </div>
+          <section id="ssh-host-view" class="configuration-view" hidden aria-label="SSH host details"></section>
+          <section id="ssh-host-editor" hidden aria-labelledby="ssh-host-editor-title">
+            <div class="card-title"><h3 id="ssh-host-editor-title">Add SSH host</h3><button id="cancel-ssh-host" type="button" class="quiet">Cancel</button></div>
+            <form id="ssh-host-form" class="action-registration" novalidate>
+              <label>Name<input id="ssh-host-name" type="text" required></label>
+              <label>SSH host<input id="ssh-host-address" type="text" required placeholder="logs.example.com"></label>
+              <label>SSH port<input id="ssh-host-port" type="number" min="1" max="65535" value="22" required></label>
+              <label>SSH user<input id="ssh-host-user" type="text" required></label>
+              <label>SSH key<select id="ssh-host-key" required></select></label>
+              <p class="caption">Manage keys in SSH Keys above. Server verification uses ~/.ssh/known_hosts. Saved changes apply to new runs; running jobs keep their connection settings.</p>
+              <button id="save-ssh-host" type="submit" class="primary">Save host</button>
+            </form>
+          </section>
+          <p id="ssh-host-message" role="status" class="caption"></p>
+        </div>
+      </section>
+    </section>
+    <section id="sources-page" hidden aria-labelledby="sources-title">
+      <section class="intro"><p class="eyebrow">LOG COLLECTION</p><h1 id="sources-title">Sources</h1><p>Register reusable local files or remote files accessed with an SSH key. Select them in Main to run analysis.</p></section>
+      <section class="card actions-manager">
+        <div id="source-list">
+          <div class="card-title"><h2>Registered sources</h2><button id="add-registered-source" type="button" class="quiet">Add source</button></div>
+          <div class="action-search-row"><label for="source-search">Search sources</label><input id="source-search" type="search" placeholder="Name, path, or host…"></div>
+          <div id="source-registry"></div>
+        </div>
+        <section id="source-view" class="configuration-view" hidden aria-label="Source configuration"></section>
+        <button id="cancel-source" type="button" class="quiet" hidden>Cancel edit</button>
+        <div id="source-editor" hidden></div>
+        <button id="save-sources" type="button" class="primary" disabled>Save changes</button>
+        <p id="source-message" role="status" class="caption"></p>
+      </section>
+    </section>
     <section id="criteria-page" hidden aria-labelledby="criteria-title">
       <section class="intro"><p class="eyebrow">DECISION CRITERIA</p><h1 id="criteria-title">Criteria</h1><p>Manage profiles with fixed Normal, Warning, Error, Security and Other categories. Saved changes apply to new runs.</p></section>
       <section class="card actions-manager">

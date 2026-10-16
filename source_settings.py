@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from profiles import validate_settings
+from source_registry import load_sources
 from sources import resolve_sources
 
 
@@ -14,6 +15,7 @@ def parse_source_settings(values: object) -> list[dict[str, Any]]:
     if not isinstance(values, list) or not values:
         raise ValueError("Enter at least one source path or pattern.")
     sources = []
+    registered = {source["id"]: source for source in load_sources()}
     for value in values:
         if isinstance(value, str):
             value = {"path": value}
@@ -21,7 +23,15 @@ def parse_source_settings(values: object) -> list[dict[str, Any]]:
             raise TypeError(
                 "Each source must specify a path, profile, and chunk events."
             )
-        path = value.get("path")
+        definition = {}
+        if "sourceId" in value:
+            identity = value["sourceId"]
+            if not isinstance(identity, str) or identity not in registered:
+                raise ValueError(
+                    "Select a registered source. Refresh Sources if it was deleted."
+                )
+            definition = {**registered[identity], "sourceId": identity}
+        path = definition.get("path", value.get("path"))
         if not isinstance(path, str) or not path.strip():
             raise ValueError("Enter a source path or pattern.")
         profile, events = validate_settings(
@@ -33,6 +43,7 @@ def parse_source_settings(values: object) -> list[dict[str, Any]]:
             raise TypeError("Action must be a registered action name.")
         sources.append(
             {
+                **definition,
                 "path": path.strip(),
                 "profile": profile,
                 "chunkEvents": events,
@@ -48,6 +59,8 @@ def resolve_configured_sources(
     """Deduplicate files; reject overlapping patterns with conflicting settings."""
     result: dict[Path, dict[str, Any]] = {}
     for spec in specs:
+        if spec.get("type") == "ssh":
+            continue
         for path in resolve_sources(spec["path"], follow=follow):
             path = path.resolve()
             if path in result and (

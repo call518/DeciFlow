@@ -11,7 +11,7 @@ const samples = [
 ];
 const expandedJson = new WeakSet();
 function orderedResult(result) {
-  const metadata = ['requestedAt', 'decidedAt', 'schemaVersion', 'eventId', 'engine', 'engineConnection', 'requestedModel', 'source', 'sourcePatterns', 'line', 'lineEnd', 'lineCount', 'eventCount', 'profile', 'chunkEvents', 'incomplete', 'elapsedMs', 'requestBytes', 'inputBudget', 'httpStatus', 'responseHeaders', 'action', 'actionExecution'];
+  const metadata = ['requestedAt', 'decidedAt', 'schemaVersion', 'eventId', 'engine', 'engineConnection', 'requestedModel', 'source', 'sourceId', 'sourceName', 'sourceType', 'sourcePatterns', 'line', 'lineEnd', 'lineCount', 'eventCount', 'profile', 'chunkEvents', 'incomplete', 'elapsedMs', 'requestBytes', 'inputBudget', 'httpStatus', 'responseHeaders', 'action', 'actionExecution'];
   return Object.fromEntries([
     ...metadata.filter(key => Object.hasOwn(result, key)).map(key => [key, result[key]]),
     ...Object.entries(result).filter(([key]) => !metadata.includes(key)),
@@ -63,10 +63,14 @@ const defaultSourceProfiles = Object.freeze({
   '/host-logs/sample-logs/access-1k.log': 'http_access',
   '/host-logs/sample-logs/SSH_2k.log': 'authentication',
 });
-const defaultFilePaths = Object.freeze({
-  batch: Object.keys(defaultSourceProfiles).join('\n'),
-  realtime: Object.keys(defaultSourceProfiles).join('\n'),
-});
+const sampleSources = [
+  { id: '1'.padStart(32, '0'), name: 'System messages', type: 'local', path: '/host-logs/var/log/messages' },
+  { id: '2'.padStart(32, '0'), name: 'Sample HTTP access', type: 'local', path: '/host-logs/sample-logs/access-1k.log' },
+  { id: '3'.padStart(32, '0'), name: 'Sample SSH authentication', type: 'local', path: '/host-logs/sample-logs/SSH_2k.log' },
+];
+let registeredSources = sampleSources.map(source => ({ ...source }));
+let sourceSnapshots = [];
+const defaultFilePaths = Object.freeze({ batch: sampleSources.map(source => source.id).join('\n'), realtime: sampleSources.map(source => source.id).join('\n') });
 const filePaths = { ...defaultFilePaths };
 $('logs').value = samples.join('\n');
 $('file-path').value = filePaths[sourceMode];
@@ -95,7 +99,10 @@ function element(tag, text, className = '') {
 }
 function handleCloseConfiguration(id) {
   $(id).replaceChildren(); $(id).hidden = true;
-  if (id === 'action-view') {
+  if (id === 'source-view') {
+    $('source-editor').hidden = editingSource === null; $('cancel-source').hidden = editingSource === null;
+    $('save-sources').disabled = savingSources;
+  } else if (id === 'action-view') {
     $('action-editor').hidden = editingAction === null;
     $('cancel-action').hidden = editingAction === null;
     $('action-environment-status').hidden = editingAction === null;
@@ -108,7 +115,9 @@ function handleCloseConfiguration(id) {
 }
 function handleViewConfiguration(id, title, fields) {
   const container = $(id);
-  if (id === 'action-view') {
+  if (id === 'source-view') {
+    $('source-editor').hidden = true; $('cancel-source').hidden = true; $('save-sources').disabled = true;
+  } else if (id === 'action-view') {
     $('action-editor').hidden = true; $('cancel-action').hidden = true;
     $('action-environment-status').hidden = true;
     $('save-actions').disabled = true;
@@ -134,20 +143,232 @@ function handleViewConfiguration(id, title, fields) {
   container.replaceChildren(); container.append(header, row);
   container.hidden = false; container.scrollIntoView?.({ block: 'nearest' });
 }
+let sshKeys = [];
+function handleCloseKey() {
+  $('ssh-key-registry').hidden = false; $('ssh-key-view').hidden = true;
+  $('ssh-key-editor').hidden = true;
+  $('ssh-key-name').value = ''; $('ssh-key-file').value = ''; $('ssh-key-paste').value = '';
+  pastedPrivateKey = '';
+}
+function handleAddKey() {
+  handleCloseKey();
+  $('ssh-key-registry').hidden = true; $('ssh-key-editor').hidden = false;
+  $('ssh-key-message').textContent = '';
+}
+function handleViewKey(key) {
+  handleCloseKey(); $('ssh-key-registry').hidden = true;
+  const view = $('ssh-key-view'); view.replaceChildren();
+  const header = element('div', '', 'card-title');
+  const close = element('button', 'Back to list', 'quiet'); close.type = 'button'; close.onclick = handleCloseKey;
+  header.append(element('h3', key.name), close); view.append(header);
+  const card = element('div', '', 'ssh-key-card');
+  for (const [caption, value] of [['Private key path', key.privatePath], ['Public key path', key.publicPath], ['Public key', key.publicKey], ['Private key', '****']]) {
+    const label = element('label', caption); const field = element('textarea', '');
+    field.readOnly = true; field.rows = caption === 'Public key' ? 3 : 2; field.value = value;
+    field.setAttribute('aria-label', `${key.name}: ${caption}`); label.append(field); card.append(label);
+  }
+  view.append(card); view.hidden = false;
+}
+function renderSSHKeys() {
+  const list = $('ssh-key-list'); list.replaceChildren();
+  const table = element('table', '', 'action-list');
+  const header = element('tr', '');
+  for (const title of ['Name', 'Private key path', 'Manage']) header.append(element('th', title));
+  const head = element('thead', ''); head.append(header); table.append(head);
+  const body = element('tbody', ''); const query = $('ssh-key-search').value.toLowerCase();
+  for (const key of sshKeys.filter(key => key.name.toLowerCase().includes(query))) {
+    const row = element('tr', ''); row.append(element('td', key.name), element('td', key.privatePath));
+    const controls = element('td', '', 'action-list-controls');
+    for (const [caption, handler] of [['View', () => handleViewKey(key)], ['Delete', () => handleDeleteKey(key.name)]]) {
+      const button = element('button', caption, 'quiet'); button.type = 'button'; button.onclick = handler; controls.append(button);
+    }
+    row.append(controls); body.append(row);
+  }
+  table.append(body); list.append(table);
+  if (!body.children.length) list.append(element('p', 'No matching SSH keys.', 'caption'));
+}
+$('open-add-ssh-key').onclick = handleAddKey;
+$('cancel-ssh-key').onclick = handleCloseKey;
+$('ssh-key-search').oninput = renderSSHKeys;
+async function handleKeyResponse(response) {
+  if (response.status === 404 || response.status === 405) {
+    throw new Error('SSH key API is unavailable. Restart the DeciFlow UI server or container to load the updated backend.');
+  }
+  let data;
+  try { data = await response.json(); }
+  catch { throw new Error(`SSH key API returned an invalid response (HTTP ${response.status}). Check the DeciFlow server.`); }
+  if (!response.ok) throw new Error(data.error || 'Could not manage SSH keys.');
+  return data;
+}
+async function handleLoadKeys() {
+  try {
+    const response = await fetch('/api/ssh-keys', { method: 'POST' });
+    const data = await handleKeyResponse(response);
+    sshKeys = data.keys; renderSSHKeys();
+  } catch (error) { $('ssh-key-message').textContent = error.message; }
+}
+let pastedPrivateKey = '';
+$('ssh-key-paste').onpaste = event => {
+  event.preventDefault();
+  pastedPrivateKey = event.clipboardData.getData('text/plain');
+  $('ssh-key-paste').value = pastedPrivateKey ? '****' : '';
+};
+$('ssh-key-paste').oninput = () => { pastedPrivateKey = $('ssh-key-paste').value; };
+$('ssh-key-method').onchange = () => {
+  const method = $('ssh-key-method').value;
+  for (const [value, field, input] of [['paste', 'ssh-key-paste-field', 'ssh-key-paste'], ['path', 'ssh-key-path-field', 'ssh-key-path'], ['upload', 'ssh-key-upload-field', 'ssh-key-file']]) {
+    $(field).hidden = method !== value; $(input).required = method === value;
+    $(input).value = '';
+  }
+  pastedPrivateKey = '';
+};
+$('ssh-key-form').onsubmit = async event => {
+  event.preventDefault();
+  const method = $('ssh-key-method').value || 'upload';
+  const body = { name: $('ssh-key-name').value.trim(), inputMethod: method };
+  $('add-ssh-key').disabled = true;
+  $('ssh-key-message').textContent = 'Adding SSH key…';
+  try {
+    if (!/^[A-Za-z0-9_ -]{1,64}$/.test(body.name)) throw new Error('Enter a name of 1–64 letters, digits, spaces, underscores, or hyphens.');
+    if (method === 'path') {
+      body.privateKeyPath = $('ssh-key-path').value.trim();
+      if (!body.privateKeyPath) throw new Error('Enter a private key file path.');
+    } else if (method === 'upload') {
+      const file = $('ssh-key-file').files?.[0];
+      if (!file || file.size > 65536) throw new Error('Select a private key file of at most 64 KiB.');
+      body.privateKey = await file.text();
+    } else {
+      if (!pastedPrivateKey || pastedPrivateKey.length > 65536) throw new Error('Paste a private key of at most 64 KiB.');
+      body.privateKey = pastedPrivateKey;
+    }
+    const response = await fetch('/api/ssh-keys', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await handleKeyResponse(response);
+    sshKeys = data.keys; renderSSHKeys();
+    handleCloseKey();
+    $('ssh-key-message').textContent = 'SSH key added.';
+  } catch (error) { $('ssh-key-message').textContent = error.message; }
+  finally {
+    pastedPrivateKey = ''; $('ssh-key-paste').value = ''; $('ssh-key-file').value = '';
+    $('add-ssh-key').disabled = false;
+  }
+};
+async function handleDeleteKey(name) {
+  if (!globalThis.confirm(`Delete SSH key "${name}"? Both key files will be permanently removed. This cannot be undone.`)) return;
+  try {
+    const response = await fetch('/api/ssh-keys', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+    const data = await handleKeyResponse(response);
+    sshKeys = data.keys; renderSSHKeys(); $('ssh-key-message').textContent = 'SSH key deleted.';
+  } catch (error) { $('ssh-key-message').textContent = error.message; }
+}
+let sshHosts = [];
+let editingSSHHost = null;
+function handleCloseHost() {
+  editingSSHHost = null; $('ssh-host-registry').hidden = false;
+  $('ssh-host-editor').hidden = true; $('ssh-host-view').hidden = true;
+}
+function renderSSHHosts() {
+  const list = $('ssh-host-list'); list.replaceChildren();
+  const table = element('table', '', 'action-list'); const header = element('tr', '');
+  for (const title of ['Name', 'Connection', 'SSH key', 'Manage']) header.append(element('th', title));
+  const head = element('thead', ''); head.append(header); table.append(head);
+  const body = element('tbody', ''); const query = $('ssh-host-search').value.toLowerCase();
+  for (const host of sshHosts.filter(host => `${host.name} ${host.host} ${host.username}`.toLowerCase().includes(query))) {
+    const row = element('tr', '');
+    row.append(element('td', host.name), element('td', `${host.username}@${host.host}:${host.port}`), element('td', sshKeys.find(key => key.privatePath === host.keyPath)?.name || host.keyPath));
+    const controls = element('td', '', 'action-list-controls');
+    for (const [caption, handler] of [['View', () => handleViewHost(host)], ['Edit', () => handleEditHost(host)], ['Delete', () => handleDeleteHost(host)]]) {
+      const button = element('button', caption, 'quiet'); button.type = 'button'; button.onclick = handler; controls.append(button);
+    }
+    row.append(controls); body.append(row);
+  }
+  table.append(body); list.append(table);
+  if (!body.children.length) list.append(element('p', 'No matching SSH hosts.', 'caption'));
+}
+async function handleLoadHosts() {
+  try {
+    const response = await fetch('/api/ssh-hosts', { method: 'POST' });
+    if (response.status === 404 || response.status === 405) throw new Error('SSH host API is unavailable. Restart the DeciFlow UI server or container.');
+    const data = await response.json(); if (!response.ok) throw new Error(data.error);
+    sshHosts = data.hosts; renderSSHHosts();
+    if (sourceFields.hostId) {
+      const input = sourceFields.hostId; const selected = input.value;
+      input.replaceChildren(); input.append(new Option('Select an SSH host from Settings…', ''));
+      for (const host of sshHosts) input.append(new Option(host.name, host.id));
+      input.value = selected;
+    }
+  } catch (error) { $('ssh-host-message').textContent = error.message; }
+}
+function handleEditHost(host = null) {
+  handleCloseHost(); editingSSHHost = host?.id || null;
+  $('ssh-host-registry').hidden = true; $('ssh-host-editor').hidden = false;
+  $('ssh-host-editor-title').textContent = host ? 'Edit SSH host' : 'Add SSH host';
+  for (const [id, value] of [['ssh-host-name', host?.name || ''], ['ssh-host-address', host?.host || ''], ['ssh-host-port', host?.port || 22], ['ssh-host-user', host?.username || '']]) $(id).value = String(value);
+  const keys = $('ssh-host-key'); keys.replaceChildren(); keys.append(new Option('Select an SSH key…', ''));
+  for (const key of sshKeys) keys.append(new Option(key.name, key.privatePath));
+  if (host?.keyPath && !sshKeys.some(key => key.privatePath === host.keyPath)) keys.append(new Option(host.keyPath, host.keyPath));
+  keys.value = host?.keyPath || ''; $('ssh-host-message').textContent = '';
+}
+function handleViewHost(host) {
+  handleCloseHost(); $('ssh-host-registry').hidden = true;
+  const view = $('ssh-host-view'); view.replaceChildren();
+  const header = element('div', '', 'card-title'); const close = element('button', 'Back to list', 'quiet');
+  close.type = 'button'; close.onclick = handleCloseHost;
+  header.append(element('h3', host.name), close); view.append(header);
+  const fields = element('div', '', 'ssh-key-card');
+  for (const [caption, value] of [['Host', host.host], ['Port', host.port], ['SSH user', host.username], ['SSH key path', host.keyPath]]) {
+    const label = element('label', caption); const input = element('textarea', ''); input.readOnly = true; input.rows = 2; input.value = String(value);
+    label.append(input); fields.append(label);
+  }
+  view.append(fields); view.hidden = false;
+}
+$('open-add-ssh-host').onclick = () => handleEditHost();
+$('cancel-ssh-host').onclick = handleCloseHost;
+$('ssh-host-search').oninput = renderSSHHosts;
+$('ssh-host-form').onsubmit = async event => {
+  event.preventDefault(); $('save-ssh-host').disabled = true;
+  try {
+    const host = { ...(editingSSHHost ? {id: editingSSHHost} : {}), name: $('ssh-host-name').value, host: $('ssh-host-address').value, port: Number($('ssh-host-port').value), username: $('ssh-host-user').value, keyPath: $('ssh-host-key').value };
+    const response = await fetch('/api/ssh-hosts', {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(host)});
+    const data = await response.json(); if (!response.ok) throw new Error(data.error);
+    sshHosts = data.hosts; renderSSHHosts(); handleCloseHost();
+    registeredSources = registeredSources.map(source => {
+      const host = sshHosts.find(host => host.id === source.hostId);
+      return host ? {...source, host:host.host, port:host.port, username:host.username, keyPath:host.keyPath, hostName:host.name} : source;
+    });
+    renderSources(); if (!busy) updateSourceSettings(sourceRows.map(row => row.path));
+    $('ssh-host-message').textContent = 'SSH host saved. Changes apply to new runs.';
+  } catch (error) { $('ssh-host-message').textContent = error.message; }
+  finally { $('save-ssh-host').disabled = false; }
+};
+async function handleDeleteHost(host) {
+  if (!globalThis.confirm(`Delete SSH host "${host.name}"? Sources and running jobs must stop referencing it first.`)) return;
+  try {
+    const response = await fetch('/api/ssh-hosts', {method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:host.id})});
+    const data = await response.json(); if (!response.ok) throw new Error(data.error);
+    sshHosts = data.hosts; renderSSHHosts(); $('ssh-host-message').textContent = 'SSH host deleted.';
+  } catch (error) { $('ssh-host-message').textContent = error.message; }
+}
 let currentView = null;
 function handleNavigation(view) {
   currentView = view;
+  if (view === 'settings' || view === 'sources') handleLoadKeys().then(handleLoadHosts);
   const hash = view === 'main' ? '' : `#${view}`;
   if (globalThis.location && globalThis.location.hash !== hash) globalThis.location.hash = hash;
   $('main-page').hidden = view !== 'main';
+  $('settings-page').hidden = view !== 'settings';
+  $('nav-settings').setAttribute('aria-current', view === 'settings' ? 'page' : 'false');
+  $('sources-page').hidden = view !== 'sources';
+  $('nav-sources').setAttribute('aria-current', view === 'sources' ? 'page' : 'false');
   $('actions-page').hidden = view !== 'actions';
   $('criteria-page').hidden = view !== 'criteria';
   $('nav-criteria').setAttribute('aria-current', view === 'criteria' ? 'page' : 'false');
   $('nav-main').setAttribute('aria-current', view === 'main' ? 'page' : 'false');
   $('nav-actions').setAttribute('aria-current', view === 'actions' ? 'page' : 'false');
 }
+$('nav-settings').onclick = () => { handleNavigation('settings'); };
 $('nav-main').onclick = () => handleNavigation('main');
 $('nav-actions').onclick = () => handleNavigation('actions');
+$('nav-sources').onclick = () => { handleNavigation('sources'); if (!sourcesLoaded) return handleLoadSources(); };
 const defaultActionCode = `import json
 import sys
 
@@ -444,6 +665,99 @@ $('save-criteria').onclick = async () => {
     renderCriteria();
   }
 };
+let sourcesLoaded = false;
+let editingSource = null;
+let sourceFields = {};
+let savingSources = false;
+function sourceDescription(source) {
+  return `${source.type === 'ssh' ? `Remote File (SSH) · ${source.username}@${source.host}:${source.port}` : 'Local File'} · ${source.path}`;
+}
+function renderSources() {
+  $('source-list').hidden = editingSource !== null;
+  const table = element('table', '', 'action-list');
+  const header = element('tr', '');
+  for (const caption of ['Name', 'Type / path', 'Manage']) header.append(element('th', caption));
+  table.append(header);
+  const query = $('source-search').value.trim().toLowerCase();
+  for (const [index, source] of registeredSources.entries()) {
+    if (!`${source.name} ${sourceDescription(source)}`.toLowerCase().includes(query)) continue;
+    const row = element('tr', '');
+    row.append(element('td', source.name), element('td', sourceDescription(source)));
+    const controls = element('td', '', 'action-list-controls');
+    for (const [caption, handler] of [
+      ['View', () => handleViewConfiguration('source-view', source.name, [['Type', source.type === 'ssh' ? 'Remote File (SSH)' : 'Local File'], ['Name', source.name], ['Path / pattern', source.path], ['SSH host', source.hostName || sshHosts.find(host => host.id === source.hostId)?.name]])],
+      ['Edit', () => handleEditSource(index)],
+      ['Delete', () => { registeredSources.splice(index, 1); handleCloseConfiguration('source-view'); renderSources(); $('source-message').textContent = 'Deletion pending. Save changes to apply.'; }],
+    ]) {
+      const button = element('button', caption, 'quiet'); button.type = 'button';
+      button.disabled = !sourcesLoaded || savingSources || (caption !== 'View' && editingSource !== null);
+      button.onclick = handler; controls.append(button);
+    }
+    row.append(controls); table.append(row);
+  }
+  $('source-registry').replaceChildren(); $('source-registry').append(table);
+  $('add-registered-source').disabled = !sourcesLoaded || savingSources || editingSource !== null;
+}
+function handleEditSource(index) {
+  handleCloseConfiguration('source-view'); editingSource = index;
+  const source = registeredSources[index] || { name: '', type: 'local', path: '', port: 22 };
+  const form = element('div', '', 'action-registration'); sourceFields = {};
+  for (const [key, caption] of [['type', 'Type'], ['name', 'Name'], ['path', 'File path / pattern'], ['hostId', 'SSH host']]) {
+    const label = element('label', caption);
+    const input = element(key === 'type' || key === 'hostId' ? 'select' : 'input', '');
+    if (key === 'type') { input.append(new Option('Local File', 'local'), new Option('Remote File (SSH)', 'ssh')); }
+    else if (key === 'hostId') {
+      input.append(new Option('Select an SSH host from Settings…', ''));
+      for (const host of sshHosts) input.append(new Option(host.name, host.id));
+      if (source.hostId && !sshHosts.some(host => host.id === source.hostId)) input.append(new Option(source.hostName || 'Saved SSH host', source.hostId));
+    } else input.type = 'text';
+    input.value = String(source[key] ?? (key === 'port' ? 22 : '')); input.setAttribute('aria-label', caption);
+    label.append(input); form.append(label); sourceFields[key] = input;
+    if (!['name', 'type', 'path'].includes(key)) label.className = 'ssh-source-field';
+  }
+  const updateFields = () => {
+    for (const label of form.children) if (label.className === 'ssh-source-field') label.hidden = sourceFields.type.value !== 'ssh';
+  };
+  sourceFields.type.onchange = updateFields; updateFields();
+  form.append(element('p', 'Select a connection registered in Settings → SSH Hosts. File paths refer to the remote host. Server verification uses ~/.ssh/known_hosts.', 'caption'));
+  $('source-editor').replaceChildren(); $('source-editor').append(form);
+  $('source-editor').hidden = false; $('cancel-source').hidden = false; renderSources();
+}
+function handleCloseSource() {
+  editingSource = null; sourceFields = {}; $('source-editor').replaceChildren();
+  $('source-editor').hidden = true; $('cancel-source').hidden = true; renderSources();
+}
+$('source-search').oninput = renderSources;
+$('add-registered-source').onclick = () => handleEditSource(registeredSources.length);
+$('cancel-source').onclick = handleCloseSource;
+$('save-sources').onclick = async () => {
+  if (!sourcesLoaded) { $('source-message').textContent = 'Load Sources before saving.'; return; }
+  savingSources = true; $('save-sources').disabled = true; renderSources();
+  for (const input of Object.values(sourceFields)) input.disabled = true;
+  try {
+    const values = registeredSources.map(source => ({ ...source }));
+    if (editingSource !== null) {
+      const fields = Object.fromEntries(Object.entries(sourceFields).map(([key, input]) => [key, key === 'port' ? Number(input.value) : input.value]));
+      values[editingSource] = { ...values[editingSource], ...fields };
+    }
+    const response = await fetch('/api/sources', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values) });
+    const data = await response.json(); if (!response.ok) throw new Error(data.error);
+    registeredSources = data.sources; handleCloseConfiguration('source-view'); handleCloseSource();
+    if (!busy) updateSourceSettings(sourceRows.map(row => row.path));
+    $('source-message').textContent = 'Sources saved. Changes apply to new runs. Select replacements for deleted sources in Main.';
+  } catch (error) { $('source-message').textContent = error.message; }
+  finally { savingSources = false; $('save-sources').disabled = false; for (const input of Object.values(sourceFields)) input.disabled = false; renderSources(); }
+};
+function searchableInput(items, value, listId, caption) {
+  const input = element('input', ''); input.type = 'search'; input.value = value;
+  input.setAttribute('aria-label', caption); input.setAttribute('list', listId);
+  input.setAttribute('autocomplete', 'off'); input.disabled = busy;
+  const list = element('datalist', ''); list.id = listId;
+  for (const item of items) {
+    const option = new Option(item.name, item.name); option.label = item.label || item.name; list.append(option);
+  }
+  return { input, list };
+}
 let sourceRows = [];
 let runSourcePatterns = [];
 function profileSelect(value) {
@@ -460,14 +774,17 @@ function updateSourceSettings(paths = $('file-path').value.split('\n').map(s => 
   $('source-settings').replaceChildren();
   sourceRows = [];
   for (const path of paths) {
-    const preference = sourcePreferences.get(path) || { profile: defaultSourceProfiles[path] || 'general', chunkEvents: 1 };
+    const definitionForDefaults = registeredSources.find(source => source.id === path);
+    const preference = sourcePreferences.get(path) || sourcePreferences.get(definitionForDefaults?.path) || { profile: defaultSourceProfiles[sampleSources.find(source => source.id === path)?.path || definitionForDefaults?.path || path] || 'general', chunkEvents: 1 };
     const row = element('div', '', 'source-setting');
-    const name = element('input', '', 'source-path-input');
-    name.type = 'text'; name.value = path; name.disabled = busy;
-    name.placeholder = 'File path or pattern';
-    name.setAttribute('aria-label', 'File path or pattern');
-    const pathLabel = element('label', 'Path ', 'source-path');
-    pathLabel.append(name);
+    const definition = [...registeredSources, ...sourceSnapshots].find(source => source.id === path || (source.type === 'local' && source.path === path));
+    const sourcePicker = searchableInput(registeredSources.map(source => ({ name: source.name, label: sourceDescription(source) })), definition?.name || '', `source-choices-${sourceRows.length}`, 'Registered source');
+    const name = sourcePicker.input; name.className = 'source-path-input'; name.placeholder = 'Search registered sources…';
+    const pathLabel = element('label', 'Source ', 'source-path');
+    const selectedPath = element('span', definition?.path ? `Path: ${definition.path}` : '', 'source-selected-path');
+    selectedPath.hidden = !definition?.path;
+    selectedPath.setAttribute('aria-live', 'polite');
+    pathLabel.append(name, sourcePicker.list, selectedPath);
     const profile = profileSelect(preference.profile);
     profile.disabled = busy;
     profile.setAttribute('aria-label', `Decision profile for ${path}`);
@@ -479,26 +796,23 @@ function updateSourceSettings(paths = $('file-path').value.split('\n').map(s => 
     label.append(size);
     const criteriaLabel = element('label', 'Criteria ', 'criteria-label');
     criteriaLabel.append(profile);
-    const action = element('select', '');
-    action.append(new Option('None', ''));
-    for (const item of registeredActions.filter(item => item.name)) action.append(new Option(item.name, item.name));
-    action.value = preference.action || '';
-    if (action.selectedIndex < 0) action.value = '';
-    action.disabled = busy;
-    action.setAttribute('aria-label', `Action for ${path}`);
-    const actionLabel = element('label', 'Action ');
-    actionLabel.append(action);
+    const actionPicker = searchableInput(registeredActions.filter(item => item.name), preference.action || '', `action-choices-${sourceRows.length}`, `Action for ${path}`);
+    const action = actionPicker.input; action.placeholder = 'None / search Actions…';
+    const actionLabel = element('label', 'Action '); actionLabel.append(action, actionPicker.list);
     const remove = element('button', 'Remove', 'quiet source-remove');
     remove.type = 'button'; remove.disabled = busy;
     row.append(pathLabel, criteriaLabel, label, actionLabel, remove);
     const save = () => {
-      sourcePreferences.set(name.value.trim(), { profile: profile.value, chunkEvents: Number(size.value), action: action.value });
+      sourcePreferences.set(source.path, { profile: profile.value, chunkEvents: Number(size.value), action: action.value });
       try { localStorage.setItem('deciflow-source-preferences', JSON.stringify([...sourcePreferences].map(([path, { profile, chunkEvents }]) => [path, { profile, chunkEvents }]))); } catch { /* Preferences remain available for this page session. */ }
     };
-    profile.onchange = save; size.oninput = save; action.onchange = save;
-    const source = { path, name, profile, size, action, remove };
+    profile.onchange = save; size.oninput = save; action.onchange = save; action.oninput = save;
+    const source = { path: definition?.id || path, name, profile, size, action, remove };
     name.oninput = () => {
-      source.path = name.value.trim();
+      const selected = registeredSources.find(item => item.name === name.value);
+      source.path = selected?.id || '';
+      selectedPath.textContent = selected?.path ? `Path: ${selected.path}` : '';
+      selectedPath.hidden = !selected?.path;
       save();
       $('file-path').value = sourceRows.map(item => item.path).join('\n');
     };
@@ -520,8 +834,9 @@ $('add-source').onclick = () => {
 };
 $('reset-sources').onclick = () => {
   if (busy || sourceMode === 'paste') return;
-  const defaults = defaultFilePaths[sourceMode];
-  for (const path of defaults.split('\n')) sourcePreferences.set(path, { profile: defaultSourceProfiles[path], chunkEvents: 1, action: '' });
+  const available = sampleSources.filter(sample => registeredSources.some(source => source.id === sample.id));
+  const defaults = (available.length ? available : registeredSources.slice(0, 1)).map(source => source.id).join('\n');
+  for (const path of defaults.split('\n')) sourcePreferences.set(path, { profile: defaultSourceProfiles[sampleSources.find(source => source.id === path)?.path || registeredSources.find(source => source.id === path)?.path] || 'general', chunkEvents: 1, action: '' });
   try { localStorage.setItem('deciflow-source-preferences', JSON.stringify([...sourcePreferences].map(([path, { profile, chunkEvents }]) => [path, { profile, chunkEvents }]))); } catch { /* The current page still uses the reset defaults. */ }
   filePaths[sourceMode] = defaults; $('file-path').value = defaults;
   updateSourceSettings();
@@ -806,8 +1121,9 @@ async function handleRestoreJob() {
       $('paste-profile').value = settings.profile;
       $('paste-chunk-events').value = String(settings.chunkEvents);
     } else {
-      filePaths[settings.mode] = settings.sources.map(source => source.path).join('\n');
-      for (const source of settings.sources) sourcePreferences.set(source.path, { profile: source.profile, chunkEvents: source.chunkEvents, action: job.state === 'running' ? source.action || '' : '' });
+      sourceSnapshots = settings.sources.filter(source => source.sourceId).map(source => ({ ...source, id: source.sourceId }));
+      filePaths[settings.mode] = settings.sources.map(source => source.sourceId || source.path).join('\n');
+      for (const source of settings.sources) sourcePreferences.set(source.sourceId || source.path, { profile: source.profile, chunkEvents: source.chunkEvents, action: job.state === 'running' ? source.action || '' : '' });
     }
     sourceMode = 'paste';
     $('source-mode').onchange();
@@ -817,10 +1133,14 @@ async function handleRestoreJob() {
 $('classify').onclick = () => restoringJob ? undefined : activeJobId && activeJobState === 'running' ? handleRestoreJob().catch(error => { $('message').textContent = error.message; }) : handleProcessing();
 async function handleProcessing(job = null) {
   if (busy) return;
-  const sources = sourceRows.map(({ path, profile, size, action }) => ({ path, profile: profile.value, chunkEvents: Number(size.value), action: action.value }));
-  if (sourceMode !== 'paste' && (!sources.length || sources.some(source => !source.path))) {
+  if (!job && sourceMode !== 'paste' && !sourcesLoaded) { $('message').textContent = 'Sources are not loaded. Open Sources to retry.'; return; }
+  const sources = sourceRows.map(({ path, profile, size, action }) => ({ sourceId: path, profile: profile.value, chunkEvents: Number(size.value), action: action.value }));
+  if (sourceMode !== 'paste' && (!sources.length || sources.some(source => !registeredSources.some(item => item.id === source.sourceId))) && !job) {
     $('message').className = 'error-message';
-    $('message').textContent = 'Enter a file path or pattern for each source.'; return;
+    $('message').textContent = 'Select a registered source for each row. Add sources in Sources first.'; return;
+  }
+  if (!job && sourceMode !== 'paste' && sources.some(source => source.action && !registeredActions.some(action => action.name === source.action))) {
+    $('message').className = 'error-message'; $('message').textContent = 'Select a registered Action or leave it empty for None.'; return;
   }
   const chunkEvents = Number($('paste-chunk-events').value);
   if ((sourceMode === 'paste' ? [chunkEvents] : sources.map(s => s.chunkEvents)).some(n => !Number.isInteger(n) || n < 1)) {
@@ -861,7 +1181,7 @@ async function handleProcessing(job = null) {
         started = true;
         resultEngine = event.engine;
         resultSourceMode = event.mode || sourceMode;
-        runSourcePatterns = sourceMode === 'paste' ? [] : [...new Set(event.sourcePatterns || sources.map(source => source.path))];
+        runSourcePatterns = sourceMode === 'paste' ? [] : [...new Set(event.sourcePatterns || sources.map(source => registeredSources.find(item => item.id === source.sourceId)?.path || source.sourceId))];
         $('source-filter').value = 'all';
         total = event.total;
         completed = 0;
@@ -939,7 +1259,7 @@ fetch('/api/status').then(async response => {
   const data = await response.json();
   if (!response.ok) throw new Error(data.error);
   return data;
-}).then(data => {
+}).then(async data => {
   $('host-name').textContent = data.host.hostname;
   $('host-os').textContent = data.host.os;
   $('host-addresses').textContent = data.host.addresses.join('\n') || 'IP unavailable';
@@ -969,12 +1289,13 @@ fetch('/api/status').then(async response => {
   const limits = data.limits;
   $('source-directory').textContent = `Absolute paths are supported. Relative paths start at: ${data.workingDirectory}`;
   $('input-limits').textContent = engine === 'laya' ? `Three decisions per chunk · Laya ${data.model} · ${limits.context_tokens.toLocaleString('en-US')} tokens including each question. Truncated predictions are discarded and original events retained for review.` : `Three decisions per chunk · ${data.model}: ${limits.context_tokens.toLocaleString('en-US')} tokens for state + questions · Local preflight budget: ${limits.max_jev_input_bytes.toLocaleString('en-US')} bytes per Jev request (not a token count). Oversized events are retained for review.`;
+  await sourceLoadPromise;
   handleRestoreJob().catch(error => { $('message').className = 'error-message'; $('message').textContent = error.message; });
 }).catch(error => { $('status').textContent = error.message || 'Server connection failed'; });
 
 function handleRoute() {
   const hash = globalThis.location?.hash;
-  const view = hash === '#criteria' ? 'criteria' : hash === '#actions' ? 'actions' : 'main';
+  const view = hash === '#settings' ? 'settings' : hash === '#sources' ? 'sources' : hash === '#criteria' ? 'criteria' : hash === '#actions' ? 'actions' : 'main';
   if (view === currentView) return;
   if (view === 'criteria') return $('nav-criteria').onclick();
   handleNavigation(view);
@@ -983,3 +1304,24 @@ if (globalThis.location) {
   globalThis.addEventListener('hashchange', handleRoute);
   handleRoute();
 }
+
+async function handleLoadSources() {
+  $('source-message').textContent = 'Loading sources…';
+  try {
+    const response = await fetch('/api/sources', { method: 'POST' });
+    const data = await response.json(); if (!response.ok) throw new Error(data.error);
+    const initial = !sourcesLoaded;
+    registeredSources = data.sources; sourcesLoaded = true;
+    if (initial && !busy && !sourceSnapshots.length) {
+      for (const mode of ['batch', 'realtime']) {
+        const keys = filePaths[mode].split('\n').filter(key => registeredSources.some(source => source.id === key));
+        filePaths[mode] = (keys.length ? keys : registeredSources.slice(0, 1).map(source => source.id)).join('\n');
+      }
+      if (sourceMode !== 'paste') $('file-path').value = filePaths[sourceMode];
+    }
+    renderSources(); $('save-sources').disabled = false; $('source-message').textContent = '';
+    if (!busy && !restoringJob) updateSourceSettings();
+  } catch (error) { $('source-message').textContent = error.message; }
+}
+renderSources();
+const sourceLoadPromise = handleLoadSources();

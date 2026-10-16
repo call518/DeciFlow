@@ -221,7 +221,10 @@ There is no standalone `question` field.
   "profile": "http_access",
   "chunkEvents": 1,
   "incomplete": false,
-  "elapsedMs": 120
+  "elapsedMs": 120,
+  "sourceId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "sourceName": "Example HTTP access",
+  "sourceType": "local"
 }
 ```
 
@@ -231,8 +234,9 @@ There is no standalone `question` field.
 | --- | --- |
 | `log` | Original log text submitted as one chunk. |
 | `decisionInput` / `inputNormalization` | Present only when preprocessing changed model input; the original stays in log. |
-| `source` | Resolved file path on the DeciFlow node. |
-| `sourcePatterns` | Input paths/patterns that matched this file. |
+| `source` | Resolved local file path, or ssh://user@host:port/path for remote input. |
+| `sourceId` / `sourceName` / `sourceType` | Registered source ID, name snapshot, and local or ssh type; omitted for explicit-path API input. |
+| `sourcePatterns` | Local paths/patterns or qualified SSH patterns matching this file. |
 | `line` / `lineEnd` | First/last source line; Batch uses file lines, Realtime uses observed sequence numbers. |
 | `lineCount` | Number of lines included, not the span between line and lineEnd. |
 | `eventCount` | Actual events in this chunk; currently one nonempty line per event. |

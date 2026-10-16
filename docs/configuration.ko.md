@@ -10,7 +10,7 @@ Laya 서버 설정은 Laya 호스트에서 관리하며, Compose는 `LAYA_API_KE
 | --- | --- | --- |
 | `COMPOSE_PROFILES` | 미설정(UI만 실행) | Compose 전용. cpu·cuda 중 하나만 선택. .env.example은 cpu 지정 |
 | `DECISION_ENGINE` | `laya` | `laya` 또는 `jev` |
-| `DECIFLOW_DATA_DIR` | `/var/lib/deciflow-data` | Actions·Criteria 공통 저장 루트; 쓰기 권한 필요 |
+| `DECIFLOW_DATA_DIR` | `/var/lib/deciflow-data` | Sources·Actions·Criteria·SSH 키·호스트 공통 저장 루트; 쓰기 권한 필요 |
 | `DECIFLOW_CSRF_TRUSTED_ORIGINS` | 빈 값 | 쉼표로 구분한 신뢰 UI 출처. https://*.ngrok-free.app 지원. 출처 검사이며 인증 기능은 아님 |
 | `DECIFLOW_LOG_DIR` | `/var/log/deciflow` | 서버·접근 로그. 빈 값은 파일 기록 비활성화. Compose는 deciflow-logs에 보존 |
 | `PORT` | `4000` | DeciFlow 웹 포트 |

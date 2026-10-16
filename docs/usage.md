@@ -4,27 +4,31 @@
 
 On wide screens, the left **40%** shows **Classification overview → Log input**;
 the right **60%** shows **Classification results**. Narrow screens stack the panels.
-The sidebar identifies the DeciFlow log source host by hostname, detected IPs, and
+The sidebar identifies the DeciFlow reader host by hostname, detected IPs, and
 OS/version. In WSL or containers, these identify that environment, not its host OS;
-IPs are not a full interface inventory. The status in parentheses after the engine name, e.g. **Laya (Connected)**, reports the last actual request: Not checked
+IPs are not a full interface inventory. SSH log hosts are shown in Sources. The status in parentheses after the engine name, e.g. **Laya (Connected)**, reports the last actual request: Not checked
 before a request, then Connected, Disconnected, Timed out, or API error. It is not
 a continuous health check; local input rejections do not change the status.
 
 ### Input and criteria
 
-**Reset sources**, beside Add source, restores the current Batch/Realtime sample
-paths and their criteria, one event per chunk, and Action None. It is disabled
-during processing.
+Register reusable inputs in **Sources**: Local File for logs on the DeciFlow node,
+or Remote File (SSH) for logs read over key-authenticated SFTP. See
+[Sources](sources.md) for registration fields, SSH key mounts, and requirements.
+Main selects saved Sources by searchable name; Action selection also supports
+search. Leave Action empty for None. A typed name must match a registered entry.
 
-Batch and Realtime share these defaults:
+**Reset selections**, beside Add source, restores available sample sources (or the
+first registered source), their sample criteria, one event per chunk, and Action
+None. It is disabled during processing. Initial sample registrations are:
 
-| Path | Criteria |
-| --- | --- |
-| `/host-logs/var/log/messages` | General system |
-| `/host-logs/sample-logs/access-1k.log` | HTTP access |
-| `/host-logs/sample-logs/SSH_2k.log` | Authentication |
+| Source | Path | Criteria |
+| --- | --- | --- |
+| System messages | `/host-logs/var/log/messages` | General system |
+| Sample HTTP access | `/host-logs/sample-logs/access-1k.log` | HTTP access |
+| Sample SSH authentication | `/host-logs/sample-logs/SSH_2k.log` | Authentication |
 
-**Batch** is selected by default. Each mode starts with editable examples.
+**Batch** is selected by default. Paste starts with editable example text.
 
 | Mode | What DeciFlow reads |
 | --- | --- |
@@ -32,22 +36,20 @@ Batch and Realtime share these defaults:
 | Batch | Matching files from the beginning to EOF |
 | Paste | Pasted text grouped into chunks |
 
-Mode identifiers in the UI and exported JSON are `realtime`, `batch`, and `paste`.
+Mode identifiers are `realtime`, `batch`, and `paste`. Add or remove selection rows
+in Main; each row has Source, Criteria, Events/chunk, and Action. Sources and their
+log files are accessed by DeciFlow, not the Laya server or browser. File access
+requires a local/trusted UI Origin and readable UTF-8 regular files. Source
+registrations persist on the server; Batch and Realtime keep separate selections
+for the page session. Criteria/chunk preferences are stored by source ID in the
+browser. Missing/deleted registrations must be replaced before starting a new run.
 
-File sources are on the **DeciFlow node**, not the Laya host. They require local
-browser access (`localhost`/`127.0.0.1`) and readable UTF-8 regular files. Enter one
-path or pattern in each source row. Three sample sources are prefilled; use
-**Remove** to discard one or **Add source** to add another. The **Path** label and
-input share one line. Each row includes its Criteria, Events/chunk, and Action.
-Edited source paths are retained separately for Batch and Realtime during the
-page session. Enter a path for every source before starting analysis. Absolute paths, multiple directories, `*`, `?`, `[abc]`,
-and recursive `**` are supported. Relative paths start at DeciFlow's working
-directory. Batch needs matching files; Realtime can wait for new matches.
 Batch reads selected files concurrently and interleaves ready chunks, preserving
-each file’s line order, profile, and chunk size. Engine concurrency limits apply
-to the entire run, not separately to each file; a limit of 1 serializes requests.
+each file's line order, profile, and chunk size. Engine concurrency limits apply
+to the entire run, not separately to each file. A limit of 1 serializes requests.
+Remote connections use the same engine and Action flow as local files.
 
-Choose **Criteria** and **Events/chunk** for each path/pattern or for Paste.
+Choose **Criteria** and **Events/chunk** for each selected Source or for Paste.
 Defaults: **General system**, **1 event per chunk**. Currently, each nonempty line
 is one event; multiline boundaries are not yet detected. Every profile uses `choice` with
 **Normal, Warning, Error, Security, Other**; only the descriptions and instructions
@@ -79,8 +81,9 @@ state. [Request/result examples](results.md) show all three questions and answer
 Chunks never mix files. Batch flushes remaining events at EOF; Realtime flushes at
 the configured size or after one second without a new event, and separates
 file rotations. Blank lines are skipped; event boundaries are not automatically
-detected. Overlapping matches with identical settings are deduplicated by resolved
-path; conflicting settings are rejected. Chunking does not bypass model budgets.
+detected. Overlapping local matches with identical settings are deduplicated by resolved
+path; conflicting settings are rejected. Chunking does not bypass model budgets. Remote rotation uses size/prefix checks;
+see [SSH limitations](sources.md#ssh-configuration).
 
 General system separates routine operation (Normal), recoverable problems
 (Warning), explicit failures (Error), and evidenced abuse or policy violations
@@ -198,7 +201,7 @@ Laya name: inspect `providerResponse.routing` for the actual checkpoint.
 
 ### Refresh and reconnect
 
-Sidebar routes are Main `/`, Criteria `/#criteria`, and Actions `/#actions`.
+Sidebar routes are Main `/`, Sources `/#sources`, Criteria `/#criteria`, and Actions `/#actions`.
 Reloading opens the view specified by the URL; browser back/forward also switches
 views. Unsaved editor drafts do not survive a reload.
 
