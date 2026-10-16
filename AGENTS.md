@@ -6,14 +6,9 @@
 
 - Keep project UI and code messages in English by default.
 
-- Use Title Case for static UI titles, including page/section/form/dialog headings,
-  result-card and metric titles, table/field labels, and button captions. Keep
-  short articles, conjunctions, and prepositions lowercase unless first or last
-  (e.g. "Sources and Decisions", "Back to List"). Preserve acronyms and technical
-  identifiers (SSH, JSON, Python, venv), and never recase user-defined names or data.
-  Keep descriptions, help text, tooltips, and status sentences in sentence case.
-  Write the intended casing in the UI strings rather than using CSS text-transform;
-  update matching tests and English/Korean documentation labels together.
+- Use Title Case for static UI headings, labels, and buttons; sentence case for
+  descriptions and help text. Preserve technical identifiers and user data.
+  Set casing in strings, not CSS; keep tests and EN/KO documentation consistent.
 
 - Write release notes in English, keeping them concise and clear and focused on
   key changes. Provide them in a fenced `markdown` code block for copy and paste.
@@ -40,6 +35,16 @@
 - Maintain Laya and Jev together: share classification criteria, result validation,
   source handling, and UI behavior. Test both engines for provider changes.
   Laya is the default; never fall back automatically to the paid Jev API.
+
+# Commit message accuracy
+
+- Draft commit messages from conversation context and fresh `git status --short`.
+  Check unstaged/staged summaries (`git diff --stat`, `git diff --cached --stat`),
+  then read only the file diffs needed to verify scope and substance. Avoid dumping
+  full diffs, generated files, or lockfiles; inspect untracked/binary files as needed.
+- Describe only verified changes in the requested scope; check recent commits when
+  needed to exclude already committed work.
+- A request for a commit message does not authorize staging or committing files.
 
 # UI consistency and space efficiency
 
