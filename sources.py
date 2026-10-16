@@ -39,7 +39,7 @@ async def read_file(path: Path) -> AsyncGenerator[Result, None]:
 
 
 async def follow_file(
-    path: Path, *, from_start: bool = False
+    path: Path, *, from_start: bool = False, removed: asyncio.Event | None = None
 ) -> AsyncGenerator[Result, None]:
     """Follow appended UTF-8 lines; reopen replacements and wait for recreation."""
     file: BinaryIO | None = None
@@ -49,6 +49,8 @@ async def follow_file(
     line_number = 0
     try:
         while True:
+            if removed is not None and removed.is_set() and file is None:
+                return
             resolve_source(str(path), follow=True)
             if file is None:
                 try:
@@ -71,6 +73,15 @@ async def follow_file(
                     if log := line.decode("utf-8").strip():
                         yield {"log": log, "source": str(path), "line": line_number}
                 continue
+            if removed is not None and removed.is_set():
+                if pending and (log := pending.decode("utf-8").strip()):
+                    yield {
+                        "log": log,
+                        "source": str(path),
+                        "line": line_number + 1,
+                        "incomplete": True,
+                    }
+                return
             try:
                 stat = path.stat()
             except FileNotFoundError:
@@ -164,6 +175,7 @@ async def read_sources(paths: list[Path]) -> AsyncGenerator[Result, None]:
 async def follow_sources(values: object) -> AsyncGenerator[Result, None]:
     """Merge live files and discover new glob matches with bounded per-file reads."""
     watchers: dict[Path, AsyncGenerator[Result, None]] = {}
+    removed: dict[Path, asyncio.Event] = {}
     reads: dict[asyncio.Task[Result], Path] = {}
     tick: asyncio.Task[None] | None = None
     initial = True
@@ -174,10 +186,15 @@ async def follow_sources(values: object) -> AsyncGenerator[Result, None]:
                     partial(resolve_sources, values, follow=True),
                     abandon_on_cancel=True,
                 )
+                for path in watchers.keys() - set(paths):
+                    removed[path].set()
                 for path in paths:
                     if path in watchers:
                         continue
-                    records = follow_file(path, from_start=not initial)
+                    removed[path] = asyncio.Event()
+                    records = follow_file(
+                        path, from_start=not initial, removed=removed[path]
+                    )
                     watchers[path] = records
                     reads[asyncio.create_task(anext(records))] = path
                 initial = False
@@ -190,7 +207,13 @@ async def follow_sources(values: object) -> AsyncGenerator[Result, None]:
                     tick = None
                     continue
                 path = reads.pop(task)
-                yield task.result()
+                try:
+                    record = task.result()
+                except StopAsyncIteration:
+                    await watchers.pop(path).aclose()
+                    removed.pop(path)
+                    continue
+                yield record
                 reads[asyncio.create_task(anext(watchers[path]))] = path
     finally:
         tasks: set[asyncio.Task] = set(reads)

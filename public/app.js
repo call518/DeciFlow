@@ -1,7 +1,41 @@
 import { readEvents } from './stream.js';
 
 const $ = id => document.getElementById(id);
+function handleMessage(id,text,isError=false) {
+  const node=$(id);
+  node.className=(node.className || '').replace(/\berror-message\b/g,'').trim();
+  if(isError)node.className+=`${node.className?' ':''}error-message`;
+  node.textContent=text;
+}
 const labels = { normal: 'Normal', warning: 'Warning', error: 'Error', security: 'Security', other: 'Other' };
+
+let deleteConfirmationQueue = Promise.resolve();
+function handleConfirmDelete(kind, name, description, identity=name) {
+  const confirmation = deleteConfirmationQueue.then(async () => {
+    let references=[], failure='';
+    try {
+      const response=await fetch('/api/delete-check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,id:identity})});
+      const data=await response.json();if(!response.ok)throw new Error(data.error);
+      if(!Array.isArray(data.references))throw new Error('Invalid dependency response.');
+      references=data.references;
+    }catch(error){failure=`Could not verify dependencies. ${error.message}`;}
+    return new Promise(resolve => {
+      const dialog=$('delete-dialog');const blocked=Boolean(failure || references.length);
+      $('delete-title').textContent=blocked ? `Cannot Delete ${kind}` : `Delete ${kind}?`;
+      $('delete-name').textContent=name;
+      $('delete-description').textContent=failure || (blocked ? 'This item is in use. Remove these references before deleting it.' : description);
+      $('delete-references').replaceChildren(...references.slice(0,5).map(reference=>element('li',reference)));
+      if(references.length>5)$('delete-references').append(element('li',`And ${references.length-5} more references.`));
+      $('delete-references').hidden=!references.length;
+      $('delete-approve').hidden=blocked;$('delete-cancel').textContent=blocked?'Close':'Cancel';
+      dialog.returnValue='cancel';
+      dialog.onclose=()=>resolve(!blocked && dialog.returnValue==='delete');
+      dialog.showModal();
+    });
+  });
+  deleteConfirmationQueue=confirmation.catch(()=>false);
+  return confirmation;
+}
 
 const expandedJson = new WeakSet();
 function orderedResult(result) {
@@ -31,6 +65,9 @@ async function copyText(text) {
   }
 }
 let results = [];
+let pagedView = null;
+let resultsPerPage = 50;
+const resultCursors = new WeakMap();
 let completionOrder = [];
 let elapsedMs = 0;
 let activeProcessingMs = 0;
@@ -43,6 +80,15 @@ let renderTimer;
 let updatesPaused = false;
 let pausedOrder = [];
 let displayedOrder = [];
+let displayedCount = 0;
+let resultStatistics;
+let statisticsCursor = 0;
+let statisticsResults;
+let filteredResults;
+let renderedRows = new Map();
+let renderedPage = [];
+let renderedHosts;
+let renderedCount = -1;
 let activeRequest;
 let activeJobId;
 let activeJobState;
@@ -90,7 +136,47 @@ function element(tag, text, className = '') {
   node.className = className;
   return node;
 }
+const inlineViews = new Map();
+function handleParkInlineView(id) {
+  const state=inlineViews.get(id);if(!state)return;
+  state.home?.append($(id));state.detail?.remove();state.detail=null;$(id).hidden=true;
+}
+function handleCloseInlineView(id) {
+  inlineViews.get(id)?.button?.setAttribute('aria-expanded','false');
+  handleParkInlineView(id);inlineViews.delete(id);
+}
+function handleMountInlineView(parent,row,id) {
+  const state=inlineViews.get(id);const view=$(id);const detail=element('tr','','inline-view-row');
+  const cell=element('td','','inline-view-cell');cell.colSpan=row.children.length;
+  cell.append(view);detail.append(cell);parent.insertBefore(detail,row.nextSibling);
+  state.detail=detail;view.hidden=false;
+}
+function handleAppendViewRow(parent,row,id,key) {
+  parent.append(row);
+  const button=Array.from(row.children[row.children.length-1].children).find(item=>item.textContent==='View');
+  if(button){
+    const show=button.onclick;
+    button.setAttribute('aria-expanded',String(inlineViews.get(id)?.key===key));
+    button.onclick=()=>{
+      const same=inlineViews.get(id)?.key===key;
+      const close=()=>{
+        if(id==='ssh-host-view')handleCloseHost();
+        else if(id==='ssh-key-view')handleCloseKey();
+        else if(id==='task-view')handleCloseTask();
+        else handleCloseConfiguration(id);
+      };
+      close();
+      if(same){button.setAttribute('aria-expanded','false');return;}
+      const home=$(id).parentNode;show();
+      inlineViews.set(id,{key,home,detail:null,button});
+      handleMountInlineView(parent,row,id);button.setAttribute('aria-expanded','true');
+    };
+  }
+  if(inlineViews.get(id)?.key===key){inlineViews.get(id).button=button;handleMountInlineView(parent,row,id);}
+}
+
 function handleCloseConfiguration(id) {
+  handleCloseInlineView(id);
   $(id).replaceChildren(); $(id).hidden = true;
   if (id === 'source-view') {
     $('source-editor').hidden = editingSource === null; $('cancel-source').hidden = editingSource === null;
@@ -106,6 +192,42 @@ function handleCloseConfiguration(id) {
     $('save-criteria').disabled = !criteriaLoaded || savingCriteria;
   }
 }
+function highlightPython(target, source) {
+  if(!globalThis.Prism?.languages.python){target.textContent=source;return;}
+  const tokenText=value=>typeof value==='string'?value:Array.isArray(value)?value.map(tokenText).join(''):tokenText(value.content);
+  const renderToken=token=>{
+    if(typeof token==='string')return element('span',token);
+    const aliases=token.alias ? [].concat(token.alias) : [];
+    const node=element('span',tokenText(token),['token',token.type,...aliases].join(' '));
+    if(typeof token.content!=='string')node.replaceChildren(...[].concat(token.content).map(renderToken));
+    return node;
+  };
+  target.replaceChildren(...Prism.tokenize(source,Prism.languages.python).map(renderToken));
+}
+function handlePythonEditor(input,label) {
+  label.className+=' python-editor';input.wrap='off';
+  const backdrop=element('pre','','python-highlight');backdrop.setAttribute('aria-hidden','true');
+  const code=element('code','');backdrop.append(code);label.append(backdrop);
+  input.oninput=()=>highlightPython(code,input.value);
+  input.onscroll=()=>{code.style.transform=`translate(${-input.scrollLeft}px, ${-input.scrollTop}px)`;};
+  input.oninput();
+}
+
+function detailFields(fields) {
+  const list=element('dl','','view-details');
+  for(const [caption,value] of fields){
+    if(value===undefined)continue;
+    const text=Array.isArray(value)?value.join(', '):String(value);
+    const block=['Python Code','Public Key','Decision Instructions','Normalization'].includes(caption);
+    const field=element('div','',block || text.length>120 || text.includes('\n')?'view-field-wide':'');
+    const valueClass=caption==='Python Code'?'view-value-code':caption==='Public Key'?'view-value-key':'';
+    const valueNode=element('dd',text,valueClass);
+    if(caption==='Python Code')highlightPython(valueNode,text);
+    field.append(element('dt',caption),valueNode);list.append(field);
+  }
+  return list;
+}
+
 function handleViewConfiguration(id, title, fields) {
   const container = $(id);
   if (id === 'source-view') {
@@ -118,26 +240,16 @@ function handleViewConfiguration(id, title, fields) {
     $('criteria-editor').hidden = true; $('cancel-criteria').hidden = true;
     $('save-criteria').disabled = true;
   }
-  const row = element('div', '', 'action-registration');
-  for (const [caption, value] of fields) {
-    if (value === undefined) continue;
-    const label = element('label', caption, 'action-code-label');
-    const input = element('textarea', '');
-    input.value = Array.isArray(value) ? value.join('\n') : String(value);
-    input.readOnly = true; input.rows = caption === 'Python code' ? 14 : 3;
-    input.setAttribute('aria-label', caption);
-    if (caption === 'Python code') { input.className = 'action-code'; input.spellcheck = false; }
-    label.append(input); row.append(label);
-  }
-  const close = element('button', 'Cancel', 'quiet');
-  close.type = 'button'; close.onclick = () => handleCloseConfiguration(id);
+  const row = detailFields(fields);
+  if(id==='criteria-view')row.className+=' criteria-details';
   const header = element('div', '', 'card-title');
-  header.append(element('h3', title), close);
+  header.append(element('h3', title));
   container.replaceChildren(); container.append(header, row);
-  container.hidden = false; container.scrollIntoView?.({ block: 'nearest' });
+  container.hidden = false;
 }
 let sshKeys = [];
 function handleCloseKey() {
+  handleCloseInlineView('ssh-key-view');
   $('ssh-key-registry').hidden = false; $('ssh-key-view').hidden = true;
   $('ssh-key-editor').hidden = true;
   $('ssh-key-name').value = ''; $('ssh-key-file').value = ''; $('ssh-key-paste').value = '';
@@ -146,27 +258,22 @@ function handleCloseKey() {
 function handleAddKey() {
   handleCloseKey();
   $('ssh-key-registry').hidden = true; $('ssh-key-editor').hidden = false;
-  $('ssh-key-message').textContent = '';
+  handleMessage('ssh-key-message','');
 }
 function handleViewKey(key) {
-  handleCloseKey(); $('ssh-key-registry').hidden = true;
+  handleCloseKey();
   const view = $('ssh-key-view'); view.replaceChildren();
   const header = element('div', '', 'card-title');
-  const close = element('button', 'Back to list', 'quiet'); close.type = 'button'; close.onclick = handleCloseKey;
-  header.append(element('h3', key.name), close); view.append(header);
-  const card = element('div', '', 'ssh-key-card');
-  for (const [caption, value] of [['Private key path', key.privatePath], ['Public key path', key.publicPath], ['Public key', key.publicKey], ['Private key', '****']]) {
-    const label = element('label', caption); const field = element('textarea', '');
-    field.readOnly = true; field.rows = caption === 'Public key' ? 3 : 2; field.value = value;
-    field.setAttribute('aria-label', `${key.name}: ${caption}`); label.append(field); card.append(label);
-  }
+  header.append(element('h3', key.name)); view.append(header);
+  const card = detailFields([['Private Key Path', key.privatePath], ['Public Key Path', key.publicPath], ['Public Key', key.publicKey], ['Private Key', '****']]);
   view.append(card); view.hidden = false;
 }
 function renderSSHKeys() {
+  handleParkInlineView('ssh-key-view');
   const list = $('ssh-key-list'); list.replaceChildren();
   const table = element('table', '', 'action-list');
   const header = element('tr', '');
-  for (const title of ['Name', 'Private key path', 'Manage']) header.append(element('th', title));
+  for (const title of ['Name', 'Private Key Path', 'Manage']) header.append(element('th', title));
   const head = element('thead', ''); head.append(header); table.append(head);
   const body = element('tbody', ''); const query = $('ssh-key-search').value.toLowerCase();
   for (const key of sshKeys.filter(key => key.name.toLowerCase().includes(query))) {
@@ -175,22 +282,22 @@ function renderSSHKeys() {
     for (const [caption, handler] of [['View', () => handleViewKey(key)], ['Delete', () => handleDeleteKey(key.name)]]) {
       const button = element('button', caption, 'quiet'); button.type = 'button'; button.onclick = handler; controls.append(button);
     }
-    row.append(controls); body.append(row);
+    row.append(controls); handleAppendViewRow(body,row,'ssh-key-view',key.name);
   }
   table.append(body); list.append(table);
-  if (!body.children.length) list.append(element('p', 'No matching SSH keys.', 'caption'));
+  if (!body.children.length) list.append(element('p', 'No matching SSH Keys.', 'caption'));
 }
 $('open-add-ssh-key').onclick = handleAddKey;
 $('cancel-ssh-key').onclick = handleCloseKey;
 $('ssh-key-search').oninput = renderSSHKeys;
 async function handleKeyResponse(response) {
   if (response.status === 404 || response.status === 405) {
-    throw new Error('SSH key API is unavailable. Restart the DeciFlow UI server or container to load the updated backend.');
+    throw new Error('SSH Key API is unavailable. Restart the DeciFlow UI server or container to load the updated backend.');
   }
   let data;
   try { data = await response.json(); }
-  catch { throw new Error(`SSH key API returned an invalid response (HTTP ${response.status}). Check the DeciFlow server.`); }
-  if (!response.ok) throw new Error(data.error || 'Could not manage SSH keys.');
+  catch { throw new Error(`SSH Key API returned an invalid response (HTTP ${response.status}). Check the DeciFlow server.`); }
+  if (!response.ok) throw new Error(data.error || 'Could not manage SSH Keys.');
   return data;
 }
 async function handleLoadKeys() {
@@ -198,7 +305,7 @@ async function handleLoadKeys() {
     const response = await fetch('/api/ssh-keys', { method: 'POST' });
     const data = await handleKeyResponse(response);
     sshKeys = data.keys; renderSSHKeys();
-  } catch (error) { $('ssh-key-message').textContent = error.message; }
+  } catch (error) { handleMessage('ssh-key-message',error.message,true); }
 }
 let pastedPrivateKey = '';
 $('ssh-key-paste').onpaste = event => {
@@ -220,7 +327,7 @@ $('ssh-key-form').onsubmit = async event => {
   const method = $('ssh-key-method').value || 'upload';
   const body = { name: $('ssh-key-name').value.trim(), inputMethod: method };
   $('add-ssh-key').disabled = true;
-  $('ssh-key-message').textContent = 'Adding SSH key…';
+  handleMessage('ssh-key-message','Adding SSH Key…');
   try {
     if (!/^[A-Za-z0-9_ -]{1,64}$/.test(body.name)) throw new Error('Enter a name of 1–64 letters, digits, spaces, underscores, or hyphens.');
     if (method === 'path') {
@@ -238,20 +345,20 @@ $('ssh-key-form').onsubmit = async event => {
     const data = await handleKeyResponse(response);
     sshKeys = data.keys; renderSSHKeys();
     handleCloseKey();
-    $('ssh-key-message').textContent = 'SSH key added.';
-  } catch (error) { $('ssh-key-message').textContent = error.message; }
+    handleMessage('ssh-key-message','SSH Key added.');
+  } catch (error) { handleMessage('ssh-key-message',error.message,true); }
   finally {
     pastedPrivateKey = ''; $('ssh-key-paste').value = ''; $('ssh-key-file').value = '';
     $('add-ssh-key').disabled = false;
   }
 };
 async function handleDeleteKey(name) {
-  if (!globalThis.confirm(`Delete SSH key "${name}"? Both key files will be permanently removed. This cannot be undone.`)) return;
+  if (!await handleConfirmDelete('SSH Key', name, 'Both private and public key files will be permanently deleted. This cannot be undone.')) return;
   try {
     const response = await fetch('/api/ssh-keys', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
     const data = await handleKeyResponse(response);
-    sshKeys = data.keys; renderSSHKeys(); $('ssh-key-message').textContent = 'SSH key deleted.';
-  } catch (error) { $('ssh-key-message').textContent = error.message; }
+    sshKeys = data.keys; renderSSHKeys(); handleMessage('ssh-key-message','SSH Key deleted.');
+  } catch (error) { handleMessage('ssh-key-message',error.message,true); }
 }
 let sshHosts = [];
 let editingSSHHost = null;
@@ -309,12 +416,13 @@ async function handleTestHost(host=null, automatic=false) {
 }
 let hostCheckTimer;
 let hostChecksRunning = false;
+const autoCheckedHosts = new Set();
 function hostChecksVisible() {
   return currentView === 'settings' && !document.hidden && !$('settings-ssh-hosts').hidden && !$('ssh-host-registry').hidden;
 }
 function handleScheduleHostChecks() {
   clearTimeout(hostCheckTimer);
-  if (hostChecksVisible()) hostCheckTimer = setTimeout(handleAutoCheckHosts, 0);
+  if (hostChecksVisible() && sshHosts.some(host=>!autoCheckedHosts.has(hostConnectionKey(host)))) hostCheckTimer = setTimeout(handleAutoCheckHosts, 0);
 }
 async function handleAutoCheckHosts() {
   if (hostChecksRunning || !hostChecksVisible()) return;
@@ -324,25 +432,28 @@ async function handleAutoCheckHosts() {
     for (const host of [...sshHosts].sort(compareNames)) {
       if (!hostChecksVisible() || $('ssh-trust-dialog').open) break;
       if (!sshHosts.some(item => item.id === host.id && hostConnectionKey(item) === hostConnectionKey(host))) continue;
-      await handleTestHost(host, true);
+      const key=hostConnectionKey(host);if(autoCheckedHosts.has(key))continue;
+      autoCheckedHosts.add(key);await handleTestHost(host, true);
     }
   } finally {
     hostChecksRunning = false;
-    if (hostChecksVisible()) hostCheckTimer = setTimeout(handleAutoCheckHosts, 30000);
+
   }
 }
 document.addEventListener?.('visibilitychange', handleScheduleHostChecks);
 $('test-ssh-host').onclick=()=>handleTestHost();
 $('ssh-host-form').oninput=()=>{$('ssh-host-test-result').textContent='';};
 function handleCloseHost() {
+  handleCloseInlineView('ssh-host-view');
   editingSSHHost = null; $('ssh-host-registry').hidden = false;
   $('ssh-host-editor').hidden = true; $('ssh-host-view').hidden = true;
   handleScheduleHostChecks();
 }
 function renderSSHHosts() {
+  handleParkInlineView('ssh-host-view');
   const list = $('ssh-host-list'); list.replaceChildren();
   const table = element('table', '', 'action-list'); const header = element('tr', '');
-  for (const title of ['Name', 'Connection', 'SSH key', 'Status', 'Manage']) header.append(element('th', title));
+  for (const title of ['Name', 'Connection', 'SSH Key', 'Status', 'Manage']) header.append(element('th', title));
   const head = element('thead', ''); head.append(header); table.append(head);
   const body = element('tbody', ''); const query = $('ssh-host-search').value.toLowerCase();
   for (const host of sshHosts.filter(host => `${host.name} ${host.host} ${host.username}`.toLowerCase().includes(query))) {
@@ -354,42 +465,39 @@ function renderSSHHosts() {
     }
     const check=sshHostChecks.get(hostConnectionKey(host));
     const test=element('button', 'Test Connection', 'quiet'); test.type='button';test.disabled=Boolean(check?.checking);test.onclick=()=>handleTestHost(host);controls.append(test);
-    row.append(element('td',connectionStatus(check),check?.connected?'connection-ok':check && !check.checking?'connection-failed':''),controls); body.append(row);
+    row.append(element('td',connectionStatus(check),check?.connected?'connection-ok':check && !check.checking?'connection-failed':''),controls); handleAppendViewRow(body,row,'ssh-host-view',host.id);
   }
   table.append(body); list.append(table);
-  if (!body.children.length) list.append(element('p', 'No matching SSH hosts.', 'caption'));
+  if (!body.children.length) list.append(element('p', 'No matching SSH Hosts.', 'caption'));
 }
 async function handleLoadHosts() {
   try {
     const response = await fetch('/api/ssh-hosts', { method: 'POST' });
-    if (response.status === 404 || response.status === 405) throw new Error('SSH host API is unavailable. Restart the DeciFlow UI server or container.');
+    if (response.status === 404 || response.status === 405) throw new Error('SSH Host API is unavailable. Restart the DeciFlow UI server or container.');
     const data = await response.json(); if (!response.ok) throw new Error(data.error);
-    sshHosts = data.hosts; renderSSHHosts();
+    sshHosts = data.hosts; renderSSHHosts(); renderTaskMonitor();
     handleScheduleHostChecks();
-  } catch (error) { $('ssh-host-message').textContent = error.message; }
+  } catch (error) { handleMessage('ssh-host-message',error.message,true); }
 }
 function handleEditHost(host = null) {
   handleCloseHost(); editingSSHHost = host?.id || null;
   $('ssh-host-registry').hidden = true; $('ssh-host-editor').hidden = false;
-  $('ssh-host-editor-title').textContent = host ? 'Edit SSH host' : 'Add SSH host';
+  $('ssh-host-editor-title').textContent = host ? 'Edit SSH Host' : 'Add SSH Host';
   for (const [id, value] of [['ssh-host-name', host?.name || ''], ['ssh-host-address', host?.host || ''], ['ssh-host-port', host?.port || 22], ['ssh-host-user', host?.username || '']]) $(id).value = String(value);
   const keys = $('ssh-host-key'); keys.replaceChildren();
   for (const key of sshKeys) keys.append(new Option(key.name, key.privatePath));
   if (host?.keyPath && !sshKeys.some(key => key.privatePath === host.keyPath)) keys.append(new Option(host.keyPath, host.keyPath));
-  keys.value = host?.keyPath || ''; $('ssh-host-message').textContent = '';
+  keys.value = host?.keyPath || ''; handleMessage('ssh-host-message','');
   $('ssh-host-test-result').textContent='';
 }
 function handleViewHost(host) {
-  handleCloseHost(); $('ssh-host-registry').hidden = true;
+  handleCloseHost();
   const view = $('ssh-host-view'); view.replaceChildren();
-  const header = element('div', '', 'card-title'); const close = element('button', 'Back to list', 'quiet');
-  close.type = 'button'; close.onclick = handleCloseHost;
-  header.append(element('h3', host.name), close); view.append(header);
-  const fields = element('div', '', 'ssh-key-card');
-  for (const [caption, value] of [['Host', host.host], ['Port', host.port], ['SSH user', host.username], ['SSH key path', host.keyPath]]) {
-    const label = element('label', caption); const input = element('textarea', ''); input.readOnly = true; input.rows = 2; input.value = String(value);
-    label.append(input); fields.append(label);
-  }
+  const header = element('div', '', 'card-title');
+  header.append(element('h3', host.name)); view.append(header);
+  const fields = detailFields([['Host', host.host], ['Port', host.port], ['SSH User', host.username], ['SSH Key Path', host.keyPath]]);
+  fields.className += ' ssh-host-details';
+  fields.children[3].className='view-field-wide';
   view.append(fields); view.hidden = false;
 }
 $('open-add-ssh-host').onclick = () => handleEditHost();
@@ -407,17 +515,17 @@ $('ssh-host-form').onsubmit = async event => {
       return host ? {...source, host:host.host, port:host.port, username:host.username, keyPath:host.keyPath, hostName:host.name} : source;
     });
     renderSources(); if (!busy) updateSourceSettings(sourceRows.map(row => row.path));
-    $('ssh-host-message').textContent = 'SSH host saved. Changes apply to new runs.';
-  } catch (error) { $('ssh-host-message').textContent = error.message; }
+    handleMessage('ssh-host-message','SSH Host saved. Changes apply to new runs.');
+  } catch (error) { handleMessage('ssh-host-message',error.message,true); }
   finally { $('save-ssh-host').disabled = false; }
 };
 async function handleDeleteHost(host) {
-  if (!globalThis.confirm(`Delete SSH host "${host.name}"? Sources and running jobs must stop referencing it first.`)) return;
+  if (!await handleConfirmDelete('SSH Host', host.name, 'This saved connection will be deleted.', host.id)) return;
   try {
     const response = await fetch('/api/ssh-hosts', {method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:host.id})});
     const data = await response.json(); if (!response.ok) throw new Error(data.error);
-    sshHosts = data.hosts; renderSSHHosts(); $('ssh-host-message').textContent = 'SSH host deleted.';
-  } catch (error) { $('ssh-host-message').textContent = error.message; }
+    sshHosts = data.hosts; renderSSHHosts(); handleMessage('ssh-host-message','SSH Host deleted.');
+  } catch (error) { handleMessage('ssh-host-message',error.message,true); }
 }
 let registeredTasks = [];
 let selectedTaskId = '';
@@ -428,48 +536,128 @@ let followLatestTask = true;
 let monitoringReady = false;
 
 function taskExecution(task) {
-  return task.mode === 'realtime' ? `Realtime${task.resumeOnRestart ? ' · resume on restart' : ''}` : task.cron ? `Batch · ${task.cron} · ${task.timezone}${task.enabled ? '' : ' · paused'}` : 'Batch · Manual';
+  return task.mode === 'realtime' ? `Realtime${task.resumeOnRestart ? ' · resume on restart' : ''}` : task.cron ? `Batch · ${task.cron} · ${task.timezone}` : 'Batch · Manual';
 }
 function taskTime(value, timezone = 'UTC') {
   return value ? new Date(value).toLocaleString('en-GB', {timeZone:timezone,hour12:false}) : '—';
 }
+let taskTooltipTimer=null;
+function handleHideTaskTooltip() {
+  clearTimeout(taskTooltipTimer);
+  taskTooltipTimer=setTimeout(()=>{$('task-monitor-tooltip').hidden=true;},150);
+}
+function handleShowTaskTooltip(button,task,definitions,mode,state) {
+  clearTimeout(taskTooltipTimer);
+  const tooltip=$('task-monitor-tooltip');
+  tooltip.taskId=task.id;
+  tooltip.replaceChildren(element('strong',task.name));
+  tooltip.append(element('div',`${task.enabled===false?'Disabled':'Enabled'} · ${state} · Mode: ${mode}`));
+  for(const source of definitions){
+    const section=element('div','','monitor-tooltip-source');
+    section.textContent=`Source: ${source.name}\nFile Path / Pattern: ${source.path || 'Unavailable'}\nType: ${source.type}\nCriteria: ${source.profile} · Events/Chunk: ${source.chunkEvents}\nAction: ${source.action}\nSource Hosts (${source.hosts.length}):\n${source.hosts.map(host=>host.label).join('\n') || 'None'}`;
+    tooltip.append(section);
+  }
+  tooltip.hidden=false;
+  const rect=button.getBoundingClientRect();
+  const width=Math.min(420,(globalThis.innerWidth || 1024)-24);
+  const left=Math.max(12,Math.min(rect.left,(globalThis.innerWidth || 1024)-width-12));
+  tooltip.setAttribute('style',`width:${width}px;left:${left}px;top:12px`);
+  const height=tooltip.getBoundingClientRect?.().height || 200;
+  const top=rect.bottom+8+height<(globalThis.innerHeight || 768)?rect.bottom+8:Math.max(12,rect.top-height-8);
+  tooltip.setAttribute('style',`width:${width}px;left:${left}px;top:${top}px`);
+}
+$('task-monitor-tooltip').onmouseenter=()=>clearTimeout(taskTooltipTimer);
+$('task-monitor-tooltip').onmouseleave=handleHideTaskTooltip;
 function renderTaskMonitor() {
   const list=$('running-tasks'); list.replaceChildren();
-  const running=registeredTasks.filter(task=>task.activeRun || task.starting).sort(compareNames);
-  for(const task of running) {
+  const tasks=[...registeredTasks].sort((a,b)=>Number(Boolean(b.activeRun || b.starting))-Number(Boolean(a.activeRun || a.starting)) || compareNames(a,b));
+  for(const task of tasks) {
     const button=element('button','','running-task'); button.type='button';
     button.setAttribute('aria-pressed',String(task.id===selectedTaskId));
-    button.append(element('strong',task.name),element('span',`${task.starting?'Starting':'Running'} · ${task.mode==='realtime'?'Realtime':'Batch'}`,'caption'));
-    button.disabled=!task.activeRun;
-    button.onclick=()=>handleSelectTask(task.id);
+    const run=task.activeRun || task.latestRun;
+    const state=task.starting?'starting':task.activeRun?'running':run?.state || 'idle';
+    button.className+=` monitor-card-${state}`;
+    const name=element('strong',task.name,'monitor-task-name');
+    const mode=task.mode==='realtime'?'Realtime':task.cron?'Batch · Cron':'Batch · Manual';
+    const definitions=(task.sources || []).map(source=>{
+      const snapshot=run?.settings?.sources?.find(item=>item.sourceId===source.sourceId);
+      const definition=registeredSources.find(item=>item.id===source.sourceId) || snapshot;
+      const remote=definition?.type==='ssh' || Boolean(source.hostIds?.length);
+      const hosts=remote?(source.hostIds || []).map(id=>{
+        const saved=sshHosts.find(host=>host.id===id);
+        const frozen=run?.settings?.sources?.find(item=>item.hostId===id);
+        const hostName=saved?.name || frozen?.hostName || run?.hosts?.find(host=>host.hostId===id)?.hostName || id;
+        const address=saved?.host || frozen?.host;
+        const user=saved?.username || frozen?.username;
+        const port=saved?.port || frozen?.port;
+        return {id,label:`${hostName}${address?` · ${user?`${user}@`:''}${address}:${port || 22}`:''}`};
+      }):[{id:'local',label:'DeciFlow (Local)'}];
+      return {name:definition?.name || 'Unavailable source',path:definition?.path,type:remote?'Remote File (SSH)':'Local File',action:source.action || 'None',hosts,profile:profileLabels[source.profile] || source.profile || 'General system',chunkEvents:source.chunkEvents || 1};
+    });
+    const hostCount=new Set(definitions.flatMap(source=>source.hosts.map(host=>host.id))).size;
+    const summary=element('span',`Source: ${definitions.map(source=>source.name).join(', ') || 'None'} · Source Hosts: ${hostCount}`,'caption monitor-task-sources');
+    const details=element('span',`Type: ${[...new Set(definitions.map(source=>source.type))].join(', ') || 'None'} / Mode: ${mode} / Action: ${[...new Set(definitions.map(source=>source.action))].join(', ') || 'None'}`,'caption monitor-task-details');
+    button.setAttribute('aria-describedby','task-monitor-tooltip');
+    const showTooltip=()=>handleShowTaskTooltip(button,task,definitions,mode,state);
+    const cancelTooltip=()=>{clearTimeout(taskTooltipTimer);$('task-monitor-tooltip').hidden=true;};
+    button.onmouseenter=()=>{
+      const tooltip=$('task-monitor-tooltip');
+      if(!tooltip.hidden && tooltip.taskId===task.id){clearTimeout(taskTooltipTimer);return;}
+      cancelTooltip();
+      taskTooltipTimer=setTimeout(()=>{if(button.isConnected!==false)showTooltip();},1000);
+    };
+    button.onmousemove=()=>{if($('task-monitor-tooltip').hidden)button.onmouseenter();};
+    button.onmouseleave=handleHideTaskTooltip;
+    button.onfocus=showTooltip;
+    button.onblur=()=>{if(!$('task-monitor-tooltip').matches?.(':hover'))cancelTooltip();};
+    button.onkeydown=event=>{if(event.key==='Escape')cancelTooltip();};
+    const status=element('span','','monitor-task-status');
+    status.append(element('span',task.enabled===false?'Disabled':'Enabled',`monitor-availability ${task.enabled===false?'disabled':'enabled'}`),element('span',state[0].toUpperCase()+state.slice(1),`task-state monitor-state ${state}`));
+    button.append(name,status,summary,details);
+    button.onclick=()=>{cancelTooltip();return handleSelectTask(task.id);};
     list.append(button);
   }
-  if(!running.length)list.append(element('p','No Tasks are currently running. Start a Task from Tasks.','caption'));
-  const task=registeredTasks.find(task=>task.id===selectedTaskId);
-  $('monitor-task-info').textContent=task ? `${task.name} · ${taskExecution(task)} · ${task.sources.length} Source(s)` : 'Select a running Task to view its results.';
-  const run=task?.activeRun || task?.latestRun;
-  $('monitor-task-status').textContent=task ? `${task.starting ? 'Starting' : run?.state || 'Idle'}${task.nextRunAt ? ` · Next: ${taskTime(task.nextRunAt,task.timezone)} (${task.timezone})` : ''}${run?.counts ? ` · ${run.counts.completed} completed · ${run.counts.failed} failed requests · ${run.counts.actionFailed} failed Actions` : ''}` : '';
-  $('stop').disabled=!task?.activeRun;
+  if(!tasks.length)list.append(element('p','No saved Tasks. Add a Task in Tasks.','caption'));
+
 }
 function renderTasks() {
+  handleParkInlineView('task-view');
   $('task-registry').hidden=editingTask!==null;
   const list=$('task-list'); list.replaceChildren();
   const table=element('table','','action-list'); const head=element('tr','');
-  for(const title of ['Name','Execution','Status','Next run','Manage']) head.append(element('th',title));
+  for(const title of ['Name','Enabled','Execution','Status','Next Run','Manage']) head.append(element('th',title));
   table.append(head); const query=$('task-search').value.toLowerCase();
   for(const task of registeredTasks.filter(task=>task.name.toLowerCase().includes(query))) {
     const row=element('tr',''); const run=task.activeRun || task.latestRun;
-    row.append(element('td',task.name),element('td',taskExecution(task)),element('td',task.starting ? 'Starting' : run?.state || 'Idle',`task-state ${task.starting?'running':run?.state || 'idle'}`),element('td',task.nextRunAt ? `${taskTime(task.nextRunAt,task.timezone)} (${task.timezone})` : '—'));
+    const availability=element('td','');
+    const toggle=element('button','','task-toggle');toggle.type='button';
+    toggle.setAttribute('role','switch');toggle.setAttribute('aria-checked',String(task.enabled !== false));
+    toggle.setAttribute('aria-label',`Enable ${task.name}`);
+    toggle.title=task.enabled === false?'Disabled':'Enabled';
+    toggle.append(element('span','','task-toggle-knob'));
+    toggle.onclick=()=>handleToggleTask(task,toggle);availability.append(toggle);
+    row.append(element('td',task.name),availability,element('td',taskExecution(task)),element('td',task.starting ? 'Starting' : run?.state || 'Idle',`task-state ${task.starting?'running':run?.state || 'idle'}`),element('td',task.nextRunAt ? `${taskTime(task.nextRunAt,task.timezone)} (${task.timezone})` : '—'));
     const controls=element('td','','action-list-controls');
     for(const [label,handler] of [['Run',()=>handleRunTask(task.id)],['Stop',()=>handleStopTask(task.id)],['View',()=>handleViewTask(task)],['Edit',()=>handleEditTask(task)],['History',()=>handleTaskHistory(task)],['Delete',()=>handleDeleteTask(task)]]) {
       const button=element('button',label,'quiet'); button.type='button';button.onclick=handler;
-      if(label==='Run')button.disabled=Boolean(task.activeRun || task.starting);
+      if(label==='Run')button.disabled=task.enabled===false || Boolean(task.activeRun || task.starting);
       if(label==='Stop')button.disabled=!task.activeRun;
       controls.append(button);
     }
-    row.append(controls);table.append(row);
+    row.append(controls);handleAppendViewRow(table,row,'task-view',task.id);
   }
   list.append(table);renderTaskMonitor();
+}
+async function handleToggleTask(task,button) {
+  button.disabled=true;
+  try {
+    const response=await fetch(`/api/tasks/${task.id}/enabled`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:task.enabled===false})});
+    if(response.status===404 || response.status===405)throw new Error('Task controls are unavailable. Restart the DeciFlow UI server or container.');
+    const data=await response.json();if(!response.ok)throw new Error(data.error);
+    handleMessage('task-message','');
+    await handleLoadTasks();
+  }catch(error){handleMessage('task-message',error.message,true);}
+  finally{button.disabled=false;}
 }
 async function handleLoadTasks() {
   try {
@@ -480,22 +668,23 @@ async function handleLoadTasks() {
     const selected=registeredTasks.find(task=>task.id===selectedTaskId);
     const run=selected?.activeRun || selected?.latestRun;
     if(monitoringReady && followLatestTask && currentView==='main' && run && run.jobId!==activeJobId)handleWatchRun(run);
-  } catch(error) { $('task-message').textContent=error.message; $('monitor-task-status').textContent=error.message; }
+  } catch(error) { handleMessage('task-message',error.message,true); handleMessage('message',error.message,true); }
 }
 function handleCloseTask() {
+  handleCloseInlineView('task-view');
   editingTask=null; $('task-registry').hidden=false;$('task-editor').hidden=true;$('task-view').hidden=true;$('task-history').hidden=true;
 }
 function handleTaskMode() {
   const realtime=$('source-mode').value==='realtime'; const cron=!realtime && $('task-trigger').value==='cron';
   $('task-trigger-field').hidden=realtime;
-  for(const id of ['task-cron-field','task-timezone-field','task-enabled-field'])$(id).hidden=!cron;
+  for(const id of ['task-cron-field','task-timezone-field'])$(id).hidden=!cron;
   $('task-resume-field').hidden=!realtime;
   $('task-mode-note').textContent=realtime ? 'Realtime monitors new data lines until stopped. Automatic restart is opt-in; lines written during downtime are not replayed.' : cron ? 'Each scheduled Batch reads files from the beginning and can repeat Actions for the same data. Overlapping occurrences are skipped. Missed schedules are not replayed. No automatic retries.' : 'Manual Batch reads files from the beginning once, then finishes as Completed or Failed.';
 }
 async function handleEditTask(task=null) {
   await sourceLoadPromise;
   await handleLoadHosts();
-  if(!sourcesLoaded){$('task-message').textContent='Load Sources before editing Tasks.';return;}
+  if(!sourcesLoaded){handleMessage('task-message','Load Sources before editing Tasks.',true);return;}
   handleCloseTask();editingTask=task?.id || '';
   $('task-registry').hidden=true;$('task-editor').hidden=false;
   $('task-editor-title').textContent=task?'Edit Task':'Add Task';$('task-name').value=task?.name || '';
@@ -505,7 +694,7 @@ async function handleEditTask(task=null) {
   sourcePreferences.clear();
   for(const source of task?.sources || [])sourcePreferences.set(source.sourceId,{profile:source.profile,chunkEvents:source.chunkEvents,action:source.action || '',hostIds:[...(source.hostIds || [])]});
   const paths=task?.sources.map(source=>source.sourceId) || registeredSources.slice(0,1).map(source=>source.id);
-  $('file-path').value=paths.join('\n');updateSourceSettings(paths);handleTaskMode();$('task-message').textContent='';
+  $('file-path').value=paths.join('\n');updateSourceSettings(paths);handleTaskMode();handleMessage('task-message','');
 }
 $('add-task').onclick=()=>handleEditTask();$('cancel-task').onclick=handleCloseTask;$('task-search').oninput=renderTasks;
 $('task-form').onsubmit=async event=>{
@@ -516,37 +705,72 @@ $('task-form').onsubmit=async event=>{
     const task={...(editingTask?{id:editingTask}:{}),name:$('task-name').value,mode,sources,cron:mode==='batch' && $('task-trigger').value==='cron'?$('task-cron').value:'',timezone:$('task-timezone').value || 'UTC',enabled:$('task-enabled').checked,resumeOnRestart:mode==='realtime' && $('task-resume').checked};
     const response=await fetch('/api/tasks',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(task)});
     const data=await response.json();if(!response.ok)throw new Error(data.error);
-    registeredTasks=data.tasks;handleCloseTask();renderTasks();$('task-message').textContent='Task saved. Changes apply to new runs.';
-  }catch(error){$('task-message').textContent=error.message;}
+    registeredTasks=data.tasks;handleCloseTask();renderTasks();handleMessage('task-message','Task saved. Changes apply to new runs.');
+  }catch(error){handleMessage('task-message',error.message,true);}
   finally{$('save-task').disabled=false;}
 };
 function handleViewTask(task) {
-  handleCloseTask();$('task-registry').hidden=true;const view=$('task-view');view.replaceChildren();
-  const header=element('div','','card-title');const back=element('button','Back to list','quiet');back.type='button';back.onclick=handleCloseTask;
-  header.append(element('h3',task.name),back);view.append(header);
-  view.append(element('p',taskExecution(task)));
-  const list=element('ul','');for(const source of task.sources){const definition=registeredSources.find(item=>item.id===source.sourceId);list.append(element('li',`${definition?.name || source.sourceId} · ${definition?.path || 'Source unavailable'} · ${profileLabels[source.profile] || source.profile} · ${source.chunkEvents} event(s) · Action: ${source.action || 'None'}${source.hostIds?.length ? ` · Hosts: ${source.hostIds.map(id=>sshHosts.find(host=>host.id===id)?.name || id).join(', ')}` : ''}`));}
-  view.append(list);view.hidden=false;
+  handleCloseTask();const view=$('task-view');view.replaceChildren();
+  const container=element('section','','task-source-card');
+  const header=element('div','','task-source-heading');
+  const heading=element('div','','task-detail-heading');
+  heading.append(element('h3',task.name),element('span',taskExecution(task),'caption'));
+  header.append(heading);container.append(header);
+  const sources=element('div','','task-source-details');
+  for(const source of task.sources){
+    const definition=registeredSources.find(item=>item.id===source.sourceId);
+    const card=element('section','','task-source-entry');
+    const fields=element('dl','','view-details task-source-fields');
+    for(const [label,value,wide] of [
+      ['Source Name',definition?.name || source.sourceId,false],
+      ['File Path / Pattern',definition?.path || 'Source unavailable',false],
+      ['Source Type',definition?.type==='ssh' || source.hostIds?.length?'Remote File (SSH)':'Local File',false],
+      ['Criteria',profileLabels[source.profile] || source.profile,false],
+      ['Events per Chunk',String(source.chunkEvents),false],
+      ['Action',source.action || 'None',false],
+    ]){
+      const field=element('div','',wide?'task-source-field-wide':'');
+      field.append(element('dt',label),element('dd',value,label==='File Path / Pattern'?'task-source-path':''));fields.append(field);
+    }
+    const targets=element('div','','task-source-field-wide');
+    targets.append(element('dt',source.hostIds?.length?`Source Hosts (${source.hostIds.length})`:'Source Host'));
+    const hosts=element('dd','','task-target-hosts');
+    if(source.hostIds?.length){
+      for(const id of source.hostIds){
+        const host=sshHosts.find(item=>item.id===id);
+        hosts.append(element('span',host?.name || id,'task-target-host'));
+      }
+    }else hosts.append(element('span','DeciFlow (Local)','task-target-host'));
+    targets.append(hosts);fields.insertBefore(targets,fields.children[3]);card.append(fields);sources.append(card);
+  }
+  container.append(sources);view.append(container);view.hidden=false;
 }
 async function handleDeleteTask(task) {
-  if(!globalThis.confirm(`Delete Task "${task.name}"? Saved run history will remain on disk. Stop running executions first.`))return;
+  if(!await handleConfirmDelete('Task', task.name, 'The Task, all run history, results, reviewer corrections, and Task files will be permanently deleted. Original source files are kept. This cannot be undone.', task.id))return;
   try {
     const response=await fetch('/api/tasks',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:task.id})});
     const data=await response.json();if(!response.ok)throw new Error(data.error);
-    registeredTasks=data.tasks;if(selectedTaskId===task.id)selectedTaskId='';renderTasks();
-  }catch(error){$('task-message').textContent=error.message;}
+    registeredTasks=data.tasks;
+    if(selectedTaskId===task.id){
+      selectedTaskId='';activeRequest?.abort();pagedView=null;activeJobId=undefined;rememberJob('');
+      results=[];completionOrder=[];pausedOrder=[];displayedOrder=[];completed=0;total=0;runHosts=[];runSourcePatterns=[];
+      statisticsResults=undefined;filteredResults=undefined;renderedRows.clear();renderedPage=[];render();
+      $('result-context').textContent='Select a Task to view its results.';handleMessage('message','');
+    }
+    renderTasks();
+  }catch(error){handleMessage('task-message',error.message,true);}
 }
 async function handleTaskHistory(task) {
   try {
     const response=await fetch(`/api/tasks/${task.id}/runs`,{method:'POST'});const data=await response.json();if(!response.ok)throw new Error(data.error);
     handleCloseTask();$('task-registry').hidden=true;const view=$('task-history');view.replaceChildren();
-    const header=element('div','','card-title');const back=element('button','Back to list','quiet');back.type='button';back.onclick=handleCloseTask;
+    const header=element('div','','card-title');const back=element('button','Back to List','quiet');back.type='button';back.onclick=handleCloseTask;
     const refresh=element('button','Refresh','quiet');refresh.type='button';refresh.onclick=()=>handleTaskHistory(task);
-    header.append(element('h3',`${task.name} · Latest 50 executions`),refresh,back);view.append(header);
+    header.append(element('h3',`${task.name} · Latest 50 Executions`),refresh,back);view.append(header);
     const table=element('table','','action-list');const head=element('tr','');for(const title of ['Started','Finished','Trigger','State','Results','Manage'])head.append(element('th',title));table.append(head);
-    for(const run of data.runs){const row=element('tr','');row.append(element('td',`${taskTime(run.startedAt,task.timezone)} (${task.timezone})`),element('td',taskTime(run.finishedAt,task.timezone)),element('td',run.settings.trigger),element('td',run.state,`task-state ${run.state}`),element('td',`${run.counts?.completed || 0} chunks · ${run.counts?.failed || 0} failed requests · ${run.counts?.actionFailed || 0} failed Actions${run.error?` · ${run.error}`:''}`));const cell=element('td','');const button=element('button','View results','quiet');button.type='button';button.onclick=()=>{followLatestTask=false;selectedTaskId=task.id;handleNavigation('main');renderTaskMonitor();return handleWatchRun(run);};cell.append(button);row.append(cell);table.append(row);}
+    for(const run of data.runs){const row=element('tr','');row.append(element('td',`${taskTime(run.startedAt,task.timezone)} (${task.timezone})`),element('td',taskTime(run.finishedAt,task.timezone)),element('td',run.settings.trigger),element('td',run.state,`task-state ${run.state}`),element('td',`${run.counts?.completed || 0} chunks · ${run.counts?.failed || 0} failed requests · ${run.counts?.actionFailed || 0} failed Actions${run.error?` · ${run.error}`:''}`));const cell=element('td','');const button=element('button','View Results','quiet');button.type='button';button.onclick=()=>{followLatestTask=false;selectedTaskId=task.id;handleNavigation('main');renderTaskMonitor();return handleWatchRun(run);};cell.append(button);row.append(cell);table.append(row);}
     view.append(table);if(!data.runs.length)view.append(element('p','No executions yet.','caption'));view.hidden=false;
-  }catch(error){$('task-message').textContent=error.message;}
+  }catch(error){handleMessage('task-message',error.message,true);}
 }
 async function handleWatchRun(job) {
   if(busy && activeJobId===job.jobId)return monitoringPromise;
@@ -557,23 +781,33 @@ async function handleWatchRun(job) {
 }
 async function handleRunTask(identity) {
   const task=registeredTasks.find(task=>task.id===identity);
-  if(!task){$('message').textContent='Select a saved Task first.';return;}
+  if(!task){handleMessage('message','Select a saved Task first.',true);return;}
   followLatestTask=true;monitoringReady=true;selectedTaskId=identity;handleNavigation('main');renderTaskMonitor();
   try {
     if(task.activeRun)return await handleWatchRun(task.activeRun);
     const response=await fetch(`/api/tasks/${identity}/run`,{method:'POST'});const job=await response.json();if(!response.ok)throw new Error(job.error);
     await handleLoadTasks();return await handleWatchRun(job);
-  }catch(error){$('message').className='error-message';$('message').textContent=error.message;}
+  }catch(error){$('message').className='error-message';handleMessage('message',error.message,true);}
 }
 async function handleStopTask(identity) {
   try{const response=await fetch(`/api/tasks/${identity}/stop`,{method:'POST'});const data=await response.json();if(!response.ok)throw new Error(data.error);await handleLoadTasks();}
-  catch(error){$('task-message').textContent=error.message;}
+  catch(error){handleMessage('task-message',error.message,true);}
 }
 async function handleSelectTask(identity) {
   followLatestTask=true;monitoringReady=true;
   const task=registeredTasks.find(task=>task.id===identity);selectedTaskId=task?.id || '';
   renderTaskMonitor();
   if(task?.activeRun || task?.latestRun)return handleWatchRun(task.activeRun || task.latestRun);
+  const selection=++monitorSelection;
+  activeRequest?.abort();await monitoringPromise;
+  if(selection!==monitorSelection)return;
+  pagedView=null;activeJobId=undefined;activeJobState=undefined;rememberJob('');
+  results=[];completionOrder=[];pausedOrder=[];displayedOrder=[];completed=0;page=0;total=0;
+  elapsedMs=0;activeProcessingMs=0;recentCompletions=[];runHosts=[];runSourcePatterns=[];updatesPaused=false;
+  statisticsResults=undefined;filteredResults=undefined;renderedRows.clear();renderedPage=[];render();
+  $('result-context').textContent=task?.name || 'Select a Task to view its results.';
+  $('message').className='';handleMessage('message',task?'No executions yet.':'');
+
 }
 
 let currentView = null;
@@ -593,23 +827,28 @@ function handleMenuNavigation(view, section=null) {
   handleNavigation(view, section);
 }
 function handleNavigation(view, section=null) {
+  if(view==='settings' && section==='ssh-hosts' && (currentView!=='settings' || currentSettingsSection!=='ssh-hosts'))autoCheckedHosts.clear();
   currentView = view;
   currentSettingsSection = view === 'settings' ? section : null;
   if (view === 'settings' || view === 'sources') handleLoadKeys().then(handleLoadHosts);
   const hash = view === 'main' ? '' : view === 'settings' && section ? `#settings/${section}` : `#${view}`;
   if (globalThis.location && globalThis.location.hash !== hash) globalThis.location.hash = hash;
   $('main-page').hidden = view !== 'main';
+  if (view === 'main' && completed) render(false, true);
   $('settings-page').hidden = view !== 'settings';
   $('nav-settings').setAttribute('aria-current', view === 'settings' && !section ? 'page' : 'false');
   $('nav-settings').setAttribute('data-active', String(view === 'settings'));
   const settingsHeading = section === 'ssh-keys'
     ? ['SSH Keys', 'Manage authentication keys for SSH connections.']
+    : section === 'results' ? ['Results', 'Configure result pages.']
     : section === 'ssh-hosts'
       ? ['SSH Hosts', 'Manage remote hosts and test SSH connections.']
       : ['Settings', 'Manage shared application settings.'];
   $('settings-title').textContent = settingsHeading[0];
   $('settings-description').textContent = settingsHeading[1];
   $('settings-overview').hidden = Boolean(section);
+  $('settings-results').hidden = view !== 'settings' || section !== 'results';
+  $('nav-results-settings').setAttribute('aria-current', view === 'settings' && section === 'results' ? 'page' : 'false');
   for(const id of ['ssh-keys','ssh-hosts']) {
     $(`settings-${id}`).hidden = view !== 'settings' || section !== id;
     $(`nav-${id}`).setAttribute('aria-current', view === 'settings' && section===id ? 'page' : 'false');
@@ -629,8 +868,8 @@ function handleNavigation(view, section=null) {
 $('nav-settings').onclick = () => { handleMenuNavigation('settings'); };
 $('nav-ssh-keys').onclick = () => handleMenuNavigation('settings','ssh-keys');
 $('nav-ssh-hosts').onclick = () => handleMenuNavigation('settings','ssh-hosts');
+$('nav-results-settings').onclick = () => {handleMenuNavigation('settings','results');handleLoadResultSettings();};
 $('nav-tasks').onclick = () => handleMenuNavigation('tasks');
-$('manage-tasks').onclick = () => handleMenuNavigation('tasks');
 $('nav-main').onclick = () => handleNavigation('main');
 $('nav-actions').onclick = () => handleMenuNavigation('actions');
 $('nav-sources').onclick = () => { handleMenuNavigation('sources'); if (!sourcesLoaded) return handleLoadSources(); };
@@ -654,6 +893,7 @@ try {
 } catch { /* Keep the UI usable when browser storage is unavailable or invalid. */ }
 let editingAction = null;
 function renderActions() {
+  handleParkInlineView('action-view');
   $('action-list').hidden = editingAction !== null;
   const editorStatus = preparingActions ? 'preparing' : registeredActions[editingAction]?.environmentStatus || 'not_ready';
   $('action-environment-status').hidden = editingAction === null || $('action-editor').hidden === true;
@@ -678,18 +918,18 @@ function renderActions() {
     badge.setAttribute('role', 'status'); status.append(badge); row.append(status);
     const controls = element('td', '', 'action-list-controls');
     for (const [caption, handler] of [
-      ['View', () => handleViewConfiguration('action-view', action.name, [['Name', action.name], ['ID', action.id], ['Python version', action.pythonVersion], ['Modules', action.modules || []], ['Python executable', action.python], ['Script path', action.script], ['Python code', action.code]])],
+      ['View', () => handleViewConfiguration('action-view', action.name, [['Name', action.name], ['ID', action.id], ['Python Version', action.pythonVersion], ['Modules', action.modules || []], ['Python Executable', action.python], ['Script Path', action.script], ['Python Code', action.code]])],
       ['Edit', () => handleEditAction(index)],
       ['Reset venv', () => handleResetAction(index)],
-      ['Delete', () => { registeredActions.splice(index, 1); handleCloseConfiguration('action-view'); renderActions(); $('action-message').textContent = 'Deletion pending. Save changes to apply.'; }],
+      ['Delete', async () => { if (!await handleConfirmDelete('Action', action.name, 'This Action and its managed script and environment will be deleted when you save changes.')) return; registeredActions.splice(registeredActions.indexOf(action), 1); handleCloseConfiguration('action-view'); renderActions(); handleMessage('action-message','Deletion pending. Save Changes to apply.'); }],
     ]) {
       const button = element('button', caption, 'quiet');
       button.type = 'button'; button.disabled = preparingActions || (caption !== 'View' && editingAction !== null) || (caption === 'Reset venv' && (!action.id || !action.pythonVersion));
       button.onclick = handler; controls.append(button);
     }
-    row.append(controls); table.append(row);
+    row.append(controls); handleAppendViewRow(table,row,'action-view',action.id || action.name);
   });
-  $('action-registry').append(matches ? table : element('p', registeredActions.length ? 'No Actions match your search.' : 'No Actions registered. Click Add action to create one.', 'caption'));
+  $('action-registry').append(matches ? table : element('p', registeredActions.length ? 'No Actions match your search.' : 'No Actions registered. Click Add Action to create one.', 'caption'));
   $('add-action').disabled = preparingActions || editingAction !== null;
 }
 function scheduleActionStatus() {
@@ -715,15 +955,15 @@ async function handleResetAction(index) {
   preparingActionIndex = index;
   preparingActions = true; $('save-actions').disabled = true;
   renderActions();
-  $('action-message').textContent = 'Rebuilding the saved Action environment…';
+  handleMessage('action-message','Rebuilding the saved Action environment…');
   try {
     const response = await fetch(`/api/actions/${registeredActions[index].id}/reset`, { method: 'POST' });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error);
     registeredActions[index] = data.action;
     handleCloseConfiguration('action-view');
-    $('action-message').textContent = 'Action environment rebuilt with pip and locked dependencies.';
-  } catch (error) { await handleRefreshActionStatus(); $('action-message').textContent = error.message; }
+    handleMessage('action-message','Action environment rebuilt with pip and locked dependencies.');
+  } catch (error) { await handleRefreshActionStatus(); handleMessage('action-message',error.message,true); }
   finally { preparingActionIndex = null; preparingActions = false; $('save-actions').disabled = $('action-view').hidden === false; renderActions(); }
 }
 $('action-search').oninput = renderActions;
@@ -733,7 +973,7 @@ function handleEditAction(index) {
   const action = registeredActions[index] || { pythonVersion: '3.12', code: defaultActionCode };
   const row = element('div', '', 'action-registration');
   const fields = { id: { value: action.id || '' } };
-  for (const [key, caption] of [['name', 'Name'], ['pythonVersion', 'Python version (e.g. 3.12)'], ['modules', 'Modules (one per line; versions optional)'], ['code', 'Python code']]) {
+  for (const [key, caption] of [['name', 'Name'], ['pythonVersion', 'Python Version (e.g. 3.12)'], ['modules', 'Modules (one per line; versions optional)'], ['code', 'Python Code']]) {
     const label = element('label', caption);
     const input = element(['modules', 'code'].includes(key) ? 'textarea' : 'input', '');
     input.value = key === 'modules' && Array.isArray(action.modules) ? action.modules.join('\n') : action[key] || (key === 'pythonVersion' ? '3.12' : '');
@@ -742,6 +982,7 @@ function handleEditAction(index) {
     if (key === 'code') { input.rows = 14; input.spellcheck = false; input.className = 'action-code'; label.className = 'action-code-label'; }
     input.setAttribute('aria-label', caption);
     label.append(input);
+    if(key==='code')handlePythonEditor(input,label);
     if (key === 'name' && !input.readOnly) {
       const note = element('span', 'Name cannot be changed after creation.', 'caption error-message');
       note.id = 'action-name-note';
@@ -777,7 +1018,7 @@ $('save-actions').onclick = async () => {
   $('save-actions').disabled = true;
   $('add-action').disabled = true; $('cancel-action').disabled = true;
   renderActions();
-  $('action-message').textContent = 'Preparing Python environments and installing modules…';
+  handleMessage('action-message','Preparing Python environments and installing modules…');
   for (const fields of actionRows) for (const input of Object.values(fields)) input.disabled = true;
   try {
     const values = registeredActions.slice();
@@ -788,8 +1029,8 @@ $('save-actions').onclick = async () => {
     if (!response.ok) throw new Error(data.error);
     registeredActions = data.actions;
     handleCloseConfiguration('action-view'); handleCloseAction(); updateSourceSettings();
-    $('action-message').textContent = 'Actions saved and environments ready. Changes apply to the next run.';
-  } catch (error) { $('action-message').textContent = error.message; }
+    handleMessage('action-message','Actions saved and environments ready. Changes apply to the next run.');
+  } catch (error) { handleMessage('action-message',error.message,true); }
   finally {
     preparingActionIndex = null; preparingActions = false;
     $('save-actions').disabled = false; $('add-action').disabled = false;
@@ -801,7 +1042,7 @@ fetch('/api/actions', { method: 'POST' }).then(async response => {
   const data = await response.json();
   if (!response.ok) throw new Error(data.error);
   registeredActions = data.actions; renderActions(); updateSourceSettings(); scheduleActionStatus();
-}).catch(error => { $('action-message').textContent = error.message; });
+}).catch(error => { handleMessage('action-message',error.message,true); });
 let criteriaProfiles = {};
 let criteriaLoaded = false;
 let savingCriteria = false;
@@ -809,9 +1050,10 @@ let editingCriteria = null;
 let criteriaFields = {};
 function handleViewCriteria(id) {
   const profile = criteriaProfiles[id];
-  handleViewConfiguration('criteria-view', profile.label, [['Profile ID', id], ['Name', profile.label], ['Decision instructions', profile.instructions], ...Object.entries(labels).map(([key, label]) => [label, profile.criteria[key]]), ['Normalization', profile.normalization]]);
+  handleViewConfiguration('criteria-view', profile.label, [['Profile ID', id], ['Name', profile.label], ['Decision Instructions', profile.instructions], ...Object.entries(labels).map(([key, label]) => [label, profile.criteria[key]]), ['Normalization', profile.normalization]]);
 }
 function renderCriteria() {
+  handleParkInlineView('criteria-view');
   $('criteria-list').hidden = editingCriteria !== null;
   const defaultTable = element('table', '', 'action-list');
   const defaultHeader = element('tr', '');
@@ -823,7 +1065,7 @@ function renderCriteria() {
   viewDefault.type = 'button'; viewDefault.disabled = savingCriteria;
   viewDefault.onclick = () => handleViewCriteria('general');
   defaultControls.append(viewDefault); defaultRow.append(defaultControls);
-  defaultTable.append(defaultHeader, defaultRow);
+  defaultTable.append(defaultHeader);handleAppendViewRow(defaultTable,defaultRow,'criteria-view','general');
   $('criteria-default').replaceChildren(); $('criteria-default').append(defaultTable);
   const table = element('table', '', 'action-list');
   const header = element('tr', '');
@@ -840,14 +1082,14 @@ function renderCriteria() {
     for (const [caption, handler] of [
       ['View', () => handleViewCriteria(id)],
       ['Edit', () => handleEditCriteria(id)],
-      ['Delete', () => { delete criteriaProfiles[id]; handleCloseConfiguration('criteria-view'); renderCriteria(); $('criteria-message').textContent = 'Deletion pending. Save changes to apply.'; }],
+      ['Delete', async () => { if (!await handleConfirmDelete('Criteria', profile.label, 'This criteria profile will be deleted when you save changes.', id)) return; delete criteriaProfiles[id]; handleCloseConfiguration('criteria-view'); renderCriteria(); handleMessage('criteria-message','Deletion pending. Save Changes to apply.'); }],
     ]) {
       const button = element('button', caption, 'quiet');
       button.type = 'button';
       button.disabled = savingCriteria || (caption !== 'View' && editingCriteria !== null);
       button.onclick = handler; controls.append(button);
     }
-    row.append(controls); table.append(row);
+    row.append(controls); handleAppendViewRow(table,row,'criteria-view',id);
   }
   $('criteria-registry').replaceChildren();
   $('criteria-registry').append(matches ? table : element('p', 'No profiles match your search.', 'caption'));
@@ -859,7 +1101,7 @@ function handleEditCriteria(id) {
   const profile = criteriaProfiles[id] || { label: '', instructions: '', criteria: { ...criteriaProfiles.general.criteria } };
   const row = element('div', '', 'action-registration');
   criteriaFields = {};
-  for (const [key, caption] of [['id', 'Profile ID (lowercase letters, digits, _ or -)'], ['label', 'Name'], ['instructions', 'Decision instructions'], ...Object.entries(labels)]) {
+  for (const [key, caption] of [['id', 'Profile ID (lowercase letters, digits, _ or -)'], ['label', 'Name'], ['instructions', 'Decision Instructions'], ...Object.entries(labels)]) {
     const label = element('label', caption);
     const input = element(['id', 'label'].includes(key) ? 'input' : 'textarea', '');
     input.value = key === 'id' ? id : (profile[key] ?? profile.criteria[key] ?? '');
@@ -894,15 +1136,15 @@ function handleCriteriaLabels(profiles) {
 $('nav-criteria').onclick = async () => {
   handleMenuNavigation('criteria');
   if (criteriaLoaded) return;
-  $('criteria-message').textContent = 'Loading criteria…';
+  handleMessage('criteria-message','Loading criteria…');
   try {
     const response = await fetch('/api/criteria', { method: 'POST' });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error);
     criteriaProfiles = data.profiles; criteriaLoaded = true;
     $('save-criteria').disabled = false; renderCriteria();
-    $('criteria-message').textContent = '';
-  } catch (error) { $('criteria-message').textContent = error.message; }
+    handleMessage('criteria-message','');
+  } catch (error) { handleMessage('criteria-message',error.message,true); }
 };
 $('criteria-search').oninput = renderCriteria;
 $('add-criteria').onclick = () => handleEditCriteria('');
@@ -923,8 +1165,8 @@ $('save-criteria').onclick = async () => {
     if (!response.ok) throw new Error(data.error);
     criteriaProfiles = data.profiles; handleCloseConfiguration('criteria-view'); handleCloseCriteria();
     const missing = handleCriteriaLabels(criteriaProfiles);
-    $('criteria-message').textContent = 'Criteria saved. Changes apply to new runs.' + (missing ? ' Select replacements for deleted profiles in Tasks.' : '');
-  } catch (error) { $('criteria-message').textContent = error.message; }
+    handleMessage('criteria-message','Criteria saved. Changes apply to new runs.' + (missing ? ' Select replacements for deleted profiles in Tasks.' : ''));
+  } catch (error) { handleMessage('criteria-message',error.message,true); }
   finally {
     savingCriteria = false; $('save-criteria').disabled = false; $('cancel-criteria').disabled = false;
     for (const input of Object.values(criteriaFields)) input.disabled = false;
@@ -936,13 +1178,14 @@ let editingSource = null;
 let sourceFields = {};
 let savingSources = false;
 function sourceDescription(source) {
-  return `${source.type === 'ssh' ? 'Remote File (SSH)' : 'Local File'} · ${source.path}`;
+  return `${source.type === 'ssh' ? 'Remote File (SSH)' : 'Local File'} · ${source.path.split('\n').join(' · ')}`;
 }
 function renderSources() {
+  handleParkInlineView('source-view');
   $('source-list').hidden = editingSource !== null;
   const table = element('table', '', 'action-list');
   const header = element('tr', '');
-  for (const caption of ['Name', 'Type / path', 'Manage']) header.append(element('th', caption));
+  for (const caption of ['Name', 'Type / Path', 'Manage']) header.append(element('th', caption));
   table.append(header);
   const query = $('source-search').value.trim().toLowerCase();
   for (const [index, source] of registeredSources.entries()) {
@@ -951,15 +1194,15 @@ function renderSources() {
     row.append(element('td', source.name), element('td', sourceDescription(source)));
     const controls = element('td', '', 'action-list-controls');
     for (const [caption, handler] of [
-      ['View', () => handleViewConfiguration('source-view', source.name, [['Type', source.type === 'ssh' ? 'Remote File (SSH)' : 'Local File'], ['Name', source.name], ['Path / pattern', source.path]])],
+      ['View', () => handleViewConfiguration('source-view', source.name, [['Type', source.type === 'ssh' ? 'Remote File (SSH)' : 'Local File'], ['Name', source.name], ['Path / Pattern', source.path]])],
       ['Edit', () => handleEditSource(index)],
-      ['Delete', () => { registeredSources.splice(index, 1); handleCloseConfiguration('source-view'); renderSources(); $('source-message').textContent = 'Deletion pending. Save changes to apply.'; }],
+      ['Delete', async () => { if (!await handleConfirmDelete('Source', source.name, 'This Source registration will be deleted when you save changes. Original source files are kept.', source.id)) return; registeredSources.splice(registeredSources.indexOf(source), 1); handleCloseConfiguration('source-view'); renderSources(); handleMessage('source-message','Deletion pending. Save Changes to apply.'); }],
     ]) {
       const button = element('button', caption, 'quiet'); button.type = 'button';
       button.disabled = !sourcesLoaded || savingSources || (caption !== 'View' && editingSource !== null);
       button.onclick = handler; controls.append(button);
     }
-    row.append(controls); table.append(row);
+    row.append(controls); handleAppendViewRow(table,row,'source-view',source.id);
   }
   $('source-registry').replaceChildren(); $('source-registry').append(table);
   $('add-registered-source').disabled = !sourcesLoaded || savingSources || editingSource !== null;
@@ -968,13 +1211,14 @@ function handleEditSource(index) {
   handleCloseConfiguration('source-view'); editingSource = index;
   const source = registeredSources[index] || { name: '', type: 'local', path: '', port: 22 };
   const form = element('div', '', 'action-registration'); sourceFields = {};
-  for (const [key, caption] of [['type', 'Type'], ['name', 'Name'], ['path', 'File path / pattern']]) {
+  for (const [key, caption] of [['type', 'Type'], ['name', 'Name'], ['path', 'File Path / Pattern']]) {
     const label = element('label', caption);
-    const input = element(key === 'type' ? 'select' : 'input', '');
+    const input = element(key === 'type' ? 'select' : key === 'path' ? 'textarea' : 'input', '');
     if (key === 'type') { input.append(new Option('Local File', 'local'), new Option('Remote File (SSH)', 'ssh')); }
+    else if(key==='path'){input.rows=3;input.placeholder='/var/log/app/*.log\n/var/log/system.log';}
     else input.type = 'text';
     input.value = String(source[key] ?? (key === 'port' ? 22 : '')); input.setAttribute('aria-label', caption);
-    label.append(input); form.append(label); sourceFields[key] = input;
+    label.append(input);if(key==='path')label.append(element('span','One file path or pattern per line. Overlapping matches are read once.','caption')); form.append(label); sourceFields[key] = input;
     if (!['name', 'type', 'path'].includes(key)) label.className = 'ssh-source-field';
   }
   const updateFields = () => {
@@ -993,7 +1237,7 @@ $('source-search').oninput = renderSources;
 $('add-registered-source').onclick = () => handleEditSource(registeredSources.length);
 $('cancel-source').onclick = handleCloseSource;
 $('save-sources').onclick = async () => {
-  if (!sourcesLoaded) { $('source-message').textContent = 'Load Sources before saving.'; return; }
+  if (!sourcesLoaded) { handleMessage('source-message','Load Sources before saving.',true); return; }
   savingSources = true; $('save-sources').disabled = true; renderSources();
   for (const input of Object.values(sourceFields)) input.disabled = true;
   try {
@@ -1006,8 +1250,8 @@ $('save-sources').onclick = async () => {
     const data = await response.json(); if (!response.ok) throw new Error(data.error);
     registeredSources = data.sources; handleCloseConfiguration('source-view'); handleCloseSource();
     if (!busy) updateSourceSettings(sourceRows.map(row => row.path));
-    $('source-message').textContent = 'Sources saved. Changes apply to new runs. Select replacements for deleted sources in Tasks.';
-  } catch (error) { $('source-message').textContent = error.message; }
+    handleMessage('source-message','Sources saved. Changes apply to new runs. Select replacements for deleted sources in Tasks.');
+  } catch (error) { handleMessage('source-message',error.message,true); }
   finally { savingSources = false; $('save-sources').disabled = false; for (const input of Object.values(sourceFields)) input.disabled = false; renderSources(); }
 };
 function compareNames(left, right) {
@@ -1038,15 +1282,15 @@ function profileSelect(value) {
   return select;
 }
 function hostPicker(source, save) {
-  const picker=element('details','','host-picker');
-  const summary=element('summary','');
-  const search=element('input','');search.type='search';search.placeholder='Search SSH Hosts…';search.setAttribute('aria-label','Search target SSH Hosts');
+  const picker=element('section','','host-picker');
+  const summary=element('div','','host-picker-title');
+  const search=element('input','');search.type='search';search.placeholder='Search SSH Hosts…';search.setAttribute('aria-label','Search source SSH Hosts');
   const tools=element('div','','host-picker-tools');
   const select=element('button','Select all shown','quiet');select.type='button';
   const clear=element('button','Clear','quiet');clear.type='button';tools.append(select,clear);
   const list=element('div','','host-picker-list');
   const update=()=>{
-    summary.textContent=`SSH Hosts · ${source.hostIds.length} selected`;
+    summary.textContent=`Source Hosts · ${source.hostIds.length} selected`;
     list.replaceChildren();const query=search.value.toLowerCase();
     const items=[...sshHosts].sort(compareNames);
     for(const id of source.hostIds)if(!items.some(host=>host.id===id))items.push({id,name:`Unavailable: ${id}`,host:''});
@@ -1084,7 +1328,7 @@ function updateSourceSettings(paths = $('file-path').value.split('\n').map(s => 
     size.disabled = false;
     size.type = 'number'; size.min = '1'; size.step = '1'; size.value = String(preference.chunkEvents);
     size.setAttribute('aria-label', `Events per chunk for ${path}`);
-    const label = element('label', 'Events/chunk ');
+    const label = element('label', 'Events/Chunk ');
     label.append(size);
     const criteriaLabel = element('label', 'Criteria ', 'criteria-label');
     criteriaLabel.append(profile);
@@ -1134,24 +1378,61 @@ $('reset-sources').onclick = () => {
   updateSourceSettings();
 };
 updateSourceSettings();
-let chartCertainty = 'all';
-function renderCategoryChart() {
-  const counts = Object.fromEntries(Object.keys(labels).map(key => [key, 0]));
-  let failed = 0;
-  let truncated = 0;
-  const groups = { all: 0, uncertain: 0, certain: 0 };
-  const certainty = chartCertainty;
-  for (const result of results) {
-    if (!result) continue;
-    if (result.providerResponse?.usage?.truncated === true) truncated++;
-    if (result.error) failed++;
-    else if (Object.hasOwn(counts, result.category)) {
-      const group = result.uncertain ? 'uncertain' : 'certain';
-      groups.all++;
-      groups[group]++;
-      if (certainty === 'all' || certainty === group) counts[result.category]++;
+function updateResultStatistics(incremental = true) {
+  if (pagedView?.summary) return pagedView.summary;
+  if (!incremental || statisticsResults !== results || statisticsCursor > completionOrder.length) {
+    resultStatistics = {
+      total: 0, failed: 0, truncated: 0, review: 0, processingMs: 0,
+      actionSuccess: 0, actionFailed: 0,
+      groups: {all: 0, certain: 0, uncertain: 0},
+      categories: Object.fromEntries(['all', 'certain', 'uncertain'].map(group =>
+        [group, Object.fromEntries(Object.keys(labels).map(key => [key, 0]))])),
+      hosts: new Map(), sources: new Map(),
+    };
+    statisticsCursor = 0;
+    statisticsResults = results;
+    // Explicit renders can reflect edited/legacy results; stream results are immutable.
+    if (!incremental) {
+      for (const result of results) if (result) addResultStatistics(result);
+      statisticsCursor = completionOrder.length;
+      return resultStatistics;
     }
   }
+  for (; statisticsCursor < completionOrder.length; statisticsCursor++) {
+    addResultStatistics(results[completionOrder[statisticsCursor]]);
+  }
+  return resultStatistics;
+}
+function addResultStatistics(result) {
+  const stats = resultStatistics;
+  stats.total++;
+  stats.processingMs += result.elapsedMs || 0;
+  if (result.error) stats.failed++;
+  if (result.providerResponse?.usage?.truncated === true) stats.truncated++;
+  if (needsReview(result)) stats.review++;
+  if (result.actionExecution?.status === 'success') stats.actionSuccess++;
+  if (result.actionExecution?.status === 'failed') stats.actionFailed++;
+  if (!result.error && Object.hasOwn(stats.categories.all, result.category)) {
+    const group = result.uncertain ? 'uncertain' : 'certain';
+    stats.groups.all++; stats.groups[group]++;
+    stats.categories.all[result.category]++; stats.categories[group][result.category]++;
+  }
+  const id = resultHostId(result);
+  if (!stats.hosts.has(id)) stats.hosts.set(id, {
+    name: result.hostName || (id === 'local' ? 'DeciFlow (Local)' : id.replace('legacy:', '')),
+    count: 0, failed: 0,
+  });
+  const host = stats.hosts.get(id); host.count++; if (result.error) host.failed++;
+  for (const path of new Set(result.sourcePatterns || (result.source ? [result.source] : []))) {
+    stats.sources.set(path, (stats.sources.get(path) || 0) + 1);
+  }
+}
+let chartCertainty = 'all';
+function renderCategoryChart() {
+  const stats = updateResultStatistics();
+  const counts = stats.categories[chartCertainty];
+  const {failed, truncated, groups} = stats;
+  const certainty = chartCertainty;
   for (const [key, label] of Object.entries({ all: 'All', certain: 'Certain', uncertain: 'Uncertain' })) {
     const count = groups[key];
     const percent = groups.all ? count / groups.all * 100 : 0;
@@ -1194,31 +1475,26 @@ function resultHostId(result) {
 }
 function renderHostFilter() {
   const select=$('host-filter');const selected=select.value || 'all';
-  const hosts=new Map(runHosts.map(host=>[host.hostId,{name:`${host.hostName} · ${host.hostAddress}:${host.hostPort}`,count:0}]));
-  for(const result of results){
-    if(!result)continue;const id=resultHostId(result);
-    if(!hosts.has(id))hosts.set(id,{name:result.hostName || (id==='local'?'DeciFlow (Local)':id.replace('legacy:','')),count:0});
-    hosts.get(id).count++;
-  }
+  const stats = updateResultStatistics();
+  const hosts = new Map(stats.hosts);
+  for (const host of runHosts) hosts.set(host.hostId, {
+    ...(hosts.get(host.hostId) || {count: 0, failed: 0}),
+    name: `${host.hostName} · ${host.hostAddress}:${host.hostPort}`,
+  });
   select.replaceChildren();select.append(new Option('All hosts','all'));
   for(const [id,host] of [...hosts].sort((a,b)=>a[1].name.localeCompare(b[1].name,'ko')))select.append(new Option(`${host.name} (${host.count})`,id));
   select.value=hosts.has(selected)?selected:'all';select.disabled=!hosts.size;
   const status=$('host-status');status.replaceChildren();
   for(const host of runHosts){
-    const counts=results.filter(result=>result?.hostId===host.hostId);
-    status.append(element('p',`${host.hostName} · Collection: ${host.collectionState || 'pending'} · ${counts.filter(result=>!result.error).length} classified · ${counts.filter(result=>result.error).length} failed${host.error?` · ${host.error}`:''}`,host.collectionState==='failed'?'connection-failed':'caption'));
+    const counts=stats.hosts.get(host.hostId) || {count:0,failed:0};
+    status.append(element('p',`${host.hostName} · Collection: ${host.collectionState || 'pending'} · ${counts.count-counts.failed} classified · ${counts.failed} failed${host.error?` · ${host.error}`:''}`,host.collectionState==='failed'?'connection-failed':'caption'));
   }
 }
 function renderSourceFilter() {
   const select = $('source-filter');
   const selected = select.value || 'all';
   const counts = new Map(runSourcePatterns.map(path => [path, 0]));
-  for (const result of results) {
-    if (!result) continue;
-    for (const path of new Set(result.sourcePatterns || (result.source ? [result.source] : []))) {
-      counts.set(path, (counts.get(path) || 0) + 1);
-    }
-  }
+  for (const [path, count] of updateResultStatistics().sources) counts.set(path, count);
   select.replaceChildren();
   select.append(new Option(`All sources (${completed})`, 'all'));
   for (const [path, count] of counts) select.append(new Option(`${path} (${count})`, path));
@@ -1236,26 +1512,32 @@ function formatDuration(milliseconds) {
   const seconds = Math.floor(milliseconds / 1000) % 60;
   return `${minutes} min${seconds ? ` ${seconds} sec` : ''}`;
 }
-function render(updateList = true) {
-  renderSourceFilter();
-  renderHostFilter();
-  renderCategoryChart();
+function render(updateList = true, incremental = false) {
+  const stats = updateResultStatistics(incremental);
+  if (!incremental || renderedCount !== completed || renderedHosts !== runHosts) {
+    renderSourceFilter();
+    renderHostFilter();
+    renderCategoryChart();
+    renderedCount = completed;
+    renderedHosts = runHosts;
+  }
   $('summary').replaceChildren();
-  const processingMs = results.reduce((sum, result) => sum + result.elapsedMs, 0);
+  const processingMs = stats.processingMs;
   const averageMs = completed ? processingMs / completed : 0;
   recentCompletions = recentCompletions.filter(time => time > elapsedMs - 5000);
-  const throughput = elapsedMs > 0 ? recentCompletions.length * 1000 / Math.min(elapsedMs, 5000) : 0;
-  const actionSuccess = results.filter(result => result.actionExecution?.status === 'success').length;
-  const actionFailed = results.filter(result => result.actionExecution?.status === 'failed').length;
+  const recentCount = pagedView ? Object.entries(stats.throughputBuckets || {}).filter(([bucket])=>Number(bucket)*100>elapsedMs-5000).reduce((sum,[,count])=>sum+count,0) : recentCompletions.length;
+  const throughput = elapsedMs > 0 ? recentCount * 1000 / Math.min(elapsedMs, 5000) : 0;
+  const actionSuccess = stats.actionSuccess;
+  const actionFailed = stats.actionFailed;
   const processingPercent = elapsedMs > 0 ? `${(activeProcessingMs / elapsedMs * 100).toFixed(1)}%` : 'N/A';
-  for (const [label, value] of [['Success / Failed / Total', `${results.filter(r => !r.error).length} / ${results.filter(r => r.error).length} / ${results.filter(Boolean).length}`], ['Action Success / Failed / Total', `${actionSuccess} / ${actionFailed} / ${actionSuccess + actionFailed}`], ['Needs review', results.filter(needsReview).length], ['Total elapsed time', formatDuration(elapsedMs)], ['Active processing time', `${formatDuration(activeProcessingMs)} (${processingPercent})`], ['Average processing time', formatDuration(averageMs)], ['Throughput', `${throughput.toFixed(1)} chunks/s`]]) {
+  for (const [label, value] of [['Success / Failed / Total', `${stats.total-stats.failed} / ${stats.failed} / ${stats.total}`], ['Action Success / Failed / Total', `${actionSuccess} / ${actionFailed} / ${actionSuccess + actionFailed}`], ['Needs Review', stats.review], ['Total Elapsed Time', formatDuration(elapsedMs)], ['Active Processing Time', `${formatDuration(activeProcessingMs)} (${processingPercent})`], ['Average Processing Time', formatDuration(averageMs)], ['Throughput', `${throughput.toFixed(1)} chunks/s`]]) {
     const metric = element('div', label, 'metric');
     if (label === 'Success / Failed / Total') metric.title = 'Successfully classified / failed / total completed chunks. Total is success plus failure, not planned requests. Failures include connection errors, timeouts, rejected inputs, and invalid responses. Action failures do not change classification counts.';
     if (label === 'Action Success / Failed / Total') metric.title = 'Completed Action executions: success / failed / total. Unassigned sources and failed decisions do not run Actions. Action failures do not change decision counts.';
     if (label === 'Throughput') metric.title = 'Successfully classified chunks per second over the last 5 seconds, including idle time. Uses elapsed time until 5 seconds; freezes when stopped or completed.';
-    if (label === 'Needs review') metric.title = 'Successful classifications only: selected category probability below 70%, top-two probability gap below 10 percentage points, collapsed options, or Other category. Failed requests are excluded.';
-    if (label === 'Average processing time') metric.title = 'Mean request duration, including network/server wait and failed requests; excludes waiting for new file lines.';
-    if (label === 'Active processing time') metric.title = 'Time with at least one request in flight, counting overlapping requests once. Includes network/server wait, excludes idle time; not CPU utilization.';
+    if (label === 'Needs Review') metric.title = 'Successful classifications only: selected category probability below 70%, top-two probability gap below 10 percentage points, collapsed options, or Other category. Failed requests are excluded.';
+    if (label === 'Average Processing Time') metric.title = 'Mean request duration, including network/server wait and failed requests; excludes waiting for new file lines.';
+    if (label === 'Active Processing Time') metric.title = 'Time with at least one request in flight, counting overlapping requests once. Includes network/server wait, excludes idle time; not CPU utilization.';
     const number = element('strong', label.endsWith('Success / Failed / Total') ? '' : String(value));
     if (label.endsWith('Success / Failed / Total')) {
       String(value).split(' / ').forEach((count, index) => {
@@ -1266,31 +1548,53 @@ function render(updateList = true) {
     metric.append(number);
     $('summary').append(metric);
   }
-  const pendingCount = updatesPaused ? completionOrder.length - pausedOrder.length : 0;
-  $('pause-updates').textContent = updatesPaused ? `Resume updates${pendingCount ? ` (${pendingCount} new)` : ''}` : 'Pause updates';
-  $('pause-updates').setAttribute('aria-pressed', String(updatesPaused));
+  const pendingCount = pagedView ? Math.max(0, completed-pagedView.snapshotTotal) : updatesPaused ? completionOrder.length - pausedOrder.length : 0;
+  const historicalPage = pagedView && page>0;
+  $('pause-updates').textContent = historicalPage ? `Latest Results${pendingCount ? ` (${pendingCount} new)` : ''}` : updatesPaused ? `Resume Updates${pendingCount ? ` (${pendingCount} new)` : ''}` : 'Pause Updates';
+  $('pause-updates').setAttribute('aria-pressed', String(updatesPaused || Boolean(historicalPage)));
   $('pause-updates').disabled = !busy && !completed && !updatesPaused;
-  $('export').disabled = !completed || busy || activeJobState === 'running';
-  if (updatesPaused && !updateList) return;
-  if (!updatesPaused) displayedOrder = completionOrder.slice();
-  $('results').replaceChildren();
-  const visible = (updatesPaused ? pausedOrder : completionOrder).toReversed().map(index => results[index]).filter(r => {
-    const review = $('review-filter').value;
-    const category = $('category-filter').value;
-    const search = $('log-search').value.toLowerCase();
-    const source = $('source-filter').value || 'all';
-    return (review === 'all' || (review === 'needs-review' ? needsReview(r) : !r.error && !needsReview(r)))
-      && (category === 'all' || (category === 'failed' ? Boolean(r.error) : !r.error && r.category === category))
-      && r.log.toLowerCase().includes(search)
-      && (source === 'all' || r.sourcePatterns?.includes(source) || r.source === source)
-      && (($('host-filter').value || 'all') === 'all' || resultHostId(r) === $('host-filter').value);
-  });
-  const pages = Math.max(1, Math.ceil(visible.length / 100));
+  $('export-reviewed').disabled = $('export').disabled = pagedView ? !completed : !completed || busy || activeJobState === 'running';
+  if (updatesPaused && !updateList && !pagedView) return;
+  const order = !pagedView && updatesPaused ? pausedOrder : completionOrder;
+  const review = $('review-filter').value;
+  const category = $('category-filter').value;
+  const search = $('log-search').value.toLowerCase();
+  const source = $('source-filter').value || 'all';
+  const host = $('host-filter').value || 'all';
+  const filterKey = JSON.stringify([review, category, search, source, host]);
+  let visible = order;
+  if (!pagedView && (review !== 'all' || category !== 'all' || search || source !== 'all' || host !== 'all')) {
+    if (!incremental || filteredResults?.order !== order || filteredResults.key !== filterKey) {
+      filteredResults = {order, key: filterKey, cursor: 0, indices: []};
+    }
+    for (; filteredResults.cursor < order.length; filteredResults.cursor++) {
+      const index = order[filteredResults.cursor];
+      const r = results[index];
+      if ((review === 'all' || (review === 'needs-review' ? needsReview(r) : !r.error && !needsReview(r)))
+        && (category === 'all' || (category === 'failed' ? Boolean(r.error) : !r.error && r.category === category))
+        && r.log.toLowerCase().includes(search)
+        && (source === 'all' || r.sourcePatterns?.includes(source) || r.source === source)
+        && (host === 'all' || resultHostId(r) === host)) filteredResults.indices.push(index);
+    }
+    visible = filteredResults.indices;
+  }
+  const pageSize = pagedView ? resultsPerPage : 100;
+  const pages = pagedView ? page+1+(pagedView.hasNext?1:0) : Math.max(1, Math.ceil(visible.length / pageSize));
   page = Math.min(page, pages - 1);
-  $('page-info').textContent = `Page ${page + 1} of ${pages} · ${visible.length} results`;
+  $('page-info').textContent = pagedView ? `Page ${page+1} · ${visible.length} results shown` : `Page ${page + 1} of ${pages} · ${visible.length} results`;
   $('previous').disabled = page === 0;
   $('next').disabled = page >= pages - 1;
-  for (const result of visible.slice(page * 100, (page + 1) * 100)) {
+  const pageResults = (pagedView ? visible : visible.slice(Math.max(0, visible.length-(page+1)*pageSize),visible.length-page*pageSize)).toReversed().map(index=>results[index]);
+  if (!updatesPaused) { displayedOrder = completionOrder; displayedCount = completionOrder.length; }
+  if (incremental && pageResults.length === renderedPage.length && pageResults.every((result, index) => result === renderedPage[index])) return;
+  const previousRows = incremental ? renderedRows : new Map();
+  renderedRows = new Map();
+  renderedPage = pageResults;
+  const rows = [];
+  for (const result of pageResults) {
+    if (previousRows.has(result)) {
+      const row = previousRows.get(result); renderedRows.set(result, row); rows.push(row); continue;
+    }
     const row = element('article', '', 'result');
     const top = element('div', '', result.error ? 'result-top' : 'result-summary');
     if (result.error) {
@@ -1302,7 +1606,7 @@ function render(updateList = true) {
       for (const [title, value, detail, badgeClass, probabilities] of [
         ['Category (Choice)', `${result.uncertain ? 'Uncertain · ' : ''}${labels[result.category]}`, `${probability}% category probability`, `${result.category || 'other'}${result.uncertain ? ' uncertain' : ''}`, Object.entries(result.probabilities || {}).map(([key, value]) => [labels[key], value])],
         ['Urgency (Score)', Number.isFinite(result.urgency) ? `${result.urgency.toFixed(2)} / 3` : 'Not available', '0 Low → 3 Critical', 'decision-score', Object.entries(result.urgencyProbabilities || {}).map(([level, probability]) => [`${level} · ${result.urgencyLegend?.[level]?.split(':')[0] || ['Low', 'Medium', 'High', 'Critical'][Number(level)]}`, probability])],
-        ['Work ticket (Noul)', Number.isFinite(result.ticketProbability) ? `${(result.ticketProbability * 100).toFixed(1)}%` : 'Not available', 'Yes probability · 0% No → 100% Yes', 'decision-noul', Number.isFinite(result.ticketProbability) ? [['Yes', result.ticketProbability], ['No', 1 - result.ticketProbability]] : []],
+        ['Work Ticket (Noul)', Number.isFinite(result.ticketProbability) ? `${(result.ticketProbability * 100).toFixed(1)}%` : 'Not available', 'Yes probability · 0% No → 100% Yes', 'decision-noul', Number.isFinite(result.ticketProbability) ? [['Yes', result.ticketProbability], ['No', 1 - result.ticketProbability]] : []],
       ]) {
         const card = element('section', '', 'decision-card');
         const badge = element('span', value, `badge ${badgeClass}`); badge.title = `${title}: ${value}`;
@@ -1376,35 +1680,57 @@ function render(updateList = true) {
     };
     if (result.error) row.append(element('p', result.error, 'error-message'));
     else {
-      const label = element('label', 'Reviewer category (Choice): ', 'reviewer-category');
+      const label = element('label', 'Reviewer Category (Choice): ', 'reviewer-category');
       const select = element('select', '', 'correction');
       select.setAttribute('aria-label', `Reviewer category: ${result.log}`);
       select.append(new Option('Not reviewed', ''));
       for (const [key, name] of Object.entries(labels)) select.append(new Option(name, key));
       select.value = result.reviewerCategory || '';
-      select.onchange = () => {
+      select.onchange = async () => {
+        const previous = result.reviewerCategory;
         result.reviewerCategory = select.value;
+        if (pagedView) {
+          try {
+            const response=await fetch(`/api/jobs/${activeJobId}/review`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sequence:resultCursors.get(result),category:select.value})});
+            const data=await response.json();if(!response.ok)throw new Error(data.error);
+          } catch(error) {result.reviewerCategory=previous;select.value=previous || '';handleMessage('message',error.message,true);}
+        }
         if (jsonView.open) jsonText.textContent = JSON.stringify(orderedResult(result), null, 2);
       };
       label.append(select);
       row.append(label);
     }
     row.append(jsonView);
-    $('results').append(row);
+    renderedRows.set(result, row); rows.push(row);
   }
-  if (!visible.length) $('results').append(element('p', 'No results to display.'));
-  $('export').disabled = !completed || busy || activeJobState === 'running';
+  if (!visible.length) rows.push(element('p', 'No results to display.'));
+  const container = $('results');
+  for (let index = 0; index < rows.length; index++) {
+    if (container.children[index] !== rows[index]) {
+      container.insertBefore(rows[index], container.children[index] || null);
+    }
+  }
+  while (container.children.length > rows.length) {
+    container.removeChild(container.children[container.children.length - 1]);
+  }
+  $('export-reviewed').disabled = $('export').disabled = pagedView ? !completed : !completed || busy || activeJobState === 'running';
 }
 function scheduleRender() {
   if (renderTimer) return;
   renderTimer = setTimeout(() => {
     renderTimer = undefined;
-    render(false);
+    if (!document.hidden && currentView === 'main') render(false, true);
   }, 300);
 }
 $('pause-updates').onclick = () => {
+  if (pagedView) {
+    if(page>0){updatesPaused=false;page=0;pagedView.cursors=[null];return handleRefreshResults(true);}
+    updatesPaused=!updatesPaused;
+    if(!updatesPaused) {page=0;pagedView.cursors=[null];return handleRefreshResults(true);}
+    render(false,true);return;
+  }
   updatesPaused = !updatesPaused;
-  if (updatesPaused) pausedOrder = displayedOrder;
+  if (updatesPaused) pausedOrder = displayedOrder.slice(0, displayedCount);
   clearTimeout(renderTimer);
   renderTimer = undefined;
   if (updatesPaused) render(false);
@@ -1412,15 +1738,6 @@ $('pause-updates').onclick = () => {
 };
 $('source-mode').onchange = handleTaskMode;
 $('task-trigger').onchange = handleTaskMode;
-$('stop').onclick = async () => {
-  if (!selectedTaskId) return;
-  $('stop').disabled = true;
-  try {
-    const response = await fetch(`/api/tasks/${selectedTaskId}/stop`, {method:'POST'});
-    const data = await response.json(); if (!response.ok) throw new Error(data.error);
-    await handleLoadTasks();
-  } catch(error) { $('message').textContent=error.message; $('stop').disabled=false; }
-};
 async function handleRestoreJob() {
   if (busy || restoringJob) return;
   restoringJob = true;
@@ -1431,9 +1748,8 @@ async function handleRestoreJob() {
     const response = await fetch(`/api/jobs/${id}`, { method: 'POST' });
     if (response.status === 404) {
       activeJobId = undefined; activeJobState = undefined;
-      $('stop').disabled = true;
       try { jobStorage.removeItem('deciflow-job-id'); } catch { /* Storage may be disabled. */ }
-      $('message').textContent = 'Previous job is unavailable. The server may have restarted.';
+      handleMessage('message','Previous job is unavailable. The server may have restarted.',true);
       return;
     }
     if (!response.ok) throw new Error((await response.json()).error);
@@ -1444,6 +1760,8 @@ async function handleRestoreJob() {
   } finally { restoringJob = false; }
 }
 async function handleProcessing(job) {
+  if (job.pagedResults) return handlePagedProcessing(job);
+  pagedView=null;
   if (busy) return;
   const sources = job.settings.sources || [];
   $('result-context').textContent=`${job.settings.taskName || registeredTasks.find(task=>task.id===job.settings.taskId)?.name || 'Task execution'} · Started: ${taskTime(job.startedAt)} (UTC) · Run: ${job.jobId}`;
@@ -1451,10 +1769,9 @@ async function handleProcessing(job) {
   busy = true;
   renderTaskMonitor();
   activeRequest = new AbortController();
-  $('export').disabled = true;
-  $('stop').disabled = false;
+  $('export-reviewed').disabled = $('export').disabled = true;
   $('message').className = '';
-  $('message').textContent = `${engineLabel} is classifying your data…`;
+  handleMessage('message',`${engineLabel} is classifying your data…`);
   let started = false;
   try {
     activeJobId = job.jobId; activeJobState = job.state; rememberJob(activeJobId);
@@ -1483,7 +1800,7 @@ async function handleProcessing(job) {
         page = 0;
         render(false);
       } else if (event.type === 'host-status') {
-        runHosts=event.hosts;renderHostFilter();
+        runHosts=event.hosts;
       } else if (event.type === 'result') {
         results[event.index] = event.result;
         completionOrder.push(event.index);
@@ -1499,22 +1816,21 @@ async function handleProcessing(job) {
         activeJobState = job.state === 'skipped' ? 'skipped' : 'failed';
         throw new Error(event.error);
       }
-      $('message').textContent = total === null ? `${sourceMode === 'realtime' ? 'Realtime' : 'Batch'} · ${completed.toLocaleString('en-US')} chunks completed${completed ? '' : ' · Waiting for data…'}` : `Classifying · ${completed.toLocaleString('en-US')} / ${total.toLocaleString('en-US')} chunks · ${total.toLocaleString('en-US')} ${engineLabel} requests planned`;
+      handleMessage('message',total === null ? `${sourceMode === 'realtime' ? 'Realtime' : 'Batch'} · ${completed.toLocaleString('en-US')} chunks completed${completed ? '' : ' · Waiting for data…'}` : `Classifying · ${completed.toLocaleString('en-US')} / ${total.toLocaleString('en-US')} chunks · ${total.toLocaleString('en-US')} ${engineLabel} requests planned`);
       scheduleRender();
     });
-    $('message').textContent = `${activeJobState === 'stopped' ? 'Stopped' : activeJobState === 'failed' ? 'Failed' : 'Completed'} · ${results.filter(r => r.error).length} failed requests · ${results.filter(r => r.actionExecution?.status === 'failed').length} failed Actions`;
+    handleMessage('message',`${activeJobState === 'stopped' ? 'Stopped' : activeJobState === 'failed' ? 'Failed' : 'Completed'} · ${results.filter(r => r.error).length} failed requests · ${results.filter(r => r.actionExecution?.status === 'failed').length} failed Actions`);
   } catch (error) {
     $('message').className = error.name === 'AbortError' ? '' : 'error-message';
-    $('message').textContent = `${error.name === 'AbortError' ? 'Processing stopped' : error.message} · ${started ? `${completed} completed results have been retained.` : 'Previous results have been retained.'}`;
+    handleMessage('message',`${error.name === 'AbortError' ? 'Processing stopped' : error.message} · ${started ? `${completed} completed results have been retained.` : 'Previous results have been retained.'}`,true);
   } finally {
     busy = false;
     activeRequest.abort();
     activeRequest = undefined;
-    $('stop').disabled = activeJobState !== 'running';
     clearTimeout(renderTimer);
     renderTimer = undefined;
-    if (started || completed) render(false);
-    $('export').disabled = !completed || activeJobState === 'running';
+    if (started || completed) render(false, true);
+    $('export-reviewed').disabled = $('export').disabled = !completed || activeJobState === 'running';
     handleLoadTasks();
     if (activeJobState === 'running') {
       $('message').textContent += ' · Server job continues. Click its Task in the running list to reconnect.';
@@ -1523,25 +1839,116 @@ async function handleProcessing(job) {
 }
 function handleResultFilter() {
   page = 0;
+  if(pagedView){pagedView.cursors=[null];return handleRefreshResults(true);}
   if (completed) render();
 }
 $('review-filter').onchange = handleResultFilter;
 $('category-filter').onchange = handleResultFilter;
-$('log-search').oninput = handleResultFilter;
+let resultSearchTimer;
+$('log-search').oninput = () => {
+  if(!pagedView)return handleResultFilter();
+  clearTimeout(resultSearchTimer);resultSearchTimer=setTimeout(()=>handleResultFilter().catch(error=>{handleMessage('message',error.message,true);}),250);
+};
 $('source-filter').onchange = handleResultFilter;
 $('host-filter').onchange = handleResultFilter;
-$('previous').onclick = () => { page--; render(); };
-$('next').onclick = () => { page++; render(); };
-$('export').onclick = () => {
+$('previous').onclick = () => { if(pagedView){page--;pagedView.cursors.pop();return handleRefreshResults(true);}page--;render(); };
+$('next').onclick = () => { if(pagedView){pagedView.cursors.push(pagedView.items.at(-1)?.sequence);page++;return handleRefreshResults(true);}page++;render(); };
+function handleExportResults(reviewedOnly=false) {
+  if(pagedView){
+    const form=document.createElement('form');form.method='POST';form.action=`/api/jobs/${activeJobId}/${reviewedOnly?'export-reviewed':'export'}`;
+    document.body.append(form);form.submit();form.remove();return;
+  }
   if (!completed || busy || activeJobState === 'running') return;
-  const blob = new Blob([JSON.stringify({ mode: resultEngine, sourceMode: resultSourceMode, total, completed, elapsedMs, activeProcessingMs, results: results.filter(Boolean).map(orderedResult) }, null, 2)], { type: 'application/json' });
+  const exportedResults=results.filter(result=>result && (!reviewedOnly || (result.reviewerCategory && result.reviewerCategory!==result.category && !result.error))).map(orderedResult);
+  const blob = new Blob([JSON.stringify({ mode: resultEngine, sourceMode: resultSourceMode, total, completed, elapsedMs, activeProcessingMs, results: exportedResults,...(reviewedOnly?{exportScope:'reviewed-changes',exported:exportedResults.length}:{}) }, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'deciflow-results.json';
+  link.download = reviewedOnly?'deciflow-reviewed-results.json':'deciflow-results.json';
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+$('export').onclick=()=>handleExportResults();
+$('export-reviewed').onclick=()=>handleExportResults(true);
+async function handleLoadResultSettings() {
+  try {
+    const response=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const data=await response.json();if(!response.ok)throw new Error(data.error);
+    resultsPerPage=data.resultsPerPage;$('results-per-page').value=String(resultsPerPage);
+    if(!completed)$('page-info').textContent=`${resultsPerPage} results per page`;
+  }catch(error){handleMessage('results-settings-message',error.message,true);}
+}
+$('results-settings-form').onsubmit=async event=>{
+  event.preventDefault();$('save-results-settings').disabled=true;
+  try{
+    const response=await fetch('/api/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({resultsPerPage:Number($('results-per-page').value)})});
+    const data=await response.json();if(!response.ok)throw new Error(data.error);
+    resultsPerPage=data.resultsPerPage;handleMessage('results-settings-message','Settings saved.');
+    if(pagedView){page=0;pagedView.cursors=[null];await handleRefreshResults(true);}
+  }catch(error){handleMessage('results-settings-message',error.message,true);}
+  finally{$('save-results-settings').disabled=false;}
 };
+async function handleRefreshResults(reset=false,poll=false) {
+  const view=pagedView;if(!view)return;
+  const revision=++view.revision;
+  const held=poll && (page>0 || updatesPaused);
+  const after=!reset && poll && !held ? view.sequence : null;
+  const body={category:$('category-filter').value,review:$('review-filter').value,
+    host:$('host-filter').value || 'all',source:$('source-filter').value || 'all',
+    search:$('log-search').value,onlySummary:held};
+  if(after!==null)body.after=after;
+  if(page>0){body.before=view.cursors[page];body.through=view.through;}
+  const response=await fetch(`/api/jobs/${view.id}/results`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:activeRequest?.signal});
+  const data=await response.json();if(!response.ok)throw new Error(data.error);
+  if(pagedView!==view || revision!==view.revision)return;
+  view.summary={...data.summary,hosts:new Map(Object.entries(data.summary.hosts)),sources:new Map(Object.entries(data.summary.sources))};
+  const snapshot=data.snapshot;activeJobState=snapshot.state;completed=data.summary.total;
+  elapsedMs=snapshot.elapsedMs || 0;activeProcessingMs=snapshot.activeProcessingMs || 0;
+  resultEngine=data.summary.engine || engine;resultSourceMode=snapshot.settings.mode;
+  runHosts=snapshot.hosts || [];runSourcePatterns=[...view.summary.sources.keys()];
+  if(data.items){
+    const previous=new Map(view.items.map(item=>[item.sequence,item]));
+    let items=data.items.map(item=>previous.get(item.sequence) || item);
+    const latest=items[0]?.result;
+    if(latest?.engineConnection)handleEngineConnection(latest.engineConnection);
+    else if(latest && !latest.error)handleEngineConnection('connected');
+    const merged=after!==null?[...items,...view.items].filter((item,index,array)=>array.findIndex(other=>other.sequence===item.sequence)===index):items;
+    view.hasNext=after!==null ? view.hasNext || data.hasNext || merged.length>data.limit : data.hasNext;
+    resultsPerPage=data.limit;view.items=merged.slice(0,resultsPerPage);
+    results=view.items.toReversed().map(item=>{resultCursors.set(item.result,item.sequence);return item.result;});
+    completionOrder=results.map((_,index)=>index);view.sequence=data.sequence;
+    if(page===0)view.through=data.sequence;
+    if(page===0)view.snapshotTotal=completed;
+  }
+  $('result-context').textContent=`${snapshot.settings.taskName || 'Task execution'} · Started: ${taskTime(snapshot.startedAt)} (UTC) · Run: ${view.id}`;
+  handleMessage('message',`${activeJobState==='running'?(snapshot.settings.mode==='realtime'?'Realtime':'Batch'):activeJobState} · ${completed.toLocaleString('en-US')} chunks completed`);
+  render(false,true);
+}
+function handlePageDelay(signal) {
+  return new Promise(resolve=>{
+    const finish=()=>{clearTimeout(timer);signal.removeEventListener('abort',finish);resolve();};
+    const timer=setTimeout(finish,1000);signal.addEventListener('abort',finish,{once:true});
+    if(signal.aborted)finish();
+  });
+}
+async function handlePagedProcessing(job) {
+  if(busy)return;
+  busy=true;total=null;activeJobId=job.jobId;activeJobState=job.state;rememberJob(activeJobId);
+  activeRequest=new AbortController();const controller=activeRequest;
+  pagedView={id:job.jobId,items:[],cursors:[null],sequence:0,through:null,hasNext:false,snapshotTotal:0,revision:0};
+  page=0;updatesPaused=false;results=[];completionOrder=[];pausedOrder=[];displayedOrder=[];
+  statisticsResults=undefined;filteredResults=undefined;recentCompletions=[];renderedRows.clear();renderedPage=[];
+  $('category-filter').value='all';$('review-filter').value='all';$('source-filter').value='all';$('host-filter').value='all';$('log-search').value='';
+  try{
+    await handleLoadResultSettings();await handleRefreshResults(true);
+    while(activeJobState==='running' && !controller.signal.aborted){
+      await handlePageDelay(controller.signal);if(controller.signal.aborted)break;
+      if(!document.hidden && currentView==='main')await handleRefreshResults(false,true);
+    }
+  }catch(error){if(error.name!=='AbortError'){$('message').className='error-message';handleMessage('message',error.message,true);}}
+  finally{busy=false;controller.abort();activeRequest=undefined;$('export-reviewed').disabled = $('export').disabled =!completed;handleLoadTasks();}
+}
+handleLoadResultSettings();
 fetch('/api/status').then(async response => {
   const data = await response.json();
   if (!response.ok) throw new Error(data.error);
@@ -1567,16 +1974,13 @@ fetch('/api/status').then(async response => {
   if (!data.configured) $('status').append(element('span', ' · API key required'));
   $('powered-by').textContent = `Powered by ${engineLabel}`;
   renderTaskMonitor();
-  $('data-notice').textContent = engine === 'laya' ? 'Classification sends data to your configured Laya server. Laya inference has no Jev API usage fees. Remove passwords, tokens, and sensitive data before sending data to a remote server.' : 'Classification sends your data to the TypeSafe API and may incur usage charges. Remove passwords, tokens, and sensitive data first.';
-  const limits = data.limits;
-  $('input-limits').textContent = engine === 'laya' ? `Three decisions per chunk · Laya ${data.model} · ${limits.context_tokens.toLocaleString('en-US')} tokens including each question. Truncated predictions are discarded and original events retained for review.` : `Three decisions per chunk · ${data.model}: ${limits.context_tokens.toLocaleString('en-US')} tokens for state + questions · Local preflight budget: ${limits.max_jev_input_bytes.toLocaleString('en-US')} bytes per Jev request (not a token count). Oversized events are retained for review.`;
   await sourceLoadPromise;
-  handleRestoreJob().then(()=>{monitoringReady=true;handleLoadTasks();}).catch(error => { $('message').className = 'error-message'; $('message').textContent = error.message; });
-}).catch(error => { $('status').textContent = error.message || 'Server connection failed'; });
+  handleRestoreJob().then(()=>{monitoringReady=true;handleLoadTasks();}).catch(error => { $('message').className = 'error-message'; handleMessage('message',error.message,true); });
+}).catch(error => { handleMessage('status',error.message || 'Server connection failed',true); });
 
 function handleRoute() {
   const hash = globalThis.location?.hash;
-  const section = hash === '#settings/ssh-keys' ? 'ssh-keys' : hash === '#settings/ssh-hosts' ? 'ssh-hosts' : null;
+  const section = hash === '#settings/results' ? 'results' : hash === '#settings/ssh-keys' ? 'ssh-keys' : hash === '#settings/ssh-hosts' ? 'ssh-hosts' : null;
   const view = hash === '#tasks' ? 'tasks' : hash === '#settings' || section ? 'settings' : hash === '#sources' ? 'sources' : hash === '#criteria' ? 'criteria' : hash === '#actions' ? 'actions' : 'main';
   if (view === currentView && section === currentSettingsSection) return;
   if (view === 'criteria') return $('nav-criteria').onclick();
@@ -1588,7 +1992,7 @@ if (globalThis.location) {
 }
 
 async function handleLoadSources() {
-  $('source-message').textContent = 'Loading sources…';
+  handleMessage('source-message','Loading sources…');
   try {
     const response = await fetch('/api/sources', { method: 'POST' });
     const data = await response.json(); if (!response.ok) throw new Error(data.error);
@@ -1601,12 +2005,17 @@ async function handleLoadSources() {
       }
       $('file-path').value = filePaths.batch;
     }
-    renderSources(); $('save-sources').disabled = false; $('source-message').textContent = '';
+    renderSources(); renderTaskMonitor(); $('save-sources').disabled = false; handleMessage('source-message','');
     if (!busy && !restoringJob) updateSourceSettings();
-  } catch (error) { $('source-message').textContent = error.message; }
+  } catch (error) { handleMessage('source-message',error.message,true); }
 }
 renderSources();
 const sourceLoadPromise = handleLoadSources();
+handleLoadHosts();
 
 handleLoadTasks();
 if (globalThis.setInterval) globalThis.setInterval(() => { if (!document.hidden) handleLoadTasks(); }, 5000);
+
+if (document.addEventListener) document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && currentView === 'main') scheduleRender();
+});

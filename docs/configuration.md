@@ -10,7 +10,7 @@ with DeciFlow. `COMPOSE_PROFILES` selects `cpu` or `cuda`; empty starts only the
 | --- | --- | --- |
 | `COMPOSE_PROFILES` | Unset (UI only) | Compose only: set cpu or cuda, exactly one; .env.example selects cpu |
 | `DECISION_ENGINE` | `laya` | `laya` or `jev` |
-| `DECIFLOW_DATA_DIR` | `/var/lib/deciflow-data` | Shared Sources/Tasks/history/Actions/Criteria/SSH key/host storage root; must be writable |
+| `DECIFLOW_DATA_DIR` | `/var/lib/deciflow-data` | Shared Sources/Tasks/history/Actions/Criteria/SSH Key/host storage root; must be writable |
 | `DECIFLOW_CSRF_TRUSTED_ORIGINS` | Empty | Comma-separated trusted UI origins, including optional https://*.ngrok-free.app; origin check only, not authentication |
 | `DECIFLOW_LOG_DIR` | `/var/log/deciflow` | Server/access logs; empty disables file logging. Compose persists logs in deciflow-logs |
 | `PORT` | `4000` | DeciFlow web port |
@@ -53,7 +53,7 @@ The server separately caps both overrides with `LAYA_MAX_TOKEN_BUDGET` (default
 Budgets are not fixed reservations: actual log space depends on the rendered
 question, not simply `max_len - head_max_len`. `usage.truncated` describes log
 truncation, not complete instruction preservation. When Laya reports collapsed
-category options, DeciFlow marks the prediction Uncertain/Needs review and shows
+category options, DeciFlow marks the prediction Uncertain/Needs Review and shows
 why, while preserving the original category, probabilities, and provider response.
 
 For a custom checkpoint, register its name with remote server `LAYA_EXTRA_MODELS`,
@@ -96,10 +96,11 @@ Evaluation uses only Laya, never paid Jev.
 
 | Path | Contents |
 | --- | --- |
+| `results.sqlite3` | Decisions, errors, Action outcomes, reviewer corrections, and aggregates (SQLite WAL) |
+| `settings.json` | Results page size |
 | `sources/sources.json` | Source names, types, and reusable paths/patterns |
 | `tasks/tasks.json` | Tasks, Source/Host assignments, and schedules |
 | `tasks/<task-id>/runs/<run-id>/run.json` | Run state, settings snapshot, counts, and host collection status |
-| `tasks/<task-id>/runs/<run-id>/events.ndjson` | Original logs, decisions, errors, and Action outcomes |
 | `criteria/criteria.json` | Saved decision profiles |
 | `actions/` | Registrations and each Action's code, venv, project, and lockfile |
 | `ssh-keys/<name>/` | Managed private key and derived public key |
@@ -108,5 +109,7 @@ Evaluation uses only Laya, never paid Jev.
 
 Back up and protect the whole directory; it contains raw logs and private keys.
 No automatic run-history cleanup is applied. Use one DeciFlow process per data
-directory. Per-run engine concurrency is shared by all target Hosts; different
+directory. Per-run engine concurrency is shared by all source Hosts; different
 Tasks have separate limits. See [Tasks](tasks.md) for scheduling and storage limits.
+
+Copying only the live database can omit data in its WAL. Stop the server before backing up the whole data directory, or use the SQLite backup API. See [Result storage](result-storage.md).

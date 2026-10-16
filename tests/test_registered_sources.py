@@ -18,7 +18,7 @@ import remote_sources
 import server
 from classifier import Result
 from source_registry import load_sources, save_sources, source_pattern
-from source_settings import parse_source_settings
+from source_settings import parse_source_settings, resolve_configured_sources
 from ssh_hosts import get_hosts_path, save_host
 
 
@@ -201,14 +201,16 @@ async def test_sftp_realtime_discovery_append_rotation_and_stop(
     ssh_source: Result, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     scanned = anyio.Event()
-    original = remote_sources._paths
+    original = remote_sources._scan
 
-    async def handle_paths(sftp: asyncssh.SFTPClient, pattern: str) -> list[str]:
+    async def handle_paths(
+        sftp: asyncssh.SFTPClient, pattern: str
+    ) -> dict[str, asyncssh.SFTPAttrs]:
         paths = await original(sftp, pattern)
         scanned.set()
         return paths
 
-    monkeypatch.setattr(remote_sources, "_paths", handle_paths)
+    monkeypatch.setattr(remote_sources, "_scan", handle_paths)
     async with aclosing(remote_sources.read_remote(ssh_source, live=True)) as stream:
         pending = asyncio.create_task(anext(stream))
         with anyio.fail_after(5):
@@ -387,3 +389,212 @@ async def test_known_hosts_setting_is_ignored_and_not_saved(
     spec = {**ssh_source, **saved, "knownHostsPath": None}
     async with aclosing(remote_sources.read_remote(spec)) as stream:
         assert [record async for record in stream]
+
+
+@pytest.mark.anyio
+async def test_realtime_idle_files_do_not_reopen_for_every_discovery_scan(
+    ssh_source: Result, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    directory = ssh_source["root"] / "logs"
+    directory.mkdir()
+    file_count = 20
+    for number in range(file_count):
+        (directory / f"{number}.log").write_text("existing\n")
+    scans = 0
+    opens = 0
+    canonicalizations = 0
+    scanned = anyio.Event()
+    original_glob = asyncssh.SFTPClient.glob_sftpname
+    original_open = asyncssh.SFTPClient.open
+    original_realpath = asyncssh.SFTPClient.realpath
+
+    async def handle_glob(client: Any, *args: Any, **kwargs: Any) -> Any:
+        nonlocal scans
+        matches = await original_glob(client, *args, **kwargs)
+        scans += 1
+        if scans >= 4:
+            scanned.set()
+        return matches
+
+    def handle_open(client: Any, *args: Any, **kwargs: Any) -> Any:
+        nonlocal opens
+        opens += 1
+        return original_open(client, *args, **kwargs)
+
+    async def handle_realpath(client: Any, *args: Any, **kwargs: Any) -> Any:
+        nonlocal canonicalizations
+        canonicalizations += 1
+        return await original_realpath(client, *args, **kwargs)
+
+    monkeypatch.setattr(asyncssh.SFTPClient, "realpath", handle_realpath)
+    monkeypatch.setattr(asyncssh.SFTPClient, "glob_sftpname", handle_glob)
+    monkeypatch.setattr(asyncssh.SFTPClient, "open", handle_open)
+    monkeypatch.setattr(remote_sources, "monotonic", lambda: 0, raising=False)
+    async with aclosing(remote_sources.read_remote(ssh_source, live=True)) as stream:
+        pending = asyncio.create_task(anext(stream))
+        try:
+            with anyio.fail_after(5):
+                await scanned.wait()
+            assert not pending.done()
+            assert opens == file_count
+            assert canonicalizations <= scans
+        finally:
+            pending.cancel()
+            await asyncio.gather(pending, return_exceptions=True)
+
+
+@pytest.mark.anyio
+async def test_remote_scan_deduplicates_links_and_ignores_broken_links(
+    ssh_source: Result,
+) -> None:
+    directory = ssh_source["root"] / "logs"
+    directory.mkdir()
+    (directory / "file.log").write_text("one event\n")
+    (directory / "alias.log").symlink_to("file.log")
+    (directory / "broken.log").symlink_to("missing")
+    rows = [row async for row in remote_sources.read_remote(ssh_source)]
+    assert len(rows) == 1
+    assert rows[0]["log"] == "one event"
+    assert rows[0]["source"].endswith("/logs/file.log")
+
+
+@pytest.mark.anyio
+async def test_remote_replacement_probe_handles_unchanged_metadata(
+    ssh_source: Result, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    directory = ssh_source["root"] / "logs"
+    directory.mkdir()
+    path = directory / "app.log"
+    path.write_text("existing\n")
+    idle = anyio.Event()
+    clock = [0]
+    original_read = asyncssh.SFTPClientFile.read
+
+    async def handle_read(file: Any, size: int = -1, offset: int | None = None) -> Any:
+        data = await original_read(file, size, offset)
+        if offset and size == 65536 and not data:
+            idle.set()
+        return data
+
+    monkeypatch.setattr(asyncssh.SFTPClientFile, "read", handle_read)
+    monkeypatch.setattr(remote_sources, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(remote_sources, "_signature", lambda attrs: ())
+    async with aclosing(remote_sources.read_remote(ssh_source, live=True)) as stream:
+        pending = asyncio.create_task(anext(stream))
+        with anyio.fail_after(5):
+            await idle.wait()
+            path.unlink()
+            path.write_text("changed!\n")
+            clock[0] = 1
+            row = await pending
+        assert row["log"] == "changed!" and row["line"] == 1
+
+
+@pytest.mark.anyio
+async def test_remote_deleted_glob_watchers_close_without_losing_partial_events(
+    ssh_source: Result, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    directory = ssh_source["root"] / "logs"
+    directory.mkdir()
+    paths = [directory / f"{number}.log" for number in range(20)]
+    for path in paths:
+        path.write_text("existing\n")
+    opened: set[str] = set()
+    closed: set[str] = set()
+    ready = anyio.Event()
+    retired = anyio.Event()
+    original = remote_sources._chunks
+
+    async def handle_chunks(
+        sftp: asyncssh.SFTPClient, path: str, spec: Result, **kwargs: Any
+    ) -> AsyncIterator[Result]:
+        opened.add(path)
+        if len(opened) == 20:
+            ready.set()
+        try:
+            async with aclosing(original(sftp, path, spec, **kwargs)) as stream:
+                async for record in stream:
+                    yield record
+        finally:
+            closed.add(path)
+            if len(closed) >= 19:
+                retired.set()
+
+    monkeypatch.setattr(remote_sources, "_chunks", handle_chunks)
+    async with aclosing(remote_sources.read_remote(ssh_source, live=True)) as stream:
+        pending = asyncio.create_task(anext(stream))
+        try:
+            with anyio.fail_after(5):
+                await ready.wait()
+                for path in paths[:-1]:
+                    path.unlink()
+                await retired.wait()
+                assert len(opened - closed) == 1
+                with paths[-1].open("a") as file:
+                    file.write("new event\n")
+                assert (await pending)["log"] == "new event"
+        finally:
+            pending.cancel()
+            await asyncio.gather(pending, return_exceptions=True)
+
+
+def test_multiline_source_paths_validate_and_deduplicate_local_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DECIFLOW_DATA_DIR", str(tmp_path / "data"))
+    first = tmp_path / "first.log"
+    second = tmp_path / "second.txt"
+    first.write_text("first\n")
+    second.write_text("second\n")
+    patterns = [str(tmp_path / "*.log"), str(first), str(second)]
+    source = save_sources(
+        [
+            {
+                "name": "Multiple files",
+                "type": "local",
+                "path": "\n".join([*patterns, "", str(first)]),
+            }
+        ]
+    )[0]
+    assert source["path"] == "\n".join(patterns)
+    specs = parse_source_settings([{"sourceId": source["id"]}])
+    files = resolve_configured_sources(specs)
+    assert set(files) == {first, second}
+    assert files[first]["sourcePatterns"] == patterns[:2]
+    assert files[second]["sourcePatterns"] == [str(second)]
+
+
+@pytest.mark.anyio
+async def test_remote_multiline_paths_share_connection_and_deduplicate(
+    ssh_source: Result,
+) -> None:
+    directory = ssh_source["root"] / "logs"
+    directory.mkdir()
+    (directory / "first.log").write_text("first\n")
+    (directory / "second.txt").write_text("second\n")
+    spec = {**ssh_source, "path": "/logs/*.log\n/logs/first.log\n/logs/second.txt"}
+    rows = [row async for row in remote_sources.read_remote(spec)]
+    assert sorted(row["log"] for row in rows) == ["first", "second"]
+    assert all(len(row["sourcePatterns"]) == 3 for row in rows)
+    with pytest.raises(ValueError, match="absolute POSIX"):
+        save_sources([{**load_sources()[0], "path": "/logs/*.log\nrelative.log"}])
+
+
+@pytest.mark.anyio
+async def test_remote_multiline_realtime_discovers_each_pattern(
+    ssh_source: Result,
+) -> None:
+    directory = ssh_source["root"] / "logs"
+    directory.mkdir()
+    spec = {**ssh_source, "path": "/logs/*.log\n/logs/*.txt"}
+    async with aclosing(remote_sources.read_remote(spec, live=True)) as stream:
+        pending = asyncio.create_task(anext(stream))
+        try:
+            await asyncio.sleep(0.4)
+            (directory / "new.txt").write_text("new text\n")
+            assert (await asyncio.wait_for(pending, 5))["log"] == "new text"
+            (directory / "new.log").write_text("new log\n")
+            assert (await asyncio.wait_for(anext(stream), 5))["log"] == "new log"
+        finally:
+            pending.cancel()
+            await asyncio.gather(pending, return_exceptions=True)

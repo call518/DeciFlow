@@ -2,24 +2,26 @@
 
 [English](usage.md) | [한국어](usage.ko.md) | [Documentation](README.md) | [README](../README.md)
 
-On wide screens, the left **40%** shows **Classification overview → Task monitor**;
-the right **60%** shows **Classification results**. On wide screens, the left information panel and right results panel scroll independently. Narrow screens stack the panels and use normal page scrolling.
+On wide screens, the left **40%** shows **Classification Overview → Task Monitor**;
+the right **60%** shows **Classification Results**. On wide screens, the left information panel and right results panel scroll independently. Narrow screens stack the panels and use normal page scrolling.
 The sidebar identifies the DeciFlow reader host by hostname, detected IPs, and
 OS/version. In WSL or containers, these identify that environment, not its host OS;
-IPs are not a full interface inventory. Target SSH log hosts are selected per Source in Tasks. The status in parentheses after the engine name, e.g. **Laya (Connected)**, reports the last actual request: Not checked
+IPs are not a full interface inventory. Source SSH hosts are selected per Source in Tasks. The status in parentheses after the engine name, e.g. **Laya (Connected)**, reports the last actual request: Not checked
 before a request, then Connected, Disconnected, Timed out, or API error. It is not
 a continuous health check; local input rejections do not change the status.
 
 ### Tasks and criteria
 
-Register inputs in **Sources**, then save their Criteria, Events/chunk, and Action
-assignments in **Tasks**. Main lists currently running Tasks in name order. Click one to show its execution;
+Register inputs in **Sources**, then save their Criteria, Events/Chunk, and Action
+assignments in **Tasks**. Main lists all saved Tasks, with running/starting Tasks first and names sorted within each group. Click one to show its current or latest execution;
 a fresh page has no selection. Tasks supports manual Batch, cron Batch with a timezone,
 and continuous Realtime; there is no Paste input. Saving does not start analysis.
-Use Run, Stop, View, Edit, History, and Delete from the Task list.
+Use the Enabled switch and Run, Stop, View, Edit, History, and Delete from the Task list.
+Disabling stops active execution and blocks manual runs, cron, and automatic
+restart; enabling does not start a run immediately.
 See [Tasks](tasks.md) for scheduling, restart behavior, and storage.
 
-**Reset selections** in the Task editor selects available sample Sources (or the
+**Reset Selections** in the Task editor selects available sample Sources (or the
 first registration), sample criteria, one event per chunk, and Action None.
 Saved configuration is server-side; unsaved drafts are browser-only.
 Sources are read by DeciFlow, not the browser or Laya server. File access requires
@@ -31,7 +33,7 @@ completion first, so parallel requests can finish out of collection order. Engin
 to the entire run, not separately to each file. A limit of 1 serializes requests.
 Remote connections use the same engine and Action flow as local files.
 
-Choose **Criteria** and **Events/chunk** for each selected Source.
+Choose **Criteria** and **Events/Chunk** for each selected Source.
 Defaults: **General system**, **1 event per chunk**. Currently, each nonempty line
 is one event; multiline boundaries are not yet detected. Every profile uses `choice` with
 **Normal, Warning, Error, Security, Other**; only the descriptions and instructions
@@ -40,7 +42,7 @@ differ. Laya and Jev use the same selected profile. Type detection is manual;
 returns the probability that a work ticket is needed, in the same request.
 These shared operational questions are fixed across profiles and engines.
 Each result shows **Category (Choice)**, **Urgency (Score)** as a continuous 0–3
-value, and **Work ticket (Noul)** as the Yes probability in three cards by default.
+value, and **Work Ticket (Noul)** as the Yes probability in three cards by default.
 The cards stack on narrow panels. All three badges use the same compact size
 (132 × 22 px); there is no separate summary or expand/collapse control.
 Processing time and category review status follow the cards. Each has its own probability
@@ -60,7 +62,7 @@ separately. No ticket is created automatically. Missing or invalid answers fail 
 
 Use **Criteria** in the sidebar to add, edit, or delete profiles.
 Result categories remain Normal, Warning, Error, Security, and Other; `general` cannot
-be deleted. **Save changes** applies to new runs; running jobs keep their original
+be deleted. **Save Changes** applies to new runs; running jobs keep their original
 criteria. See [Criteria management](criteria.md) for storage and deletion restrictions on Task references.
 Describe outcomes and evidence; keep specific log strings in evaluation samples.
 
@@ -92,7 +94,10 @@ reduces input variation; it does not guarantee identical predictions or accuracy
 
 ### Results and controls
 
-Newest **completed** chunks appear first, with 100 results per page; this is
+Each result displays the original input data in bold; JSON and Action code keep
+their own formatting.
+
+Newest **completed** chunks appear first, with 50 results per page by default (Settings → Results: 10, 30, 50, or 100); this is
 completion order, not log timestamp order. File locations show **File line(s)**
 for Batch and **Observed line(s)** for Realtime—the sequence read since monitoring
 started or the file rotated. `1 event (max 5)` means one event was submitted
@@ -135,13 +140,13 @@ choice, not a confirmed normal event. The original choice and probabilities are
 preserved. The UI shows provisional candidates; JSON records `candidates`,
 `probabilityMargin`, and `reviewReasons`.
 
-**Needs review** includes only successfully classified Uncertain or Other chunks.
+**Needs Review** includes only successfully classified Uncertain or Other chunks.
 Failed/rejected requests count as Failed and are excluded from review metrics/filters. Other alone does not set Uncertain. **Certain**
 means no Uncertain flag, not verified accuracy. Use labeled logs to evaluate
 misclassifications and review workload before treating the thresholds as an
 operating policy.
 
-Filter **All results / Needs review / No review needed**. Both review groups include
+Filter **All results / Needs Review / No review needed**. Both review groups include
 only successful classifications. To inspect failures, choose All results and the
 Request failed category. Category filtering
 and case-insensitive literal search of original log text combine with the review
@@ -156,17 +161,22 @@ Host collection states (Pending, Reading, Completed, Failed, Stopped) are separa
 from decision counts: collection can finish while inference is still running.
 SSH connect/read failures appear as **Source failed** records, with host details
 and no AI probabilities; use All results / Request failed to find them. Other
-remote readers continue. See [multi-host execution](tasks.md#multiple-target-hosts).
+remote readers continue. See [multi-host execution](tasks.md#multiple-source-hosts).
+
+Main polls only new results for the current Task page approximately once per second
+and reuses existing cards. Polling pauses outside Main and in hidden tabs; Tasks
+continue. Older pages stay fixed; Latest Results returns to current results.
 
 | Control | Behavior |
 | --- | --- |
-| Pause updates / Resume updates | Freeze/unfreeze the list, including before the first result; analysis, metrics, and chart continue. Filters/pages use the frozen list; the button counts pending results. |
-| Stop | Cancel file readers and pending engine requests; retain completed results, discard unsubmitted chunks. Remote inference already running may finish. |
+| Pause Updates / Resume Updates | Freeze/unfreeze the list, including before the first result; analysis, metrics, and chart continue. Filters/pages use the frozen list; the button counts pending results. |
+| Stop (Tasks) | Cancel file readers and pending engine requests; retain completed results, discard unsubmitted chunks. Remote inference already running may finish. |
 | View JSON | Expand one result, including failures, profile/chunk metadata, and reviewer edits. Expanded state survives list refreshes. Copy inside the JSON panel copies the current result, including reviewer edits. |
 | Reviewer category | Record `reviewerCategory`; does not change AI category, review status, chart, or train the model. |
-| Export JSON | After processing finishes or stops, export all received results—including those not displayed while paused. |
+| Export All JSON | Stream all Task results recorded when export starts, including paused or filtered-out rows; available during execution too. |
+| Export Reviewed JSON | Export only this run’s successful results with a nonempty reviewer category different from the original AI category. Includes input, original result, and reviewerCategory; ignores display filters. Unchanged reviews and Not reviewed are excluded. |
 
-**Classification overview** combines AI category counts across all sources,
+**Classification Overview** combines AI category counts across all sources,
 including uncertain choices. Counts are **chunks**, not raw lines; percentages use
 successfully classified chunks. Failed requests are shown separately. Filters and
 reviewer edits do not change the chart. Use the **All / Certain / Uncertain** buttons to chart all
@@ -210,22 +220,22 @@ Selecting a sidebar menu always returns to its list and closes any View, Edit, o
 History screen. Unsaved editor drafts are discarded; saved settings and running
 Tasks are unchanged.
 Task executions continue after disconnecting or closing the browser. Refreshing
-reconnects to the same execution; History → View results replays saved results
+reconnects to the same execution; History → View Results replays saved results
 without repeating classification or Actions. Main follows new executions of the
 selected Task; explicitly viewing a historical run keeps that run selected.
 
 Task definitions, run status, settings snapshots, results, and Action outcomes
-persist under `DECIFLOW_DATA_DIR/tasks`. A restart marks interrupted executions
+persist under `DECIFLOW_DATA_DIR` (Task metadata in `tasks/`, results in `results.sqlite3`). A restart marks interrupted executions
 Stopped. Batch is not automatically retried; Realtime starts a new run only when
 Resume on restart is enabled. See [Tasks](tasks.md).
 
-Use one DeciFlow server process/instance per data directory. Results also remain
-in RAM until shutdown; large batches and long Realtime runs increase memory use.
-No automatic history retention limit is applied. Reviewer edits, filters,
-pagination, and unsaved drafts remain browser-only; export to preserve edits.
+Use one DeciFlow server process/instance per data directory. Results and reviewer
+corrections persist in SQLite; only the current page is loaded in the browser.
+Filters, page position, and unsaved drafts remain browser-only. No automatic history
+retention limit is applied. See [Result storage](result-storage.md).
 
 The low-level `/api/classify` text API and `/api/file-source` file API remain
-available. With `persist: true`, they return a browser-independent **in-memory**
+available. With `persist: true`, they return a browser-independent **temporary SQLite-backed**
 job (HTTP 202), not a saved Task or durable run. `/api/jobs/<jobId>` inspects a run,
 `/events` replays/follows NDJSON, and `/stop` stops a live run (POST). Without
 `persist: true`, direct APIs stream for the connection lifetime. Trusted-origin
@@ -237,13 +247,13 @@ checks still apply; file access requires a local/trusted UI Origin.
 | --- | --- |
 | Success / Failed / Total | Valid classifications / failed chunks / total completed chunks (success + failure); failures include connection errors, timeouts, rejected inputs, and invalid responses |
 | Action Success / Failed / Total | Completed Action successes / failures / total; excludes unassigned sources and failed decisions; independent of decision counts |
-| Needs review | Successful Uncertain (low probability, close probabilities, or collapsed options) or Other classifications; excludes failed/rejected requests |
+| Needs Review | Successful Uncertain (low probability, close probabilities, or collapsed options) or Other classifications; excludes failed/rejected requests |
 | Throughput | Successfully classified chunks/s over the last 5 seconds, including idle time; uses elapsed time during the first 5 seconds; freezes when stopped/completed |
-| Total elapsed time | Time since the run started, including idle periods |
-| Active processing time | Time with at least one request in flight, counting overlap once; percentage of total elapsed time |
-| Average processing time | Mean completed request duration, including failures; per chunk |
+| Total Elapsed Time | Time since the run started, including idle periods |
+| Active Processing Time | Time with at least one request in flight, counting overlap once; percentage of total elapsed time |
+| Average Processing Time | Mean completed request duration, including failures; per chunk |
 
-Total elapsed time, Active processing time, and Average processing time use
+Total Elapsed Time, Active Processing Time, and Average Processing Time use
 ms, sec, min, hour, or day as appropriate. JSON duration values remain milliseconds.
 
 Action execution failures do not affect classification counts or engine connection status.
@@ -254,3 +264,25 @@ pure inference time. Timing refreshes once per second while waiting; stopping or
 disconnecting freezes only the browser display; reconnecting restores server
 progress. Stopping retains the last snapshot, which may lag by about one second.
 
+
+Task throughput uses 100 ms buckets over the last 5 seconds and is approximate at bucket boundaries.
+
+All list Delete actions use a shared styled confirmation dialog. Cancel, Escape, or close makes no change. Source, Criteria, and Actions deletions require Save Changes after confirmation; Task, SSH Keys, and SSH Hosts deletions are submitted immediately after confirmation.
+
+Delete first checks current dependencies on the server. In-use items show a blocking dialog listing up to five referring Tasks, SSH Hosts, Sources, or active runs, plus a remaining count; no Delete button is available. Only unused items receive a deletion confirmation. Failed checks also block deletion. The server rechecks dependencies when applying the deletion or saved changes.
+
+List View opens details directly beneath the selected row. Click the same View to collapse it, or another View to move the detail. List refreshes preserve its position beneath the selected item.
+
+All Views use shared compact label/value styling. Short values sit side by side; long values wrap as needed. Read-only input boxes are omitted. Code and public keys preserve their contents in text blocks with a maximum height. Narrow screens stack fields; editing forms are unchanged.
+
+Task Monitor lists all saved Tasks, prioritizing running/starting Tasks. Cards
+show the name and Enabled/state badges, Source and distinct Source Host count,
+then Type / Mode / Action (None when unset). Running/starting cards use a pale
+green background; Stopped cards use a subdued neutral background. Selected cards
+retain a left accent. Keep the pointer still for one second or focus a card for complete Source settings and
+Host names/SSH addresses in a scrollable tooltip. Click to show its current/latest
+results; Tasks without history show an empty result state. Start/stop Tasks in
+Tasks. See [Tasks](tasks.md) for scheduling and default Task restoration.
+
+Once visible, the tooltip stays open while the pointer is over the Task card or
+tooltip. Move into the tooltip to select/copy text; leaving both closes it.

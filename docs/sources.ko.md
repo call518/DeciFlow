@@ -3,7 +3,7 @@
 [English](sources.md) | [한국어](sources.ko.md) | [문서 안내](README.ko.md) | [README](../README.ko.md)
 
 사이드바 **Source**에서 재사용할 데이터 입력을 등록합니다.
-**Add source**로 Type·Name·File path / pattern 순서로 입력하고 **Save changes**로 저장하세요.
+**Add Source**로 Type·Name·File Path / Pattern 순서로 입력하고 **Save Changes**로 저장하세요.
 이름·경로로 검색하고 View·Edit·Delete로 관리합니다. 삭제는 저장 시 적용하며,
 로그 파일·SSH Host·SSH 키·known_hosts 파일을 삭제하지 않습니다.
 Remote File에는 재사용할 경로를 지정합니다. Task의 Source별로 검색 가능한 체크박스에서
@@ -19,6 +19,13 @@ Remote File에는 재사용할 경로를 지정합니다. Task의 Source별로 �
 있습니다. 초기 예시는 System messages·Sample HTTP access·Sample SSH authentication입니다.
 환경에 맞게 편집하세요. 이름·ID는 중복할 수 없으며 이름을 바꿔도 ID는 유지합니다.
 
+**File Path / Pattern**에는 Local File·Remote File 모두 한 줄에 경로·패턴을 하나씩
+입력할 수 있습니다. 저장 시 빈 줄과 중복 항목을 제거합니다. 각 경로는 Task 행의
+Criteria·청크 크기·Action·Source Hosts 설정을 공유합니다. 같은 Source의 패턴이
+겹쳐도 동일 파일은 한 번만 읽으며 SSH 연결은 Source/Host별로 하나를 재사용합니다.
+Batch는 어느 항목이든 일반 파일과 일치하지 않으면 실패하고, Realtime은 새로 일치하는
+파일을 계속 감시합니다.
+
 ## Tasks에서 선택
 
 Batch·Realtime에서 선택 행을 추가하고 풀다운에서 등록한 Source를 선택합니다.
@@ -26,11 +33,11 @@ Source·Action 풀다운은 이미 선택한 값과 관계없이 전체 항목�
 표시합니다. 선택한 파일 경로·패턴은 Source 아래에 표시하며 옵션의 툴팁에는
 타입·경로가 포함됩니다. Action None은 미할당입니다. 입력 필터링은 사용하지 않습니다.
 
-행마다 Criteria·Events/chunk·Action을 지정합니다. 이 값은 소스 등록이 아닌 Task에 저장하는
+행마다 Criteria·Events/Chunk·Action을 지정합니다. 이 값은 소스 등록이 아닌 Task에 저장하는
 설정입니다. Batch는 일치한 파일을 EOF까지 읽고, Realtime은 기존 내용을 건너뛰어
-새 줄을 감시하며 새로 발견한 파일은 처음부터 읽습니다. Main은 실행 중인 Task를
-목록으로 보여주며 클릭하면 결과를 표시합니다. 완료된 실행은 Tasks → History →
-View results에서 엽니다. Paste 입력 모드는 없습니다. **Reset selections**는 사용 가능한 샘플 소스
+새 줄을 감시하며 새로 발견한 파일은 처음부터 읽습니다. Main은 모든 저장된 Task를
+표시하며 실행 중·시작 중인 항목을 먼저 배치합니다. 클릭하면 현재·최근 결과를 표시하고
+이전 실행은 Tasks → History → View Results에서 엽니다. Paste 입력 모드는 없습니다. **Reset Selections**는 사용 가능한 샘플 소스
 또는 첫 등록 소스를 선택하고 청크당 1이벤트·Action None으로 설정합니다.
 Task를 저장하면 이 설정을 서버에 보관합니다.
 
@@ -40,7 +47,7 @@ Task를 저장하면 이 설정을 서버에 보관합니다.
 
 ## SSH 설정
 
-Settings에서 **SSH Keys** 다음에 **SSH Hosts**가 표시됩니다. Add host로 이름·주소·포트·
+Settings에서 **SSH Keys** 다음에 **SSH Hosts**가 표시됩니다. Add Host로 이름·주소·포트·
 SSH 사용자·키를 저장하고 검색 가능한 목록의 View·Edit·Delete 버튼으로 관리합니다.
 여러 Source가 하나의 Host를 공유하면서 파일 경로만 다르게 지정할 수 있습니다.
 Task의 Source 선택에 `hostIds`를 저장하고 실행할 때 접속 정보를 확정합니다. Host 수정은 새 실행에
@@ -56,8 +63,8 @@ known_hosts와 과거 실행 이력은 유지합니다.
 | --- | --- |
 | Host | ssh://·사용자 이름을 제외한 호스트 이름 또는 IP |
 | Port | SSH 포트. 기본 22 |
-| SSH user | 원격 로그 읽기 권한과 SFTP 서브시스템 접근 권한이 있는 계정 |
-| SSH key | Settings에 등록한 키 선택. 기존 파일 경로 등록도 계속 지원 |
+| SSH User | 원격 로그 읽기 권한과 SFTP 서브시스템 접근 권한이 있는 계정 |
+| SSH Key | Settings에 등록한 키 선택. 기존 파일 경로 등록도 계속 지원 |
 
 암호 입력 없이 읽을 수 있는 키를 사용하세요. 비밀번호·에이전트 인증, 대화형 입력,
 호스트 검증 비활성화는 지원하지 않습니다. 대응하는 공개키를 원격 계정의
@@ -85,9 +92,10 @@ Stop은 SFTP 세션과 대기 중인 읽기를 종료합니다.
 연결을 닫으며 로그를 읽거나 입력값을 저장하지 않습니다. 미등록 fingerprint는
 확인창에서 승인한 키로만 재시도하고 SSH 인증 성공 후 승인한 키를 보존합니다.
 Remote File과 같은 접속 설정을 사용합니다. 목록에는 Not checked·Checking·Connected·
-Failed와 마지막 확인 시각·오류를 표시합니다. SSH Hosts 목록이 열려 있으면 이름순으로
-하나씩 자동 확인하고 전체 회차 종료 30초 후 반복합니다. Settings를 떠나거나 편집·상세
-화면을 열거나 탭을 숨기면 현재 요청 후 중단합니다. 자동 확인은 미등록 키를 승인하거나
+Failed와 마지막 확인 시각·오류를 표시합니다. SSH Hosts 진입 시 이름순으로 한 번
+자동 확인합니다. View·목록 재출력·주기 타이머로 완료한 확인을 반복하지 않습니다.
+사이드바로 재진입하면 다시 한 번 확인하며 Test Connection은 수동 재확인이 가능합니다.
+Settings를 떠나거나 편집 화면을 열거나 탭을 숨기면 현재 요청 후 나머지를 중단합니다. 자동 확인은 미등록 키를 승인하거나
 확인창을 열지 않으므로 수동 Test Connection으로 먼저 승인하세요. 새로고침하면
 결과를 초기화하고 접속 정보가 바뀌면 이전 결과를 무효화합니다.
 성공해도 특정 로그 경로나 파일 읽기 권한을 확인한 것은 아닙니다.
@@ -103,13 +111,13 @@ SHA256 fingerprint를 포함한 `hostKey`도 반환하며 확인 후 `trustedHos
 
 사이드바의 **Settings → SSH Keys**(`/#settings/ssh-keys`)에서 이름(영문·숫자·공백·밑줄·하이픈)을
 입력하고 등록 방식을 선택하세요. 기본 화면은 이름·개인키 경로·관리 버튼의 목록이며,
-이름으로 검색할 수 있습니다. **Add key**로 등록폼을 열고 **View**로 상세 내용을
+이름으로 검색할 수 있습니다. **Add Key**로 등록폼을 열고 **View**로 상세 내용을
 확인합니다.
 
-- **Upload private key:** 브라우저를 실행한 컴퓨터의 파일을 선택합니다.
-- **Private key file path:** DeciFlow 실행 프로세스에서 읽을 수 있는 파일 경로를
+- **Upload Private Key:** 브라우저를 실행한 컴퓨터의 파일을 선택합니다.
+- **Private Key File Path:** DeciFlow 실행 프로세스에서 읽을 수 있는 파일 경로를
   입력합니다. Docker에서는 컨테이너 내부 경로이며 전용 저장소로 복사합니다.
-- **Paste private key:** 머리글·꼬리글을 포함한 개인키 전체를 붙여넣습니다.
+- **Paste Private Key:** 머리글·꼬리글을 포함한 개인키 전체를 붙여넣습니다.
   입력 내용은 마스킹하며 전송 후 입력칸을 비웁니다.
 
 세 방식 모두 최대 64 KiB의 암호 없는 전용 개인키를 받아 공개키를 자동으로
@@ -135,12 +143,22 @@ DeciFlow 호스트에 이미 있는 키는 경로 입력으로, 브라우저를 
 
 서버 키 검증에는 `DECIFLOW_DATA_DIR/ssh-hosts/known_hosts`만 사용합니다.
 기본 경로는 `/var/lib/deciflow-data/ssh-hosts/known_hosts`이며 사용자 SSH 파일을
-마운트할 필요가 없습니다. Test Connection에서 미등록 fingerprint를 사이트 모달의 Cancel·Trust & connect로
+마운트할 필요가 없습니다. Test Connection에서 미등록 fingerprint를 사이트 모달의 Cancel·Trust & Connect로
 확인하고 승인한 키를 이 파일에 보존합니다. 같은 키는 이후 확인창 없이 접속합니다.
 예약·백그라운드 Task는 확인창을 띄울 수 없으므로 새 Host는 Task 실행 전에
 Test Connection으로 먼저 승인하세요. 승인한 키는 재시작 후에도 유지합니다.
 SSH 실행 파일은 필요 없으며 AsyncSSH를 프로젝트 의존성으로 설치합니다.
 
+
+### Remote File 폴링
+
+Realtime은 SFTP 디렉터리·패턴 탐색에서 받은 파일 속성을 재사용하고 일반 파일의
+상위 경로는 디렉터리마다 한 번만 확정합니다. 변경된 파일의 읽기를 깨우며 변경 없는
+파일을 탐색할 때마다 다시 열지 않습니다. 파일 탐색은 한 회차 종료 후 250ms 간격을
+유지하며 네트워크·서버 지연이 더해집니다. SFTP의 수정 시간 정밀도로 구분하지 못하는
+동일 크기 파일 교체도 감지하도록 1초마다 원문 앞부분을 확인합니다. 파일 위치·미완성
+줄 처리·호스트별 공정성·청크·실행 전체의 엔진 동시 요청 제한은 유지합니다.
+확인 사이에 빠르게 회전하는 파일은 여전히 이벤트가 누락될 수 있습니다.
 
 ## 저장과 API
 

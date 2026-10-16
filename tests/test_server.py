@@ -38,6 +38,7 @@ async def test_assets_and_status(monkeypatch: pytest.MonkeyPatch) -> None:
             "/",
             "/app.js",
             "/stream.js",
+            "/vendor/prism/prism-python-1.30.0.min.js",
             "/style.css",
             "/logo.png",
             "/favicon.ico",
@@ -46,7 +47,12 @@ async def test_assets_and_status(monkeypatch: pytest.MonkeyPatch) -> None:
         ]:
             response = await client.get(path)
             assert response.status_code == 200
-            assert response.headers["cache-control"] == "no-store"
+            expected_cache = (
+                "public, max-age=31536000, immutable"
+                if path.startswith("/vendor/prism/")
+                else "no-store"
+            )
+            assert response.headers["cache-control"] == expected_cache
             assert response.headers["x-content-type-options"] == "nosniff"
             if path == "/":
                 assert '<html lang="en">' in response.text

@@ -98,8 +98,12 @@ def validate_sources(values: object) -> list[Result]:
         identities.add(identity)
         names.add(source["name"].casefold())
         source["id"] = identity
-        if source["type"] == "ssh" and not PurePosixPath(source["path"]).is_absolute():
+        paths = source_paths(source["path"])
+        if source["type"] == "ssh" and any(
+            not PurePosixPath(path).is_absolute() for path in paths
+        ):
             raise ValueError("Remote file paths must be absolute POSIX paths.")
+        source["path"] = "\n".join(paths)
         result.append(source)
     return result
 
@@ -127,3 +131,18 @@ def source_pattern(source: Result) -> str:
     if ":" in host:
         host = f"[{host}]"
     return f"ssh://{source['username']}@{host}:{source['port']}{source['path']}"
+
+
+def source_paths(value: str) -> list[str]:
+    """Return distinct nonempty paths from a newline-separated Source field."""
+    return list(
+        dict.fromkeys(line.strip() for line in value.splitlines() if line.strip())
+    )
+
+
+def source_patterns(source: Result) -> list[str]:
+    """Return an individual result-filter pattern for every configured path."""
+    return [
+        source_pattern({**source, "path": path})
+        for path in source_paths(source["path"])
+    ]

@@ -53,7 +53,7 @@ DeciFlow 설정이므로 이 값을 전송하기 위해 원격 Docker를 변경�
 예산은 고정 예약량이 아닙니다. 실제 로그 공간은 렌더링된 질문에 따라 달라지므로
 단순히 `max_len - head_max_len`으로 계산하면 안 됩니다. `usage.truncated`는 로그
 잘림 정보이며 지시문 전체 보존을 뜻하지 않습니다. Laya가 범주 선택지의 구별 손실을
-보고하면 DeciFlow는 Uncertain·Needs review로 표시하고 이유를 보여줍니다.
+보고하면 DeciFlow는 Uncertain·Needs Review로 표시하고 이유를 보여줍니다.
 원래 판정 범주·확률·응답은 그대로 보존합니다.
 
 사용자 체크포인트는 원격 서버의 `LAYA_EXTRA_MODELS`에 이름을 등록한 뒤
@@ -96,10 +96,11 @@ uv run python -m scripts.evaluate_laya --output /tmp/laya-validation.json
 
 | 경로 | 내용 |
 | --- | --- |
+| `results.sqlite3` | 판정·오류·Action 결과·수동 정정·집계(SQLite WAL) |
+| `settings.json` | Results 페이지 크기 |
 | `sources/sources.json` | Source 이름·타입·재사용 경로/패턴 |
 | `tasks/tasks.json` | Task·Source/Host 할당·예약 설정 |
 | `tasks/<task-id>/runs/<run-id>/run.json` | 실행 상태·설정 스냅샷·처리 수·호스트 수집 상태 |
-| `tasks/<task-id>/runs/<run-id>/events.ndjson` | 원본 로그·판정·오류·Action 실행 결과 |
 | `criteria/criteria.json` | 저장한 판정 프로필 |
 | `actions/` | 등록 정보와 Action별 코드·venv·프로젝트·lockfile |
 | `ssh-keys/<name>/` | 관리 개인키와 추출한 공개키 |
@@ -108,5 +109,7 @@ uv run python -m scripts.evaluate_laya --output /tmp/laya-validation.json
 
 전체 디렉터리를 백업하고 접근 권한을 관리하세요. 원본 로그·개인키가 포함됩니다.
 실행 이력은 자동 정리하지 않으며 데이터 경로마다 DeciFlow 프로세스 하나를 사용합니다.
-엔진 동시 요청 제한은 실행의 모든 대상 Hosts가 공유하고 서로 다른 Task는 별도 제한을
+엔진 동시 요청 제한은 실행의 모든 소스 Hosts가 공유하고 서로 다른 Task는 별도 제한을
 사용합니다. 예약·저장 제약은 [Tasks](tasks.ko.md)를 참고하세요.
+
+실행 중 DB 파일 하나만 복사하면 WAL의 데이터가 빠질 수 있습니다. 서버를 중지한 뒤 전체 데이터 경로를 백업하거나 SQLite 백업 API를 사용하세요. [결과 저장](result-storage.ko.md)을 참고하세요.

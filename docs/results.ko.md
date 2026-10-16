@@ -9,7 +9,7 @@ DeciFlow는 로그 청크를 `state`로 보내며 요청 한 번에 `category`(`
 
 ## 요청 본문
 
-`state`는 문자열입니다. Events/chunk 1이면 로그 이벤트 하나, 그보다 크면 여러
+`state`는 문자열입니다. Events/Chunk 1이면 로그 이벤트 하나, 그보다 크면 여러
 이벤트를 `\n`으로 연결한 내용입니다. 관찰한 로그 데이터를 담으며 판정 지시문과
 기준은 `questions`에 둡니다. 대화 이력이나 별도 `state` 환경변수는 없습니다.
 
@@ -297,3 +297,13 @@ Task 실행 정보와 호스트별 수집 상태는 실행 이력에 별도로 �
 
 Jev도 같은 최상위 결과 구조를 사용하며, `providerResponse`는 엔진에 따라 다릅니다.
 
+
+## 리뷰 변경분 내보내기
+
+**Export Reviewed JSON**은 별도 데이터셋에 중복 저장하지 않고 기존 결과 DB에서
+선택한 실행의 변경 리뷰만 조회합니다. AI `category`는 보존하고 사람의 판단은
+`reviewerCategory`로 포함합니다. `exportScope: "reviewed-changes"`, 내보낸
+건수 `exported`, 일치한 결과 객체 전체를 내보냅니다. 일치 항목이 없으면 `results`는
+빈 배열이며 `total`/`completed`는 원래 실행 전체의 값입니다. 모델별 미세조정
+형식으로 변환하는 기능은 아닙니다. Task 삭제 시 리뷰도 삭제되므로 보존하려면 먼저
+내려받으세요.

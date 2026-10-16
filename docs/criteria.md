@@ -8,10 +8,10 @@ Manage decision profiles under **Criteria** in the sidebar. Both Laya and Jev us
 | --- | --- |
 | List/search | Inspect names and profile IDs; filter with Search by Name |
 | View | Inspect the current configuration, instructions, and five definitions read-only; Cancel dismisses it |
-| Add | Add profile → enter ID, name, instructions, and five definitions → Save changes |
-| Edit | Edit → change criteria → Save changes. Existing IDs stay unchanged |
-| Cancel | Cancel edit discards the current editor draft |
-| Delete | Delete → Save changes. Deletion is pending until saved |
+| Add | Add Profile → enter ID, name, instructions, and five definitions → Save Changes |
+| Edit | Edit → change criteria → Save Changes. Existing IDs stay unchanged |
+| Cancel | Cancel Edit discards the current editor draft |
+| Delete | Delete → Save Changes. Deletion is pending until saved |
 
 - Categories stay fixed at **Normal, Warning, Error, Security, and Other**.
   Profiles customize `choice` only; urgency (`score`) and work-ticket need (`noul`)
@@ -31,7 +31,7 @@ Manage decision profiles under **Criteria** in the sidebar. Both Laya and Jev us
 View and Edit are never displayed together. Edit/Add closes View; viewing hides
 the editor/cancel button and disables saving. Cancel restores any existing draft.
 
-Add/Edit hides the list and shows only the form. Saving or Cancel edit returns to the list.
+Add/Edit hides the list and shows only the form. Saving or Cancel Edit returns to the list.
 
 ## Storage and access
 

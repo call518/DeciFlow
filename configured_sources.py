@@ -15,9 +15,18 @@ from sources import follow_file, merge_batch, read_file
 
 
 async def _source_chunks(
-    path: Path, spec: Result, *, live: bool = False, from_start: bool = False
+    path: Path,
+    spec: Result,
+    *,
+    live: bool = False,
+    from_start: bool = False,
+    removed: asyncio.Event | None = None,
 ) -> AsyncGenerator[Result, None]:
-    source = follow_file(path, from_start=from_start) if live else read_file(path)
+    source = (
+        follow_file(path, from_start=from_start, removed=removed)
+        if live
+        else read_file(path)
+    )
     async with aclosing(
         chunk_records(source, spec["profile"], spec["chunkEvents"], live=live)
     ) as records:
@@ -49,6 +58,7 @@ async def read_configured(paths: dict[Path, Result]) -> AsyncGenerator[Result, N
 async def follow_configured(specs: list[Result]) -> AsyncGenerator[Result, None]:
     """Merge live files and discover new glob matches with bounded per-file reads."""
     watchers: dict[Path, AsyncGenerator[Result, None]] = {}
+    removed: dict[Path, asyncio.Event] = {}
     reads: dict[asyncio.Task[Result], Path] = {}
     tick: asyncio.Task[None] | None = None
     initial = True
@@ -59,11 +69,18 @@ async def follow_configured(specs: list[Result]) -> AsyncGenerator[Result, None]
                     partial(resolve_configured_sources, specs, follow=True),
                     abandon_on_cancel=True,
                 )
+                for path in watchers.keys() - paths.keys():
+                    removed[path].set()
                 for path, spec in paths.items():
                     if path in watchers:
                         continue
+                    removed[path] = asyncio.Event()
                     records = _source_chunks(
-                        path, spec, live=True, from_start=not initial
+                        path,
+                        spec,
+                        live=True,
+                        from_start=not initial,
+                        removed=removed[path],
                     )
                     watchers[path] = records
                     reads[asyncio.create_task(anext(records))] = path
@@ -77,7 +94,13 @@ async def follow_configured(specs: list[Result]) -> AsyncGenerator[Result, None]
                     tick = None
                     continue
                 path = reads.pop(task)
-                yield task.result()
+                try:
+                    record = task.result()
+                except StopAsyncIteration:
+                    await watchers.pop(path).aclose()
+                    removed.pop(path)
+                    continue
+                yield record
                 reads[asyncio.create_task(anext(watchers[path]))] = path
     finally:
         tasks: set[asyncio.Task] = set(reads)

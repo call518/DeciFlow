@@ -2,21 +2,18 @@
 
 [English](actions.md) | [한국어](actions.ko.md) | [Documentation](README.md) | [README](../README.md)
 
-Add/Edit hides the list and shows only the form. Saving or Cancel edit returns to the list.
+Add/Edit hides the list and shows only the form. Saving or Cancel Edit returns to the list.
 
-**View** shows the current name, Python version, modules, code, and stored paths
-read-only. **Cancel** dismisses it without changing editor drafts or preparing
-environments. List controls appear as **View / Edit / Reset venv / Delete**. Edit/Add closes View. Viewing
-hides the editor and disables saving; Cancel restores any existing draft.
+**View** shows names, Python Version, modules, code, and paths in compact label/value fields directly below the selected row. Click View again to collapse it without changing drafts or environments. Python Code uses syntax colors for keywords, strings, comments, and other tokens in both View and Add/Edit. Coloring preserves source text and save/execution behavior, uses no external CDN, and does not provide syntax validation or autocomplete. Edit/Add closes View.
 
 Open **Actions** in the left sidebar to create, edit, or remove handlers. Click
-**Add action**, enter a name, Python version (e.g. `3.12`), modules, and Python
-code directly in the editor, then **Save & prepare environments**. No script path
+**Add Action**, enter a name, Python Version (e.g. `3.12`), modules, and Python
+code directly in the editor, then **Save & Prepare Environments**. No script path
 or separate file upload is needed. The list shows one row per Action with its
-name, Python version, modules, environment Status, and **View**/**Edit**/**Reset venv**/**Delete** buttons.
+name, Python Version, modules, environment Status, and **View**/**Edit**/**Reset venv**/**Delete** buttons.
 **Search by Name** filters names by a case-insensitive partial match.
 **Edit** opens one handler;
-**Cancel edit** discards its draft. Removal takes effect when you save. Return to
+**Cancel Edit** discards its draft. Removal takes effect when you save. Return to
 **Tasks** to assign an Action or **None** to each log file or pattern and start
 Batch/Realtime. Analysis continues when changing pages. Re-entering Actions from
 the sidebar returns to the list and discards unsaved drafts. Assignments are saved per Task.
@@ -87,7 +84,7 @@ stay intact. It uses saved settings, not editor drafts. A failed reset leaves th
 environment unready; retry with Reset venv. Actions using external Python
 cannot be reset.
 
-**Delete → Save & prepare environments** removes the Action's data folder, including
+**Delete → Save & Prepare Environments** removes the Action's data folder, including
 code, the environment, lockfiles, and data. External scripts/Python
 outside DeciFlow-managed storage are not deleted. Changes/reset/deletion are rejected while
 analysis uses the Action; click **Stop** first. New runs using it cannot start during
@@ -135,3 +132,5 @@ No separate host data directory is needed. If changing the data path, migrate
 existing Actions and prepare their environments at the new path, then apply the
 Compose configuration with `docker compose up -d ui`. Rebuilding the UI image is
 unnecessary for data-path changes. See [Docker deployment](../README.md#deciflow-docker).
+
+Syntax colors use vendored PrismJS 1.30.0 Core + Python (about 9.4 KiB, MIT). No external CDN is contacted at runtime; the versioned asset is browser-cacheable. Sources, license, and SHA-256 checksums are recorded in `public/vendor/prism/`; update these records and rerun UI checks when upgrading. Existing editor input and scrolling are preserved.

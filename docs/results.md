@@ -9,7 +9,7 @@ operational questions are fixed in [`classifier.py`](../classifier.py).
 
 ## Request body
 
-`state` is a string: one log event for Events/chunk 1, or events joined with `\n`
+`state` is a string: one log event for Events/Chunk 1, or events joined with `\n`
 for larger chunks. It contains the observed log data; decision instructions and
 criteria live in `questions`. There is no conversation history or separate
 `.env` setting for `state`.
@@ -301,3 +301,14 @@ and per-host collection status are stored separately in run history; see [Tasks]
 
 Jev uses the same top-level result structure; `providerResponse` varies by engine.
 
+
+## Reviewed Result Export
+
+**Export Reviewed JSON** queries the existing result database for changed human
+labels in the selected run, without duplicating results in a separate dataset.
+The AI `category` remains unchanged; the human answer is `reviewerCategory`.
+The export includes `exportScope: "reviewed-changes"`, an `exported` count, and
+the complete matching result objects. No matches produces an empty `results`
+array. Run-level `total`/`completed` still describe the original run. This is a
+reviewed-result export, not a model-specific fine-tuning file. Task deletion also
+deletes these reviews; download them first if they must be retained.

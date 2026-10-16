@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from profiles import validate_settings
-from source_registry import load_sources
+from source_registry import load_sources, source_paths
 from sources import resolve_sources
 from ssh_hosts import load_hosts
 
@@ -93,18 +93,19 @@ def resolve_configured_sources(
     for spec in specs:
         if spec.get("type") == "ssh":
             continue
-        for path in resolve_sources(spec["path"], follow=follow):
-            path = path.resolve()
-            if path in result and (
-                result[path]["profile"],
-                result[path]["chunkEvents"],
-                result[path].get("action", ""),
-            ) != (spec["profile"], spec["chunkEvents"], spec.get("action", "")):
-                raise ValueError(
-                    f"Conflicting profile, chunk size, or action for: {path}"
-                )
-            if path not in result:
-                result[path] = {**spec, "sourcePatterns": [spec["path"]]}
-            elif spec["path"] not in result[path]["sourcePatterns"]:
-                result[path]["sourcePatterns"].append(spec["path"])
+        for pattern in source_paths(spec["path"]):
+            for path in resolve_sources(pattern, follow=follow):
+                path = path.resolve()
+                if path in result and (
+                    result[path]["profile"],
+                    result[path]["chunkEvents"],
+                    result[path].get("action", ""),
+                ) != (spec["profile"], spec["chunkEvents"], spec.get("action", "")):
+                    raise ValueError(
+                        f"Conflicting profile, chunk size, or action for: {path}"
+                    )
+                if path not in result:
+                    result[path] = {**spec, "sourcePatterns": [pattern]}
+                elif pattern not in result[path]["sourcePatterns"]:
+                    result[path]["sourcePatterns"].append(pattern)
     return result

@@ -2,8 +2,8 @@
 
 [English](usage.md) | [한국어](usage.ko.md) | [문서 안내](README.ko.md) | [README](../README.ko.md)
 
-넓은 화면에서는 왼쪽 **40%**에 **Classification overview → Task monitor**, 오른쪽
-**60%**에 **Classification results**를 배치하고 좌우 패널을 독립적으로 스크롤합니다.
+넓은 화면에서는 왼쪽 **40%**에 **Classification Overview → Task Monitor**, 오른쪽
+**60%**에 **Classification Results**를 배치하고 좌우 패널을 독립적으로 스크롤합니다.
 좁은 화면은 세로 배치와 일반 페이지 스크롤을 사용합니다.
 사이드바에는 로그를 읽는 DeciFlow 노드의 hostname, 확인된 IP, OS·버전을 표시합니다.
 WSL·컨테이너에서는 해당 환경의 정보이며 호스트 OS 정보가 아닙니다. IP는 전체
@@ -13,13 +13,14 @@ Not checked, 이후에는 Connected·Disconnected·Timed out·API error를 표�
 
 ### Tasks와 판정 기준
 
-**Sources**에 입력을 등록한 후 **Tasks**에 소스별 Criteria·Events/chunk·Action을
-저장합니다. Main은 실행 중인 Task를 이름순 목록으로 표시하며 클릭한 실행의 결과를 보여줍니다. 처음에는 선택하지 않은 상태입니다.
+**Sources**에 입력을 등록한 후 **Tasks**에 소스별 Criteria·Events/Chunk·Action을
+저장합니다. Main은 실행 중·시작 중인 Task를 먼저, 각 그룹 안에서는 이름순으로 표시하며 현재 또는 최근 실행 결과를 보여줍니다. 처음에는 선택하지 않은 상태입니다.
 수동 Batch, 시간대를 지정하는 Cron Batch, 연속 Realtime을 지원하며 Paste 입력은
-제거했습니다. 저장만으로 분석을 시작하지 않습니다. Task 목록에서 Run·Stop·View·Edit·History·Delete를
-사용합니다. 예약·재시작·저장 정책은 [Tasks](tasks.ko.md)를 참고하세요.
+제거했습니다. 저장만으로 분석을 시작하지 않습니다. Task 목록에서 Enabled 토글과 Run·Stop·View·Edit·History·Delete를
+사용합니다. Disable은 현재 실행을 중지하고 수동·Cron·자동 재시작을 차단합니다.
+Enable만으로 즉시 시작하지는 않습니다. 예약·재시작·저장 정책은 [Tasks](tasks.ko.md)를 참고하세요.
 
-Task 편집의 **Reset selections**는 사용 가능한 샘플 Source 또는 첫 등록 항목과
+Task 편집의 **Reset Selections**는 사용 가능한 샘플 Source 또는 첫 등록 항목과
 샘플 기준·청크당 1이벤트·Action None을 선택합니다. 저장한 설정은 서버에 보관하고
 저장하지 않은 초안은 브라우저에만 남습니다. 파일은 브라우저나 Laya가 아닌
 DeciFlow가 읽으며 로컬·신뢰 UI Origin과 읽을 수 있는 UTF-8 일반 파일이 필요합니다.
@@ -29,7 +30,7 @@ Batch는 선택한 파일을 동시에 읽고 준비된 청크를 교차 공급�
 다르게 완료될 수 있습니다. 엔진 동시 요청 제한은 파일별이 아닌 전체 실행에 적용하고
 값이 1이면 순차 요청합니다. 원격 입력도 로컬 파일과 같은 엔진·Action 흐름을 사용합니다.
 
-선택한 Source에 **Criteria**와 **Events/chunk**를 지정하세요.
+선택한 Source에 **Criteria**와 **Events/Chunk**를 지정하세요.
 기본값은 **General system**, **청크당 1이벤트**입니다. 현재 비어 있지 않은
 한 줄이 1이벤트이며 멀티라인 경계는 아직 자동 인식하지 않습니다. 모든 프로필은
 `choice`로 **Normal, Warning, Error, Security, Other** 중 하나를 선택하며 설명과
@@ -37,7 +38,7 @@ Batch는 선택한 파일을 동시에 읽고 준비된 청크를 교차 공급�
 선택합니다. 같은 요청에서 `score`로 긴급도(0–3: Low, Medium, High, Critical),
 `noul`로 작업 티켓 발행 필요 확률도 평가합니다. 이 두 운영 질문은 모든
 프로필·엔진에서 고정입니다. 각 결과 상단에는 **Category (Choice)**,
-**Urgency (Score)** 연속 점수(0–3), **Work ticket (Noul)** Yes 확률의 상세 카드를
+**Urgency (Score)** 연속 점수(0–3), **Work Ticket (Noul)** Yes 확률의 상세 카드를
 기본 표시하고 좁은 영역에서는 세로로 배치합니다. 배지는 모두 같은 작은 크기
 (132×22px)이며 간략 보기나 접기·펼치기 전환은 없습니다. 처리 시간·분류 검토 상태는
 카드 아래에 표시합니다. 각 카드에는 범주별·긴급도 단계별(0–3)·티켓 Yes/No의
@@ -56,7 +57,7 @@ Batch는 선택한 파일을 동시에 읽고 준비된 청크를 교차 공급�
 
 프로필은 사이드바의 **Criteria**에서 추가·수정·삭제합니다.
 결과 범주는 Normal·Warning·Error·Security·Other로 고정하며 `general`은 삭제할 수 없습니다.
-**Save changes** 후 다음 분석부터 적용하고, 실행 중인 작업은 기존 기준을 유지합니다.
+**Save Changes** 후 다음 분석부터 적용하고, 실행 중인 작업은 기존 기준을 유지합니다.
 저장 위치와 Task 참조에 따른 삭제 제한은 [Criteria 관리](criteria.ko.md)를 참고하세요.
 기준에는 사건의 결과와 증거를 설명하고 특정 로그 문자열은 검증 샘플에서 다룹니다.
 
@@ -86,7 +87,10 @@ Authentication은 개별 시도 실패·중단(Warning), 서비스·지원 기�
 
 ### 결과와 조작
 
-최근 **판정 완료** 청크부터 페이지당 100건을 표시합니다. 로그 타임스탬프 순서가
+각 결과의 원본 입력 데이터는 굵게 표시합니다. JSON과 Action 코드는 각자의 서식을
+유지합니다.
+
+최근 **판정 완료** 청크부터 기본 페이지당 50건을 표시합니다(Settings → Results에서 10·30·50·100건 선택). 로그 타임스탬프 순서가
 아닌 완료 순서입니다. Batch의 **File line(s)**는 실제 파일 라인 번호이고,
 Realtime의 **Observed line(s)**는 감시 시작 또는 파일 회전 이후 읽은 라인 순번입니다.
 `1 event (max 5)`는 최대 5이벤트 설정에서 실제 1이벤트를 제출했다는 뜻입니다.
@@ -127,13 +131,13 @@ DeciFlow는 예측을 유지하면서 검토 표시를 붙입니다. 정식 reje
 원래 범주·확률은 유지하며, 화면에는 잠정 후보를, JSON에는 `candidates`,
 `probabilityMargin`, `reviewReasons`를 기록합니다.
 
-**Needs review**는 판정에 성공한 청크 중 Uncertain 또는 Other인 결과입니다.
+**Needs Review**는 판정에 성공한 청크 중 Uncertain 또는 Other인 결과입니다.
 요청 실패·거절은 Failed에만 포함하고 검토 지표·필터에서는 제외합니다. Other라는 이유만으로 Uncertain이 되지는 않습니다.
 **Certain**은 Uncertain 표시가 없다는 뜻이며 검증된 정확도를 뜻하지 않습니다.
 임계값을 운영 정책으로 사용하기 전에 정답이 있는 로그로 오분류와 검토량을 평가하세요.
 
-**All results / Needs review / No review needed**로 필터링합니다.
-Needs review와 No review needed는 성공 판정만 표시합니다. 실패는 All results와
+**All results / Needs Review / No review needed**로 필터링합니다.
+Needs Review와 No review needed는 성공 판정만 표시합니다. 실패는 All results와
 범주 필터 Request failed를 함께 선택해 확인하세요.
 범주 필터와 원본 로그의 대소문자 구분 없는 문자열 검색을 함께 적용할 수 있습니다.
 목록에만 적용하며 지표·차트·JSON 내보내기는 전체 결과 기준입니다.
@@ -147,17 +151,22 @@ Needs review와 No review needed는 성공 판정만 표시합니다. 실패는 
 (Pending·Reading·Completed·Failed·Stopped)는 판정 건수와 별개입니다. 수집 완료
 후에도 판정이 진행 중일 수 있습니다. SSH 접속·읽기 실패는 호스트 정보와 함께
 **Source failed**로 표시하고 AI 확률을 만들지 않습니다. All results / Request failed로
-확인하며 다른 원격 수집은 계속합니다. [다중 호스트 실행](tasks.ko.md#여러-대상-hosts)을 참고하세요.
+확인하며 다른 원격 수집은 계속합니다. [다중 호스트 실행](tasks.ko.md#여러-source-hosts)을 참고하세요.
+
+Main의 Task 결과는 약 1초마다 현재 페이지의 새 결과만 조회하며 기존 카드를 재사용합니다.
+다른 화면이나 숨겨진 탭에서는 조회를 멈추고 복귀 시 반영합니다. Task는 계속 실행합니다.
+이전 페이지는 고정하며 Latest Results로 최신 결과에 복귀합니다.
 
 | 조작 | 동작 |
 | --- | --- |
-| Pause updates / Resume updates | 첫 결과 전부터 목록을 고정·재개합니다. 분석·지표·차트는 계속 갱신합니다. 필터·페이지 이동은 고정된 목록에 적용하고 버튼에 새 결과 수를 표시합니다. |
-| Stop | 파일 읽기·진행 중 요청을 취소하고 완료 결과는 보존합니다. 미제출 청크는 버리며 원격지의 추론은 완료될 수 있습니다. |
+| Pause Updates / Resume Updates | 첫 결과 전부터 목록을 고정·재개합니다. 분석·지표·차트는 계속 갱신합니다. 필터·페이지 이동은 고정된 목록에 적용하고 버튼에 새 결과 수를 표시합니다. |
+| Stop (Tasks) | 파일 읽기·진행 중 요청을 취소하고 완료 결과는 보존합니다. 미제출 청크는 버리며 원격지의 추론은 완료될 수 있습니다. |
 | View JSON | 실패 정보, 프로필·청크 정보, 수동 리뷰 값을 포함한 개별 JSON을 펼칩니다. 목록 갱신에도 펼친 상태를 유지합니다. JSON 영역 안의 Copy는 수동 리뷰 값을 포함한 현재 항목을 클립보드에 복사합니다. |
 | Reviewer category | `reviewerCategory`를 기록합니다. AI 범주·검토 상태·차트를 바꾸거나 모델을 학습시키지 않습니다. |
-| Export JSON | 처리 완료 또는 중단 후 수신한 모든 결과를 내보냅니다. Pause 중 화면에 반영되지 않은 결과도 포함합니다. |
+| Export All JSON | 실행 중에도 내보내기 시작 시점까지의 Task 전체 결과를 스트리밍합니다. Pause·필터로 숨겨진 결과도 포함합니다. |
+| Export Reviewed JSON | 현재 실행에서 reviewerCategory가 비어 있지 않고 AI 원래 Category와 다른 성공 결과만 내보냅니다. 원본 입력·AI 결과·리뷰 값을 포함하며 화면 필터와 무관합니다. 같은 값으로 검토한 항목과 Not reviewed는 제외합니다. |
 
-**Classification overview**는 불확실한 선택을 포함해 전체 소스의 AI 분류 개수를
+**Classification Overview**는 불확실한 선택을 포함해 전체 소스의 AI 분류 개수를
 합산합니다. 개수는 원본 라인이 아닌 **청크** 기준이며, 비율은 판정에 성공한 청크
 기준입니다. 요청 실패는 별도 표시하고 필터·수동 정정은 집계에 영향을 주지 않습니다.
 **All / Certain / Uncertain** 버튼으로 차트의 집계 그룹을 선택하며 비율은 선택 그룹
@@ -196,22 +205,22 @@ Settings 자체는 SSH Keys·SSH Hosts로 이동하는 목록을 표시합니다
 사이드바 메뉴를 선택하면 항상 목록으로 돌아가며 View·Edit·History 화면을 닫습니다.
 미저장 편집 초안은 버리고 저장된 설정과 실행 중인 Task는 유지합니다.
 연결이 끊기거나 브라우저를 닫아도 Task는 계속 실행합니다. 새로고침은 같은 실행에
-재접속하며 History → View results는 판정·Action을 반복하지 않고 저장된 결과를
+재접속하며 History → View Results는 판정·Action을 반복하지 않고 저장된 결과를
 재생합니다. Main은 선택한 Task의 새 실행을 따라가며 이력에서 특정 실행을 열면
 해당 실행을 유지합니다.
 
 Task 정의·실행 상태·설정 스냅샷·결과·Action 실행 결과를
-`DECIFLOW_DATA_DIR/tasks`에 보존합니다. 재시작 시 중단된 실행은 Stopped로 표시합니다.
+`DECIFLOW_DATA_DIR`에 보존합니다(Task 메타데이터는 `tasks/`, 결과는 `results.sqlite3`). 재시작 시 중단된 실행은 Stopped로 표시합니다.
 Batch는 자동 재시도하지 않으며 Realtime은 Resume on restart가 켜진 경우에만
 새 실행을 시작합니다. [Tasks](tasks.ko.md)를 참고하세요.
 
-데이터 경로마다 DeciFlow 서버 프로세스·인스턴스 하나를 사용합니다. 결과는 종료까지
-RAM에도 보관하므로 큰 Batch·장시간 Realtime은 메모리 사용량을 늘립니다.
-자동 이력 정리는 없습니다. 수동 정정·필터·페이지·미저장 초안은 브라우저에만
-남으므로 정정 내용을 보존하려면 내보내세요.
+데이터 경로마다 DeciFlow 서버 프로세스·인스턴스 하나를 사용합니다. 결과와 수동
+정정은 SQLite에 저장하며 브라우저는 현재 페이지만 유지합니다. 필터·페이지 위치·
+미저장 초안은 브라우저에만 남습니다. 자동 이력 정리는 없습니다.
+[결과 저장](result-storage.ko.md)을 참고하세요.
 
 저수준 `/api/classify` 텍스트 API와 `/api/file-source` 파일 API는 유지합니다.
-`persist: true`는 HTTP 202로 브라우저와 독립된 **메모리 작업**을 생성하며
+`persist: true`는 HTTP 202로 브라우저와 독립된 **임시 SQLite 작업**을 생성하며
 저장된 Task나 영속 실행을 만들지 않습니다. `/api/jobs/<jobId>`는 조회,
 `/events`는 NDJSON 재생·수신, `/stop`은 실행 중지를 제공합니다(POST).
 `persist: true`가 없으면 연결 단위 스트리밍입니다. 출처 검사는 동일하며
@@ -223,13 +232,13 @@ RAM에도 보관하므로 큰 Batch·장시간 Realtime은 메모리 사용량�
 | --- | --- |
 | Success / Failed / Total | 유효한 판정 성공 청크 / 실패 청크 / 처리 완료 전체 청크(성공 + 실패). 연결 오류·시간 초과·입력 거절·응답 검증 실패를 실패에 포함 |
 | Action Success / Failed / Total | 완료된 Action 성공 / 실패 / 전체 실행 수. Action 미할당·의사결정 실패 청크는 제외하며 의사결정 집계와 독립 |
-| Needs review | 성공 판정 중 Uncertain(낮은 확률·근접한 확률·선택지 구분 소실) 또는 Other. 실패·거절은 제외 |
+| Needs Review | 성공 판정 중 Uncertain(낮은 확률·근접한 확률·선택지 구분 소실) 또는 Other. 실패·거절은 제외 |
 | Throughput | 최근 5초의 성공 판정 청크/초; 유휴시간 포함, 시작 후 5초 미만은 경과시간 기준; 중지·완료 시 마지막 값 유지 |
-| Total elapsed time | 실행 시작 이후 전체 경과시간; 유휴시간 포함 |
-| Active processing time | 요청이 하나 이상 진행 중인 구간을 중복 없이 합산; 전체 경과시간 대비 비율 |
-| Average processing time | 실패를 포함한 완료 요청의 평균 소요시간; 청크 기준 |
+| Total Elapsed Time | 실행 시작 이후 전체 경과시간; 유휴시간 포함 |
+| Active Processing Time | 요청이 하나 이상 진행 중인 구간을 중복 없이 합산; 전체 경과시간 대비 비율 |
+| Average Processing Time | 실패를 포함한 완료 요청의 평균 소요시간; 청크 기준 |
 
-Total elapsed time·Active processing time·Average processing time은 값에 따라
+Total Elapsed Time·Active Processing Time·Average Processing Time은 값에 따라
 ms·sec·min·hour·day로 표시합니다. JSON 시간값은 밀리초를 유지합니다.
 
 Action 실행 실패는 판정 성공·실패 집계나 엔진 연결 상태에 영향을 주지 않습니다.
@@ -240,3 +249,25 @@ Active·Average에는 네트워크·서버 대기가 포함됩니다. Active는 
 재접속 시 서버 진행 상태를 복원합니다. 중지 시 마지막 값을 보존하므로
 약 1초의 차이가 있을 수 있습니다.
 
+
+Task 처리량은 최근 5초를 100ms 버킷으로 집계하므로 경계에서 근사값입니다.
+
+모든 목록 Delete는 공통 디자인의 확인창을 사용합니다. 취소·Esc·닫기는 변경하지 않습니다. Source·Criteria·Actions 삭제는 승인 후 Save Changes로 확정하며 Task·SSH Keys·SSH Hosts는 승인 즉시 서버에 적용합니다.
+
+Delete를 누르면 서버에서 현재 의존성을 먼저 확인합니다. 사용 중인 항목은 Task·SSH Host·Source·실행 중 작업 이름을 최대 5개와 추가 건수로 표시하는 차단창만 제공하고 삭제 버튼을 숨깁니다. 참조가 없을 때만 삭제 확인창을 보여줍니다. 의존성 확인 실패 시에도 삭제하지 않으며 서버는 실제 삭제·저장 시 다시 검사합니다.
+
+목록 View는 선택한 행 바로 아래에 상세를 펼칩니다. 같은 View를 다시 누르면 접고 다른 항목을 누르면 상세를 이동합니다. 목록 갱신 후에도 선택한 행 아래 위치를 유지합니다.
+
+모든 View는 공통 라벨·값 형식으로 표시합니다. 짧은 값은 나란히 배치하고 긴 값만 필요한 만큼 줄바꿈합니다. 읽기 전용 입력칸은 사용하지 않으며 코드·공개키는 내용을 보존하는 제한 높이의 텍스트 블록으로 표시합니다. 좁은 화면에서는 세로로 배치하며 편집 폼에는 영향을 주지 않습니다.
+
+Task Monitor는 모든 저장된 Task를 표시하며 실행 중·시작 중인 항목을 먼저 배치합니다.
+카드는 이름·Enabled/실행 상태 배지, Source·중복을 뺀 Source Host 수,
+Type / Mode / Action 순서로 표시하고 Action이 없으면 None을 표시합니다.
+Running·Starting 배경은 연한 녹색, Stopped는 차분한 중간색이며 선택 항목은 왼쪽
+강조선을 유지합니다. 항목 위에서 마우스를 1초간 움직이지 않거나 키보드 포커스를 두면 스크롤 가능한 말풍선에서 전체
+Source 설정과 호스트 이름·SSH 주소를 확인합니다. 클릭하면 현재·최근 실행 결과를
+열고 이력이 없으면 빈 결과를 표시합니다. 시작·중지는 Tasks에서 관리합니다.
+예약과 기본 Task 복구는 [Tasks](tasks.ko.md)를 참고하세요.
+
+말풍선이 열린 뒤에는 Task 카드나 말풍선 위에서 마우스를 움직여도 유지합니다.
+말풍선으로 이동해 텍스트를 선택·복사할 수 있으며 양쪽에서 벗어나면 닫힙니다.

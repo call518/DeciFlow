@@ -21,7 +21,7 @@ is explicit; DeciFlow never falls back automatically to paid Jev.
 
 Multi-host Tasks use the same request contract: host identity stays in result
 metadata and is not added to `state`. Concurrency is shared across the run, while
-host readers receive rotating opportunities. See [Tasks](tasks.md#multiple-target-hosts).
+host readers receive rotating opportunities. See [Tasks](tasks.md#multiple-source-hosts).
 
 ## Input and response validation
 

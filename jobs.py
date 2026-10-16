@@ -3,13 +3,19 @@
 import asyncio
 import json
 import re
+import sqlite3
+from collections import deque
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from datetime import UTC, datetime
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from uuid import uuid4
 
+import anyio
+
 from classifier import Result
+from result_store import ResultRepository, open_result_store
 
 
 class Job:
@@ -43,19 +49,34 @@ class Job:
         }
         self.settings = settings
         self.state = "running"
-        self.events: list[str] = []
+        self.events: deque[str] = deque(maxlen=128)
+        self.failure_events: list[str] = []
         self.timing: str | None = None
         self.progress: Result = {"elapsedMs": 0, "activeProcessingMs": 0}
+        self.temporary = (
+            TemporaryDirectory(prefix="deciflow-job-") if directory is None else None
+        )
+        if self.directory:
+            root = self.directory.parents[3]
+        else:
+            assert self.temporary is not None
+            root = Path(self.temporary.name)
+        self.store = open_result_store(root)
+        self.store.create(self.id, self.snapshot())
         self.changed = asyncio.Event()
         if self.directory:
             self.directory.mkdir(parents=True, mode=0o700)
             self._persist()
         self.task = asyncio.create_task(self.handle_run(events))
+        completed = [identity for identity, job in JOBS.items() if job.task.done()]
+        for identity in completed[:-32]:
+            JOBS.pop(identity, None)
 
     def snapshot(self) -> Result:
         """Return status and the frozen settings for this execution."""
         return {
             "jobId": self.id,
+            "pagedResults": self.directory is not None,
             "state": self.state,
             "settings": self.settings,
             "startedAt": self.started_at,
@@ -105,17 +126,24 @@ class Job:
         if event["type"] == "timing":
             self.timing = encoded
         else:
-            self.events.append(encoded)
-            if self.directory and not self.storage_failed:
+            if not self.storage_failed:
                 try:
-                    with (self.directory / "events.ndjson").open(
-                        "a", encoding="utf-8"
-                    ) as output:
-                        output.write(encoded)
+                    self.store.append(self.id, event, self.snapshot())
                     self._persist()
-                except OSError:
+                except (OSError, sqlite3.Error) as error:
                     self.storage_failed = True
-                    raise
+                    raise OSError(f"Result storage failed: {error}") from error
+            else:
+                self.failure_events.append(encoded)
+            self.events.append(encoded)
+
+    async def _append_event(self, event: Result) -> None:
+        pending = asyncio.create_task(anyio.to_thread.run_sync(self.append, event))
+        try:
+            await asyncio.shield(pending)
+        except asyncio.CancelledError:
+            await pending
+            raise
         self.changed.set()
 
     async def handle_run(self, events: AsyncGenerator[str, None]) -> None:
@@ -135,7 +163,7 @@ class Job:
                         event["state"] = self.state
                     elif event["type"] == "error":
                         self.state = "failed"
-                    self.append(event)
+                    await self._append_event(event)
         except asyncio.CancelledError:
             self.state = "stopped"
         except Exception as error:  # noqa: BLE001 - preserve a terminal job result
@@ -162,11 +190,14 @@ class Job:
         timing = None
         while True:
             self.changed.clear()
-            while cursor < len(self.events):
-                event = self.events[cursor]
-                cursor += 1
-                yield event
+            batch = await anyio.to_thread.run_sync(self.store.events, self.id, cursor)
+            if batch:
+                for cursor, event in batch:
+                    yield event
+                continue
             if self.state != "running" and self.task.done():
+                for event in self.failure_events:
+                    yield event
                 return
             if self.timing and self.timing != timing:
                 timing = self.timing
@@ -182,6 +213,7 @@ class Job:
         await asyncio.gather(self.task, return_exceptions=True)
         if not self.events or json.loads(self.events[-1])["type"] != "done":
             self.append({"type": "done", "state": "stopped", **self.progress})
+        self.changed.set()
 
 
 JOBS: dict[str, Job] = {}
@@ -192,14 +224,33 @@ def read_archived_run(root: Path, identity: str) -> tuple[Result, Path] | None:
     if not re.fullmatch(r"[0-9a-f]{32}", identity):
         return None
     for path in root.glob(f"*/runs/{identity}/run.json"):
-        return json.loads(path.read_text(encoding="utf-8")), path.parent
+        return {
+            **json.loads(path.read_text(encoding="utf-8")),
+            "pagedResults": True,
+        }, path.parent
+    store = open_result_store(root.parent)
+    if store.contains(identity):
+        snapshot = store.state(identity)["snapshot"]
+        directory = root / snapshot["settings"]["taskId"] / "runs" / identity
+        return {**snapshot, "pagedResults": True}, directory
     return None
 
 
+def archived_store(directory: Path) -> ResultRepository:
+    """Import an archived NDJSON run on demand and return its repository."""
+    store = open_result_store(directory.parents[3])
+    if not (directory / "run.json").exists():
+        return store
+    snapshot = json.loads((directory / "run.json").read_text(encoding="utf-8"))
+    store.import_legacy(directory, snapshot)
+    store.save_snapshot(snapshot["jobId"], snapshot)
+    return store
+
+
 async def replay_archived_run(directory: Path) -> AsyncGenerator[str, None]:
-    """Replay saved events without executing analysis or Actions again."""
-    path = directory / "events.ndjson"
-    if path.exists():
-        with path.open(encoding="utf-8") as events:
-            for event in events:
-                yield event
+    """Replay archived events in bounded batches without rerunning decisions."""
+    store = await anyio.to_thread.run_sync(archived_store, directory)
+    cursor = 0
+    while batch := await anyio.to_thread.run_sync(store.events, directory.name, cursor):
+        for cursor, event in batch:
+            yield event

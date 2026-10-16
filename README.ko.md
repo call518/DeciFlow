@@ -97,12 +97,17 @@ docker compose logs --follow laya-cpu
 같은 호스트에서 **http://127.0.0.1:4000**을 엽니다. **Sources**에서
 **Sample HTTP access** 경로를 `/host-logs/sample-logs/access-100.log`로 수정하고 저장합니다.
 **Tasks**에서 이름을 지정한 **Batch / Manual** Task를 추가하고
-**Sample HTTP access**, **HTTP access** 기준, **Events/chunk: 1**,
-**Action: None**을 선택해 저장합니다. Tasks에서 **Run**을 누르고 **Main**의 실행 중 Task 목록에서 선택해 결과를 확인하세요.
+**Sample HTTP access**, **HTTP access** 기준, **Events/Chunk: 1**,
+**Action: None**을 선택해 저장합니다. Tasks에서 **Run**을 누르고 **Main**의 Task Monitor 목록에서 선택해 결과를 확인하세요.
 
 선택 사항인 GPU 가속은 [Docker 배포 상세](#laya-docker),
 유료 API를 사용하려면 [Jev](#jev)를 참고하세요.
 기본 키 `changeme`는 체험용입니다. 운영 전 `.env`의 키를 변경하세요.
+
+기본 **DeciFlow Server Log** Task는 `DECIFLOW_LOG_DIR/server.log` / `DECIFLOW_LOG_DIR/access.log`를 감시하며 기본 Disable 상태입니다(Run 전에 Enable로 전환). 서버 시작 또는 Task 레지스트리 삭제 시 누락된 기본 설정을 복구합니다. [Tasks](docs/tasks.ko.md)를 참고하세요.
+
+Classification Results의 **Export Reviewed JSON**으로 선택한 실행에서 사람의
+리뷰 Category가 AI Category와 다른 결과만 내려받을 수 있습니다.
 
 ## 사용법과 설정
 
@@ -112,6 +117,7 @@ docker compose logs --follow laya-cpu
 | 문서 | 내용 |
 | --- | --- |
 | [Tasks](docs/tasks.ko.md) | 재사용 실행 설정·Cron 예약·연속 감시·영속 실행 이력 |
+| [결과 저장](docs/result-storage.ko.md) | SQLite·페이지 조회·기존 이력 이전·백업·DB 확장 |
 | [Sources](docs/sources.ko.md) | 로컬·SSH 파일 소스 등록, Settings의 SSH 키 관리, 정렬된 풀다운 선택 |
 | [사용법](docs/usage.ko.md) | 입력 모드·판정 기준·필터·수동 검토·재접속·시간 지표 |
 | [설정](docs/configuration.ko.md) | 환경변수·모델·입력 예산 |
@@ -121,28 +127,31 @@ docker compose logs --follow laya-cpu
 
 사이드바 화면은 URL에 반영됩니다: Main `/`, Source `/#sources`, Criteria `/#criteria`, Actions `/#actions`, Tasks `/#tasks`, Settings `/#settings`.
 준비 흐름은 Sources → Criteria → 선택적 Actions → Tasks이며 Main에서 실행 결과를 확인합니다.
-원격 Source는 재사용할 경로를 정의하고 Task에서 Source별 SSH Host를 하나 이상
+Source에는 경로·패턴을 한 줄에 하나씩 여러 개 등록할 수 있습니다. 원격 Source는 재사용할 경로를 정의하고 Task에서 Source별 SSH Host를 하나 이상
 선택합니다. 호스트별로 독립 수집하고 판정 차례를 공정하게 배분하며, 실행별 통합
 결과에 Host 필터·호스트 수집 상태를 제공합니다.
 
-Main 아래에 Source·Criteria·Actions·Tasks, Settings 아래에 SSH Keys·SSH Hosts를
+브라우저는 새 결과만 집계하고 기존 카드를 재사용합니다. Main이나 탭이 숨겨지면
+그리기를 미루며 Task는 계속 실행하고 전체 결과는 유지합니다.
+
+Main 아래에 Source·Criteria·Actions·Tasks, Settings 아래에 SSH Keys·SSH Hosts·Results(기본 페이지 크기 50건)를
 배치합니다. 사이드바로 재진입하면 목록을 열고 미저장 초안은 버립니다.
 화면 경로·결과 조작·재접속은 [사용법](docs/usage.ko.md)을 참고하세요.
 
 Settings는 개인키를 **Upload·Path·Paste**로 받아 관리 경로에 복사하고 공개키를
 추출합니다. SSH Hosts에는 접속 정보와 키를 저장합니다. **Test Connection**은 SSH
-인증·SFTP를 확인하며, 열린 호스트 목록도 순서대로 확인하고 한 회차 종료 30초 후
-반복합니다. 미등록 fingerprint는 사이트 확인창에서 승인합니다. 승인 키는 사용자
+인증·SFTP를 확인하며, 호스트 목록 진입 시 순서대로 한 번 자동 확인합니다.
+View·목록 재출력으로 반복 확인하지 않습니다. 미등록 fingerprint는 사이트 확인창에서 승인합니다. 승인 키는 사용자
 SSH와 별개인 `DECIFLOW_DATA_DIR/ssh-hosts/known_hosts`에만 보존합니다.
 설정·신뢰 관리는 [Sources와 SSH 설정](docs/sources.ko.md)을 참고하세요.
 
-- **Tasks:** 소스·판정 기준·청크·Action 설정을 저장합니다. Batch는 수동·Cron, Realtime은 연속 실행합니다. [Tasks](docs/tasks.ko.md)를 참고하세요.
+- **Tasks:** Source·Criteria·청크·Action 설정을 저장합니다. Batch는 수동·Cron, Realtime은 연속 실행합니다. Disable은 현재 실행과 이후 시작을 막습니다. Main은 실행 중인 Task를 우선 표시하고 Source 요약·전체 설정 말풍선을 제공합니다. [Tasks](docs/tasks.ko.md)를 참고하세요.
 - **Batch:** 등록한 로컬·SSH 파일을 분석합니다. Docker에서 호스트 `/var/log`는 `/host-logs/var/log`입니다.
 - **Realtime:** 새 로그를 감시합니다. 소스별 판정 기준과 청크 크기를 선택합니다.
-- **처리 지표:** Success / Failed / Total로 성공·실패·처리 완료 전체 청크를 표시합니다. Action Success / Failed / Total은 후속 작업을 별도 집계합니다. Needs review는 성공 판정만 집계합니다.
+- **처리 지표:** Success / Failed / Total로 성공·실패·처리 완료 전체 청크를 표시합니다. Action Success / Failed / Total은 후속 작업을 별도 집계합니다. Needs Review는 성공 판정만 집계합니다.
   엔진·모델 옆 연결 상태는 마지막 실제 요청 기준이며 요청 전에는 Not checked입니다.
-- **검토:** Needs review로 결과를 추리고 수동 정정·JSON 내보내기를 사용합니다.
-  Certain은 정확도 보장이 아닙니다. Task 정의·실행 이력은 데이터 볼륨에 보존하며 수동 정정은 브라우저에만 남습니다.
+- **검토:** Needs Review로 결과를 추리고 수동 정정을 기록합니다. **Export All JSON**은 선택한 실행 전체, **Export Reviewed JSON**은 리뷰 Category가 AI Category와 다른 결과만 내보냅니다.
+  Certain은 정확도 보장이 아닙니다. Task 정의·실행 이력은 데이터 볼륨에 보존하며 수동 정정은 SQLite에 보존합니다.
 
 ## Docker 배포 상세
 
@@ -339,7 +348,7 @@ ngrok·리버스 프록시로 파일을 처리하려면 `DECIFLOW_CSRF_TRUSTED_O
 
 ## 제약
 
-- 앱의 파일 크기·줄 수 제한은 없지만 RAM과 브라우저 용량에 영향을 받습니다.
+- 앱의 파일 크기·줄 수 제한은 없습니다. 누적 결과는 SQLite에 저장하며 메모리는 활성 파일·호스트·개별 이벤트 크기에 영향을 받습니다. 디스크 자동 정리는 없습니다. [결과 저장](docs/result-storage.ko.md)을 참고하세요.
   파일은 점진적으로 읽습니다. 청크는 이벤트 수로 묶으며 현재 비어 있지 않은 한 줄이 1이벤트입니다.
   멀티라인 이벤트 경계는 자동 인식하지 않습니다.
 - **Laya:** 선택한 체크포인트를 사용하며 요청 윈도·질문 예산은 [설정 상세](docs/configuration.ko.md)을 따릅니다.
@@ -354,7 +363,9 @@ ngrok·리버스 프록시로 파일을 처리하려면 `DECIFLOW_CSRF_TRUSTED_O
 - 청크마다 한 번 요청하며 엔진별 동시 요청 수는 실행당 기본 4개입니다.
   제한 시간은 Laya 120초, Jev 30초입니다. 동시 요청을 늘려도 병렬 추론이나 처리량
   증가를 보장하지 않으며 서버 처리 여력과 수용 제한이 적용됩니다.
-- Realtime은 250ms마다 확인하고 완성된 줄을 기다립니다. 회전 시 남은 줄은
+- Realtime은 탐색 회차 종료 후 250ms 간격으로 확인하고 완성된 줄을 기다립니다.
+  SSH 입력은 탐색 속성을 재사용하고 변경 없는 파일도 1초마다 교체 여부를 확인합니다.
+  회전 시 남은 줄은
   `incomplete`로 표시하며 줄 번호를 초기화합니다. 빠른 회전이나 축소·재증가로
   누락될 수 있습니다. 파일 중복 제거는 내용 중복을 제거하지 않으므로 활성 로그와
   회전 복사본을 함께 매칭하지 않도록 주의하세요.

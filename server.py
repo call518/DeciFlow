@@ -5,6 +5,7 @@ import json
 import os
 import platform
 import socket
+import sqlite3
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import aclosing, asynccontextmanager
 from copy import deepcopy
@@ -35,6 +36,7 @@ from actions import (
     save_actions,
     use_actions,
 )
+from app_settings import load_settings, save_settings
 from classifier import Result, classify_log, classify_stream, parse_logs
 from config import (
     JEV_CONTEXT_TOKENS,
@@ -45,7 +47,7 @@ from config import (
 )
 from configured_sources import follow_configured, read_configured
 from host_sources import host_metadata, read_host_sources
-from jobs import JOBS, Job, read_archived_run, replay_archived_run
+from jobs import JOBS, Job, archived_store, read_archived_run, replay_archived_run
 from profiles import (
     PROFILES,
     load_profiles,
@@ -53,7 +55,7 @@ from profiles import (
     use_profile_snapshot,
     validate_settings,
 )
-from source_registry import load_sources, save_sources, source_pattern
+from source_registry import load_sources, save_sources, source_patterns
 from source_settings import parse_source_settings, resolve_configured_sources
 from sources import follow_sources, read_sources
 from ssh_hosts import delete_host, load_hosts, save_host, test_host_connection
@@ -72,6 +74,7 @@ from tasks import (
     next_run,
     record_unstarted_run,
     save_task,
+    set_task_enabled,
     task_runs,
 )
 
@@ -82,6 +85,10 @@ ASSETS = {
     "/": ("index.html", "text/html"),
     "/app.js": ("app.js", "text/javascript"),
     "/stream.js": ("stream.js", "text/javascript"),
+    "/vendor/prism/prism-python-1.30.0.min.js": (
+        "vendor/prism/prism-python-1.30.0.min.js",
+        "text/javascript",
+    ),
     "/style.css": ("style.css", "text/css"),
     "/favicon.ico": ("../images/icons/favicon.ico", "image/vnd.microsoft.icon"),
     "/icons/deciflow-icon-16.png": (
@@ -391,7 +398,9 @@ async def handle_file_events(
                 "hosts": list(host_states.values()),
                 "engine": engine.name,
                 "sources": [str(path) for path in paths],
-                "sourcePatterns": [source_pattern(spec) for spec in specs]
+                "sourcePatterns": [
+                    pattern for spec in specs for pattern in source_patterns(spec)
+                ]
                 if specs
                 else values,
             }
@@ -552,6 +561,9 @@ def active_task_job(identity: str) -> Job | None:
 async def launch_task(task: Result, trigger: str) -> Result:
     """Start a nonoverlapping Task with frozen settings and persistent events."""
     identity = task["id"]
+    current = next((item for item in load_tasks() if item["id"] == identity), None)
+    if current is None or not current["enabled"]:
+        raise ValueError("Enable the Task before running it.")
     if identity in TASK_STARTING or active_task_job(identity):
         if trigger != "manual":
             return record_unstarted_run(
@@ -564,6 +576,13 @@ async def launch_task(task: Result, trigger: str) -> Result:
             settings, events = await prepare_file_execution(
                 task["mode"], task["sources"]
             )
+            current = next(
+                (item for item in load_tasks() if item["id"] == identity), None
+            )
+            if current is None or not current["enabled"]:
+                return record_unstarted_run(
+                    task, "stopped", trigger, "Task was disabled during startup."
+                )
             settings.update(taskId=identity, taskName=task["name"], trigger=trigger)
             job = Job(settings, events, get_tasks_directory() / identity / "runs")
             JOBS[job.id] = job
@@ -577,13 +596,95 @@ async def launch_task(task: Result, trigger: str) -> Result:
 SCHEDULER = TaskScheduler(launch_task)
 
 
+def deletion_dependencies(kind: str, identity: str) -> list[str]:
+    """Describe saved and live references that prevent deleting an item."""
+    if kind not in {"Task", "Source", "Criteria", "Action", "SSH Key", "SSH Host"}:
+        raise ValueError("Invalid item type.")
+    references: set[str] = set()
+    key_path = (get_keys_directory() / identity / "private_key").resolve()
+
+    def matches(source: Result) -> bool:
+        if kind == "Source":
+            return source.get("sourceId", source.get("id")) == identity
+        if kind == "Criteria":
+            return source.get("profile") == identity
+        if kind == "Action":
+            return source.get("action") == identity
+        if kind == "SSH Host":
+            return source.get("hostId") == identity or identity in source.get(
+                "hostIds", []
+            )
+        return (
+            kind == "SSH Key"
+            and bool(source.get("keyPath"))
+            and (Path(source["keyPath"]).resolve() == key_path)
+        )
+
+    if kind != "Task":
+        for task in load_tasks():
+            if any(matches(source) for source in task["sources"]):
+                references.add(f"Task: {task['name']}")
+    if kind in {"SSH Key", "SSH Host"}:
+        for source in load_sources():
+            if matches(source):
+                references.add(f"Source: {source['name']}")
+    if kind == "SSH Key":
+        for host in load_hosts():
+            if matches(host):
+                references.add(f"SSH Host: {host['name']}")
+    for job_id, job in list(JOBS.items()):
+        if job.state != "running":
+            continue
+        if (kind == "Task" and job.settings.get("taskId") == identity) or any(
+            matches(source) for source in job.settings.get("sources", [])
+        ):
+            references.add(f"Running task: {job.settings.get('taskName', job_id)}")
+    if kind == "Task" and identity in TASK_STARTING:
+        references.add("Task execution is starting")
+    return sorted(references, key=str.casefold)
+
+
+def require_unused(kind: str, identity: object) -> None:
+    """Recheck dependencies when a destructive request is submitted."""
+    if not isinstance(identity, str):
+        raise TypeError("Select an item to delete.")
+    references = deletion_dependencies(kind, identity)
+    if references:
+        raise ValueError("Cannot delete while in use. " + "; ".join(references))
+
+
+async def handle_delete_check(request: Request) -> Response:
+    """Read current deletion blockers without changing registrations or files."""
+    if not _allowed_origin(request, files=True):
+        return _json(403, {"error": "Dependency checks require a trusted UI origin."})
+    try:
+        body = await request.json()
+        if (
+            not isinstance(body, dict)
+            or not isinstance(body.get("id"), str)
+            or not isinstance(body.get("kind"), str)
+        ):
+            raise TypeError("Select an item to check.")
+        references = await anyio.to_thread.run_sync(
+            deletion_dependencies, body["kind"], body["id"]
+        )
+        return _json(200, {"references": references})
+    except (ValueError, TypeError, OSError) as error:
+        return _json(400, {"error": str(error)})
+
+
 async def handle_tasks(request: Request) -> Response:
     """Manage Tasks and execute them only from trusted file-access origins."""
     if not _allowed_origin(request, files=True):
         return _json(403, {"error": "Task management requires a trusted UI origin."})
     try:
         if request.method == "PUT":
-            save_task(await request.json())
+            saved = save_task(await request.json())
+            if not saved["enabled"]:
+                SCHEDULER.due.pop(saved["id"], None)
+                job = active_task_job(saved["id"])
+                if job:
+                    await job.stop()
         elif request.method == "DELETE":
             body = await request.json()
             if not isinstance(body, dict) or not isinstance(body.get("id"), str):
@@ -591,11 +692,17 @@ async def handle_tasks(request: Request) -> Response:
             identity = body["id"]
             if identity in TASK_STARTING or active_task_job(identity):
                 return _json(409, {"error": "Stop the Task before deleting it."})
-            delete_task(identity)
+            await anyio.to_thread.run_sync(delete_task, identity)
+            for job_id, job in list(JOBS.items()):
+                if job.settings.get("taskId") == identity:
+                    JOBS.pop(job_id)
+            SCHEDULER.due.pop(identity, None)
         tasks = []
         for task in load_tasks():
             active = active_task_job(task["id"])
-            runs = task_runs(task["id"], limit=1)
+            runs = await anyio.to_thread.run_sync(
+                partial(task_runs, task["id"], limit=1)
+            )
             pending = SCHEDULER.due.get(task["id"])
             upcoming = (
                 (
@@ -630,8 +737,21 @@ async def handle_task_operation(request: Request) -> Response:
         return _json(404, {"error": "Task not found."})
     operation = request.url.path.rsplit("/", 1)[-1]
     try:
+        if operation == "enabled":
+            body = await request.json()
+            if not isinstance(body, dict):
+                raise ValueError("Enter Task enabled state.")
+            updated = set_task_enabled(identity, body.get("enabled"))
+            if not updated["enabled"]:
+                SCHEDULER.due.pop(identity, None)
+                job = active_task_job(identity)
+                if job:
+                    await job.stop()
+            return _json(200, {"enabled": updated["enabled"]})
         if operation == "runs":
-            return _json(200, {"runs": task_runs(identity)})
+            return _json(
+                200, {"runs": await anyio.to_thread.run_sync(task_runs, identity)}
+            )
         if operation == "stop":
             job = active_task_job(identity)
             if job:
@@ -711,6 +831,7 @@ async def handle_ssh_hosts(request: Request) -> Response:
                 for source in task["sources"]
                 for identity in source.get("hostIds", [])
             ]
+            require_unused("SSH Host", body.get("id"))
             delete_host(body.get("id"), [*saved, *active])
         return _json(200, {"hosts": load_hosts()})
     except (ValueError, TypeError, OSError) as error:
@@ -746,6 +867,7 @@ async def handle_ssh_keys(request: Request) -> Response:
                     if job.state == "running"
                     for source in job.settings.get("sources", [])
                 ]
+                require_unused("SSH Key", body.get("name"))
                 delete_key(body.get("name"), active)
         return _json(200, {"keys": list_keys()})
     except (ValueError, TypeError, OSError):
@@ -777,6 +899,9 @@ async def handle_sources(request: Request) -> Response:
                         raise ValueError(
                             f"A Source is used by Task '{task['name']}'. Update the Task before deleting it."
                         )
+                for source in load_sources():
+                    if source["id"] not in identities:
+                        require_unused("Source", source["id"])
             sources = save_sources(values)
         else:
             sources = load_sources()
@@ -802,6 +927,9 @@ async def handle_criteria(request: Request) -> Response:
                         raise ValueError(
                             f"Criteria is used by Task '{task['name']}'. Update the Task before deleting it."
                         )
+            if isinstance(values, dict):
+                for identity in PROFILES.keys() - values.keys():
+                    require_unused("Criteria", identity)
             profiles = save_profiles(values)
         else:
             profiles = deepcopy(PROFILES)
@@ -868,6 +996,9 @@ async def handle_actions(request: Request) -> Response:
                         raise ValueError(
                             f"An Action is used by Task '{task['name']}'. Update the Task before deleting or renaming it."
                         )
+                for action in load_actions():
+                    if action["name"] not in names:
+                        require_unused("Action", action["name"])
             actions = await save_actions(values)
     except (ValueError, TypeError, OSError) as error:
         return _json(400, {"error": str(error)})
@@ -923,6 +1054,111 @@ async def handle_job(request: Request) -> Response:
     return _json(200, job.snapshot())
 
 
+async def handle_settings(request: Request) -> Response:
+    """Read or save application preferences using trusted-origin checks."""
+    if not _allowed_origin(request, files=True):
+        return _json(403, {"error": "Settings access requires a trusted UI origin."})
+    try:
+        values = await request.json() if request.method == "PUT" else None
+        settings = await anyio.to_thread.run_sync(
+            partial(save_settings, values) if request.method == "PUT" else load_settings
+        )
+        return _json(200, settings)
+    except (ValueError, OSError) as error:
+        return _json(400, {"error": str(error)})
+
+
+async def handle_result_page(request: Request) -> Response:
+    """Query bounded result pages, save corrections, or stream a complete export."""
+    if not _allowed_origin(request, files=True):
+        return _json(403, {"error": "Result access requires a trusted UI origin."})
+    identity = request.path_params["job_id"]
+    job = JOBS.get(identity)
+    try:
+        if job is not None:
+            store = job.store
+        else:
+            archived = await anyio.to_thread.run_sync(
+                read_archived_run, get_tasks_directory(), identity
+            )
+            if archived is None:
+                return _json(404, {"error": "Run not found."})
+            store = await anyio.to_thread.run_sync(archived_store, archived[1])
+        operation = request.url.path.rsplit("/", 1)[-1]
+        if operation in {"export", "export-reviewed"}:
+            reviewed_only = operation == "export-reviewed"
+            state = await anyio.to_thread.run_sync(store.state, identity)
+            snapshot = state["snapshot"]
+            metadata = {
+                "mode": state["summary"].get("engine"),
+                "sourceMode": snapshot["settings"]["mode"],
+                "total": snapshot.get("total"),
+                "completed": state["summary"]["total"],
+                "elapsedMs": snapshot.get("elapsedMs", 0),
+                "activeProcessingMs": snapshot.get("activeProcessingMs", 0),
+            }
+
+            if reviewed_only:
+                metadata["exportScope"] = "reviewed-changes"
+
+            async def export() -> AsyncGenerator[str, None]:
+                yield json.dumps(metadata)[:-1] + ',"results":['
+                cursor = 0
+                separator = ""
+                exported = 0
+                while batch := await anyio.to_thread.run_sync(
+                    partial(store.events, identity, cursor, reviewed_only=reviewed_only)
+                ):
+                    for cursor, encoded in batch:
+                        if cursor > state["sequence"]:
+                            break
+                        event = json.loads(encoded)
+                        if event["type"] == "result":
+                            yield separator + json.dumps(event["result"])
+                            separator = ","
+                            exported += 1
+                    if cursor >= state["sequence"]:
+                        break
+                yield f'],"exported":{exported}}}' if reviewed_only else "]}"
+
+            return StreamingResponse(
+                export(),
+                media_type="application/json",
+                headers={
+                    **HEADERS,
+                    "Content-Disposition": (
+                        'attachment; filename="deciflow-reviewed-results.json"'
+                        if reviewed_only
+                        else 'attachment; filename="deciflow-results.json"'
+                    ),
+                },
+            )
+        body = await request.json()
+        if not isinstance(body, dict):
+            raise TypeError("Invalid result request.")
+        if operation == "review":
+            sequence, category = body.get("sequence"), body.get("category")
+            if type(sequence) is not int or not isinstance(category, str):
+                raise TypeError("Invalid reviewer category or result cursor.")
+            await anyio.to_thread.run_sync(store.review, identity, sequence, category)
+            return _json(200, {"saved": True})
+        state = await anyio.to_thread.run_sync(store.state, identity)
+        if job is not None:
+            state["snapshot"] = job.snapshot()
+        page = (
+            {}
+            if body.get("onlySummary")
+            else await anyio.to_thread.run_sync(
+                store.page, identity, body, load_settings()["resultsPerPage"]
+            )
+        )
+        return _json(200, {**state, **page})
+    except (ValueError, TypeError) as error:
+        return _json(400, {"error": str(error)})
+    except (OSError, sqlite3.Error):
+        return _json(503, {"error": "Result storage is unavailable."})
+
+
 @asynccontextmanager
 async def lifespan(application: Starlette) -> AsyncIterator[None]:
     """Stop background analysis jobs when the server shuts down."""
@@ -947,13 +1183,25 @@ async def handle_asset(request: Request) -> Response:
     path = ROOT / "public" / name
     if not path.is_file():
         return Response("Could not load the file.", status_code=500, headers=HEADERS)
-    return FileResponse(path, media_type=media_type, headers=HEADERS)
+    headers = HEADERS
+    if request.url.path == "/vendor/prism/prism-python-1.30.0.min.js":
+        headers = {**HEADERS, "Cache-Control": "public, max-age=31536000, immutable"}
+    return FileResponse(path, media_type=media_type, headers=headers)
 
 
 app = Starlette(
     lifespan=lifespan,
     routes=[
+        Route("/api/settings", handle_settings, methods=["POST", "PUT"]),
+        Route("/api/jobs/{job_id}/results", handle_result_page, methods=["POST"]),
+        Route("/api/jobs/{job_id}/review", handle_result_page, methods=["POST"]),
+        Route(
+            "/api/jobs/{job_id}/export-reviewed", handle_result_page, methods=["POST"]
+        ),
+        Route("/api/jobs/{job_id}/export", handle_result_page, methods=["POST"]),
+        Route("/api/delete-check", handle_delete_check, methods=["POST"]),
         Route("/api/tasks", handle_tasks, methods=["POST", "PUT", "DELETE"]),
+        Route("/api/tasks/{task_id}/enabled", handle_task_operation, methods=["POST"]),
         Route("/api/tasks/{task_id}/run", handle_task_operation, methods=["POST"]),
         Route("/api/tasks/{task_id}/stop", handle_task_operation, methods=["POST"]),
         Route("/api/tasks/{task_id}/runs", handle_task_operation, methods=["POST"]),

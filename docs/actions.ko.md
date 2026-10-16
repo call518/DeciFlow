@@ -2,20 +2,17 @@
 
 [English](actions.md) | [한국어](actions.ko.md) | [문서 안내](README.ko.md) | [README](../README.ko.md)
 
-Add·Edit에서는 목록을 숨기고 입력폼만 표시합니다. 저장 또는 Cancel edit 후 목록으로 돌아옵니다.
+Add·Edit에서는 목록을 숨기고 입력폼만 표시합니다. 저장 또는 Cancel Edit 후 목록으로 돌아옵니다.
 
-**View**는 현재 이름·Python 버전·모듈·코드와 저장된 경로를 읽기 전용으로 표시합니다.
-**Cancel**로 닫으며 편집 초안을 바꾸거나 환경을 준비하지 않습니다.
-목록 버튼 순서는 **View / Edit / Reset venv / Delete**입니다. Edit·Add는 View를 닫습니다.
-View 중에는 편집 영역을 숨기고 저장을 막으며 Cancel로 기존 초안을 다시 표시합니다.
+**View**는 선택한 행 아래에서 이름·Python 버전·모듈·코드·경로를 공통 라벨·값 형식으로 표시합니다. 같은 View를 다시 누르면 접으며 편집 초안이나 환경을 변경하지 않습니다. Python Code는 View와 Add/Edit 모두 키워드·문자열·주석 등에 구문 색상을 적용합니다. 색상은 표시 기능이며 코드 내용과 저장·실행 동작은 유지합니다. 외부 CDN은 사용하지 않으며 구문 검증이나 자동완성 기능은 아닙니다. Edit·Add는 View를 닫습니다.
 
 좌측 사이드바의 **Actions**에서 핸들러를 생성·수정·삭제합니다.
-**Add action**을 누르고 이름, Python 버전(예: `3.12`), 모듈 목록,
-Python 코드를 편집기에 직접 입력한 뒤 **Save & prepare environments**를
+**Add Action**을 누르고 이름, Python 버전(예: `3.12`), 모듈 목록,
+Python 코드를 편집기에 직접 입력한 뒤 **Save & Prepare Environments**를
 누릅니다. 스크립트 경로나 별도 파일 업로드는 필요하지 않습니다.
 목록은 Action별 이름·Python 버전·모듈·환경 Status와 **View**/**Edit**/**Reset venv**/**Delete** 버튼을 한 줄에
 표시합니다. **Search by Name**에서 대소문자 구분 없이 이름의 일부로 검색합니다.
-**Edit**으로 하나의 편집기를 열고 **Cancel edit**으로 변경을 취소합니다.
+**Edit**으로 하나의 편집기를 열고 **Cancel Edit**으로 변경을 취소합니다.
 삭제도 저장하면 반영됩니다. **Tasks**으로 돌아가 로그 파일·패턴마다 Action 또는
 **None**을 선택하고 Batch/Realtime을 실행합니다. 화면을 전환해도 진행 중인
 분석은 유지됩니다. 사이드바에서 Actions로 재진입하면 목록으로 돌아가고
@@ -85,7 +82,7 @@ DeciFlow 프로세스 안에서 직렬화하며 여러 프로세스가 볼륨에
 초안에는 적용하지 않고 저장된 설정을 사용합니다. 실패하면 불완전한 환경을 실행하지 않으며
 Reset venv를 다시 눌러 재시도할 수 있습니다. 외부 Python을 지정한 Action은 대상이 아닙니다.
 
-**Delete → Save & prepare environments**로 삭제를 확정하면 해당 Action의 데이터 폴더를
+**Delete → Save & Prepare Environments**로 삭제를 확정하면 해당 Action의 데이터 폴더를
 제거합니다. 코드·실행 환경·lockfile·데이터가 함께 삭제됩니다.
 DeciFlow가 관리하지 않는 외부 스크립트·Python은 삭제하지 않습니다.
 사용 중인 분석이 있으면 수정·Reset·삭제를 거부합니다. 먼저 **Stop**을 누르세요.
@@ -129,3 +126,5 @@ Docker Compose는 `deciflow-data` 볼륨을 `DECIFLOW_DATA_DIR`
 기존 Actions를 이전하고 새 경로에 가상환경을 준비한 뒤
 `docker compose up -d ui`로 적용하세요. 데이터 경로 변경에는 UI 이미지 재빌드가
 필요하지 않습니다. [Docker 배포](../README.ko.md#deciflow-docker)를 참고하세요.
+
+구문 색상은 로컬에 포함한 PrismJS 1.30.0의 Core·Python 구성(약 9.4KiB, MIT)으로 처리합니다. 실행 중 외부 CDN을 요청하지 않으며 버전이 고정된 파일은 브라우저에 캐시합니다. 원본·라이선스·SHA-256은 `public/vendor/prism/`에 기록하며 버전 교체 시 해당 기록과 UI 검증을 함께 갱신합니다. 편집 입력·스크롤은 기존 방식을 유지합니다.

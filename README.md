@@ -98,12 +98,17 @@ Wait for the initial model download/loading, then press `Ctrl+C` to leave the lo
 Open **http://127.0.0.1:4000** on the same host. In **Sources**, edit
 **Sample HTTP access** to use `/host-logs/sample-logs/access-100.log` and save.
 In **Tasks**, add a named **Batch / Manual** Task, select **Sample HTTP access**,
-**HTTP access** criteria, **Events/chunk: 1**, and **Action: None**, then save.
-Click **Run** in Tasks; select the running Task in **Main** to view its results.
+**HTTP access** criteria, **Events/Chunk: 1**, and **Action: None**, then save.
+Click **Run** in Tasks; select the Task in **Main → Task Monitor** to view its results.
 
 For optional GPU acceleration, see [Docker deployment details](#laya-docker);
 for a paid API, see [Jev](#jev).
 The default key `changeme` is for trials. Change it in `.env` before deployment.
+
+A built-in **DeciFlow Server Log** Task monitors `DECIFLOW_LOG_DIR/server.log` / `DECIFLOW_LOG_DIR/access.log`; it is disabled by default (enable it before Run). Missing default configuration is restored on startup or when the Task registry is removed. See [Tasks](docs/tasks.md).
+
+Use **Export Reviewed JSON** in Classification Results to download only results
+whose human reviewer category differs from the AI category in the selected run.
 
 ## Usage and configuration
 
@@ -113,37 +118,40 @@ and request/result examples.
 | Guide | Contents |
 | --- | --- |
 | [Tasks](docs/tasks.md) | Reusable executions, cron schedules, continuous monitoring, and durable run history |
-| [Sources](docs/sources.md) | Register local/SSH sources, manage SSH keys in Settings, and select sorted dropdown entries |
+| [Result Storage](docs/result-storage.md) | SQLite, pagination, legacy history migration, backups, and database adapters |
+| [Sources](docs/sources.md) | Register local/SSH sources, manage SSH Keys in Settings, and select sorted dropdown entries |
 | [Usage](docs/usage.md) | Input modes, criteria, filters, human review, reconnecting, timing |
 | [Configuration](docs/configuration.md) | Environment variables, models, input budgets |
 | [Criteria](docs/criteria.md) | Manage fixed-category profiles; Default Criteria is view-only |
 | [Python Actions](docs/actions.md) | Configuration viewing, environment Status, pip-enabled environments, Reset venv, deletion, source assignment |
 | [Result JSON](docs/results.md) | Current request/result examples and field reference |
 
-Configure Sources → Criteria → optional Actions → Tasks, then monitor running
-Tasks in Main. Remote Sources define reusable paths; each Task chooses one or more
+Configure Sources → Criteria → optional Actions → Tasks, then select Tasks in Main to view current or latest results. Sources accept multiple paths or patterns, one per line. Remote Sources define reusable paths; each Task chooses one or more
 SSH Hosts per Source. Hosts collect independently, share classification slots
 fairly, and produce unified results with Host filtering and collection status.
 
+The browser updates only new results and reuses existing cards. Rendering pauses
+while Main or the tab is hidden; Tasks keep running and all results are retained.
+
 Main groups Source, Criteria, Actions, and Tasks; Settings groups SSH Keys and
-SSH Hosts. Returning through the sidebar opens lists and discards unsaved drafts.
+SSH Hosts, plus Results (page size, default 50). Returning through the sidebar opens lists and discards unsaved drafts.
 [Usage](docs/usage.md) covers navigation, result controls, and reconnecting.
 
 Settings accepts private keys by **Upload, Path, or Paste**, copies them into managed
 storage, and derives public keys. SSH Hosts save connection details and a key.
 **Test Connection** checks SSH authentication and SFTP; the visible host list also
-checks sequentially and repeats 30 seconds after each pass. Unknown fingerprints
+checks sequentially once per visit. View and redraws do not repeat checks. Unknown fingerprints
 require approval in an in-app dialog. Approved host keys persist only in
 `DECIFLOW_DATA_DIR/ssh-hosts/known_hosts`, separately from user SSH.
 See [Sources and SSH settings](docs/sources.md) for setup and trust management.
 
-- **Tasks:** Save source/criteria/chunk/Action settings. Run Batch manually or with cron; run Realtime continuously. See [Tasks](docs/tasks.md).
+- **Tasks:** Save Source/Criteria/chunk/Action settings. Run Batch manually or with cron; run Realtime continuously. Disable stops the current run and blocks future starts. Main prioritizes running Tasks and shows compact Source details with full hover tooltips. See [Tasks](docs/tasks.md).
 - **Batch:** Analyze registered local or SSH files. Docker maps host `/var/log` to `/host-logs/var/log`.
 - **Realtime:** Follow new logs; choose criteria and chunk size per source.
-- **Processing status:** Success / Failed / Total shows classified, failed, and total completed chunks. Action Success / Failed / Total counts follow-up executions separately. Needs review
+- **Processing status:** Success / Failed / Total shows classified, failed, and total completed chunks. Action Success / Failed / Total counts follow-up executions separately. Needs Review
   counts successful classifications only. Engine connection shows the last actual request; initially Not checked.
-- **Review:** Filter Needs review, record corrections, and export JSON. Certain does not
-  guarantee accuracy. Task definitions and run history persist in the data volume; reviewer edits remain browser-only.
+- **Review:** Filter Needs Review and record corrections. **Export All JSON** includes the entire selected run; **Export Reviewed JSON** includes only reviewer categories that differ from the AI category. Certain does not
+  guarantee accuracy. Task definitions and run history persist in the data volume; reviewer corrections persist in SQLite.
 
 ## Docker deployment details
 
@@ -281,7 +289,7 @@ It does not copy application source or preinstall project dependencies. Its star
 command runs `uv sync --frozen --no-dev --no-install-project --no-cache`, then starts
 `server.main(host='0.0.0.0')`. The published UI image therefore still needs the cloned
 repository mounted at `/app`. UI inference runs on Laya or Jev, not inside this image.
-For SSH key management and remote file requirements, see [Sources](docs/sources.md).
+For SSH Key management and remote file requirements, see [Sources](docs/sources.md).
 
 [`docker-compose.yml`](docker-compose.yml) supplies the runtime configuration:
 
@@ -303,7 +311,7 @@ check Laya readiness before analyzing logs. There is no automatic paid fallback.
 The UI is published on all host interfaces. For local-only access, change its
 Compose port mapping to `127.0.0.1:${PORT:-4000}:${PORT:-4000}`.
 Open **http://127.0.0.1:4000** with the default port; use the DeciFlow host IP for remote access.
-The `deciflow-data` volume stores Sources, Tasks and run history, Actions, Criteria, SSH key pairs, and SSH Hosts at `DECIFLOW_DATA_DIR`
+The `deciflow-data` volume stores Sources, Tasks and run history, Actions, Criteria, SSH Key pairs, and SSH Hosts at `DECIFLOW_DATA_DIR`
 (default: `/var/lib/deciflow-data`); `deciflow-logs` stores server logs.
 Use absolute container paths for custom data/log directories.
 
@@ -344,7 +352,7 @@ access with proxy authentication.
 
 ## Limits
 
-- No application file-size or line-count cap; RAM and browser capacity still matter.
+- No application file-size or line-count cap. SQLite stores accumulated results; memory still depends on active files, hosts, and individual event size. Disk retention is not automatic. See [Result storage](docs/result-storage.md).
   File reads are incremental. Chunks use an event count; each nonempty line currently forms one event.
   Automatic multiline event-boundary detection is not implemented.
 - **Laya:** selected checkpoint; request windows and question budgets are in the [configuration reference](docs/configuration.md).
@@ -359,7 +367,9 @@ access with proxy authentication.
 - Each chunk makes one request. Engine concurrency settings default to 4 per run;
   timeouts are Laya 120s and Jev 30s. Higher client concurrency does not guarantee
   parallel inference or higher throughput; server capacity and admission limits apply.
-- Realtime polls every 250ms and waits for complete lines. Rotation leftovers are
+- Realtime scans every 250ms after each discovery pass and waits for complete lines.
+  SSH inputs reuse scan metadata; unchanged files get a one-second replacement check.
+  Rotation leftovers are
   marked `incomplete`; line numbers reset on rotation. Rapid rotation or
   copy-truncate/regrowth can lose events. File deduplication does not remove duplicate
   contents; avoid matching both active logs and their rotated copies.

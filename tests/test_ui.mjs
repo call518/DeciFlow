@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { test } from 'node:test';
 
+const prismRuntime=vm.createContext({});
+vm.runInContext(readFileSync(new URL('../public/vendor/prism/prism-python-1.30.0.min.js',import.meta.url),'utf8'),prismRuntime);
 const workspaceContexts = new WeakMap();
 function runTask(nodes) {
   return vm.runInContext('handleRunTask(selectedTaskId)', workspaceContexts.get(nodes));
@@ -14,11 +16,23 @@ function workspace(events, status, storage = { getItem: () => null, setItem() {}
   const listeners = new Map();
   const node = () => ({
     children: [], value: '', checked: false, attributes: {},
-    append(...children) { this.children.push(...children); },
-    replaceChildren() { this.children = []; },
+    showModal() { this.returnValue='delete'; this.onclose(); },
+    append(...children) { for(const child of children){if(child?.parentNode)child.parentNode.removeChild(child);this.children.push(child);if(child && typeof child==='object')child.parentNode=this;} },
+    remove() { this.parentNode?.removeChild(this); },
+    get nextSibling() { return this.parentNode?.children[this.parentNode.children.indexOf(this)+1] || null; },
+    replaceChildren(...children) { this.children = children; },
+    insertBefore(child, reference) {
+      const previous=this.children.indexOf(child);
+      if(previous!==-1)this.children.splice(previous,1);
+      const index=reference===null?this.children.length:this.children.indexOf(reference);
+      if(child.parentNode && child.parentNode!==this)child.parentNode.removeChild(child);
+      this.children.splice(index,0,child);child.parentNode=this;
+    },
+    removeChild(child) { const index=this.children.indexOf(child);if(index>=0)this.children.splice(index,1);child.parentNode=null; },
     setAttribute(name, value) { this.attributes[name] = value; },
   });
   const context = vm.createContext({
+    Prism:prismRuntime.Prism,
     ...(navigation ? { location: navigation, addEventListener: (name, handler) => listeners.set(name, handler) } : {}),
     document: {
       getElementById(id) {
@@ -33,6 +47,8 @@ function workspace(events, status, storage = { getItem: () => null, setItem() {}
     setTimeout: () => 1,
     clearTimeout() {},
     fetch: async (path, options) => {
+      if (path === '/api/delete-check') return {ok:true,json:async()=>({references:[]})};
+      if (path === '/api/settings') return {ok:true,json:async()=>options.method==='PUT'?JSON.parse(options.body):({resultsPerPage:50})};
       if (path === '/api/criteria') {
         if (!criteria) return { ok: false, json: async () => ({ error: 'Unavailable' }) };
         return { ok: true, json: async () => ({ profiles: options.method === 'PUT' ? JSON.parse(options.body) : criteria }) };
@@ -301,7 +317,7 @@ test('pause freezes rows while analysis continues; resume includes pending resul
   assert.equal(nodes.get('results').children[0], original);
   assert.equal(details.open, true);
   assert.equal(nodes.get('summary').children[0].children[0].children.map(node => node.textContent).join(''), '3 / 0 / 3');
-  assert.equal(nodes.get('pause-updates').textContent, 'Resume updates (2 new)');
+  assert.equal(nodes.get('pause-updates').textContent, 'Resume Updates (2 new)');
   nodes.get('review-filter').value = 'needs-review';
   nodes.get('review-filter').onchange();
   assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
@@ -316,16 +332,16 @@ test('pause freezes rows while analysis continues; resume includes pending resul
   assert.deepEqual(logs(nodes), ['log-0']);
   finish(); await run;
   assert.deepEqual(logs(nodes), ['log-0']);
-  assert.equal(nodes.get('pause-updates').textContent, 'Resume updates (2 new)');
+  assert.equal(nodes.get('pause-updates').textContent, 'Resume Updates (2 new)');
   nodes.get('pause-updates').onclick();
   assert.deepEqual(logs(nodes), ['log-2', 'log-1', 'log-0']);
-  assert.equal(nodes.get('pause-updates').textContent, 'Pause updates');
+  assert.equal(nodes.get('pause-updates').textContent, 'Pause Updates');
   nodes.get('pause-updates').onclick();
   context.readEvents = async (_, callback) => {
     callback({ type: 'start', engine: 'laya', total: 1 }); callback(result(0));
   };
   await runTask(nodes);
-  assert.equal(nodes.get('pause-updates').textContent, 'Pause updates');
+  assert.equal(nodes.get('pause-updates').textContent, 'Pause Updates');
   assert.deepEqual(logs(nodes), ['log-0']);
 });
 
@@ -336,7 +352,7 @@ test('pause excludes received results that have not yet been displayed', async (
   nodes.get('pause-updates').onclick();
   nodes.get('review-filter').onchange();
   assert.deepEqual(logs(nodes), ['log-0']);
-  assert.equal(nodes.get('pause-updates').textContent, 'Resume updates (1 new)');
+  assert.equal(nodes.get('pause-updates').textContent, 'Resume Updates (1 new)');
 });
 
 test('file line labels distinguish batch from observed realtime sequences', async () => {
@@ -377,7 +393,7 @@ test('realtime can pause before receiving its first result', async () => {
   receive(result(0));
   vm.runInContext('render(false)', context);
   assert.equal(nodes.get('results').children[0], original);
-  assert.equal(nodes.get('pause-updates').textContent, 'Resume updates (1 new)');
+  assert.equal(nodes.get('pause-updates').textContent, 'Resume Updates (1 new)');
   nodes.get('pause-updates').onclick();
   assert.deepEqual(logs(nodes), ['log-0']);
   finish(); await run;
@@ -390,7 +406,7 @@ test('profile selectors have visible Criteria labels', () => {
     assert.equal(row.children[1].children.length, 1);
   }
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-  assert.ok(html.includes('Sources and decisions'));
+  assert.ok(html.includes('Sources and Decisions'));
 });
 
 test('category chart counts all sources, separates failures, and ignores filters and edits', async () => {
@@ -422,10 +438,10 @@ test('category chart counts all sources, separates failures, and ignores filters
   assert.deepEqual(values(), Array(5).fill('0 (0.0%)'));
 });
 
-test('category overview precedes Log input and Classification results', () => {
+test('category overview precedes Log input and Classification Results', () => {
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-  assert.ok(html.indexOf('Classification overview') < html.indexOf('Task monitor'));
-  assert.ok(html.indexOf('Classification overview') < html.indexOf('Classification results'));
+  assert.ok(html.indexOf('Classification Overview') < html.indexOf('Task Monitor'));
+  assert.ok(html.indexOf('Classification Overview') < html.indexOf('Classification Results'));
 });
 
 test('uncertain category is explicitly provisional without changing the model choice', async () => {
@@ -451,9 +467,9 @@ test('workspace places input and overview in the 40% column beside 60% results',
   const leftEnd = html.indexOf('</div>\n      <section class="card output">', leftStart);
   assert.ok(leftStart >= 0 && leftEnd > leftStart);
   const left = html.slice(leftStart, leftEnd);
-  assert.ok(left.includes('Task monitor'));
-  assert.ok(left.includes('Classification overview'));
-  assert.ok(!left.includes('Classification results'));
+  assert.ok(left.includes('Task Monitor'));
+  assert.ok(left.includes('Classification Overview'));
+  assert.ok(!left.includes('Classification Results'));
   assert.ok(css.includes('grid-template-columns:minmax(0,2fr) minmax(0,3fr)'));
   assert.ok(css.includes('.workspace{grid-template-columns:1fr}'));
 });
@@ -644,8 +660,8 @@ test('selected engine is explicitly named and emphasized for both engines', asyn
     }
   }
   const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8').replace(/\s*([{}:;])\s*/g, '$1');
-  assert.ok(css.includes('.selected-engine{color:#0057ff;font-weight:700}'));
-  assert.ok(css.includes('.selected-model{color:#0057ff;font-weight:700;}'));
+  assert.ok(css.includes('.selected-engine{color:#7c3aed;font-weight:700}'));
+  assert.ok(css.includes('.selected-model{color:#7c3aed;font-weight:700;}'));
 });
 
 
@@ -754,7 +770,7 @@ test('file Actions are assigned in requests and execution failures are visible',
   assert.equal(selector.disabled, false);
 });
 
-test('Action editor sends Python versions and module lists and recovers from preparation errors', async () => {
+test('Action editor sends Python Versions and module lists and recovers from preparation errors', async () => {
   const { nodes, context } = workspace([]);
   await new Promise(resolve => setImmediate(resolve));
   nodes.get('add-action').onclick();
@@ -828,6 +844,7 @@ test('Action list edits one handler, cancels drafts, and saves deletion without 
   nodes.get('action-editor').children[0].children[0].children[0].value = 'Edited';
   let sent;
   context.fetch = async (path, options) => {
+    if(path==='/api/delete-check')return {ok:true,json:async()=>({references:[]})};
     sent = JSON.parse(options.body);
     return {ok:true, json:async () => ({actions:sent})};
   };
@@ -836,7 +853,7 @@ test('Action list edits one handler, cancels drafts, and saves deletion without 
   assert.equal(sent[0].name, 'First');
   assert.equal(sent[1].name, 'Second');
   assert.equal(nodes.get('action-editor').hidden, true);
-  table().children[1].children[4].children[3].onclick();
+  await table().children[1].children[4].children[3].onclick();
   await nodes.get('save-actions').onclick();
   assert.equal(sent.length, 1);
   assert.equal(sent[0].name, 'Second');
@@ -858,7 +875,7 @@ test('Action name search ignores case and retains original edit and delete targe
   table.children[1].children[4].children[1].onclick();
   assert.equal(nodes.get('action-editor').children[0].children[0].children[0].value, 'Notify admin');
   nodes.get('cancel-action').onclick();
-  nodes.get('action-registry').children[0].children[1].children[4].children[3].onclick();
+  await nodes.get('action-registry').children[0].children[1].children[4].children[3].onclick();
   assert.equal(nodes.get('action-registry').children[0].textContent, 'No Actions match your search.');
   search.value = ''; search.oninput();
   assert.equal(nodes.get('action-registry').children[0].children.length, 3);
@@ -970,7 +987,6 @@ test('new jobs persist their ID and reload replays results without submitting an
   assert.equal(vm.runInContext('sourceRows[0].path', reloaded.context), '1'.padStart(32,'0'));
   assert.equal(vm.runInContext('sourceRows[0].profile.value', reloaded.context), 'general');
   assert.equal(vm.runInContext('sourceRows[0].action.value', reloaded.context), '');
-  assert.equal(reloaded.nodes.get('stop').disabled, true);
   reloaded.context.fetch = async () => ({ok:false,status:404});
   await vm.runInContext('handleRestoreJob()', reloaded.context);
   assert.equal(stored.has('deciflow-job-id'), false);
@@ -978,7 +994,7 @@ test('new jobs persist their ID and reload replays results without submitting an
 });
 
 
-test('Stop calls the server job endpoint instead of aborting the browser stream', async () => {
+test('Tasks Stop calls the server endpoint instead of aborting the browser stream', async () => {
   const {nodes, context} = workspace([]);
   await new Promise(resolve => setImmediate(resolve));
   let finish;
@@ -998,7 +1014,7 @@ test('Stop calls the server job endpoint instead of aborting the browser stream'
   };
   const running = runTask(nodes);
   await new Promise(resolve => setImmediate(resolve));
-  await nodes.get('stop').onclick();
+  await vm.runInContext("handleStopTask('test-task')",context);
   await running;
   assert.match(nodes.get('message').textContent, /Stopped/);
 });
@@ -1040,6 +1056,7 @@ test('Export stays visibly disabled during processing and enables only with down
   }
   vm.runInContext('completed=0; render();', context);
   assert.equal(nodes.get('export').disabled, true);
+  assert.equal(nodes.get('export-reviewed').disabled,true);
   const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
   assert.match(css, /button:disabled\s*\{\s*opacity:\s*\.5;/);
 });
@@ -1107,10 +1124,10 @@ test('View shows read-only Action configuration without editing or losing drafts
   const controls = () => nodes.get('action-registry').children[0].children[1].children[4].children;
   assert.deepEqual(controls().map(button => button.textContent), ['View', 'Edit', 'Reset venv', 'Delete']);
   controls()[0].onclick();
-  const values = () => nodes.get('action-view').children[1].children.map(label => label.children[0]);
+  const values = () => nodes.get('action-view').children[1].children.map(field => field.children[1]);
   assert.equal(nodes.get('action-view').hidden, false);
-  assert.ok(values().every(input => input.readOnly));
-  assert.equal(values().at(-1).value, 'print(1)');
+  assert.ok(values().every(value => value.className !== 'action-code'));
+  assert.equal(values().at(-1).textContent, 'print(1)');
   assert.equal(vm.runInContext('editingAction', context), null);
   assert.equal(vm.runInContext('actionRows.length', context), 0);
   assert.equal(requests.length, 0);
@@ -1120,12 +1137,12 @@ test('View shows read-only Action configuration without editing or losing drafts
   assert.equal(nodes.get('action-editor').hidden, false);
   vm.runInContext("actionRows[0].code.value='Unsaved draft';", context);
   controls()[0].onclick();
-  assert.equal(values().at(-1).value, 'print(1)');
+  assert.equal(values().at(-1).textContent, 'print(1)');
   assert.equal(nodes.get('action-editor').hidden, true);
   assert.equal(nodes.get('save-actions').disabled, true);
   assert.equal(vm.runInContext('actionRows[0].code.value', context), 'Unsaved draft');
-  assert.equal(nodes.get('action-view').children[0].children[1].textContent, 'Cancel');
-  nodes.get('action-view').children[0].children[1].onclick();
+  assert.equal(nodes.get('action-view').children[0].children.length, 1);
+  vm.runInContext("handleCloseConfiguration('action-view')",context);
   assert.equal(nodes.get('action-view').hidden, true);
   assert.equal(nodes.get('action-editor').hidden, false);
   assert.equal(nodes.get('save-actions').disabled, false);
@@ -1140,9 +1157,9 @@ test('View shows all Criteria definitions and preserves the edit draft', async (
   const controls = () => nodes.get('criteria-registry').children[0].children[1].children[2].children;
   assert.deepEqual(controls().map(button => button.textContent), ['View', 'Edit', 'Delete']);
   controls()[0].onclick();
-  const values = () => nodes.get('criteria-view').children[1].children.map(label => label.children[0]);
-  assert.ok(values().every(input => input.readOnly));
-  assert.deepEqual(values().slice(3).map(input => input.value), Object.values(definitions));
+  const values = () => nodes.get('criteria-view').children[1].children.map(field => field.children[1]);
+  assert.ok(values().every(value => value.className !== 'action-code'));
+  assert.deepEqual(values().slice(3).map(input => input.textContent), Object.values(definitions));
   assert.equal(vm.runInContext('editingCriteria', context), null);
   controls()[1].onclick();
   assert.equal(nodes.get('criteria-view').hidden, true);
@@ -1150,11 +1167,11 @@ test('View shows all Criteria definitions and preserves the edit draft', async (
   assert.equal(nodes.get('criteria-editor').hidden, false);
   vm.runInContext("criteriaFields.instructions.value='Draft instructions';", context);
   controls()[0].onclick();
-  assert.equal(values()[2].value, 'Saved instructions');
+  assert.equal(values()[2].textContent, 'Saved instructions');
   assert.equal(nodes.get('criteria-editor').hidden, true);
   assert.equal(nodes.get('save-criteria').disabled, true);
-  assert.equal(nodes.get('criteria-view').children[0].children[1].textContent, 'Cancel');
-  nodes.get('criteria-view').children[0].children[1].onclick();
+  assert.equal(nodes.get('criteria-view').children[0].children.length, 1);
+  vm.runInContext("handleCloseConfiguration('criteria-view')",context);
   assert.equal(nodes.get('criteria-view').hidden, true);
   assert.equal(nodes.get('criteria-editor').hidden, false);
   assert.equal(nodes.get('save-criteria').disabled, false);
@@ -1257,7 +1274,7 @@ test('Default Criteria stays above search with View only and outside the editabl
   nodes.get('criteria-search').value = 'missing'; nodes.get('criteria-search').oninput();
   assert.equal(defaultRow().children[0].textContent, 'General system');
   defaultRow().children[2].children[0].onclick();
-  assert.equal(nodes.get('criteria-view').children[1].children[0].children[0].value, 'general');
+  assert.equal(nodes.get('criteria-view').children[1].children[0].children[1].textContent, 'general');
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   assert.ok(html.indexOf('id="criteria-default"') < html.indexOf('id="additional-criteria-title"'));
   assert.ok(html.indexOf('id="additional-criteria-title"') < html.indexOf('id="criteria-search"'));
@@ -1386,7 +1403,7 @@ test('duration metrics use readable units without changing millisecond data', ()
 });
 
 
-test('Reset selections restores registered samples and clears Action assignments', () => {
+test('Reset Selections restores registered samples and clears Action assignments', () => {
   const values = new Map();
   const storage = { getItem: key => values.get(key) || null, setItem: (key, value) => values.set(key, value) };
   const { nodes, context } = workspace([], undefined, storage);
@@ -1408,7 +1425,7 @@ test('Reset selections restores registered samples and clears Action assignments
   nodes.get('reset-sources').onclick();
   assert.equal(nodes.get('file-path').value, vm.runInContext('defaultFilePaths.batch',context));
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-  assert.ok(html.includes('Add source</button><button id="reset-sources"'));
+  assert.ok(html.includes('Add Source</button><button id="reset-sources"'));
 });
 
 
@@ -1469,7 +1486,7 @@ test('results display urgency and ticket need probability', async () => {
   await runTask(nodes);
   const row = nodes.get('results').children[0];
   const cards = decisionCards(row);
-  assert.deepEqual(cards.map(card => card.children[0].textContent), ['Category (Choice)', 'Urgency (Score)', 'Work ticket (Noul)']);
+  assert.deepEqual(cards.map(card => card.children[0].textContent), ['Category (Choice)', 'Urgency (Score)', 'Work Ticket (Noul)']);
   assert.equal(cards[1].children[1].textContent, '2.37 / 3');
   assert.equal(cards[2].children[1].textContent, '91.0%');
 });
@@ -1549,6 +1566,7 @@ test('Running jobs can show deleted source snapshots but new runs require a save
 
 test('Settings uses a compact key list, opens details and confirms deletion', async () => {
   const { nodes, context } = workspace([], null, undefined, null, { hash: '#settings' });
+  await new Promise(resolve => setImmediate(resolve));
   assert.equal(nodes.get('settings-page').hidden, false);
   vm.runInContext(`sshKeys = [{name:'production',privatePath:'/data/private_key',publicPath:'/data/public_key.pub',publicKey:'ssh-ed25519 PUBLIC'}]; renderSSHKeys();`, context);
   const row = nodes.get('ssh-key-list').children[0].children[1].children[0];
@@ -1557,23 +1575,23 @@ test('Settings uses a compact key list, opens details and confirms deletion', as
   assert.equal(row.children[2].children.length, 2);
   row.children[2].children[0].onclick();
   const card = nodes.get('ssh-key-view').children[1];
-  assert.equal(card.children[2].children[0].value, 'ssh-ed25519 PUBLIC');
-  assert.equal(card.children[3].children[0].value, '****');
-  assert.equal(nodes.get('ssh-key-registry').hidden, true);
+  assert.equal(card.children[2].children[1].textContent, 'ssh-ed25519 PUBLIC');
+  assert.equal(card.children[3].children[1].textContent, '****');
+  assert.equal(nodes.get('ssh-key-registry').hidden, false);
   const calls = [];
   context.fetch = async (path, options) => {
     calls.push({path, options});
     return {ok:true, json:async()=>({keys:[]})};
   };
-  context.confirm = () => false;
+  context.handleConfirmDelete = async () => false;
   await row.children[2].children[1].onclick();
   assert.equal(calls.length, 0);
-  context.confirm = () => true;
+  context.handleConfirmDelete = async () => true;
   await row.children[2].children[1].onclick();
   assert.equal(calls[0].options.method, 'DELETE');
 });
 
-test('SSH key import clears file and Sources select managed keys', async () => {
+test('SSH Key import clears file and Sources select managed keys', async () => {
   const { nodes, context } = workspace([], null);
   const key = {name:'production',privatePath:'/data/ssh-keys/production/private_key',publicPath:'/data/ssh-keys/production/public_key.pub',publicKey:'ssh-ed25519 PUBLIC'};
   context.fetch = async (path, options) => {
@@ -1592,7 +1610,7 @@ test('SSH key import clears file and Sources select managed keys', async () => {
 });
 
 
-test('SSH key methods mask pasted multiline keys and send paths without contents', async () => {
+test('SSH Key methods mask pasted multiline keys and send paths without contents', async () => {
   const {nodes, context} = workspace([], null);
   const get = id => context.document.getElementById(id);
   const bodies = [];
@@ -1622,12 +1640,12 @@ test('SSH key methods mask pasted multiline keys and send paths without contents
   vm.runInContext("sshKeys=[{name:'test',privatePath:'/keys/private',publicPath:'/keys/public',publicKey:'PUBLIC'}];renderSSHKeys()",context);
   vm.runInContext('handleViewKey(sshKeys[0])', context);
   const card = nodes.get('ssh-key-view').children[1];
-  assert.equal(card.children[3].children[0].value, '****');
-  assert.equal(card.children[2].children[0].value, 'PUBLIC');
+  assert.equal(card.children[3].children[1].textContent, '****');
+  assert.equal(card.children[2].children[1].textContent, 'PUBLIC');
 });
 
 
-test('SSH key form accepts spaced names and reports input and unavailable API errors', async () => {
+test('SSH Key form accepts spaced names and reports input and unavailable API errors', async () => {
   const {nodes, context} = workspace([], null);
   const get = id => context.document.getElementById(id);
   const requests = [];
@@ -1653,7 +1671,7 @@ test('SSH key form accepts spaced names and reports input and unavailable API er
 });
 
 
-test('SSH key Add, cancel and search keep the default screen compact', async () => {
+test('SSH Key Add, cancel and search keep the default screen compact', async () => {
   const { nodes, context } = workspace([], null);
   const get = id => context.document.getElementById(id);
   get('open-add-ssh-key').onclick();
@@ -1699,11 +1717,11 @@ test('SSH Hosts CRUD and Remote File selection share saved connection settings',
   assert.equal(JSON.parse(requests[1].options.body).id,'host-1');
   vm.runInContext('handleEditSource(registeredSources.length)',context);
   assert.equal(vm.runInContext('Object.keys(sourceFields).join(",")',context),'type,name,path');
-  context.confirm=()=>false;
+  context.handleConfirmDelete=async()=>false;
   await row.children[4].children[2].onclick(); assert.equal(requests.length,2);
-  context.confirm=()=>true;
+  context.handleConfirmDelete=async()=>true;
   await row.children[4].children[2].onclick(); assert.equal(requests[2].options.method,'DELETE');
-  assert.equal(get('ssh-host-message').textContent,'SSH host deleted.');
+  assert.equal(get('ssh-host-message').textContent,'SSH Host deleted.');
 });
 
 
@@ -1790,7 +1808,7 @@ test('Three decisions show details by default without duplicate badges or toggle
   assert.equal(header().children[0].className,'decision-grid');
   assert.deepEqual(badges().map(badge=>badge.textContent),['Normal','1.41 / 3','29.9%']);
   assert.match(badges()[1].title,/Urgency \(Score\)/);
-  assert.match(badges()[2].title,/Work ticket \(Noul\)/);
+  assert.match(badges()[2].title,/Work Ticket \(Noul\)/);
   assert.equal(header().children.some(child=>child.className==='decision-details'),false);
   vm.runInContext('render(false)',context);
   assert.equal(decisionCards(nodes.get('results').children[0]).length,3);
@@ -1844,7 +1862,7 @@ test('Source and Action dropdowns retain every sorted option with an existing se
   assert.equal(html.includes('monitor-task-options'),false);
 });
 
-test('Main lists only running Tasks in name order and clicking changes the displayed run', async () => {
+test('Main lists all saved Tasks in name order and opens current or latest runs', async () => {
   const {nodes,context}=workspace([]);
   await new Promise(resolve=>setImmediate(resolve));
   vm.runInContext(`
@@ -1858,14 +1876,16 @@ test('Main lists only running Tasks in name order and clicking changes the displ
     renderTaskMonitor();
   `,context);
   const buttons=nodes.get('running-tasks').children;
-  assert.deepEqual(buttons.map(button=>button.children[0].textContent),['Alpha','Zulu']);
+  assert.deepEqual(buttons.map(button=>button.children[0].textContent),['Alpha','Zulu','Idle Task']);
   assert.ok(buttons.every(button=>button.attributes['aria-pressed']==='false'));
   await buttons[1].onclick();
   assert.equal(vm.runInContext('selectedTaskId',context),'z');
   assert.equal(vm.runInContext('watched.join()',context),'run-z');
   assert.equal(nodes.get('running-tasks').children[1].attributes['aria-pressed'],'true');
+  await nodes.get('running-tasks').children[2].onclick();
+  assert.equal(vm.runInContext('watched.join()',context),'run-z,old');
   vm.runInContext('registeredTasks=[];renderTaskMonitor()',context);
-  assert.match(nodes.get('running-tasks').children[0].textContent,/No Tasks are currently running/);
+  assert.match(nodes.get('running-tasks').children[0].textContent,/No saved Tasks/);
 });
 
 test('Wide Main panels scroll independently and narrow layouts retain page scrolling', () => {
@@ -1898,7 +1918,7 @@ test('Main uses Task row clicks for viewing and has no duplicate Run button', ()
   assert.equal(html.includes('id="classify"'),false);
   const script=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
   assert.equal(script.includes('View running'),false);
-  assert.match(script,/button.onclick=\(\)=>handleSelectTask\(task.id\)/);
+  assert.match(script,/return handleSelectTask\(task.id\)/);
   assert.match(script,/Click its Task in the running list to reconnect/);
 });
 
@@ -1974,7 +1994,7 @@ test('SSH approval modal queues simultaneous hosts and dismisses without approva
   assert.match(html,/id="ssh-trust-cancel"[^>]*autofocus/);
 });
 
-test('Visible SSH Hosts auto-check sequentially, prevent duplicate passes, and repeat after 30 seconds', async () => {
+test('Visible SSH Hosts auto-check sequentially once per visit without periodic repeats', async () => {
   const {nodes,context}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
   vm.runInContext("currentView='settings';sshHosts=[{id:'b',name:'Beta',host:'b',port:22,username:'u',keyPath:'/key'},{id:'a',name:'Alpha',host:'a',port:22,username:'u',keyPath:'/key'}]",context);
   context.document.getElementById('ssh-host-registry').hidden=false;
@@ -1986,7 +2006,8 @@ test('Visible SSH Hosts auto-check sequentially, prevent duplicate passes, and r
   assert.deepEqual(calls,['a']);
   await vm.runInContext('handleAutoCheckHosts()',context);assert.deepEqual(calls,['a']);
   release();await pass;
-  assert.deepEqual(calls,['a','b']);assert.equal(maxActive,1);assert.equal(delays.at(-1),30000);
+  assert.deepEqual(calls,['a','b']);assert.equal(maxActive,1);assert.ok(!delays.includes(30000));
+  await vm.runInContext('handleAutoCheckHosts()',context);assert.equal(calls.length,2);
   context.document.hidden=true;
   await vm.runInContext('handleAutoCheckHosts()',context);assert.equal(calls.length,2);
   context.document.hidden=false;nodes.get('ssh-host-registry').hidden=true;
@@ -2086,11 +2107,11 @@ test('Task assigns multiple Hosts per remote Source and submits only selected ID
   };
   await vm.runInContext("handleEditTask({id:'test-task',name:'Fleet',mode:'batch',sources:[{sourceId:'remote',profile:'general',chunkEvents:1,hostIds:['a']}]})",context);
   const row=nodes.get('source-settings').children[0];const picker=row.children[4];
-  assert.equal(picker.hidden,false);assert.equal(picker.children[0].textContent,'SSH Hosts · 1 selected');
+  assert.equal(picker.hidden,false);assert.equal(picker.children[0].textContent,'Source Hosts · 1 selected');
   picker.children[1].value='Beta';picker.children[1].oninput();
   assert.equal(picker.children[3].children.length,1);
   picker.children[2].children[0].onclick();
-  assert.equal(picker.children[0].textContent,'SSH Hosts · 2 selected');
+  assert.equal(picker.children[0].textContent,'Source Hosts · 2 selected');
   await nodes.get('task-form').onsubmit({preventDefault(){}});
   assert.deepEqual(submitted.sources[0].hostIds,['a','b']);
   assert.equal(Object.hasOwn(submitted.sources[0],'host'),false);
@@ -2110,4 +2131,550 @@ test('Host filter combines with Source filters and retains host failure diagnost
   assert.equal(nodes.get('results').children[0].children[0].children[0].textContent,'Source failed');
   nodes.get('source-filter').value='/same';nodes.get('source-filter').onchange();
   assert.deepEqual(logs(nodes),['log-1']);
+});
+
+test('Timing updates reuse visible cards and never rescan the result history', () => {
+  const {nodes,context}=workspace([]);
+  vm.runInContext(`
+    results=Array.from({length:20000},(_,index)=>({log:'record '+index,category:'normal',elapsedMs:2,probabilities:{normal:1},hostId:'host-'+index%3,source:'/data/input.txt'}));
+    completionOrder=results.map((_,index)=>index);completed=results.length;
+    render();
+    globalThis.historyReads=0;
+    results=new Proxy(results,{get(target,key){if(/^\\d+$/.test(String(key)))historyReads++;return Reflect.get(target,key);}});
+    render(false,true);
+    historyReads=0;
+  `,context);
+  const rows=[...nodes.get('results').children];
+  let created=0;const create=context.document.createElement;
+  context.document.createElement=(...args)=>{created++;return create(...args);};
+  vm.runInContext('elapsedMs+=1000;render(false,true)',context);
+  assert.ok(vm.runInContext('historyReads',context)<=100);
+  assert.ok(created<100,`Timing tick created ${created} nodes`);
+  assert.ok(rows.every((row,index)=>nodes.get('results').children[index]===row));
+});
+
+for (const engine of ['laya','jev']) test(`${engine} incremental results preserve cards, JSON and exact aggregate/filter counts`, async () => {
+  const {nodes,context}=workspace([{type:'start',engine,total:null},...Array.from({length:150},(_,index)=>result(index,index%2===0))]);
+  await runTask(nodes);
+  const retained=nodes.get('results').children[0];
+  const details=retained.children.at(-1);details.open=true;details.ontoggle();
+  const json=details.children[1].children[1].textContent;
+  vm.runInContext(`
+    results[150]={log:'new',category:'error',error:'failed',elapsedMs:3,source:'/data/input.txt',hostId:'host-1',sourceFailure:true};
+    completionOrder.push(150);completed++;render(false,true);
+  `,context);
+  assert.equal(nodes.get('results').children[1],retained);
+  assert.equal(details.open,true);assert.equal(details.children[1].children[1].textContent,json);
+  assert.equal(vm.runInContext('resultStatistics.failed',context),1);
+  assert.equal(vm.runInContext('resultStatistics.total',context),151);
+  nodes.get('category-filter').value='failed';nodes.get('category-filter').onchange();
+  assert.deepEqual(logs(nodes),['new']);
+  vm.runInContext(`
+    results[151]={log:'another',error:'timeout',elapsedMs:5};completionOrder.push(151);completed++;
+    render(false,true);
+  `,context);
+  assert.deepEqual(logs(nodes),['another','new']);
+  const incremental=vm.runInContext('JSON.stringify(resultStatistics,(_,value)=>value instanceof Map?[...value]:value)',context);
+  vm.runInContext('render()',context);
+  assert.equal(vm.runInContext('JSON.stringify(resultStatistics,(_,value)=>value instanceof Map?[...value]:value)',context),incremental);
+  assert.ok(vm.runInContext('renderedRows.size',context)<=100);
+});
+
+test('Hidden dashboards defer scheduled DOM work and catch up on return', async () => {
+  const {nodes,context}=workspace([{type:'start',engine:'laya',total:null},result(0)]);
+  await runTask(nodes);
+  const first=nodes.get('results').children[0];
+  let flush;context.setTimeout=handler=>{flush=handler;return 1;};
+  vm.runInContext("currentView='main';document.hidden=true;renderTimer=undefined;scheduleRender()",context);
+  flush();assert.equal(nodes.get('results').children[0],first);
+  vm.runInContext("results[1]={log:'next',category:'normal',elapsedMs:1};completionOrder.push(1);completed++;document.hidden=false;scheduleRender()",context);
+  flush();assert.deepEqual(logs(nodes),['next','log-0']);
+  assert.equal(nodes.get('results').children[1],first);
+});
+
+test('Task Monitor only lists selectable Tasks without management controls or duplicated details', () => {
+  const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
+  const section=html.slice(html.indexOf('<section class="card task-monitor">'),html.indexOf('</section>',html.indexOf('<section class="card task-monitor">')));
+  assert.ok(section.includes('<h2>Task Monitor</h2>'));
+  assert.ok(section.includes('id="running-tasks"'));
+  for(const id of ['stop','manage-tasks','monitor-task-info','monitor-task-status','input-limits','data-notice'])assert.ok(!section.includes(`id="${id}"`));
+});
+
+test('Static page, section and dialog headings consistently use Title Case', () => {
+  const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
+  const minorWords=new Set(['a','an','and','as','at','but','by','for','in','of','on','or','the','to']);
+  for(const [,markup] of html.matchAll(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/g)) {
+    const title=markup.replace(/<[^>]*>/g,'');
+    const words=title.match(/[A-Za-z]+/g) || [];
+    words.forEach((word,index)=>{
+      if(index>0 && index<words.length-1 && minorWords.has(word))return;
+      assert.match(word,/^[A-Z]/,`Heading must use Title Case: ${title}`);
+    });
+  }
+});
+
+function pagedWorkspace() {
+  const state=workspace([]);
+  let records=Array.from({length:1000},(_,index)=>({sequence:index+1,result:{log:`record-${index+1}`,category:'normal',elapsedMs:1,review:false,hostId:'host-1'}}));
+  let limit=50;
+  const original=state.context.fetch;const queries=[];
+  state.context.fetch=async(path,options)=>{
+    if(path==='/api/settings'){
+      if(options.method==='PUT')limit=JSON.parse(options.body).resultsPerPage;
+      return {ok:true,json:async()=>({resultsPerPage:limit})};
+    }
+    if(path.endsWith('/results')){
+      const query=JSON.parse(options.body);queries.push(query);
+      let items=records.filter(item=>(query.before==null || item.sequence<query.before) && (query.after==null || item.sequence>query.after) && (query.through==null || item.sequence<=query.through));
+      if(query.search)items=items.filter(item=>item.result.log.includes(query.search));
+      items=items.toReversed();
+      const summary={total:records.length,failed:0,review:0,truncated:0,processingMs:records.length,actionSuccess:0,actionFailed:0,groups:{all:records.length,certain:records.length,uncertain:0},categories:Object.fromEntries(['all','certain','uncertain'].map(group=>[group,{normal:group==='uncertain'?0:records.length,warning:0,error:0,security:0,other:0}])),hosts:{'host-1':{name:'Host',count:records.length,failed:0}},sources:{},throughputBuckets:{}};
+      return {ok:true,json:async()=>JSON.parse(JSON.stringify({snapshot:{jobId:'paged',state:'completed',settings:{mode:'batch',taskName:'Paged Task'},hosts:[],elapsedMs:1000},summary,sequence:records.length,...(query.onlySummary?{}:{items:items.slice(0,limit),hasNext:items.length>limit,limit})}))};
+    }
+    if(path.endsWith('/review'))return {ok:true,json:async()=>({saved:true})};
+    return original(path,options);
+  };
+  return {...state,queries,append(){const sequence=records.length+1;records.push({sequence,result:{log:`record-${sequence}`,category:'normal',elapsedMs:1,review:false,hostId:'host-1'}});}};
+}
+
+test('SQLite-backed UI keeps only its 50-result page while showing whole-run aggregates', async()=>{
+  const {nodes,context,queries}=pagedWorkspace();
+  await vm.runInContext("handlePagedProcessing({jobId:'paged',state:'completed',settings:{mode:'batch'},pagedResults:true})",context);
+  assert.equal(nodes.get('results').children.length,50);
+  assert.equal(logs(nodes)[0],'record-1000');
+  assert.equal(vm.runInContext('completed',context),1000);
+  assert.equal(vm.runInContext('results.length',context),50);
+  assert.equal(vm.runInContext('resultStatistics?.total || pagedView.summary.total',context),1000);
+  assert.equal(nodes.get('page-info').textContent,'Page 1 · 50 results shown');
+  await nodes.get('next').onclick();
+  assert.equal(logs(nodes)[0],'record-950');
+  assert.equal(queries.at(-1).before,951);
+  assert.equal(queries.at(-1).through,1000);
+  assert.equal(vm.runInContext('results.length',context),50);
+  await nodes.get('previous').onclick();assert.equal(logs(nodes)[0],'record-1000');
+});
+
+test('Paged polling only requests new rows and freezes historical or paused pages', async()=>{
+  const {nodes,context,queries,append}=pagedWorkspace();
+  await vm.runInContext("handlePagedProcessing({jobId:'paged',state:'completed',settings:{mode:'batch'},pagedResults:true})",context);
+  const retained=nodes.get('results').children[0];
+  append();await vm.runInContext('handleRefreshResults(false,true)',context);
+  assert.equal(queries.at(-1).after,1000);
+  assert.equal(logs(nodes)[0],'record-1001');
+  assert.equal(nodes.get('results').children[1],retained);
+  assert.equal(vm.runInContext('results.length',context),50);
+  await nodes.get('next').onclick();const frozen=logs(nodes);
+  append();await vm.runInContext('handleRefreshResults(false,true)',context);
+  assert.equal(queries.at(-1).onlySummary,true);assert.deepEqual(logs(nodes),frozen);
+  assert.equal(nodes.get('pause-updates').textContent,'Latest Results (1 new)');
+  await nodes.get('pause-updates').onclick();assert.equal(logs(nodes)[0],'record-1002');
+  nodes.get('pause-updates').onclick();append();await vm.runInContext('handleRefreshResults(false,true)',context);
+  assert.equal(logs(nodes)[0],'record-1002');
+  assert.equal(nodes.get('pause-updates').textContent,'Resume Updates (1 new)');
+  await nodes.get('pause-updates').onclick();assert.equal(logs(nodes)[0],'record-1003');
+});
+
+test('Results settings persist the page size and apply it to the selected run', async()=>{
+  const {nodes,context}=pagedWorkspace();
+  await vm.runInContext("handlePagedProcessing({jobId:'paged',state:'completed',settings:{mode:'batch'},pagedResults:true})",context);
+  nodes.get('nav-results-settings').onclick();
+  assert.equal(nodes.get('settings-title').textContent,'Results');
+  assert.equal(nodes.get('settings-results').hidden,false);
+  nodes.get('results-per-page').value='10';
+  await nodes.get('results-settings-form').onsubmit({preventDefault(){}});
+  assert.equal(vm.runInContext('results.length',context),10);
+  assert.equal(nodes.get('results').children.length,10);
+  assert.equal(nodes.get('results-settings-message').textContent,'Settings saved.');
+});
+
+test('Delete confirmation uses the shared modal and defaults to cancellation', async()=>{
+  const {context,nodes}=workspace([]);
+  const dialog=context.document.getElementById('delete-dialog');
+  let opened=0;dialog.showModal=()=>{opened++;};
+  context.confirm=()=>{throw new Error('Native confirmation must not be used');};
+  const pending=vm.runInContext("handleConfirmDelete('Task','Example','All results will be permanently deleted.')",context);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(opened,1);assert.equal(dialog.returnValue,'cancel');
+  assert.equal(nodes.get('delete-name').textContent,'Example');
+  dialog.onclose();assert.equal(await pending,false);
+  const approved=vm.runInContext("handleConfirmDelete('Source','Input','Original files are kept.')",context);
+  await new Promise(resolve=>setImmediate(resolve));dialog.returnValue='delete';dialog.onclose();assert.equal(await approved,true);
+  const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
+  assert.match(html,/<dialog id="delete-dialog"[^>]*aria-labelledby="delete-title"/);
+  assert.match(html,/value="cancel" class="quiet" autofocus/);
+  const code=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
+  assert.ok(!code.includes('globalThis.confirm('));
+  for(const kind of ['Task','Source','Criteria','Action','SSH Key','SSH Host'])assert.ok(code.includes(`handleConfirmDelete('${kind}'`));
+});
+
+test('Dependency blockers show references with Close only and never approve deletion', async()=>{
+  const {context,nodes}=workspace([]);
+  const dialog=context.document.getElementById('delete-dialog');dialog.showModal=()=>{};
+  context.fetch=async()=>({ok:true,json:async()=>({references:['Task: Analysis','Running task: Analysis']})});
+  const pending=vm.runInContext("handleConfirmDelete('Source','Input','Delete input.','source-1')",context);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(nodes.get('delete-title').textContent,'Cannot Delete Source');
+  assert.equal(nodes.get('delete-approve').hidden,true);
+  assert.equal(nodes.get('delete-cancel').textContent,'Close');
+  assert.equal(nodes.get('delete-references').children[0].textContent,'Task: Analysis');
+  dialog.returnValue='delete';dialog.onclose();assert.equal(await pending,false);
+  context.fetch=async()=>{throw new Error('Offline');};
+  const failed=vm.runInContext("handleConfirmDelete('Task','Example','Delete results.','task-1')",context);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(nodes.get('delete-approve').hidden,true);
+  assert.match(nodes.get('delete-description').textContent,/Could not verify dependencies/);
+  dialog.onclose();assert.equal(await failed,false);
+});
+
+test('Task View groups source fields and host names in structured cards',()=>{
+  const {nodes,context}=workspace([]);
+  vm.runInContext(`
+    registeredSources=[{id:'remote',name:'System Logs',type:'ssh',path:'/var/log/*'},{id:'local',name:'Local Input',type:'local',path:'/input/data.txt'}];
+    sshHosts=[{id:'host-a',name:'Oracle'},{id:'host-b',name:'Raspberry Pi'}];
+    handleViewTask({name:'Monitor',mode:'realtime',resumeOnRestart:true,sources:[
+      {sourceId:'remote',profile:'general',chunkEvents:5,action:'Notify',hostIds:['host-a','host-b']},
+      {sourceId:'local',profile:'general',chunkEvents:1,action:''}
+    ]});
+  `,context);
+  const container=nodes.get('task-view').children[0];
+  assert.equal(container.children[0].children[0].children[0].textContent,'Monitor');
+  const cards=container.children[1].children;
+  assert.equal(cards.length,2);
+  const fields=cards[0].children[0].children;
+  assert.equal(fields[0].children[0].textContent,'Source Name');
+  assert.equal(fields[0].children[1].textContent,'System Logs');
+  assert.equal(fields[1].children[0].textContent,'File Path / Pattern');
+  assert.equal(fields[1].children[1].textContent,'/var/log/*');
+  assert.equal(fields[2].children[1].textContent,'Remote File (SSH)');
+  assert.equal(fields[5].children[1].textContent,'5');
+  assert.equal(fields[6].children[1].textContent,'Notify');
+  assert.equal(fields[3].children[0].textContent,'Source Hosts (2)');
+  assert.deepEqual(fields[3].children[1].children.map(host=>host.textContent),['Oracle','Raspberry Pi']);
+  const local=cards[1].children[0].children;
+  assert.equal(local[6].children[1].textContent,'None');
+  assert.equal(local[3].children[1].children[0].textContent,'DeciFlow (Local)');
+});
+
+
+test('Task list keeps its summary columns while Source names appear in View',()=>{
+  const {nodes,context}=workspace([]);
+  vm.runInContext('renderTasks()',context);
+  const header=nodes.get('task-list').children[0].children[0];
+  assert.deepEqual(header.children.map(item=>item.textContent),['Name','Enabled','Execution','Status','Next Run','Manage']);
+});
+
+
+test('View keeps Task and SSH lists visible without a Back to List button',()=>{
+  const {nodes,context}=workspace([]);
+  vm.runInContext("handleViewTask({name:'Example',mode:'batch',sources:[]})",context);
+  assert.equal(nodes.get('task-registry').hidden,false);
+  assert.equal(nodes.get('task-view').children[0].children[0].children.length,1);
+  vm.runInContext("handleViewKey({name:'Key',privatePath:'/private',publicPath:'/public',publicKey:'public'})",context);
+  assert.equal(nodes.get('ssh-key-registry').hidden,false);
+  assert.equal(nodes.get('ssh-key-view').children[0].children.length,1);
+  vm.runInContext("handleViewHost({name:'Host',host:'example',port:22,username:'reader',keyPath:'/private'})",context);
+  assert.equal(nodes.get('ssh-host-registry').hidden,false);
+  assert.equal(nodes.get('ssh-host-view').children[0].children.length,1);
+});
+
+test('Second SSH Host expands directly below its own row and stays there after status rendering',async()=>{
+  const {nodes,context}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext(`sshHosts=[{id:'a',name:'Alpha',host:'a',port:22,username:'reader',keyPath:'/key'},{id:'b',name:'Oracle',host:'b',port:22,username:'reader',keyPath:'/key'},{id:'c',name:'Third',host:'c',port:22,username:'reader',keyPath:'/key'}];renderSSHHosts();`,context);
+  const body=()=>nodes.get('ssh-host-list').children[0].children[1];
+  const view=()=>nodes.get('ssh-host-view');
+  body().children[1].children[4].children[0].onclick();
+  assert.equal(body().children.length,4);
+  assert.equal(body().children[2].children[0].children[0],view());
+  assert.equal(body().children[2].children[0].colSpan,5);
+  assert.equal(view().children[0].children[0].textContent,'Oracle');
+  vm.runInContext('renderSSHHosts()',context);
+  assert.equal(body().children[2].children[0].children[0],view());
+  body().children[1].children[4].children[0].onclick();assert.equal(view().hidden,true);
+  assert.equal(body().children.length,3);
+  body().children[0].children[4].children[0].onclick();
+  body().children[2].children[4].children[0].onclick();
+  assert.equal(body().children.length,4);
+  assert.equal(body().children[2].children[0].children[0],view());
+  assert.equal(view().children[0].children[0].textContent,'Oracle');
+});
+
+test('Host View and redraw do not repeat automatic checks within one visit',async()=>{
+  const {nodes,context}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext(`currentView='settings';currentSettingsSection='ssh-hosts';sshHosts=[{id:'a',name:'Alpha',host:'a',port:22,username:'reader',keyPath:'/key'}];`,context);
+  context.document.getElementById('ssh-host-registry').hidden=false;let count=0;
+  context.fetch=async()=>{count++;return {ok:true,json:async()=>({connected:true})};};
+  await vm.runInContext('handleAutoCheckHosts()',context);assert.equal(count,1);
+  const body=()=>nodes.get('ssh-host-list').children[0].children[1];
+  body().children[0].children[4].children[0].onclick();
+  await vm.runInContext('handleAutoCheckHosts()',context);assert.equal(count,1);
+  body().children[0].children[4].children[3].onclick();
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(count,2);
+  vm.runInContext('autoCheckedHosts.clear()',context);
+  await vm.runInContext('handleAutoCheckHosts()',context);assert.equal(count,3);
+});
+
+test('Source Action Criteria Task and SSH Key View buttons insert a detail row immediately after selection',async()=>{
+  const {context,nodes}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext(`registeredSources=[{id:'source',name:'Input',type:'local',path:'/input'}];renderSources();registeredActions=[{id:'action',name:'Notify',code:'pass'}];renderActions();registeredTasks=[{id:'task',name:'Analysis',mode:'batch',sources:[]}];renderTasks();sshKeys=[{name:'Key',privatePath:'/key',publicPath:'/pub',publicKey:'public'}];renderSSHKeys();criteriaProfiles={general:{label:'General',instructions:'Default',criteria:{normal:'Normal'}}};renderCriteria();`,context);
+  for(const [list,id,body] of [['source-registry','source-view',false],['action-registry','action-view',false],['task-list','task-view',false],['ssh-key-list','ssh-key-view',true],['criteria-default','criteria-view',false]]){
+    const table=nodes.get(list).children[0];const parent=body?table.children[1]:table;
+    const row=parent.children[body?0:1];const button=row.children.at(-1).children.find(item=>item.textContent==='View');
+    button.onclick();assert.ok(row.nextSibling,id);assert.equal(row.nextSibling.children[0].children[0],nodes.get(id),id);
+    button.onclick();assert.equal(nodes.get(id).hidden,true,id);
+  }
+});
+
+
+test('SSH Host View uses compact label-value fields instead of multiline inputs',()=>{
+  const {nodes,context}=workspace([]);
+  vm.runInContext("handleViewHost({name:'Oracle',host:'132.145.80.109',port:22,username:'root',keyPath:'/data/ssh-keys/My Key/private_key'})",context);
+  const fields=nodes.get('ssh-host-view').children[1];
+  assert.equal(fields.className,'view-details ssh-host-details');
+  assert.deepEqual(fields.children.map(field=>field.children[0].textContent),['Host','Port','SSH User','SSH Key Path']);
+  assert.deepEqual(fields.children.map(field=>field.children[1].textContent),['132.145.80.109','22','root','/data/ssh-keys/My Key/private_key']);
+  assert.ok(fields.children.every(field=>field.children[1].value===''));
+  const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
+  assert.ok(!html.includes('repeating 30 seconds after each pass'));
+});
+
+test('Source Criteria Action SSH Key SSH Host and Task Views share compact detail styling',()=>{
+  const {nodes,context}=workspace([]);
+  vm.runInContext(`
+    handleViewConfiguration('source-view','Input',[['Name','Input'],['Path / Pattern','/input']]);
+    handleViewConfiguration('criteria-view','General',[['Name','General'],['Decision Instructions','Use observed evidence.']]);
+    handleViewConfiguration('action-view','Notify',[['Name','Notify'],['Python Code','print(1)\\nprint(2)']]);
+    handleViewKey({name:'Key',privatePath:'/private',publicPath:'/public',publicKey:'ssh-ed25519 PUBLIC'});
+    handleViewHost({name:'Host',host:'example',port:22,username:'reader',keyPath:'/private'});
+    registeredSources=[{id:'input',name:'Input',type:'local',path:'/input'}];
+    handleViewTask({name:'Task',mode:'batch',sources:[{sourceId:'input',profile:'general',chunkEvents:1}]});
+  `,context);
+  for(const id of ['source-view','criteria-view','action-view','ssh-key-view','ssh-host-view']){
+    const fields=nodes.get(id).children[1];assert.ok(fields.className.includes('view-details'),id);
+    assert.ok(fields.children.every(field=>field.children.length===2),id);
+  }
+  assert.equal(nodes.get('action-view').children[1].children[1].children[1].textContent,'print(1)\nprint(2)');
+  assert.equal(nodes.get('action-view').children[1].children[1].children[1].className,'view-value-code');
+  assert.equal(nodes.get('ssh-key-view').children[1].children[3].children[1].textContent,'****');
+  assert.ok(nodes.get('task-view').children[0].children[1].children[0].children[0].className.includes('view-details'));
+});
+
+test('Python coloring preserves source text and treats code as inert text',()=>{
+  const {context}=workspace([]);
+  const source='@decorator\nasync def notify(value):\n    # import is a comment\n    text = "<script>alert(1)</script>"\n    block = """class text\nline two"""\n    return print(0xFF, 3.14, True)\n';
+  context.pythonSource=source;
+  const tokens=vm.runInContext("(()=>{const node=element('code','');highlightPython(node,pythonSource);return node.children.map(span=>({text:span.textContent,kind:span.className}));})()",context);
+  assert.equal(tokens.map(token=>token.text).join(''),source);
+  for(const [text,kind] of [['async','keyword'],['notify','function'],['# import is a comment','comment'],['"<script>alert(1)</script>"','string'],['0xFF','number'],['print','keyword']]){
+    assert.ok(tokens.some(token=>token.text===text && token.kind.split(' ').includes(kind)),text);
+  }
+});
+
+test('Python editor recolors without changing input text or selection and synchronizes scrolling',()=>{
+  const {context,nodes}=workspace([]);
+  vm.runInContext("registeredActions=[{name:'Notify',code:'print(1)'}];handleEditAction(0)",context);
+  const label=nodes.get('action-editor').children[0].children[3];
+  const input=label.children[0],backdrop=label.children[1],code=backdrop.children[0];
+  input.value='if True:\n    print("updated")';input.selectionStart=4;input.selectionEnd=4;input.oninput();
+  assert.equal(code.children.map(token=>token.textContent).join(''),input.value);
+  assert.equal(input.selectionStart,4);assert.equal(input.selectionEnd,4);
+  assert.equal(backdrop.attributes['aria-hidden'],'true');
+  code.style={};input.scrollLeft=24;input.scrollTop=48;input.onscroll();
+  assert.equal(code.style.transform,'translate(-24px, -48px)');
+  assert.equal(vm.runInContext('actionRows[0].code.value',context),input.value);
+});
+
+test('Vendored Prism handles nested Python f-string tokens without changing source',()=>{
+  const {context}=workspace([]);
+  context.pythonSource='result = f"value: {len(items) + 1!r}"\n';
+  const result=vm.runInContext("(()=>{const node=element('code','');highlightPython(node,pythonSource);const classes=[];const walk=node=>{classes.push(node.className);node.children.forEach(walk);};walk(node);return {text:node.children.map(token=>token.textContent).join(''),classes};})()",context);
+  assert.equal(result.text,context.pythonSource);
+  assert.ok(result.classes.includes('token string-interpolation'));
+  assert.ok(result.classes.includes('token builtin'));
+  const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
+  assert.ok(html.indexOf('/vendor/prism/prism-python-1.30.0.min.js')<html.indexOf('src="/app.js"'));
+  assert.match(html,/prism-python-1\.30\.0\.min\.js" data-manual/);
+  const app=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
+  assert.ok(!app.includes('const pythonKeywords'));
+});
+
+test('Code View and editor use the same programming font stack',()=>{
+  const css=readFileSync(new URL('../public/style.css',import.meta.url),'utf8');
+  assert.match(css,/--code-font:\s*Consolas,/);
+  assert.match(css,/\.view-value-code, \.view-value-key \{ font-family: var\(--code-font\)/);
+  assert.match(css,/\.python-highlight \{[^}]*font: 13px\/1\.5 var\(--code-font\)/);
+  assert.ok(!css.includes('ui-monospace, monospace'));
+});
+
+test('Criteria View uses compact full-width rows for instructions and category descriptions',()=>{
+  const {context,nodes}=workspace([]);
+  vm.runInContext("criteriaProfiles={application:{label:'Application',instructions:'Distinguish retries from final failures.',criteria:{normal:'Successful operation.',warning:'Recoverable issue.',error:'Final failure.',security:'Unauthorized action.',other:'Insufficient context.'}}};handleViewCriteria('application')",context);
+  const fields=nodes.get('criteria-view').children[1];
+  assert.ok(fields.className.includes('criteria-details'));
+  assert.deepEqual(fields.children.map(field=>field.children[0].textContent),['Profile ID','Name','Decision Instructions','Normal','Warning','Error','Security','Other']);
+  const css=readFileSync(new URL('../public/style.css',import.meta.url),'utf8');
+  assert.match(css,/\.criteria-details > div:nth-child\(n\+3\) \{ grid-column: 1 \/ -1;/);
+});
+
+test('Selecting a Task without history clears another Task results and statistics',async()=>{
+  const {context,nodes}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext("registeredTasks=[{id:'idle',name:'Never Run',mode:'batch',sources:[]}];results=[{log:'old',category:'normal',elapsedMs:1}];completed=1;completionOrder=[0];render();renderTaskMonitor();",context);
+  await nodes.get('running-tasks').children[0].onclick();
+  assert.equal(vm.runInContext('results.length',context),0);
+  assert.equal(vm.runInContext('completed',context),0);
+  assert.equal(nodes.get('result-context').textContent,'Never Run');
+  assert.equal(nodes.get('message').textContent,'No executions yet.');
+});
+
+
+test('Task availability switch reflects disabled state and blocks Run',()=>{
+  const {nodes,context}=workspace([]);
+  vm.runInContext('registeredTasks[0].enabled=false;renderTasks()',context);
+  const row=nodes.get('task-list').children[0].children[1];
+  const toggle=row.children[1].children[0];
+  assert.equal(toggle.attributes.role,'switch');
+  assert.equal(toggle.attributes['aria-checked'],'false');
+  assert.equal(row.children.at(-1).children[0].disabled,true);
+  vm.runInContext('registeredTasks[0].enabled=true;renderTasks()',context);
+  assert.equal(nodes.get('task-list').children[0].children[1].children[1].children[0].attributes['aria-checked'],'true');
+});
+
+
+test('Shared messages show errors in red and clear the error state on success',()=>{
+  const {nodes,context}=workspace([]);
+  for(const id of ['task-message','source-message','criteria-message','action-message','ssh-key-message','ssh-host-message','results-settings-message','message']) {
+    vm.runInContext(`handleMessage('${id}','Failed',true)`,context);
+    assert.match(nodes.get(id).className,/error-message/);
+    vm.runInContext(`handleMessage('${id}','Saved')`,context);
+    assert.doesNotMatch(nodes.get(id).className,/error-message/);
+    assert.equal(nodes.get(id).textContent,'Saved');
+  }
+});
+
+test('Unavailable Task toggle endpoint displays a readable error',async()=>{
+  const {nodes,context}=workspace([]);
+  vm.runInContext("fetch=async()=>({status:405});",context);
+  await vm.runInContext("handleToggleTask(registeredTasks[0],{disabled:false})",context);
+  assert.match(nodes.get('task-message').textContent,/Restart the DeciFlow/);
+  assert.match(nodes.get('task-message').className,/error-message/);
+});
+
+
+test('SSH Host selector stays visible without a disclosure control',()=>{
+  const {context}=workspace([]);
+  const picker=vm.runInContext("hostPicker({hostIds:[]},()=>{})",context);
+  assert.equal(picker.children[0].className,'host-picker-title');
+  assert.equal(picker.children[1].type,'search');
+  assert.equal(picker.children[0].onclick,undefined);
+});
+
+
+test('Task Monitor labels Source, type and optional Action without Host details',()=>{
+  const {nodes,context}=workspace([]);
+  vm.runInContext(`registeredSources=[{id:'remote',name:'System Logs',type:'ssh'}];sshHosts=[{id:'host',name:'Oracle'}];registeredTasks=[{id:'monitor',name:'Monitor',mode:'realtime',enabled:false,sources:[{sourceId:'remote',hostIds:['host'],action:'ElasticSearch'}],latestRun:{state:'stopped',counts:{completed:125,failed:2}}}];renderTaskMonitor()`,context);
+  const card=nodes.get('running-tasks').children[0];
+  assert.equal(card.children.length,4);
+  assert.deepEqual(card.children[1].children.map(node=>node.textContent),['Disabled','Stopped']);
+  assert.equal(card.children[2].textContent,'Source: System Logs · Source Hosts: 1');
+  assert.equal(card.children[3].textContent,'Type: Remote File (SSH) / Mode: Realtime / Action: ElasticSearch');
+  card.getBoundingClientRect=()=>({left:20,top:20,bottom:100});
+  card.onfocus();
+  assert.match(nodes.get('task-monitor-tooltip').children[2].textContent,/Source Hosts \(1\):\nOracle/);
+  assert.equal(nodes.get('task-monitor-tooltip').hidden,false);
+  card.onkeydown({key:'Escape'});
+  assert.equal(nodes.get('task-monitor-tooltip').hidden,true);
+  assert.doesNotMatch(card.children[3].textContent,/Oracle|Host:/);
+  vm.runInContext("registeredSources=[{id:'local',name:'DeciFlow',type:'local'}];registeredTasks[0].sources=[{sourceId:'local',action:''}];renderTaskMonitor()",context);
+  assert.equal(nodes.get('running-tasks').children[0].children[2].textContent,'Source: DeciFlow · Source Hosts: 1');
+  assert.equal(nodes.get('running-tasks').children[0].children[3].textContent,'Type: Local File / Mode: Realtime / Action: None');
+});
+
+
+test('Monitor availability and execution state use shared badge styling',()=>{
+  const css=readFileSync(new URL('../public/style.css',import.meta.url),'utf8');
+  assert.match(css,/\.task-state\.idle\s*\{\s*color: #7c3aed/);
+  assert.match(css,/\.monitor-state, \.monitor-availability\s*\{[^}]*height: 20px;[^}]*background: #e7ece9/);
+  const {nodes,context}=workspace([]);
+  vm.runInContext('renderTaskMonitor()',context);
+  const status=nodes.get('running-tasks').children[0].children[1];
+  assert.equal(status.children[0].className,'monitor-availability enabled');
+  assert.equal(status.children[1].className,'task-state monitor-state idle');
+});
+
+
+test('Task Monitor card surface follows execution state independently of selection',()=>{
+  const {nodes,context}=workspace([]);
+  vm.runInContext(`registeredTasks=[{id:'active',name:'Active',mode:'realtime',activeRun:{}},{id:'stopped',name:'Stopped',mode:'realtime',latestRun:{state:'stopped'}}];selectedTaskId='stopped';renderTaskMonitor()`,context);
+  const cards=nodes.get('running-tasks').children;
+  assert.match(cards[0].className,/monitor-card-running/);
+  assert.match(cards[1].className,/monitor-card-stopped/);
+  assert.equal(cards[1].attributes['aria-pressed'],'true');
+});
+
+
+test('Source editor accepts multiple paths in one multiline field',async()=>{
+  const {context}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext('handleEditSource(0)',context);
+  assert.equal(vm.runInContext('sourceFields.path.rows',context),3);
+  vm.runInContext("sourceFields.path.value='/logs/*.log\\n/logs/*.txt'",context);
+  assert.equal(vm.runInContext('sourceFields.path.value',context),'/logs/*.log\n/logs/*.txt');
+});
+
+
+test('Monitor counts distinct Source Hosts while tooltip includes all assignments',()=>{
+  const {nodes,context}=workspace([]);
+  vm.runInContext(`registeredSources=[{id:'one',name:'Application',type:'ssh',path:'/var/log/app.log'},{id:'two',name:'System',type:'ssh',path:'/var/log/messages'}];sshHosts=[{id:'a',name:'Alpha',host:'alpha.example',username:'reader',port:22},{id:'b',name:'Beta',host:'beta.example',username:'logs',port:2222}];registeredTasks=[{id:'monitor',name:'Fleet',mode:'batch',enabled:true,sources:[{sourceId:'one',hostIds:['a','b'],action:'Notify',profile:'general',chunkEvents:2},{sourceId:'two',hostIds:['a'],action:''}]}];renderTaskMonitor()`,context);
+  const card=nodes.get('running-tasks').children[0];
+  assert.equal(card.children[2].textContent,'Source: Application, System · Source Hosts: 2');
+  assert.doesNotMatch(card.children[2].textContent,/Alpha|Beta/);
+  card.getBoundingClientRect=()=>({left:10,top:10,bottom:90});
+  card.onfocus();
+  const tooltip=nodes.get('task-monitor-tooltip');
+  const text=tooltip.children.map(child=>child.textContent).join('\n');
+  for(const part of ['Application','System','Alpha · reader@alpha.example:22','Beta · logs@beta.example:2222','/var/log/app.log','Action: Notify','Action: None'])assert.ok(text.includes(part));
+  card.onblur();assert.equal(tooltip.hidden,true);
+});
+
+
+test('Reviewed export downloads only corrected categories through its own DB endpoint',()=>{
+  const {nodes,context}=workspace([]);
+  let action;
+  context.document.body={append(){}};
+  const create=context.document.createElement;
+  context.document.createElement=()=>{const node=create();node.submit=()=>{action=node.action;};return node;};
+  vm.runInContext("pagedView={};activeJobId='review-run';completed=1",context);
+  nodes.get('export-reviewed').onclick();
+  assert.equal(action,'/api/jobs/review-run/export-reviewed');
+  nodes.get('export').onclick();
+  assert.equal(action,'/api/jobs/review-run/export');
+});
+
+
+test('Task tooltip waits for one stationary second and stays open during movement',()=>{
+  const {nodes,context}=workspace([]);
+  let now=0,next=0;const timers=new Map();
+  context.setTimeout=(callback,delay)=>{const id=++next;timers.set(id,{callback,due:now+delay});return id;};
+  context.clearTimeout=id=>timers.delete(id);
+  const advance=ms=>{now+=ms;for(const [id,timer] of [...timers])if(timer.due<=now){timers.delete(id);timer.callback();}};
+  vm.runInContext('renderTaskMonitor()',context);
+  const card=nodes.get('running-tasks').children[0],tip=nodes.get('task-monitor-tooltip');
+  card.getBoundingClientRect=()=>({left:10,top:10,bottom:90});
+  card.onmouseenter();assert.equal(tip.hidden,true);
+  advance(500);assert.equal(tip.hidden,true);
+  card.onmousemove();advance(999);assert.equal(tip.hidden,true);
+  advance(1);assert.equal(tip.hidden,false);
+  card.onmousemove();assert.equal(tip.hidden,false);
+  advance(1000);assert.equal(tip.hidden,false);
+  card.onmouseleave();tip.onmouseenter();advance(500);
+  assert.equal(tip.hidden,false);
+  card.onmouseenter();assert.equal(tip.hidden,false);
+  tip.matches=selector=>selector===':hover';card.onblur();
+  assert.equal(tip.hidden,false);
+  tip.onmouseleave();advance(200);assert.equal(tip.hidden,true);
+  card.onmouseenter();advance(500);card.onmouseleave();advance(2500);
+  assert.equal(tip.hidden,true);
+  card.onmouseenter();card.onkeydown({key:'Escape'});advance(2000);
+  assert.equal(tip.hidden,true);
+  card.onfocus();assert.equal(tip.hidden,false);
 });
