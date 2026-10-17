@@ -6,11 +6,13 @@
 
 [English](README.md) | [한국어](README.ko.md)
 
-**Make typed AI decisions over system logs and customer consultations.**
+**Make fast AI decisions across diverse datasets and automate follow-up workflows your way.**
 
-[Demo Video](https://www.youtube.com/watch?v=wGMtxpeHHBs)
+## Architecture
 
-[![Watch the DeciFlow demo on YouTube](images/DeciFlow-Demo-Screenshot-2026-10-11-034530.png)](https://www.youtube.com/watch?v=wGMtxpeHHBs)
+[![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue)](https://deepwiki.com/call518/DeciFlow)
+
+![DeciFlow architecture](images/DeciFlow-Architecture.png)
 
 DeciFlow reads TEXT log chunks or individual JSONL records and sends their text
 to Laya or Jev. A Criteria profile defines named `choice`, `score`, and `noul`
@@ -51,12 +53,6 @@ log file and review the predictions in your browser.
 Result JSON keeps input text once; SQLite shares repeated Criteria definitions per run. Custom Actions should follow the [compact v2 contract](docs/actions.md#compact-result-json-contract-version-2).
 
 Menus, item details/editors, Task History, and execution results have [shareable clean URLs](docs/usage.md#shareable-urls), including result filters and cursor pages. Legacy hash links remain supported.
-
-## Architecture
-
-[![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue)](https://deepwiki.com/call518/DeciFlow)
-
-![DeciFlow architecture](images/DeciFlow-Architecture.png)
 
 ## Quick start — Docker + Laya CPU
 

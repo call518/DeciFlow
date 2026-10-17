@@ -6,11 +6,13 @@
 
 [English](README.md) | [한국어](README.ko.md)
 
-**시스템 로그와 고객 상담을 AI로 분류하고 필요한 업무 판단을 함께 확인하세요.**
+**다양한 데이터를 AI로 빠르게 판단하고 결과에 따른 후속 처리까지 자유롭게 자동화하세요.**
 
-[Demo Video](https://www.youtube.com/watch?v=wGMtxpeHHBs)
+## 아키텍처
 
-[![YouTube에서 DeciFlow 데모 보기](images/DeciFlow-Demo-Screenshot-2026-10-11-034530.png)](https://www.youtube.com/watch?v=wGMtxpeHHBs)
+[![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue)](https://deepwiki.com/call518/DeciFlow)
+
+![DeciFlow architecture](images/DeciFlow-Architecture.png)
 
 DeciFlow는 TEXT 로그 청크 또는 JSONL 개별 레코드의 본문을 읽어 Laya나 Jev에
 전달합니다. Criteria 프로필에서 `choice`·`score`·`noul` 판단 항목을 정의하며,
@@ -49,12 +51,6 @@ access 로그, 애플리케이션 오류, 운영 이벤트에 활용하세요.
 결과 JSON은 원문을 한 번 보존하고 SQLite는 반복 Criteria 정의를 실행별로 공유 저장합니다. 사용자 Action은 [간결한 v2 계약](docs/actions.ko.md#간결한-결과-json-계약-버전-2)을 참고하세요.
 
 메뉴·항목 상세/편집·Task History·실행 결과는 [공유 가능한 일반 URL](docs/usage.ko.md#공유-가능한-url)을 제공하며 결과 필터·커서 페이지도 유지합니다. 기존 해시 링크도 지원합니다.
-
-## 아키텍처
-
-[![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue)](https://deepwiki.com/call518/DeciFlow)
-
-![DeciFlow architecture](images/DeciFlow-Architecture.png)
 
 ## 빠른 시작 — Docker + Laya CPU
 
