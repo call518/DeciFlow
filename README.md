@@ -19,8 +19,7 @@ System profiles retain **Normal, Warning, Error, Security, Other**, urgency, and
 work-ticket probability. Consultation profiles can classify inquiry type,
 handling status, follow-up ownership, urgency, and follow-up need.
 
-Each result shows the profile's selected summary decisions. Expand **All Decision
-Results** for every decision and **Probabilities and Criteria** for its distribution
+Each result shows the profile's selected summary decisions. Expand **More Decision Results...** for decisions hidden from the summary and **Probabilities and Criteria** for its distribution
 and definitions. **Review Decisions** records typed human corrections without
 changing AI predictions. Scores are probability-weighted values, not rounded grades.
 DeciFlow does not create tickets automatically.

@@ -19,8 +19,8 @@ DeciFlow는 TEXT 로그 청크 또는 JSONL 개별 레코드의 본문을 읽어
 유지합니다. 상담 프로필은 문의 유형·처리 상태·후속 처리 주체·긴급도·후속 조치
 필요성을 판단할 수 있습니다.
 
-결과에는 프로필에서 선택한 요약 항목을 표시합니다. **All Decision Results**로
-전체 항목을, **Probabilities and Criteria**로 항목별 확률과 기준을 펼칩니다.
+결과에는 프로필에서 선택한 요약 항목을 표시합니다. **More Decision Results...**로
+요약에서 숨긴 항목만, **Probabilities and Criteria**로 항목별 확률과 기준을 펼칩니다.
 **Review Decisions**에서 AI 예측을 유지한 채 타입별 검토자 수정값을 기록합니다.
 점수는 반올림한 등급이 아닌 확률 가중 값이며, 티켓을 자동 생성하지는 않습니다.
 

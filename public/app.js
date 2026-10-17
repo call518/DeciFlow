@@ -1444,7 +1444,7 @@ function handleEditCriteria(id, template = null) {
       const help={id:'Unique result key within this profile, such as handling_status. Use lowercase letters, digits and underscores; start with a letter.',label:'Readable result heading, such as Handling Status. This is separate from the Decision ID.',type:'Choice selects an option; Score rates ordered levels; Noul estimates the probability of Yes.',instructions:'The question and rules for this decision only. Define boundaries and how to handle missing evidence.'};
       addHelp(label,input,help[key]);panel.append(label);row[key]=input;
     }
-    const summaryLabel=element('label','Show in Result Summary');const summary=element('input','');summary.type='checkbox';summary.checked=definition.summary!==false;summaryLabel.prepend(summary);addHelp(summaryLabel,summary,'Show this decision on the result summary. Unchecked decisions still run and appear in All Decision Results.');panel.append(summaryLabel);row.summary=summary;
+    const summaryLabel=element('label','Show in Result Summary');const summary=element('input','');summary.type='checkbox';summary.checked=definition.summary!==false;summaryLabel.prepend(summary);addHelp(summaryLabel,summary,'Show this decision on the result summary. Unchecked decisions still run and appear under More Decision Results.');panel.append(summaryLabel);row.summary=summary;
     const options=element('div','','decision-options');const optionRows=[];
     const optionHelp=element('p','','criteria-help');
     const addOption=(key,text)=>{
@@ -2096,12 +2096,14 @@ function render(updateList = true, incremental = false) {
       decisions.setAttribute('role', 'group'); decisions.setAttribute('aria-label', 'Decision results');
       const definitions=resultDecisionDefinitions(result),answers=resultDecisionAnswers(result);
       for(const [id,q] of Object.entries(definitions))if(q.summary!==false)decisions.append(renderDecisionCard(id,q,answers[id],result));
-      const details=element('details','','all-decisions');details.append(element('summary','All Decision Results'));
-      const full=element('div','','decision-grid');
-      for(const [id,q] of Object.entries(definitions))full.append(renderDecisionCard(id,q,answers[id],result));
-      details.append(full);
-      handleResultDisclosure(details,result,'decisions');
-      top.append(decisions,details);
+      top.append(decisions);
+      const hidden=Object.entries(definitions).filter(([,q])=>q.summary===false);
+      if(hidden.length) {
+        const details=element('details','','all-decisions');details.append(element('summary','More Decision Results...'));
+        const full=element('div','','decision-grid');
+        for(const [id,q] of hidden)full.append(renderDecisionCard(id,q,answers[id],result));
+        details.append(full);handleResultDisclosure(details,result,'decisions');top.append(details);
+      }
       const metadata = element('div', '', 'result-top');
       metadata.append(element('span', `Processing: ${result.elapsedMs}ms`));
       if (needsReview(result)) metadata.append(element('span', 'Needs Review', 'review'));

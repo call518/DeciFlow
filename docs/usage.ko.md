@@ -35,7 +35,7 @@ Criteria는 Choice·Score·Noul 판단 항목의 개수·선택지·단계·요�
 자신의 판단 항목을 지정합니다. TEXT는 비어 있지 않은 줄을 묶으며 JSONL은 설정한
 본문 필드를 추출해 한 줄의 객체를 한 건씩 처리합니다. [Criteria](criteria.ko.md)를 참고하세요.
 
-선택한 요약 항목은 작은 카드로 표시합니다. **All Decision Results**에서 모든 항목,
+선택한 요약 항목은 작은 카드로 표시합니다. **More Decision Results...**에서 요약에 없는 항목만,
 **Probabilities and Criteria**에서 항목별 확률과 기준을 펼칩니다. **Review Decisions**로
 타입별 수정값을 기록합니다. Choice 불확실성은 항목별로 표시하며 어느 Choice든 검토가
 필요하면 Needs Review가 됩니다. 차트의 확실성은 대표 Choice 기준입니다. 각 판단은

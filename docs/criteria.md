@@ -51,7 +51,7 @@ or order change.
 | Display Name | Human-readable result heading | `Handling Status`. Korean is also supported. It need not repeat the ID. |
 | Type | Expected answer format | Choice for categories, Score for ordered levels, Noul for Yes probability. |
 | Instructions | Question and rules for this decision only | `Distinguish outstanding organizational actions at the end of the conversation.` Keep shared principles in the upper section. |
-| Show in Result Summary | Whether to show this decision in each result summary | Unchecked decisions still run and appear under All Decision Results. |
+| Show in Result Summary | Whether to show this decision in each result summary | Unchecked decisions still run and appear under **More Decision Results...**. |
 
 **Distinguish the names:** Profile Name identifies the whole bundle selected by a
 Task; Decision ID is a result field key; Display Name is that field's visible
@@ -201,8 +201,8 @@ judgments about resolution or promised follow-up.
 
 ## Results, Review, and Storage
 
-Summary decisions appear on each result. **All Decision Results** shows every
-item; **Probabilities and Criteria** shows its distribution and definitions.
+Summary decisions appear on each result. **More Decision Results...** shows only
+items hidden from the summary; **Probabilities and Criteria** shows its distribution and definitions.
 **Review Decisions** accepts Choice options, bounded Score values, and Noul
 probabilities. Clear a correction to return to Not Reviewed. AI answers and charts
 remain unchanged. Export Reviewed JSON includes results with any changed decision.

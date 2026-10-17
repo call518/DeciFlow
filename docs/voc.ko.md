@@ -44,7 +44,7 @@ Batch를 사용하세요. Jev를 선택했다면 유료 API를 사용합니다.
 ## 2. 결과에서 확인할 내용
 
 - 요약 카드: 문의 유형, 처리 상태, 후속 조치 필요.
-- **All Decision Results**: 요약에서 숨긴 후속 조치 담당·긴급도까지 총 5개 항목.
+- **More Decision Results...**: 요약에서 숨긴 후속 조치 담당·긴급도 2개 항목만 표시.
 - **Input Text**: 이 판단의 근거가 된 전체 대화.
 - **Probabilities and Criteria**: 항목별 확률·지시문·선택지 정의.
 - **Review Decisions**: 사람이 확인한 정정값. AI 원본과 차트는 유지됩니다.

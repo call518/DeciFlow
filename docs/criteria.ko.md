@@ -49,7 +49,7 @@
 | Display Name | 사람이 읽는 결과 카드 제목 | `처리 상태`. 한국어 사용 가능. ID를 이름 칸에 반복할 필요는 없습니다. |
 | Type | 어떤 형태의 답을 받을지 선택 | 유형 분류는 Choice, 순서 있는 수준은 Score, 예·아니요 확률은 Noul. |
 | Instructions | 이 항목만의 질문과 판정 규칙 | `대화 종료 시 회사 측 미완료 조치가 남아 있는지 구분한다.` 공통 원칙은 상단에 둡니다. |
-| Show in Result Summary | 각 결과의 요약에 표시할지 | 체크 해제해도 판단은 수행하며 All Decision Results에서 볼 수 있습니다. |
+| Show in Result Summary | 각 결과의 요약에 표시할지 | 체크 해제해도 판단은 수행하며 More Decision Results...에서 볼 수 있습니다. |
 
 **세 가지 이름을 구분하세요:** Profile Name은 Task가 선택하는 전체 묶음의 이름,
 Decision ID는 결과 필드 키, Display Name은 그 필드의 화면 제목입니다.
@@ -193,7 +193,7 @@ Actions를 위한 category·urgency·ticket 관련 필드도 유지합니다.
 
 ## 결과·검토·저장
 
-각 결과에 요약 대상으로 선택한 항목을 표시합니다. **All Decision Results**는 전체 항목,
+각 결과에 요약 대상으로 선택한 항목을 표시합니다. **More Decision Results...**는 요약에서 숨긴 항목만,
 **Probabilities and Criteria**는 항목별 확률과 기준을 표시합니다. **Review Decisions**에서
 Choice 선택지·범위 내 Score 값·Noul 확률을 수정합니다. 수정값을 비우면 Not Reviewed로
 돌아갑니다. AI 원래 답변과 차트는 바꾸지 않습니다. Export Reviewed JSON은 어떤 항목이든

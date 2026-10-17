@@ -45,7 +45,7 @@ file test. Selecting Jev uses the paid API.
 ## 2. Inspect the Results
 
 - Summary cards: Inquiry Type, Handling Status, and Follow-up Required.
-- **All Decision Results**: all five decisions, including Follow-up Owner and Urgency.
+- **More Decision Results...**: the two decisions hidden from the summary: Follow-up Owner and Urgency.
 - **Input Text**: the full conversation used for the decision.
 - **Probabilities and Criteria**: probabilities, instructions, and option definitions.
 - **Review Decisions**: human corrections; AI originals and charts remain unchanged.

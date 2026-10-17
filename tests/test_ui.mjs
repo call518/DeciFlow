@@ -2919,7 +2919,9 @@ test('Ten mixed decisions share summary, detail, classification and typed review
   const {context,nodes}=workspace([event]);await runTask(nodes);
   const row=nodes.get('results').children[0];assert.equal(decisionCards(row).length,3);
   const details=row.children[0].children.find(child=>child.className==='all-decisions');
-  assert.equal(details.children[1].children.length,10);
+  assert.equal(details.children[1].children.length,7);
+  assert.equal(details.children[0].textContent,'More Decision Results...');
+  assert.deepEqual(details.children[1].children.map(card=>card.children[0].textContent),Array.from({length:7},(_,i)=>`Decision ${i+3} (${i<2?'Score':'Noul'})`));
   assert.equal(row.children[1].className,'original-input');
   assert.ok(nodes.get('category-filter').children.some(option=>option.value==='voc:pending'));
   const reviews=row.children.at(-2).children[1];assert.equal(reviews.children.length,10);
@@ -3557,4 +3559,11 @@ test('Main link uses the logo root URL and polling preserves it', async () => {
   const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
   assert.match(html,/class="brand" href="\/"/);
   assert.match(html,/id="nav-main" href="\/"/);
+});
+
+
+test('Results omit More Decision Results when every decision is already visible', async () => {
+  const {nodes}=workspace([result(0,false)]);
+  await runTask(nodes);
+  assert.equal(nodes.get('results').children[0].children[0].children.some(child=>child.className==='all-decisions'),false);
 });

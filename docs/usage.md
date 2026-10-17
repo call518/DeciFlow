@@ -39,8 +39,8 @@ Criteria defines any number of named Choice, Score, and Noul decisions. Existing
 system profiles retain Category, Urgency, and Work Ticket. New profiles configure
 their own options, levels, and summary decisions. See [Criteria](criteria.md).
 
-Selected summary items appear in compact cards. **All Decision Results** expands
-every item; **Probabilities and Criteria** expands its distribution and definitions.
+Selected summary items appear in compact cards. **More Decision Results...** expands
+only items hidden from the summary; **Probabilities and Criteria** expands its distribution and definitions.
 **Review Decisions** records typed corrections. Choice uncertainty is shown per
 item; Needs Review can come from any Choice, while chart certainty refers to the
 primary Choice. These are separate judgments, not one combined probability.
