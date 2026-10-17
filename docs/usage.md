@@ -13,7 +13,7 @@ a continuous health check; local input rejections do not change the status.
 ### Tasks and criteria
 
 Register inputs in **Sources**, then save their Criteria, Events/Chunk, and Action
-assignments in **Tasks**. Main lists all saved Tasks, with running/starting Tasks first and names sorted within each group. Click one to show its current or latest execution;
+assignments in **Tasks**. Main lists enabled Tasks, with running/starting Tasks first and names sorted within each group. Click one to show its current or latest execution;
 a fresh page has no selection. Tasks supports manual Batch, cron Batch with a timezone,
 and continuous Realtime; there is no Paste input. Saving does not start analysis.
 Use the Enabled switch and Run, Stop, View, Edit, History, and Delete from the Task list.

@@ -17,6 +17,13 @@ function handleWriteRoute(path,replace=false) {
     if(globalThis.location.hash!==hash)globalThis.location.hash=hash;
   }
 }
+function handleRunProgress(state, mode) {
+  const label=['running','pausing','paused','stopped','skipped'].includes(state)
+    ? state==='running'?(mode==='realtime'?'Realtime':'Batch'):titleLabel(state)
+    : '';
+  $('message').className='';
+  handleMessage('message',label);
+}
 function handleClearRouteLinks(base) {
   for(const path of routeOpeners.keys())if(path.startsWith(`${base}/`))routeOpeners.delete(path);
 }
@@ -760,7 +767,7 @@ $('task-monitor-tooltip').onmouseenter=()=>clearTimeout(taskTooltipTimer);
 $('task-monitor-tooltip').onmouseleave=handleHideTaskTooltip;
 function renderTaskMonitor() {
   const list=$('running-tasks'); list.replaceChildren();
-  const tasks=[...registeredTasks].sort((a,b)=>Number(Boolean(b.activeRun || b.starting))-Number(Boolean(a.activeRun || a.starting)) || compareNames(a,b));
+  const tasks=registeredTasks.filter(task=>task.enabled!==false).sort((a,b)=>Number(Boolean(b.activeRun || b.starting))-Number(Boolean(a.activeRun || a.starting)) || compareNames(a,b));
   for(const task of tasks) {
     const button=element('button','','running-task'); button.type='button';
     button.setAttribute('aria-pressed',String(task.id===selectedTaskId));
@@ -807,7 +814,7 @@ function renderTaskMonitor() {
     button.onclick=()=>{cancelTooltip();return handleSelectTask(task.id);};
     list.append(button);
   }
-  if(!tasks.length)list.append(element('p','No saved Tasks. Add a Task in Tasks.','caption'));
+  if(!tasks.length)list.append(element('p','No Enabled Tasks. Add a Task in Tasks.','caption'));
 
 }
 function renderTasks() {
@@ -855,16 +862,30 @@ async function handleToggleTask(task,button) {
   }catch(error){handleMessage('task-message',error.message,true);}
   finally{button.disabled=false;}
 }
-async function handleLoadTasks() {
+let loadingTasks=null;
+let taskLoadError='';
+function handleLoadTasks() {
+  if(!loadingTasks)loadingTasks=handleFetchTasks().finally(()=>{loadingTasks=null;});
+  return loadingTasks;
+}
+async function handleFetchTasks() {
   try {
     const response=await fetch('/api/tasks',{method:'POST'});
     if(response.status===404 || response.status===405)throw new Error('Tasks API is unavailable. Restart the DeciFlow UI server or container.');
     const data=await readApiJsonResponse(response,'/api/tasks');if(!response.ok)throw new Error(data.error);
     registeredTasks=data.tasks;renderTasks();
+    $('task-monitor-message').hidden=true;handleMessage('task-monitor-message','');
+    if(taskLoadError && $('task-message').textContent===taskLoadError)handleMessage('task-message','');
+    taskLoadError='';
     const selected=registeredTasks.find(task=>task.id===selectedTaskId);
     const run=selected?.activeRun || selected?.latestRun;
     if(monitoringReady && currentView==='main' && run && ((followLatestTask && run.jobId!==activeJobId) || (run.jobId===activeJobId && !busy && ['running','pausing','paused'].includes(run.state))))handleWatchRun(run);
-  } catch(error) { handleMessage('task-message',error.message,true); handleMessage('message',error.message,true); }
+  } catch(error) {
+    taskLoadError=error.message;handleMessage('task-message',taskLoadError,true);
+    $('task-monitor-message').hidden=false;
+    handleMessage('task-monitor-message','Task list refresh failed. Showing the last loaded list; retrying automatically.');
+    $('task-monitor-message').title=taskLoadError;
+  }
 }
 function handleCloseTask() {
   handleCloseInlineView('task-view');handleCloseInlineView('task-history');
@@ -1088,7 +1109,7 @@ $('nav-settings').onclick = () => { handleMenuNavigation('settings'); };
 $('nav-ssh-keys').onclick = () => handleMenuNavigation('settings','ssh-keys');
 $('nav-ssh-hosts').onclick = () => handleMenuNavigation('settings','ssh-hosts');
 $('nav-tasks').onclick = () => handleMenuNavigation('tasks');
-$('nav-main').onclick = () => handleNavigation('main');
+$('nav-main').onclick = () => handleNavigation('main',null,'/');
 $('nav-actions').onclick = () => handleMenuNavigation('actions');
 $('nav-sources').onclick = () => { handleMenuNavigation('sources'); if (!sourcesLoaded) return handleLoadSources(); };
 const defaultActionCode = `import json
@@ -1993,12 +2014,11 @@ function render(updateList = true, incremental = false) {
   const actionSuccess = stats.actionSuccess;
   const actionFailed = stats.actionFailed;
   const processingPercent = elapsedMs > 0 ? `${(activeProcessingMs / elapsedMs * 100).toFixed(1)}%` : 'N/A';
-  for (const [label, value] of [['Success / Failed / Total', `${stats.total-stats.failed} / ${stats.failed} / ${stats.total}`], ['Action Success / Failed / Total', `${actionSuccess} / ${actionFailed} / ${actionSuccess + actionFailed}`], ['Throughput', `${throughputText} chunks/s`], ['Total Elapsed Time', formatDuration(elapsedMs)], ['Active Processing Time', `${formatDuration(activeProcessingMs)} (${processingPercent})`], ['Processing Time', null], ['Needs Review', stats.review]]) {
+  for (const [label, value] of [['Success / Failed / Total', `${stats.total-stats.failed} / ${stats.failed} / ${stats.total}`], ['Action Success / Failed / Total', `${actionSuccess} / ${actionFailed} / ${actionSuccess + actionFailed}`], ['Throughput', `${throughputText} chunks/s`], ['Total Elapsed Time', formatDuration(elapsedMs)], ['Active Processing Time', `${formatDuration(activeProcessingMs)} (${processingPercent})`], ['Processing Time', null]]) {
     const metric = element('div', label, 'metric');
     if (label === 'Success / Failed / Total') metric.title = 'Successfully classified / failed / total completed chunks. Total is success plus failure, not planned requests. Failures include connection errors, timeouts, rejected inputs, and invalid responses. Action failures do not change classification counts.';
     if (label === 'Action Success / Failed / Total') metric.title = 'Completed Action executions: success / failed / total. Unassigned sources and failed decisions do not run Actions. Action failures do not change decision counts.';
     if (label === 'Throughput') metric.title = 'Successful results divided by total elapsed seconds for the entire run, including idle time and Action delivery. Independent of filters and pages; not maximum engine capacity.';
-    if (label === 'Needs Review') metric.title = 'Successful classifications only: selected category probability below 70%, top-two probability gap below 10 percentage points, collapsed options, or Other category. Failed requests are excluded.';
     if(label==='Processing Time')metric.title='All completed record durations in this run, including failures and network/server wait; excludes Action time and waiting for input. Avg is the arithmetic mean; P(50) averages the central values; P(95)/P(99) use nearest rank. Independent of filters and pages.';
     if (label === 'Active Processing Time') metric.title = 'Time with at least one request in flight, counting overlapping requests once. Includes network/server wait, excludes idle time; not CPU utilization.';
     if(label==='Processing Time') {
@@ -2019,6 +2039,7 @@ function render(updateList = true, incremental = false) {
     }
     $('summary').append(metric);
   }
+  $('needs-review-count').textContent=`Needs Review: ${stats.review.toLocaleString('en-US')}`;
   const pendingCount = pagedView ? Math.max(0, completed-pagedView.snapshotTotal) : updatesPaused ? completionOrder.length - pausedOrder.length : 0;
   const historicalPage = pagedView && page>0;
   $('pause-updates').textContent = historicalPage ? `Latest Results${pendingCount ? ` (${pendingCount} new)` : ''}` : updatesPaused ? `Resume Display Updates${pendingCount ? ` (${pendingCount} new)` : ''}` : 'Pause Display Updates';
@@ -2272,10 +2293,10 @@ async function handleProcessing(job) {
         activeJobState = job.state === 'skipped' ? 'skipped' : 'failed';
         throw new Error(event.error);
       }
-      handleMessage('message',total === null ? `${sourceMode === 'realtime' ? 'Realtime' : 'Batch'} · ${completed.toLocaleString('en-US')} chunks completed${completed ? '' : ' · Waiting for data…'}` : `Classifying · ${completed.toLocaleString('en-US')} / ${total.toLocaleString('en-US')} chunks · ${total.toLocaleString('en-US')} ${engineLabel} requests planned`);
+      handleRunProgress(activeJobState,sourceMode);
       scheduleRender();
     });
-    handleMessage('message',`${activeJobState === 'stopped' ? 'Stopped' : activeJobState === 'failed' ? 'Failed' : 'Completed'} · ${results.filter(r => r.error).length} failed requests · ${results.filter(r => r.actionExecution?.status === 'failed').length} failed Actions`);
+    handleRunProgress(activeJobState,sourceMode);
   } catch (error) {
     $('message').className = error.name === 'AbortError' ? '' : 'error-message';
     handleMessage('message',`${error.name === 'AbortError' ? 'Processing stopped' : error.message} · ${started ? `${completed} completed results have been retained.` : 'Previous results have been retained.'}`,true);
@@ -2393,6 +2414,7 @@ $('results-settings-form').onsubmit=async event=>{
 };
 const routeFilters={'review':'review-filter','category':'category-filter','host':'host-filter','source':'source-filter','search':'log-search'};
 function handleSyncRunRoute(poll=false) {
+  if(poll && routeLocation()==='/')return;
   if(!globalThis.history?.pushState || !pagedView || pagedView.restoringRoute || currentView!=='main')return;
   const params=new URLSearchParams(globalThis.location.search || '');
   for(const [key,id] of Object.entries(routeFilters)){
@@ -2450,7 +2472,7 @@ async function handleRefreshResults(reset=false,poll=false) {
     if(page===0)view.snapshotTotal=completed;
   }
   renderResultContext(snapshot.settings.taskName || 'Task execution',snapshot.startedAt,view.id);
-  handleMessage('message',`${activeJobState==='running'?(snapshot.settings.mode==='realtime'?'Realtime':'Batch'):activeJobState} · ${completed.toLocaleString('en-US')} chunks completed`);
+  handleRunProgress(activeJobState,snapshot.settings.mode);
   render(false,true);handleSyncRunRoute(poll);
 }
 function handlePageDelay(signal) {

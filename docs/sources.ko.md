@@ -55,7 +55,7 @@ Source·Action 풀다운은 이미 선택한 값과 관계없이 전체 항목�
 
 행마다 Criteria·Events/Chunk·Action을 지정합니다. 이 값은 소스 등록이 아닌 Task에 저장하는
 설정입니다. Batch는 일치한 파일을 EOF까지 읽고, Realtime은 기존 내용을 건너뛰어
-새 줄을 감시하며 새로 발견한 파일은 처음부터 읽습니다. Main은 모든 저장된 Task를
+새 줄을 감시하며 새로 발견한 파일은 처음부터 읽습니다. Main은 활성화된 Task를
 표시하며 실행 중·시작 중인 항목을 먼저 배치합니다. 클릭하면 현재·최근 결과를 표시하고
 이전 실행은 Tasks → History → View Results에서 엽니다. Paste 입력 모드는 없습니다. **Reset Selections**는 사용 가능한 샘플 소스
 또는 첫 등록 소스를 선택하고 청크당 1이벤트·Action None으로 설정합니다.

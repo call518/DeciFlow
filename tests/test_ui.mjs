@@ -173,7 +173,7 @@ test('review filters exclude failures without changing success and failure total
     nodes.get('review-filter').onchange();
     assert.deepEqual(logs(nodes), expected);
     assert.equal(nodes.get('summary').children[0].children[0].children.map(node => node.textContent).join(''), '2 / 1 / 3');
-    assert.equal(nodes.get('summary').children[6].children[0].textContent, '1');
+    assert.equal(nodes.get('needs-review-count').textContent, 'Needs Review: 1');
   }
   nodes.get('review-filter').value = 'no-review';
   events.splice(0, events.length, { type: 'start', engine: 'jev', total: 1 }, result(0));
@@ -211,7 +211,7 @@ test('active time uses server intervals, updates while idle, and resets', async 
     { type: 'timing', elapsedMs: 200, activeProcessingMs: 150 },
     { type: 'done', elapsedMs: 1000, activeProcessingMs: 150 }];
   const { nodes, context } = workspace(events);
-  const active = () => nodes.get('summary').children[4].children[0].textContent;
+  const active = () => elapsedValues(nodes)[1];
   vm.runInContext('render()', context);
   assert.equal(active(), '0 ms (N/A)');
   await runTask(nodes);
@@ -644,7 +644,7 @@ test('stream errors are red and a new successful run clears the error style', as
   assert.equal(nodes.get('message').className, 'error-message');
   events.splice(0, events.length, { type: 'start', engine: 'laya', total: 1 }, result(0));
   await runTask(nodes);
-  assert.equal(nodes.get('message').className, '');
+  assert.equal(nodes.get('message').className.includes('error-message'), false);
 });
 
 test('selected engine is explicitly named and emphasized for both engines', async () => {
@@ -1263,7 +1263,7 @@ test('engine connection follows actual requests for both providers without local
     await runTask(nodes);
     assert.equal(nodes.get('summary').children[0].textContent, 'Success / Failed / Total');
     assert.equal(nodes.get('summary').children[0].children[0].children.map(node => node.textContent).join(''), '2 / 4 / 6');
-    assert.equal(nodes.get('summary').children[6].children[0].textContent, '2');
+    assert.equal(nodes.get('needs-review-count').textContent, 'Needs Review: 2');
     nodes.get('review-filter').value = 'needs-review'; nodes.get('review-filter').onchange();
     assert.deepEqual(logs(nodes), ['event-5', 'event-0']);
     assert.equal(connection.className, 'engine-connection connected');
@@ -1404,8 +1404,8 @@ test('duration metrics use readable units without changing millisecond data', ()
     [86400000, '1 day'], [176400000, '2 days 1 hour'],
   ]) assert.equal(vm.runInContext(`formatDuration(${milliseconds})`, context), expected);
   vm.runInContext("elapsedMs=3720000; activeProcessingMs=65000; results=[{elapsedMs:1500, log:'event', category:'normal', probabilities:{normal:1}}]; completionOrder=[0]; completed=1; render();", context);
-  assert.equal(nodes.get('summary').children[3].children[0].textContent, '1 hour 2 min');
-  assert.equal(nodes.get('summary').children[4].children[0].textContent, '1 min 5 sec (1.7%)');
+  assert.equal(elapsedValues(nodes)[0], '1 hour 2 min');
+  assert.equal(elapsedValues(nodes)[1], '1 min 5 sec (1.7%)');
   assert.equal(processingValues(nodes).Avg, '1.5 sec');
   assert.equal(vm.runInContext('elapsedMs', context), 3720000);
   assert.equal(vm.runInContext('activeProcessingMs', context), 65000);
@@ -1454,7 +1454,7 @@ test('Action metrics count completed executions separately from decision outcome
   assert.equal(nodes.get('summary').children[1].textContent, 'Action Success / Failed / Total');
   assert.equal(counts(0), '3 / 1 / 4');
   assert.equal(counts(1), '1 / 1 / 2');
-  assert.equal(nodes.get('summary').children[6].children[0].textContent, '0');
+  assert.equal(nodes.get('needs-review-count').textContent, 'Needs Review: 0');
   nodes.get('review-filter').value='needs-review'; nodes.get('review-filter').onchange();
   assert.equal(counts(1), '1 / 1 / 2');
   nodes.get('pause-updates').onclick();
@@ -1466,11 +1466,11 @@ test('Action metrics count completed executions separately from decision outcome
 });
 
 
-test('Throughput occupies the third metric and Needs Review appears last', () => {
+test('Throughput occupies the third metric and Processing Time appears last', () => {
   const { nodes, context } = workspace([]);
   vm.runInContext('render()', context);
   assert.equal(nodes.get('summary').children[2].textContent, 'Throughput');
-  assert.equal(nodes.get('summary').children.at(-1).textContent, 'Needs Review');
+  assert.equal(nodes.get('summary').children.at(-1).textContent, 'Processing Time');
 });
 
 
@@ -1897,7 +1897,7 @@ test('Main lists all saved Tasks in name order and opens current or latest runs'
   await nodes.get('running-tasks').children[2].onclick();
   assert.equal(vm.runInContext('watched.join()',context),'run-z,old');
   vm.runInContext('registeredTasks=[];renderTaskMonitor()',context);
-  assert.match(nodes.get('running-tasks').children[0].textContent,/No saved Tasks/);
+  assert.match(nodes.get('running-tasks').children[0].textContent,/No Enabled Tasks/);
 });
 
 test('Wide Main panels scroll independently and narrow layouts retain page scrolling', () => {
@@ -2607,10 +2607,10 @@ test('SSH Host selector stays visible without a disclosure control',()=>{
 
 test('Task Monitor labels Source, type and optional Action without Host details',()=>{
   const {nodes,context}=workspace([]);
-  vm.runInContext(`registeredSources=[{id:'remote',name:'System Logs',type:'ssh'}];sshHosts=[{id:'host',name:'Oracle'}];registeredActions=[{id:'ElasticSearch',name:'ElasticSearch'},{id:'Notify',name:'Notify'}];registeredTasks=[{id:'monitor',name:'Monitor',mode:'realtime',enabled:false,sources:[{sourceId:'remote',hostIds:['host'],actionId:'ElasticSearch'}],latestRun:{state:'stopped',counts:{completed:125,failed:2}}}];renderTaskMonitor()`,context);
+  vm.runInContext(`registeredSources=[{id:'remote',name:'System Logs',type:'ssh'}];sshHosts=[{id:'host',name:'Oracle'}];registeredActions=[{id:'ElasticSearch',name:'ElasticSearch'},{id:'Notify',name:'Notify'}];registeredTasks=[{id:'monitor',name:'Monitor',mode:'realtime',enabled:true,sources:[{sourceId:'remote',hostIds:['host'],actionId:'ElasticSearch'}],latestRun:{state:'stopped',counts:{completed:125,failed:2}}}];renderTaskMonitor()`,context);
   const card=nodes.get('running-tasks').children[0];
   assert.equal(card.children.length,4);
-  assert.deepEqual(card.children[1].children.map(node=>node.textContent),['Disabled','Stopped']);
+  assert.deepEqual(card.children[1].children.map(node=>node.textContent),['Enabled','Stopped']);
   assert.equal(card.children[2].textContent,'Source: System Logs · Source Hosts: 1');
   assert.equal(card.children[3].textContent,'Type: Remote File (SSH) / Mode: Realtime / Action: ElasticSearch');
   card.getBoundingClientRect=()=>({left:20,top:20,bottom:100});
@@ -2952,8 +2952,8 @@ for(const engine of ['laya','jev']) {
       item.result.actionExecution={name:'Elasticsearch',status:'success',elapsedMs:[716,462,308,357][index]};return item;
     }),{type:'timing',elapsedMs:55000,activeProcessingMs:966}];
     const {context,nodes}=workspace(events);await runTask(nodes);
-    assert.equal(nodes.get('summary').children[3].children[0].textContent,'55 sec');
-    assert.equal(nodes.get('summary').children[4].children[0].textContent,'966 ms (1.8%)');
+    assert.equal(elapsedValues(nodes)[0],'55 sec');
+    assert.equal(elapsedValues(nodes)[1],'966 ms (1.8%)');
     assert.equal(processingValues(nodes).Avg,'241.5 ms');
     assert.equal(nodes.get('summary').children[2].children[0].textContent,'0.073 chunks/s');
     vm.runInContext('elapsedMs=40000;render()',context);
@@ -3000,11 +3000,11 @@ test('Processing Time groups six small labels in one metric without separate per
   const {nodes,context}=workspace([]);
   vm.runInContext("results=[{log:'one',category:'normal',elapsedMs:200}];completionOrder=[0];completed=1;render()",context);
   const metrics=nodes.get('summary').children;
-  assert.equal(metrics.length,7);
+  assert.equal(metrics.length,6);
   assert.equal(metrics[5].textContent,'Processing Time');
   assert.equal(metrics[5].children[0].attributes['aria-label'],'Processing Time Statistics');
   assert.deepEqual(processingValues(nodes),{Avg:'200 ms',Min:'200 ms',Max:'200 ms','P(50)':'200 ms','P(95)':'200 ms','P(99)':'200 ms'});
-  assert.equal(metrics.at(-1).textContent,'Needs Review');
+  assert.equal(nodes.get('needs-review-count').textContent,'Needs Review: 0');
 });
 
 
@@ -3247,7 +3247,8 @@ test('Task polling reports HTML response metadata and preserves existing Tasks',
   const count=vm.runInContext('registeredTasks.length',context);
   context.fetch=async()=>({ok:false,status:502,url:'http://localhost/api/tasks',headers:{get:()=> 'text/html'},json:async()=>{throw new SyntaxError("Unexpected token '<'");}});
   await vm.runInContext('handleLoadTasks()',context);
-  assert.match(nodes.get('message').textContent,/\/api\/tasks.*HTTP 502, text\/html/);
+  assert.match(nodes.get('task-message').textContent,/\/api\/tasks.*HTTP 502, text\/html/);
+  assert.equal(nodes.get('task-monitor-message').hidden,false);
   assert.equal(vm.runInContext('registeredTasks.length',context),count);
 });
 
@@ -3255,6 +3256,7 @@ test('Task Pause and Resume controls follow active state without starting a new 
   const {nodes,context}=workspace([]);
   await new Promise(resolve=>setImmediate(resolve));
   vm.runInContext("registeredTasks=[{id:'pause-task',name:'Pausing Task',mode:'batch',sources:[],activeRun:{jobId:'same-run',state:'running'}}];handleNavigation('tasks');renderTasks()",context);
+  await vm.runInContext("handleLoadTasks()",context);
   const controls=()=>nodes.get('task-list').children[0].children[1].children.at(-1).children;
   const button=label=>controls().find(item=>item.textContent===label);
   assert.equal(button('Pause').disabled,false);
@@ -3465,4 +3467,94 @@ test('Criteria None survives profile refresh and blocks Task execution', async (
   const controls=nodes.get('task-list').children[0].children[1].children.at(-1).children;
   assert.equal(controls.find(button=>button.textContent==='Run').disabled,true);
   assert.equal(Boolean(controls.find(button=>button.textContent==='Edit').disabled),false);
+});
+
+
+test('Run progress shows state without repeating summary counts', async () => {
+  const {nodes,context}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  for(const state of ['failed','completed']) {
+    vm.runInContext(`handleRunProgress('${state}','batch')`,context);
+    assert.equal(nodes.get('message').textContent,'');
+  }
+  vm.runInContext("handleRunProgress('paused','batch')",context);
+  assert.equal(nodes.get('message').textContent,'Paused');
+});
+
+
+test('Disabled Tasks are hidden from Task Monitor and return when enabled', async () => {
+  const {nodes,context}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext(`registeredTasks=[{id:'on',name:'Enabled Task',mode:'batch',sources:[],enabled:true},{id:'off',name:'Disabled Task',mode:'batch',sources:[],enabled:false}];renderTasks()`,context);
+  assert.equal(nodes.get('running-tasks').children.length,1);
+  assert.equal(nodes.get('running-tasks').children[0].children[0].textContent,'Enabled Task');
+  assert.equal(nodes.get('task-list').children[0].children.length,3);
+  vm.runInContext('registeredTasks[1].enabled=true;renderTasks()',context);
+  assert.equal(nodes.get('running-tasks').children.length,2);
+});
+
+
+test('Task polling failure preserves results and recovers its own warning', async () => {
+  const {nodes,context}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext("registeredTasks=[{id:'saved',name:'Saved',sources:[]}];renderTasks();handleMessage('message','Paused');",context);
+  context.fetch=async()=>({status:503,ok:false,headers:{get:()=> 'text/html'},json:async()=>{throw new SyntaxError('Unexpected token <');}});
+  await vm.runInContext('handleLoadTasks()',context);
+  assert.equal(nodes.get('message').textContent,'Paused');
+  assert.equal(nodes.get('task-monitor-message').hidden,false);
+  assert.match(nodes.get('task-monitor-message').textContent,/retrying automatically/);
+  assert.match(nodes.get('task-monitor-message').title,/HTTP 503/);
+  assert.equal(vm.runInContext('registeredTasks[0].id',context),'saved');
+  context.fetch=async()=>({ok:true,json:async()=>({tasks:[]})});
+  await vm.runInContext('handleLoadTasks()',context);
+  assert.equal(nodes.get('task-monitor-message').hidden,true);
+  assert.equal(nodes.get('task-message').textContent,'');
+  assert.equal(nodes.get('message').textContent,'Paused');
+});
+
+test('Task list polling does not overlap an outstanding request', async () => {
+  const {context}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  let release;let calls=0;
+  context.fetch=()=>{calls++;return new Promise(resolve=>{release=resolve;});};
+  const first=vm.runInContext('handleLoadTasks()',context);
+  const second=vm.runInContext('handleLoadTasks()',context);
+  assert.equal(first,second);
+  assert.equal(calls,1);
+  release({ok:true,json:async()=>({tasks:[]})});
+  await first;
+});
+
+function elapsedValues(nodes) {
+  return [3,4].map(index=>nodes.get('summary').children[index].children[0].textContent);
+}
+
+test('Elapsed times use separate metrics and review count appears beside host details', async () => {
+  const {nodes,context}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext('elapsedMs=65000;activeProcessingMs=28900;render()',context);
+  const metrics=nodes.get('summary').children;
+  assert.equal(metrics.length,6);
+  assert.equal(metrics[3].textContent,'Total Elapsed Time');
+  assert.equal(metrics[4].textContent,'Active Processing Time');
+  assert.deepEqual(elapsedValues(nodes),['1 min 5 sec','28.9 sec (44.5%)']);
+  assert.equal(nodes.get('needs-review-count').textContent,'Needs Review: 0');
+  const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
+  assert.match(html,/id="host-status"[^]*?Source Hosts Detail<\/button><span id="needs-review-count"/);
+});
+
+
+test('Main link uses the logo root URL and polling preserves it', async () => {
+  const navigation={pathname:'/tasks',search:'',hash:''};
+  const {nodes,context}=workspace([],undefined,undefined,undefined,navigation);
+  await new Promise(resolve=>setImmediate(resolve));
+  enableCleanRoutes(context,navigation);
+  vm.runInContext("activeJobId='selected-run';pagedView={id:'selected-run',cursors:[null],through:10};page=0",context);
+  nodes.get('nav-main').onclick();
+  assert.equal(navigation.pathname,'/');
+  vm.runInContext('handleSyncRunRoute(true)',context);
+  assert.equal(navigation.pathname,'/');
+  const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
+  assert.match(html,/class="brand" href="\/"/);
+  assert.match(html,/id="nav-main" href="\/"/);
 });

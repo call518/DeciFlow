@@ -269,9 +269,7 @@ textarea: focus {
   font-variant-numeric: tabular-nums
 }
 
-.metric:nth-child(5) strong {
-  font-size: 18px
-}
+.metric:nth-child(5) strong { font-size: 18px; }
 
 .processing-metric { padding-top: 7px; padding-bottom: 7px; line-height: 14px; }
 
@@ -1421,7 +1419,8 @@ aside { overflow-y: auto; }
 .host-picker-list { max-height: 180px; overflow-y: auto; display: grid; gap: 8px; }
 .host-picker-option { display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
 .source-setting .host-picker-option input { width: auto; flex: 0 0 auto; margin: 0; }
-.host-status { margin: 8px 0; }
+.host-status { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.needs-review-count { margin-left: auto; border-radius: 8px; font-size: 12px; line-height: normal; }
 .source-hosts-dialog { width: min(860px, calc(100% - 32px)); }
 .source-hosts-scroll { max-height: min(55dvh, 480px); overflow: auto; }
 .source-hosts-table { width: 100%; min-width: 480px; table-layout: fixed; border-collapse: collapse; font-size: 12px; }
@@ -1610,3 +1609,4 @@ a.nav { font-size: 14px; }
 a.nav:focus-visible, a.quiet:focus-visible { outline: 2px solid #245b9e; outline-offset: 2px; }
 
 a.quiet[aria-disabled="true"] { opacity: .5; cursor: default; pointer-events: none; }
+

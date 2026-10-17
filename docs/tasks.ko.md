@@ -7,7 +7,7 @@
 Source 선택을 **None**으로 저장하면 해당 Source의 의존성을 일시적으로 해제할 수 있습니다. Source가 없는 Task도 저장할 수 있지만 실행할 수는 없습니다. 시작 중·실행 중·일시정지 전환 중·일시정지 중인 Task는 Stop 후 편집합니다.
 
 Source를 먼저 등록하고 Task에 이름·모드·소스별 설정(Criteria·Events/Chunk·선택적
-Action·Remote File 소스 Hosts)을 저장합니다. 저장만으로 실행하지 않습니다. Main에서는 실행 중·시작 중인 Task를 먼저, 각 그룹 안에서는 이름순으로 표시한 목록에서
+Action·Remote File 소스 Hosts)을 저장합니다. 저장만으로 실행하지 않습니다. 비활성화한 Task는 Main의 Task Monitor에서 숨기며 Tasks 관리 목록에는 유지합니다. Main에서는 활성화한 Task 중 실행 중·시작 중인 Task를 먼저, 각 그룹 안에서는 이름순으로 표시한 목록에서
 선택해 현재 또는 최근 실행 결과를 확인합니다. 이력이 없으면 빈 결과를 표시하며 처음에는 선택하지 않은 상태입니다. Tasks 목록은 Enabled 토글과 Run·Stop·Pause / Resume·View·Edit·History·Delete를 제공합니다.
 Task Monitor는 첫 행에 Task 이름·활성 여부·실행 상태, 다음 행에 Source와 중복을 제외한 Source Host 수를 표시하고
 그 아래에 Type / Mode / Action을 표시합니다. Action이 없으면 None으로 표시합니다. 긴 설정은 말줄임합니다. 항목 위에서 마우스를 1초간 움직이지 않거나 키보드 포커스를 두면 말풍선에

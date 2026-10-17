@@ -8,7 +8,7 @@ Register Sources first, then add a Task with a name, mode, and Source assignment
 
 A Source assignment can be set to **None** to temporarily release its dependency. Tasks with no Sources can be saved but cannot run. Stop a Starting, Running, Pausing, or Paused Task before editing it.
 
-Main lists all saved Tasks with running/starting Tasks first, then name order within each group. Click a Task to display its current or latest run; a fresh page has no selection. The Tasks list
+Main lists enabled Tasks with running/starting Tasks first, then name order within each group. Click a Task to display its current or latest run; a fresh page has no selection. Disabled Tasks remain available in the Tasks management list. The Tasks list
 provides an Enabled switch and Run, Stop, Pause / Resume, View, Edit, History, and Delete.
 Task Monitor shows the Task name and availability/state on the first row, Source and distinct Source Host count
 on the second, then Type / Mode / Action on the third (Action: None if unset). Long assignments

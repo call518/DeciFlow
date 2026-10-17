@@ -14,7 +14,7 @@ Not checked, 이후에는 Connected·Disconnected·Timed out·API error를 표�
 ### Tasks와 판정 기준
 
 **Sources**에 입력을 등록한 후 **Tasks**에 소스별 Criteria·Events/Chunk·Action을
-저장합니다. Main은 실행 중·시작 중인 Task를 먼저, 각 그룹 안에서는 이름순으로 표시하며 현재 또는 최근 실행 결과를 보여줍니다. 처음에는 선택하지 않은 상태입니다.
+저장합니다. Main은 활성화된 Task 중 실행 중·시작 중인 Task를 먼저, 각 그룹 안에서는 이름순으로 표시하며 현재 또는 최근 실행 결과를 보여줍니다. 처음에는 선택하지 않은 상태입니다.
 수동 Batch, 시간대를 지정하는 Cron Batch, 연속 Realtime을 지원하며 Paste 입력은
 제거했습니다. 저장만으로 분석을 시작하지 않습니다. Task 목록에서 Enabled 토글과 Run·Stop·View·Edit·History·Delete를
 사용합니다. Disable은 현재 실행을 중지하고 수동·Cron·자동 재시작을 차단합니다.
@@ -266,7 +266,7 @@ Delete를 누르면 서버에서 현재 의존성을 먼저 확인합니다. 사
 
 모든 View는 공통 라벨·값 형식으로 표시합니다. 짧은 값은 나란히 배치하고 긴 값만 필요한 만큼 줄바꿈합니다. 읽기 전용 입력칸은 사용하지 않으며 코드·공개키는 내용을 보존하는 제한 높이의 텍스트 블록으로 표시합니다. 좁은 화면에서는 세로로 배치하며 편집 폼에는 영향을 주지 않습니다.
 
-Task Monitor는 모든 저장된 Task를 표시하며 실행 중·시작 중인 항목을 먼저 배치합니다.
+Task Monitor는 활성화된 Task를 표시하며 실행 중·시작 중인 항목을 먼저 배치합니다.
 카드는 이름·Enabled/실행 상태 배지, Source·중복을 뺀 Source Host 수,
 Type / Mode / Action 순서로 표시하고 Action이 없으면 None을 표시합니다.
 Running·Starting 배경은 연한 녹색, Stopped는 차분한 중간색이며 선택 항목은 왼쪽

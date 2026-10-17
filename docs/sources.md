@@ -59,7 +59,7 @@ its type and path. Select None for no Action. Text filtering is not used.
 Choose Criteria, Events/Chunk, and Action per row. These are saved in the Task, not the
 source registration. Batch reads matching files to EOF; Realtime skips existing
 content, follows new lines, and discovers new matching files from their beginning.
-Main lists all saved Tasks, with running/starting Tasks first. Click one for its
+Main lists enabled Tasks, with running/starting Tasks first. Click one for its
 current/latest results; open older runs through Tasks → History → View Results. There is no Paste input mode.
 **Reset Selections** selects available sample sources (or the first registered
 source) with one event per chunk and Action None. Save the Task to retain these settings on the server.
