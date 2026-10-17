@@ -9,9 +9,18 @@ from config_store import load_records, save_record, save_records
 
 VOC_SOURCE = {
     "id": f"{5:032x}",
-    "name": "VOC Consultations",
+    "name": "VOC Asia Culture Center Consulting QnA",
     "type": "local",
-    "path": "/host-logs/sample-logs/voc-consulting_content.jsonl",
+    "path": "/host-logs/sample-logs/voc-asia-culture-center-consulting-qna.jsonl",
+    "format": "jsonl",
+    "contentField": "consulting_content",
+}
+
+CENTRAL_GOV_SOURCE = {
+    "id": f"{6:032x}",
+    "name": "VOC Central Gov Consulting QnA",
+    "type": "local",
+    "path": "/host-logs/sample-logs/voc-central-gov-consulting-qna.jsonl",
     "format": "jsonl",
     "contentField": "consulting_content",
 }
@@ -23,20 +32,29 @@ DEFAULT_SOURCES = [
         (2, "Sample HTTP access", "/host-logs/sample-logs/access-1k.log"),
         (3, "Sample SSH authentication", "/host-logs/sample-logs/SSH_2k.log"),
     )
-] + [VOC_SOURCE]
+] + [VOC_SOURCE, CENTRAL_GOV_SOURCE]
 
 
 def ensure_voc_source() -> None:
     """Add the consultation sample at startup without replacing saved Sources."""
+    _ensure_sample_source(VOC_SOURCE)
+
+
+def ensure_central_gov_source() -> None:
+    """Add the government QnA sample without replacing saved Sources."""
+    _ensure_sample_source(CENTRAL_GOV_SOURCE)
+
+
+def _ensure_sample_source(sample: Result) -> None:
     sources = load_sources()
     if any(
-        source["id"] == VOC_SOURCE["id"]
-        or source["name"].casefold() == VOC_SOURCE["name"].casefold()
-        or (source["type"] == "local" and source["path"] == VOC_SOURCE["path"])
+        source["id"] == sample["id"]
+        or source["name"].casefold() == sample["name"].casefold()
+        or (source["type"] == "local" and source["path"] == sample["path"])
         for source in sources
     ):
         return
-    save_record("sources", VOC_SOURCE["id"], VOC_SOURCE)
+    save_record("sources", sample["id"], sample)
 
 
 def load_sources() -> list[Result]:

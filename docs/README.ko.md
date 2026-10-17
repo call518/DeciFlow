@@ -15,7 +15,8 @@ Source → Criteria → 선택적 Actions → Tasks 순으로 구성하고 Main�
 | [Sources](sources.ko.md) | 로컬·SSH 파일 소스 등록과 Tasks에서 선택 |
 | [사용법](usage.ko.md) | 로그 분석·결과 필터·판정 검토·재접속·지표 확인 |
 | [설정](configuration.ko.md) | 환경변수·Laya/Jev 모델·요청 예산 설정 |
-| [VOC 상담 처리](voc.ko.md) | 기본 샘플 실행·전체 Criteria 입력값·판단 기준 검증 |
+| [VOC Asia Culture Center Consulting QnA](voc.ko.md) | 기본 샘플 실행·전체 Criteria 입력값·판단 기준 검증 |
+| [VOC Central Gov Consulting QnA](voc.ko.md#정부기관-qna-샘플) | 정부기관 QnA 샘플의 Source·한국어 Criteria·Task 실행 |
 | [Criteria](criteria.ko.md) | 필드별 작성법·타입별 예시·저장 오류 해결 |
 | [Python Actions](actions.ko.md) | 판정 후 Python 코드 실행과 실행 환경 관리 |
 | [Tasks](tasks.ko.md) | 재사용 실행 설정·Cron 예약·연속 감시·영속 실행 이력 |
@@ -28,7 +29,7 @@ Source → Criteria → 선택적 Actions → Tasks 순으로 구성하고 Main�
 | [Docker 배포](../README.ko.md#docker-배포-상세) | 공개 이미지·CPU/CUDA 프로필·포트·마운트·볼륨·운영 명령 |
 | [Dockerfile과 Compose](../README.ko.md#dockerfile과-compose의-역할) | UI 실행 이미지와 Compose 서비스 구성 방식 |
 | [Laya 연동](laya-integration.ko.md) | 요청 구성·응답 검증·서버 설정·제약 |
-| [요청·결과 JSON](results.ko.md) | Laya/Jev 공통 스키마·state·세 질문·답변·필드 설명 |
+| [요청·결과 JSON](results.ko.md) | Laya/Jev 공통 스키마·state·타입별 판단·답변·필드 설명 |
 
 ## Laya 평가
 

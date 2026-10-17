@@ -162,9 +162,9 @@ Task 삭제 확인창에서 승인하면 Task 정의·실행 이력·결과·수
 말풍선이 열린 뒤에는 Task 카드나 말풍선 위에서 마우스를 움직여도 유지합니다.
 말풍선으로 이동해 텍스트를 선택·복사할 수 있으며 양쪽에서 벗어나면 닫힙니다.
 
-시작 시 **VOC Consultation Review (KOR)** Task를 비활성 수동 Batch로 제공합니다.
-VOC Consultations Source, KOR Criteria, Events/Chunk 1, Action None을 연결합니다.
-활성화한 뒤 Run을 누르면 파일을 분석합니다. 필요하면 Criteria를 ENG로 변경하세요.
+시작 시 **VOC Asia Culture Center Consulting QnA** Task를 비활성 수동 Batch로 제공합니다.
+VOC Asia Culture Center Consulting QnA Source, 한국어 Criteria, Events/Chunk 1, Action None을 연결합니다.
+활성화한 뒤 Run을 누르면 파일을 분석합니다.
 기존 Task 설정은 덮어쓰지 않습니다.
 
 **System Messages**도 비활성 Realtime Task로 자동 제공합니다. General system,
@@ -238,3 +238,6 @@ DeciFlow 프로세스 하나만 사용해야 합니다. 기존 SQLite에 테이�
 지원합니다. 데이터 볼륨과 원본 파일을 유지하세요.
 
 Criteria도 **None**으로 저장해 해당 의존성을 잠시 해제할 수 있습니다. Task를 실행하려면 모든 Source에 Criteria를 지정해야 합니다.
+
+정부기관 샘플의 Source·한국어 Criteria·비활성 Batch Task도 시작 시 자동 제공됩니다.
+[VOC Central Gov Consulting QnA 설정](voc.ko.md#정부기관-qna-샘플)을 참고하세요.

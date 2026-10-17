@@ -89,7 +89,7 @@ async def test_jsonl_preserves_duplicates_multiline_and_bad_records(
 
 @pytest.mark.anyio
 async def test_all_voc_rows_are_independent() -> None:
-    path = Path("sample-logs/voc-consulting_content.jsonl")
+    path = Path("sample-logs/voc-asia-culture-center-consulting-qna.jsonl")
     if not path.exists():
         pytest.skip("Optional local VOC sample is unavailable.")
     count = 0
@@ -105,7 +105,7 @@ async def test_all_voc_rows_are_independent() -> None:
     ):
         assert not row.get("error")
         count += 1
-    assert count == 2817
+    assert count == 841
 
 
 @pytest.mark.parametrize("field", [None, "", "  ", 42])
@@ -124,7 +124,7 @@ def test_jsonl_requires_content_field(field: object) -> None:
         )
 
 
-@pytest.mark.parametrize("profile_id", ["consultation", "consultation_eng"])
+@pytest.mark.parametrize("profile_id", ["consultation", "central_gov"])
 @pytest.mark.parametrize("engine_name", ["laya", "jev"])
 @pytest.mark.parametrize("invalid", [None, "missing", "score", "noul", "choice"])
 @pytest.mark.anyio
@@ -175,9 +175,10 @@ async def test_ten_mixed_decisions_validate_each_answer(
             )
     assert len(calls) == 1 and len(result["decisions"]) == 10
     assert "ticketProbability" not in result
-    assert result["primaryQuestion"] == "inquiry_type"
+    primary = profile["primaryQuestion"]
+    assert result["primaryQuestion"] == primary
     assert result["categoryFilter"].endswith(
-        ":" + next(iter(questions["inquiry_type"]["criteria"]))
+        ":" + next(iter(questions[primary]["criteria"]))
     )
     assert result["decisionDefinitions"] == questions
 

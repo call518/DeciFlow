@@ -25,7 +25,7 @@ Source and Task.
 
 | Field | Purpose | What to enter |
 | --- | --- | --- |
-| Start From Template | Starting definition for a new draft | Use VOC KOR or ENG for full conversations. Custom Decisions starts a custom configuration. Choosing another template replaces the current draft. |
+| Start From Template | Starting definition for a new draft | Use a VOC consultation template for full conversations. Custom Decisions starts a custom configuration. Choosing another template replaces the current draft. |
 | Name | Profile name selected by a Task | `VOC Follow-up Test`. Use a name different from existing profiles. |
 | Primary Classification | Representative decision for the Overview chart and classification filter | One Choice such as Inquiry Type. This does not determine whether other decisions run. |
 | Decision Instructions | Rules shared by every decision | Judgment time, evidence to use, prohibited assumptions, and missing-evidence policy. Define individual options within each Decision. |
@@ -88,8 +88,8 @@ Choose complete if processing is finished and no action remains, or unknown if e
 
 Result and chart option names are derived from Option IDs, such as `booking` →
 Booking. The right-hand definition is a decision rule, not a separate option display
-name. Choice Option IDs may use Korean. The KOR sample uses names such as 예약 and
-고객 조치 대기; ENG keeps booking and customer_pending. Decision IDs remain stable.
+name. Choice Option IDs may use Korean. The sample uses names such as 예약 and
+고객 조치 대기. Decision IDs remain stable.
 
 Explain **when to select the answer**, rather than providing only a category name.
 State precedence when definitions overlap. Use `other` for an uncategorized answer
@@ -191,7 +191,7 @@ Editing or cloning uses the typed editor and saves the full decision definitions
 Existing Task references remain valid. System results retain legacy category,
 urgency, and ticket fields for existing Actions.
 
-First initialization provides the system examples and **VOC Consultation Review (KOR)** / **VOC Consultation Review (ENG)**. On every startup, existing installations also receive the consultation
+First initialization provides the system examples and **VOC Asia Culture Center Consulting QnA**. On every startup, existing installations also receive the consultation
 sample if neither its ID nor its name exists. Saved profiles are never overwritten;
 deleting this required sample causes it to return on the next startup. Other
 examples remain available through **Start From Template** without a data reset.
@@ -220,11 +220,13 @@ past results. Different custom primary definitions are charted separately.
 Profiles are stored in `DECIFLOW_DATA_DIR/deciflow.sqlite3`; bundled JSON files are
 initial defaults and templates. Criteria management requires a trusted UI origin.
 
-The KOR sample defines the reference criteria; ENG provides equivalent English
-names, instructions, and definitions with identical decision IDs, option meanings,
-level counts, and summary settings. KOR Choice option keys are Korean; ENG keys
-are English. Both are added at startup if absent. Untouched legacy samples
-are updated in place; user edits and saved Task references are preserved.
+The VOC samples are Korean-only. Missing samples are added at startup.
+Saved default English profiles are removed and their Task assignments switch to
+the corresponding Korean profiles. Historical results and custom clones are preserved.
+The `(KOR)` suffix is removed from unchanged default names; custom names are kept.
 
 Laya has a separate head budget for question instructions and options. Instructions
 can be cut even when the state fits. See [VOC question budgets](voc.md#check-the-laya-question-budget).
+
+The government sample also provides a Source, Korean Criteria, and a disabled
+Batch Task at startup. See [VOC Central Gov Consulting QnA](voc.md#government-qna-sample).

@@ -6,23 +6,37 @@
 상담 종료 시점의 처리 상태·후속 조치를 판단하는 흐름을 설명합니다. 서버 로그 Task도
 계속 사용할 수 있으며, 입력 Source와 Criteria를 Task별로 구분합니다.
 
+## 정부기관 QnA 샘플
+
+**VOC Central Gov Consulting QnA**는 기존 설치를 포함해 시작 시 자동 추가됩니다.
+Source는 `/host-logs/sample-logs/voc-central-gov-consulting-qna.jsonl`,
+JSONL (Line), Content Field `consulting_content`를 사용합니다(3,965건).
+**VOC Central Gov Consulting QnA** Criteria는 행정·정책 분야,
+답변 유형, 후속 처리 주체, 긴급도, 기관 후속 처리 필요성을 판단합니다.
+법령 설명·신청 안내·관할 기관 문의 안내·개별 처리 완료·기관의 명시적 미완료 조치를
+구분합니다. 문의 안내나 말미 연락처만으로 기관의 후속 처리 의무를 추정하지 않으며
+법령의 현행성을 검증하지 않습니다.
+기본 **VOC Central Gov Consulting QnA** Task는 한국어 Criteria,
+Batch / Manual, Events/Chunk 1, Action None으로 연결되며 Enable과 Resume on Restart는
+꺼져 있습니다. 활성화 후 Run으로 실행하세요. 저장된 사용자 수정은 유지합니다.
+
 ## 1. 기본 샘플 실행
 
 1. 새 코드를 적용하고 DeciFlow-UI를 재시작합니다. Reset은 필요 없습니다.
-2. Source에서 **VOC Consultations**를 확인합니다.
-3. Criteria에서 **VOC Consultation Review (KOR)** 또는 **VOC Consultation Review (ENG)**를 확인합니다.
-4. Tasks에서 기본 **VOC Consultation Review (KOR)**를 View하여 아래 할당을 확인합니다.
+2. Source에서 **VOC Asia Culture Center Consulting QnA**를 확인합니다.
+3. Criteria에서 **VOC Asia Culture Center Consulting QnA**를 확인합니다.
+4. Tasks에서 기본 **VOC Asia Culture Center Consulting QnA**를 View하여 아래 할당을 확인합니다.
 5. Enabled를 켠 뒤 **Run**을 누릅니다. 활성화·저장만으로는 실행되지 않습니다.
 6. Main의 Task Monitor에서 이 Task를 선택합니다.
 
 | 설정 | 기본값 |
 | --- | --- |
 | Source Type | Local File |
-| Source Path | `/host-logs/sample-logs/voc-consulting_content.jsonl` |
+| Source Path | `/host-logs/sample-logs/voc-asia-culture-center-consulting-qna.jsonl` |
 | Input Format | JSONL (Line) |
 | Content Field | `consulting_content` |
 | Task Mode | Batch / Manual |
-| Criteria | VOC Consultation Review (KOR) |
+| Criteria | VOC Asia Culture Center Consulting QnA |
 | Events/Chunk | 1 (JSONL에서 고정) |
 | Action | None |
 | Enabled / Resume on Restart | 최초 제공 시 모두 꺼짐 |
@@ -30,12 +44,12 @@
 경로는 Docker Compose 마운트 기준입니다. 네이티브 실행에서는 Source 경로를 실제
 파일 위치로 수정하세요. 파일은 한 줄에 JSON 객체 하나이며 `consulting_content`에
 전체 대화 문자열을 넣습니다. 대화 안의 줄바꿈은 JSON 문자열의 `\n`으로 표현합니다.
-제공 파일의 **2,817건을 각각 별도 상담으로 처리**하며 같은 내용도 합치지 않습니다.
+제공 파일의 **841건을 각각 별도 상담으로 처리**하며 같은 내용도 합치지 않습니다.
 빈 줄은 건너뛰고, 잘못된 JSON·누락되거나 비어 있는 본문 등은 실패로 표시합니다.
 
-`voc-instruction.jsonl`은 질문만 있는 별도 자료이며 Content Field는 `instruction`입니다.
-답변이나 처리 경과가 없는 질문만으로 해결 여부·미완료 약속을 판단하지 마세요.
-이 자료에는 문의 유형 중심의 별도 Criteria를 사용하세요.
+`voc-central-gov-consulting-qna.jsonl`은 다른 상담 자료이며 Content Field는
+`consulting_content`입니다. 답변이나 처리 경과가 없는 입력에는 문의 유형 중심의
+Criteria를 사용하고 해결 여부·미완료 약속을 추론하지 마세요.
 
 Batch는 파일 처음부터 끝까지 읽습니다. 다시 Run하면 처음부터 새 실행을 만듭니다.
 Realtime은 기존 파일 내용을 건너뛰고 새로 들어온 줄을 감시하므로 최초 파일 검증에는
@@ -50,7 +64,7 @@ Batch를 사용하세요. Jev를 선택했다면 유료 API를 사용합니다.
 - **Review Decisions**: 사람이 확인한 정정값. AI 원본과 차트는 유지됩니다.
 - **Source Hosts Detail**: 전체 실행의 호스트별 성공·실패·합계.
 
-전체 완료 후 Success + Failed = 2,817인지 확인합니다. 일부를 Stop했다면 그때까지
+전체 완료 후 Success + Failed = 841인지 확인합니다. 일부를 Stop했다면 그때까지
 완료한 건수만 집계됩니다. 실패는 Request Failed로 조회하고, 긴 대화가 입력 제한을
 넘으면 엔진의 처리 결과·실패 사유·Truncated 표시를 확인하세요. JSONL 한 상담을
 자동으로 여러 요청으로 분할하지 않습니다. 확률과 Certain은 실측 정확도가 아닙니다.
@@ -62,10 +76,8 @@ Batch를 사용하세요. Jev를 선택했다면 유료 API를 사용합니다.
 실행 중인 작업과 과거 결과는 당시의 Criteria 정의를 유지합니다.
 
 각 입력란의 목적·타입 선택·중복 ID 오류 해결은 [Criteria 작성법](criteria.ko.md)을 참고하세요.
-아래는 KOR 샘플의 실제 전체 입력값입니다. ENG는 동일한 기준을 영어로 제공합니다.
-Decision ID·타입·선택지 의미·점수 단계 수·요약 설정은 두 버전이 같습니다.
-Choice 선택지 코드도 KOR은 한국어, ENG는 영어로 작성합니다. 입력 언어를 자동
-변환하는 설정은 아닙니다. 기존 결과는 저장 당시의 선택지 이름을 유지합니다.
+아래는 한국어 샘플의 실제 전체 입력값입니다. 기본 Criteria는 한국어로만 제공하며
+기존 결과는 저장 당시의 선택지 이름을 유지합니다.
 
 
 ## Laya 질문 토큰 예산 확인
@@ -78,7 +90,7 @@ Laya는 상담 본문과 질문을 합친 `LAYA_MAX_TOKENS` 한도 외에, 각 �
 질문마다 반복됩니다. 본문의 Truncated 표시가 0이어도 지시문 뒤쪽은 잘릴 수 있습니다.
 
 현재 VOC 전체 지시문은 질문 예산 256에서 완전히 보존되지 않습니다. 설치된
-multilingual 토크나이저로 한국어 선택지를 적용한 KOR 샘플을 측정하면 질문별 head는
+multilingual 토크나이저로 한국어 선택지를 적용한 샘플을 측정하면 질문별 head는
 최대 471토큰이며, **`LAYA_HEAD_TOKENS=512`에서 모든 지시문이 보존**됩니다.
 제공 상담 본문은 최대 1,600토큰으로, head를 더해도 현재 전체 한도 8,192 안에 들어갑니다.
 이는 제공 파일·현재 샘플·해당 토크나이저의 측정값이며 다른 자료도 같다는 뜻은 아닙니다.
@@ -95,7 +107,7 @@ DeciFlow의 Jev 입력 바이트 검사는 정확한 토큰 계측이 아닙니�
 
 | Field | Value |
 | --- | --- |
-| Name | VOC Consultation Review (KOR) |
+| Name | VOC Asia Culture Center Consulting QnA |
 | Primary Classification | 문의 유형 |
 
 **Decision Instructions**

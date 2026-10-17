@@ -45,7 +45,9 @@ def test_exact_event_budget_before_inference(
     monkeypatch.setattr(
         laya_server,
         "import_module",
-        lambda name: SimpleNamespace(build_sequence=build_empty),
+        lambda name: SimpleNamespace(
+            build_sequence=build_empty, render_options=lambda question: []
+        ),
     )
     router = Router()
     adapter = laya_server.LogRouter(router)
@@ -81,7 +83,9 @@ def test_all_question_types_checked_before_inference(
     monkeypatch.setattr(
         laya_server,
         "import_module",
-        lambda name: SimpleNamespace(build_sequence=build_empty),
+        lambda name: SimpleNamespace(
+            build_sequence=build_empty, render_options=lambda question: []
+        ),
     )
     questions = {
         "category": {"type": "choice", "instructions": "Classify.", "criteria": {}},
@@ -96,3 +100,30 @@ def test_all_question_types_checked_before_inference(
     assert len(router.calls) == (0 if overflow_type else 1)
     if overflow_type is None:
         assert checked == ["choice", "score", "noul"]
+
+
+@pytest.mark.parametrize("dropped", [0, 1, 50])
+def test_shortened_criteria_are_reported_without_dropping_the_result(
+    monkeypatch: pytest.MonkeyPatch,
+    dropped: int,
+) -> None:
+    """Report instruction or option shortening separately from state overflow."""
+    options = ["first option", "second option"]
+    instruction = "choice question: Classify."
+    full_size = len(instruction) + sum(1 + len(" " + option) for option in options) + 4
+    common = SimpleNamespace(
+        build_sequence=lambda *args: (list(range(full_size - dropped)), []),
+        render_options=lambda question: options,
+    )
+    monkeypatch.setattr(laya_server, "import_module", lambda name: common)
+    router = Router()
+    result = laya_server.LogRouter(router).predict(
+        "input",
+        {"category": {"type": "choice", "instructions": "Classify.", "criteria": {}}},
+        model="multilingual",
+    )
+    assert len(router.calls) == 1
+    assert result["usage"]["truncated"] is False
+    assert result["usage"].get("criteria_tokens_dropped", {}) == (
+        {"category": dropped} if dropped else {}
+    )

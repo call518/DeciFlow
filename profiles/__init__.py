@@ -10,7 +10,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from config_store import load_records, save_record, save_records
+from config_store import delete_record, load_records, save_record, save_records
 
 DEFAULT_PROFILES = {
     path.stem: json.loads(path.read_text())
@@ -156,7 +156,7 @@ def load_profiles() -> None:
         "c4ca8223b173892bc9f1b24a4a5daf754d0b9086b6280506b6a35f009041c58a",
         "139d8de41dc425a8339bf9707dd5747a9f87c76398db743496ba1db74d00910f",
     }
-    for identity in ("consultation", "consultation_eng"):
+    for identity in ("consultation", "central_gov"):
         sample = DEFAULT_PROFILES[identity]
         saved = values.get(identity)
         name_exists = any(
@@ -173,6 +173,40 @@ def load_profiles() -> None:
         if not name_exists and (saved is None or untouched):
             save_record("criteria", identity, sample)
             values[identity] = deepcopy(sample)
+    # Retire shipped English profiles while keeping Task references usable.
+    retired = {
+        "consultation_eng": "consultation",
+        "central_gov_eng": "central_gov",
+    }
+    for task_id, task in load_records("tasks").items():
+        changed = False
+        for source in task["sources"]:
+            replacement = retired.get(source["profile"])
+            if replacement is not None:
+                replacement = next(
+                    (
+                        identity
+                        for identity, definition in values.items()
+                        if definition["label"] == DEFAULT_PROFILES[replacement]["label"]
+                    ),
+                    replacement,
+                )
+                if replacement not in values:
+                    save_record("criteria", replacement, DEFAULT_PROFILES[replacement])
+                    values[replacement] = deepcopy(DEFAULT_PROFILES[replacement])
+                source["profile"] = replacement
+                changed = True
+        if changed:
+            save_record("tasks", task_id, task)
+    for identity in retired:
+        if identity in values:
+            delete_record("criteria", identity)
+            del values[identity]
+    for identity in ("consultation", "central_gov"):
+        saved = values.get(identity)
+        if saved and saved["label"] == f"{DEFAULT_PROFILES[identity]['label']} (KOR)":
+            saved["label"] = DEFAULT_PROFILES[identity]["label"]
+            save_record("criteria", identity, saved)
     PROFILES.clear()
     PROFILES.update(values)
 

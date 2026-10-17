@@ -37,9 +37,9 @@ The Task fixes Events/Chunk to 1 for JSONL. Escaped newlines remain inside one
 record, and repeated records are processed independently without deduplication.
 
 For the supplied consultation sample, use
-`/host-logs/sample-logs/voc-consulting_content.jsonl` and `consulting_content`;
-for the question sample, use `/host-logs/sample-logs/voc-instruction.jsonl` and
-`instruction`. These paths assume the Compose host sample mount.
+`/host-logs/sample-logs/voc-asia-culture-center-consulting-qna.jsonl` and `consulting_content`;
+for the other consultation sample, use `/host-logs/sample-logs/voc-central-gov-consulting-qna.jsonl` and
+`consulting_content`. These paths assume the Compose host sample mount.
 
 Local and SSH use the same parser in Batch and Realtime. Malformed objects,
 missing/nontext fields, and incomplete records at rotation become individual
@@ -226,8 +226,8 @@ Remote `source` and `sourcePatterns` use `ssh://user@host:port/path` to distingu
 hosts. Credentials and SSH Key Paths are not added to classification requests or
 result records. See [request/result JSON](results.md).
 
-**VOC Consultations** is provided automatically at startup with Local File,
-JSONL (Line), `/host-logs/sample-logs/voc-consulting_content.jsonl`, and Content
+**VOC Asia Culture Center Consulting QnA** is provided automatically at startup with Local File,
+JSONL (Line), `/host-logs/sample-logs/voc-asia-culture-center-consulting-qna.jsonl`, and Content
 Field `consulting_content`. Existing registrations are preserved; an equivalent
 local path is reused. A disabled manual VOC Task is also provided; it never starts automatically. The path assumes
 the Compose sample mount; adjust it for other installations.
@@ -237,3 +237,6 @@ the Task is disabled or stopped. The editor lists referencing Task names; the
 server also rejects Type changes. Name and path remain editable. To switch Type,
 create another Source and replace the Task assignment, or remove all referencing
 Task assignments first. Unassigned Sources can change Type.
+
+The government sample also provides a Source, Korean Criteria, and a disabled
+Batch Task at startup. See [VOC Central Gov Consulting QnA](voc.md#government-qna-sample).

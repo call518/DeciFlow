@@ -26,6 +26,11 @@ and definitions. **Review Decisions** records typed human corrections without
 changing AI predictions. Scores are probability-weighted values, not rounded grades.
 DeciFlow does not create tickets automatically.
 
+Token-limit and shortened-Criteria warnings appear on the affected result. See
+[token warnings](docs/usage.md#token-warnings) for detection limits. Criteria-shortening
+metadata is provided by the local adapter; external servers may omit it. The current
+provider contract has no separate output-truncation signal.
+
 The **Processing Time** card groups Avg, Min, Max, P(50), P(95), and P(99). Throughput shows
 successful results per total elapsed second. All metrics cover the selected run;
 filters and pagination do not change them.
@@ -109,25 +114,25 @@ The default key `changeme` is for trials. Change it in `.env` before deployment.
 A built-in **DeciFlow Server Log** Task monitors `DECIFLOW_LOG_DIR/server.log` / `DECIFLOW_LOG_DIR/access.log`; it is disabled by default (enable it before Run). Missing default configuration is restored on startup, including after Reset DeciFlow. See [Tasks](docs/tasks.md).
 
 Use **Export Reviewed JSON** in Classification Results to download only results
-whose human reviewer category differs from the AI category in the selected run.
+with human corrections to any Choice, Score, or Noul decision in the selected run.
 
 ## Analyze customer consultations
 
 Use this workflow as an alternative to the log example; both remain supported.
 
-1. In **Sources**, use the automatically provided **VOC Consultations** sample,
+1. In **Sources**, use the automatically provided **VOC Asia Culture Center Consulting QnA** sample,
    or register a readable file, select **JSONL (Line)**, and enter its
-   **Content Field** (for example, `consulting_content` or `instruction`). With the
+   **Content Field** (`consulting_content` for both supplied samples). With the
    supplied host samples and Compose mount, use
-   `/host-logs/sample-logs/voc-consulting_content.jsonl` or
-   `/host-logs/sample-logs/voc-instruction.jsonl` respectively.
-2. In **Criteria**, select **VOC Consultation Review (KOR)** / **VOC Consultation Review (ENG)**, automatically added
+   `/host-logs/sample-logs/voc-asia-culture-center-consulting-qna.jsonl` or
+   `/host-logs/sample-logs/voc-central-gov-consulting-qna.jsonl`.
+2. In **Criteria**, select **VOC Asia Culture Center Consulting QnA**, automatically added
    at startup when absent, or Clone it to customize. Use a query-specific profile
    for question-only inputs; follow-up judgments require conversation evidence.
-3. Enable the provided **VOC Consultation Review (KOR)** Batch Task and Run, or
+3. Enable the provided **VOC Asia Culture Center Consulting QnA** Batch Task and Run, or
    create a Task with the desired Source and Criteria and Action None.
    JSONL always processes one object per line, preserving repeated conversations
-   as separate records. The supplied consultation file has 2,817 input records.
+   as separate records. The supplied consultation file has 841 input records.
 4. In **Main**, select the Task, inspect results, and record corrections. Mixed
    classification schemes have separate choices under **Classification** in the chart.
 
@@ -139,6 +144,25 @@ Existing Sources default to **TEXT (Chunk)**. See [Sources](docs/sources.md) and
 
 See the [VOC walkthrough and complete sample form values](docs/voc.md) and
 [field-by-field Criteria authoring guide](docs/criteria.md) before customizing.
+
+### Government QnA Sample
+
+**VOC Central Gov Consulting QnA** is also added at startup, including to existing
+installations. Its Source uses `/host-logs/sample-logs/voc-central-gov-consulting-qna.jsonl`,
+JSONL (Line), and Content Field `consulting_content` (3,965 records).
+The **VOC Central Gov Consulting QnA** Criteria classify Policy Area,
+Response Type, Follow-up Owner, Urgency, and Follow-up Required. They distinguish
+rule explanations, application guidance, referrals, completed processing, and
+explicitly outstanding agency actions. Referrals and contact footers alone do not
+create agency follow-up obligations; the profiles do not verify current law.
+The provided **VOC Central Gov Consulting QnA** Task uses Korean Criteria,
+Batch / Manual, Events/Chunk 1, and Action None. It starts disabled with Resume on
+Restart off. Enable it and click Run to analyze the sample. Saved edits are preserved.
+
+Both bundled VOC Criteria are Korean-only and omit language suffixes. Startup removes
+the retired default English Criteria and redirects their Task assignments to the Korean
+versions; custom English clones and historical results remain unchanged. Existing Source
+paths and saved customizations are preserved: update old sample paths in Sources manually.
 
 ## Usage and configuration
 
@@ -160,11 +184,18 @@ Configure Sources → Criteria → optional Actions → Tasks, then select Tasks
 SSH Hosts per Source. Hosts collect independently, share classification slots
 fairly, and produce unified results with Host filtering and collection status.
 
+Sources, Criteria, Actions, and Tasks lists sort names alphabetically, including Korean
+names; Default Criteria stays separate. Sources show type/format badges and one path per line.
+Result cards share borders and thick separators across all Tasks. Compact filter controls
+select a filter type and its value; conditions combine, remain active when switching types,
+and can be removed individually or with **Clear All**.
+**Results per Page** defaults to 30, with 10/30/50/100 options; saved preferences are preserved.
+
 The browser updates only new results and reuses existing cards. Rendering pauses
 while Main or the tab is hidden; Tasks keep running and all results are retained.
 
 Main groups Source, Criteria, Actions, and Tasks; Settings groups SSH Keys and
-SSH Hosts and Configurations (result page size, default 10, and maintenance). Returning through the sidebar opens lists and discards unsaved drafts.
+SSH Hosts and Configurations (result page size, default 30, and maintenance). Returning through the sidebar opens lists and discards unsaved drafts.
 [Usage](docs/usage.md) covers navigation, result controls, and reconnecting.
 Settings and results share `DECIFLOW_DATA_DIR/deciflow.sqlite3`; only SSH key material, known_hosts and Action execution files remain on disk. This test-stage storage change does not import earlier JSON registries or databases: reset application data before use.
 
@@ -189,7 +220,7 @@ See [Sources and SSH settings](docs/sources.md) for setup and trust management.
 - **Realtime:** Follow new logs; choose criteria and chunk size per source.
 - **Processing status:** Success / Failed / Total shows classified, failed, and total completed chunks. Action Success / Failed / Total counts follow-up executions separately. Needs Review
   counts successful classifications only. Engine connection shows the last actual request; initially Not checked.
-- **Review:** Filter Needs Review and record corrections. **Export All JSON** includes the entire selected run; **Export Reviewed JSON** includes only reviewer categories that differ from the AI category. Certain does not
+- **Review:** Filter Needs Review and record corrections. **Export All JSON** includes the entire selected run; **Export Reviewed JSON** includes only results with human corrections to Choice, Score, or Noul decisions. Certain does not
   guarantee accuracy. Task definitions and run history persist in the data volume; reviewer corrections persist in SQLite.
 
 ## Docker deployment details
@@ -388,7 +419,7 @@ Stop DeciFlow before switching source versions.
 
 For ngrok/reverse-proxy file access, set `DECIFLOW_CSRF_TRUSTED_ORIGINS` to the
 UI origin, e.g. `https://your-domain.ngrok-free.app`, or
-`https://*.ngrok-free.app` for changing ngrok domains (no trailing slash),
+`https://*.ngrok-free.app` for changing ngrok domains (no trailing `/`),
 and run `docker compose up -d ui`. Empty allows file access only through localhost.
 This setting controls the CSRF Origin check, not CORS, login authentication, or
 CSRF token validation. Wildcards also trust other users’ subdomains; protect public
@@ -423,8 +454,10 @@ access with proxy authentication.
   and never commit `.env`. Public deployment needs authentication and
   usage limits.
 
-`Ctrl+C` stops DeciFlow, waiting up to two seconds before cancelling remaining
-requests and background jobs. Task history remains on disk; interrupted Batch runs are not retried automatically.
+`Ctrl+C` suspends active runs and preserves history. After restart, checkpointed
+Batch and Realtime runs recover with their original IDs; paused runs stay paused.
+Explicitly stopped runs and older runs without checkpoints do not restart automatically.
+See [recovery requirements and limits](docs/tasks.md#recovery-after-a-server-restart).
 
 ## Appendix — Potential applications
 
@@ -450,7 +483,8 @@ For native DeciFlow, set `LAYA_API_URL` in `.env` to the reachable Laya server U
 (for Laya on the same host: `http://127.0.0.1:8000/v1/systemone`). The Compose-only
 hostname `laya` does not resolve outside its Docker network.
 
-Open **http://127.0.0.1:4000**. Startup creates the default Criteria file, so shared storage must be writable. If the default
+Open **http://127.0.0.1:4000**. Startup initializes settings and default Criteria in
+`DECIFLOW_DATA_DIR/deciflow.sqlite3`, so the data directory must be writable. If the default
 `/var/lib/deciflow-data` is not writable, set `DECIFLOW_DATA_DIR=./data`
 in `.env`. Restart DeciFlow after configuration changes.
 

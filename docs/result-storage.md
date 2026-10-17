@@ -10,7 +10,7 @@ inside the DB. No separate DB server or new environment setting is required.
 
 ## Bounded Result Loading
 
-- Settings → Configurations sets Results per Page: **10** by default, with 10/30/50/100 options.
+- Settings → Configurations sets Results per Page: **30** by default, with 10/30/50/100 options.
 - The server applies filters and cursor pagination before returning results. The
   browser retains only the current page; previous pages are fetched when needed.
 - Latest-page polling requests results after the last received cursor. Polling is

@@ -35,8 +35,9 @@ class LogRouter:
         state_ids = tokenizer(
             state.replace(tokenizer.mask_token, " "), add_special_tokens=False
         )["input_ids"]
-        build_sequence = import_module("laya.common").build_sequence
-        for question in questions.values():
+        common = import_module("laya.common")
+        criteria_dropped = {}
+        for identity, question in questions.items():
             if question.get("type") not in {"choice", "score", "noul"}:
                 raise ValueError("Unsupported DeciFlow question type.")
             internal = {
@@ -44,13 +45,30 @@ class LogRouter:
                 "ins": question.get("instructions", ""),
                 "crit": question.get("criteria"),
             }
-            empty, _ = build_sequence(
+            empty, _ = common.build_sequence(
                 tokenizer,
                 "",
                 internal,
                 self.settings.context_tokens,
                 self.settings.head_tokens,
             )
+            instruction = f"{internal['t']} question: {internal['ins']}"
+            full_head = len(
+                tokenizer(
+                    instruction.replace(tokenizer.mask_token, " "),
+                    add_special_tokens=False,
+                )["input_ids"]
+            )
+            for option in common.render_options(internal):
+                full_head += 1 + len(
+                    tokenizer(
+                        " " + option.replace(tokenizer.mask_token, " "),
+                        add_special_tokens=False,
+                    )["input_ids"]
+                )
+            dropped = full_head + 4 - len(empty)
+            if dropped > 0:
+                criteria_dropped[identity] = dropped
             if len(state_ids) + len(empty) > self.settings.context_tokens:
                 # No partial prediction is run; report the would-be truncation.
                 return {"usage": {"truncated": True}, "answers": {}}
@@ -62,6 +80,8 @@ class LogRouter:
             head_max_len=self.settings.head_tokens,
         )
         result["usage"]["truncated"] = False
+        if criteria_dropped:
+            result["usage"]["criteria_tokens_dropped"] = criteria_dropped
         return result
 
 

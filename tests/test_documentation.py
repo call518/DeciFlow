@@ -2,6 +2,7 @@
 
 import json
 import re
+from collections import Counter
 from copy import deepcopy
 from pathlib import Path
 
@@ -84,3 +85,42 @@ def test_result_documents_share_examples_and_fields() -> None:
             ]
         )
     assert field_sets[0] == field_sets[1]
+
+
+@pytest.mark.parametrize("directory", [ROOT, ROOT / "docs"])
+def test_readmes_keep_commands_identifiers_and_links_equivalent(
+    directory: Path,
+) -> None:
+    """Catch technical drift while allowing translated prose and link anchors."""
+    texts = [(directory / name).read_text() for name in ("README.md", "README.ko.md")]
+    commands = []
+    identifiers = []
+    targets = []
+    for text in texts:
+        blocks = re.findall(r"```([^\n]*)\n(.*?)\n```", text, flags=re.DOTALL)
+        commands.append(
+            [
+                (
+                    language,
+                    [line for line in body.splitlines() if not line.startswith("#")],
+                )
+                for language, body in blocks
+            ]
+        )
+        without_blocks = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+        identifiers.append(set(re.findall(r"`([^`\n]+)`", without_blocks)))
+        targets.append(
+            Counter(
+                target.split("#")[0].replace(".ko.md", ".md")
+                for target in re.findall(r"\]\(([^)]+)\)", text)
+                if not target.startswith(("https://", "http://", "#"))
+            )
+        )
+        for profile_name in ("consultation", "central_gov"):
+            profile = json.loads(
+                (ROOT / "profiles" / f"{profile_name}.json").read_text()
+            )
+            assert profile["label"] in text
+    assert commands[0] == commands[1]
+    assert identifiers[0] == identifiers[1]
+    assert targets[0] == targets[1]

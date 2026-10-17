@@ -26,6 +26,10 @@ DeciFlow는 TEXT 로그 청크 또는 JSONL 개별 레코드의 본문을 읽어
 **Review Decisions**에서 AI 예측을 유지한 채 타입별 검토자 수정값을 기록합니다.
 점수는 반올림한 등급이 아닌 확률 가중 값이며, 티켓을 자동 생성하지는 않습니다.
 
+토큰 한도 초과·Criteria 축약 경고는 해당 결과에 표시합니다. 감지 범위는
+[토큰 경고](docs/usage.ko.md#토큰-경고)를 참고하세요. Criteria 축약 메타데이터는 로컬 어댑터가
+제공하며 외부 서버는 생략할 수 있습니다. 현재 제공자 계약에는 별도의 출력 잘림 신호가 없습니다.
+
 **Processing Time** 박스에 Avg·Min·Max·P(50)·P(95)·P(99)를 함께 표시합니다. Throughput은 전체
 경과시간당 성공 건수입니다. 모두 선택한 실행 전체 기준이며 필터·페이지 이동으로
 집계 범위가 바뀌지 않습니다.
@@ -108,25 +112,25 @@ docker compose logs --follow laya-cpu
 기본 **DeciFlow Server Log** Task는 `DECIFLOW_LOG_DIR/server.log` / `DECIFLOW_LOG_DIR/access.log`를 감시하며 기본 Disable 상태입니다(Run 전에 Enable로 전환). Reset 후를 포함한 서버 시작 시 누락된 기본 설정을 복구합니다. [Tasks](docs/tasks.ko.md)를 참고하세요.
 
 Classification Results의 **Export Reviewed JSON**으로 선택한 실행에서 사람의
-리뷰 Category가 AI Category와 다른 결과만 내려받을 수 있습니다.
+Choice·Score·Noul 중 하나라도 사람이 정정한 결과만 내려받을 수 있습니다.
 
 ## 고객 상담 분석
 
 로그 예시 대신 아래 흐름을 선택할 수 있으며 두 방식 모두 지원합니다.
 
 1. **Sources**에서 읽을 수 있는 파일을 등록하고 **JSONL (Line)**과 **Content Field**를
-   지정합니다. 예를 들어 `consulting_content` 또는 `instruction`입니다. 제공된 호스트
-   샘플과 Compose 마운트를 사용하면 각각
-   `/host-logs/sample-logs/voc-consulting_content.jsonl` 또는
-   `/host-logs/sample-logs/voc-instruction.jsonl`을 지정합니다.
-   상담 파일용 **VOC Consultations** Source는 시작 시 자동 제공됩니다.
-2. **Criteria**에서 **VOC Consultation Review (KOR)** / **VOC Consultation Review (ENG)**을 사용하거나 Clone하여 수정합니다.
+   지정합니다. 제공된 두 샘플은 모두 `consulting_content`를 사용합니다. 호스트
+   샘플과 Compose 마운트를 사용하면
+   `/host-logs/sample-logs/voc-asia-culture-center-consulting-qna.jsonl` 또는
+   `/host-logs/sample-logs/voc-central-gov-consulting-qna.jsonl`을 지정합니다.
+   상담 파일용 **VOC Asia Culture Center Consulting QnA** Source는 시작 시 자동 제공됩니다.
+2. **Criteria**에서 **VOC Asia Culture Center Consulting QnA**를 사용하거나 Clone하여 수정합니다.
    샘플이 없으면 시작 시 자동 추가됩니다. 질문만 있는 자료에는
    문의 분류용 프로필을 사용하세요. 후속 처리 판단에는 대화 내용이 필요합니다.
-3. 기본 **VOC Consultation Review (KOR)** Batch Task를 활성화한 뒤 Run합니다.
+3. 기본 **VOC Asia Culture Center Consulting QnA** Batch Task를 활성화한 뒤 Run합니다.
    또는 원하는 Source와 Criteria, Action None으로 별도 Task를 만듭니다.
    JSONL은 한 줄의 객체를 한 건씩 처리하며 동일한 대화도 별도 레코드로 유지합니다.
-   제공된 상담 파일은 입력 2,817건입니다.
+   제공된 상담 파일은 입력 841건입니다.
 4. **Main**에서 Task를 선택해 결과를 확인하고 수정합니다. 서로 다른 분류 체계는
    차트의 **Classification**에서 별도로 선택합니다.
 
@@ -138,6 +142,25 @@ Content Field는 비어 있지 않은 문자열을 담은 최상위 필드의 �
 
 [VOC 실습 가이드·전체 샘플 입력값](docs/voc.ko.md)과
 [Criteria 필드별 작성 가이드](docs/criteria.ko.md)를 참고하여 수정하세요.
+
+### 정부기관 QnA 샘플
+
+**VOC Central Gov Consulting QnA**는 기존 설치를 포함해 시작 시 자동 추가됩니다.
+Source는 `/host-logs/sample-logs/voc-central-gov-consulting-qna.jsonl`,
+JSONL (Line), Content Field `consulting_content`를 사용합니다(3,965건).
+**VOC Central Gov Consulting QnA** Criteria는 행정·정책 분야,
+답변 유형, 후속 처리 주체, 긴급도, 기관 후속 처리 필요성을 판단합니다.
+법령 설명·신청 안내·관할 기관 문의 안내·개별 처리 완료·기관의 명시적 미완료 조치를
+구분합니다. 문의 안내나 말미 연락처만으로 기관의 후속 처리 의무를 추정하지 않으며
+법령의 현행성을 검증하지 않습니다.
+기본 **VOC Central Gov Consulting QnA** Task는 한국어 Criteria,
+Batch / Manual, Events/Chunk 1, Action None으로 연결되며 Enable과 Resume on Restart는
+꺼져 있습니다. 활성화 후 Run으로 실행하세요. 저장된 사용자 수정은 유지합니다.
+
+두 기본 VOC Criteria는 한국어만 제공하며 이름에 언어 접미사를 붙이지 않습니다.
+시작 시 이전 기본 영문 Criteria를 제거하고 해당 Task 할당을 한국어 버전으로 연결합니다.
+사용자가 복제한 영문 Criteria와 과거 결과는 유지합니다. 기존 Source 경로와 사용자 수정도
+보존하므로 이전 샘플 경로는 Sources에서 직접 변경하세요.
 
 ## 사용법과 설정
 
@@ -155,16 +178,21 @@ Content Field는 비어 있지 않은 문자열을 담은 최상위 필드의 �
 | [Python Actions](docs/actions.ko.md) | 구성 보기·환경 Status·pip 포함 환경·Reset venv·삭제·소스 할당 |
 | [결과 JSON](docs/results.ko.md) | 현재 요청·결과 예시와 필드 설명 |
 
-사이드바 화면은 URL에 반영됩니다: Main `/`, Source `/#sources`, Criteria `/#criteria`, Actions `/#actions`, Tasks `/#tasks`, Settings `/#settings`.
 준비 흐름은 Sources → Criteria → 선택적 Actions → Tasks이며 Main에서 실행 결과를 확인합니다.
 Source에는 경로·패턴을 한 줄에 하나씩 여러 개 등록할 수 있습니다. 원격 Source는 재사용할 경로를 정의하고 Task에서 Source별 SSH Host를 하나 이상
 선택합니다. 호스트별로 독립 수집하고 판정 차례를 공정하게 배분하며, 실행별 통합
 결과에 Host 필터·호스트 수집 상태를 제공합니다.
 
+Sources·Criteria·Actions·Tasks 목록은 이름의 ABC/가나다 순으로 정렬하고 Default Criteria는
+별도로 표시합니다. Source는 타입·형식 배지와 줄별 경로로 표시합니다. 모든 Task의 결과 카드는
+공통 테두리와 굵은 구분선을 사용합니다. 작은 필터 컨트롤에서 종류와 값을 선택하며 조건은
+함께 적용되고 종류를 전환해도 유지합니다. 개별 조건이나 **Clear All**로 해제할 수 있습니다.
+**Results per Page**는 기본 30건이며 10/30/50/100건을 선택합니다. 기존 저장값은 유지합니다.
+
 브라우저는 새 결과만 집계하고 기존 카드를 재사용합니다. Main이나 탭이 숨겨지면
 그리기를 미루며 Task는 계속 실행하고 전체 결과는 유지합니다.
 
-Main 아래에 Source·Criteria·Actions·Tasks, Settings 아래에 SSH Keys·SSH Hosts·Configurations(기본 페이지 크기 10건 및 유지 관리)를
+Main 아래에 Source·Criteria·Actions·Tasks, Settings 아래에 SSH Keys·SSH Hosts·Configurations(기본 페이지 크기 30건 및 유지 관리)를
 배치합니다. 사이드바로 재진입하면 목록을 열고 미저장 초안은 버립니다.
 화면 경로·결과 조작·재접속은 [사용법](docs/usage.ko.md)을 참고하세요.
 설정과 실행 결과는 `DECIFLOW_DATA_DIR/deciflow.sqlite3`에서 통합 관리하며 SSH 키·known_hosts·Action 실행 파일은 파일로 유지합니다. 테스트 단계의 저장 구조 변경으로 이전 JSON·DB를 이관하지 않습니다. 사용 전 앱 데이터를 초기화하세요.
@@ -188,7 +216,7 @@ SSH와 별개인 `DECIFLOW_DATA_DIR/ssh-hosts/known_hosts`에만 보존합니다
 - **Realtime:** 새 로그를 감시합니다. 소스별 판정 기준과 청크 크기를 선택합니다.
 - **처리 지표:** Success / Failed / Total로 성공·실패·처리 완료 전체 청크를 표시합니다. Action Success / Failed / Total은 후속 작업을 별도 집계합니다. Needs Review는 성공 판정만 집계합니다.
   엔진·모델 옆 연결 상태는 마지막 실제 요청 기준이며 요청 전에는 Not checked입니다.
-- **검토:** Needs Review로 결과를 추리고 수동 정정을 기록합니다. **Export All JSON**은 선택한 실행 전체, **Export Reviewed JSON**은 리뷰 Category가 AI Category와 다른 결과만 내보냅니다.
+- **검토:** Needs Review로 결과를 추리고 수동 정정을 기록합니다. **Export All JSON**은 선택한 실행 전체, **Export Reviewed JSON**은 Choice·Score·Noul 중 하나라도 사람이 정정한 결과만 내보냅니다.
   Certain은 정확도 보장이 아닙니다. Task 정의·실행 이력은 데이터 볼륨에 보존하며 수동 정정은 SQLite에 보존합니다.
 
 ## Docker 배포 상세
@@ -384,7 +412,7 @@ UI 이미지를 직접 빌드한 뒤 `docker compose up -d --force-recreate ui`�
 소스 버전 전환 전에는 DeciFlow를 중지하세요.
 
 ngrok·리버스 프록시로 파일을 처리하려면 `DECIFLOW_CSRF_TRUSTED_ORIGINS`에
-정확한 UI 출처 또는 랜덤 ngrok 주소용 `https://*.ngrok-free.app`을 지정하고
+정확한 UI 출처(예: `https://your-domain.ngrok-free.app`) 또는 랜덤 ngrok 주소용 `https://*.ngrok-free.app`을 지정하고
 `docker compose up -d ui`로 적용하세요(끝에 `/` 제외). 빈 값은 localhost 파일 접근만 허용합니다.
 이 설정은 CSRF Origin 검사에 사용하며 CORS·로그인 인증·CSRF 토큰 검증은 아닙니다.
 와일드카드는 다른 사용자의 하위 도메인도 신뢰하므로 공개 접속에는 프록시 인증을 적용하세요.
@@ -416,8 +444,10 @@ ngrok·리버스 프록시로 파일을 처리하려면 `DECIFLOW_CSRF_TRUSTED_O
   Task 이력은 원본 로그·결과·Action 실행 결과를 데이터 볼륨에 저장합니다.
   볼륨과 백업의 접근 권한을 관리하고 전송 전 민감 정보를 제거하며 `.env`를 커밋하지 마세요. 공개 배포에는 인증과 사용량 제한이 필요합니다.
 
-`Ctrl+C`로 DeciFlow를 종료하면 최대 2초 대기 후 남은 요청을 취소합니다.
-백그라운드 작업도 종료하며 Task 이력은 디스크에 보존하며 중단된 Batch는 자동 재시도하지 않습니다.
+`Ctrl+C`로 종료하면 실행을 일시 중단하고 이력을 보존합니다. 재시작 시 체크포인트가 있는
+Batch·Realtime 실행은 기존 ID로 복구하며 일시정지 상태도 유지합니다.
+명시적으로 중지한 실행과 체크포인트가 없는 이전 실행은 자동 재시작하지 않습니다.
+[복구 조건과 제한](docs/tasks.ko.md#서버-재시작-후-복구)을 확인하세요.
 
 ## Appendix — 추가 활용 가능성
 
@@ -441,8 +471,8 @@ uv run python server.py
 주소로 설정하세요(같은 호스트: `http://127.0.0.1:8000/v1/systemone`).
 Compose 전용 호스트 이름 `laya`는 Docker 네트워크 밖에서는 사용할 수 없습니다.
 
-**http://127.0.0.1:4000**을 엽니다. 첫 기동에 기본 Criteria 파일을 생성하므로 공통 데이터 경로에 쓰기 권한이
-필요합니다. 기본 `/var/lib/deciflow-data`에 쓸 수 없다면 `.env`에서
+**http://127.0.0.1:4000**을 엽니다. 시작 시 `DECIFLOW_DATA_DIR/deciflow.sqlite3`에 설정과 기본 Criteria를
+초기화하므로 데이터 디렉터리에 쓰기 권한이 필요합니다. 기본 `/var/lib/deciflow-data`에 쓸 수 없다면 `.env`에서
 `DECIFLOW_DATA_DIR=./data`를 설정하세요. 설정 변경 후 DeciFlow를 재시작합니다.
 
 ## Appendix — Docker 커스텀 이미지(선택)

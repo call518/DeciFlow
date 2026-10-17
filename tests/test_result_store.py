@@ -123,7 +123,7 @@ async def test_paged_api_settings_reviews_export_and_archive(
             assert (await client.post(url + "/results", json={})).status_code == 403
             client.headers["Origin"] = "http://localhost"
             initial = (await client.post(url + "/results", json={})).json()
-            assert len(initial["items"]) == 10
+            assert len(initial["items"]) == 30
             assert initial["summary"]["total"] == 300
             for invalid in (0, 31, True, "30"):
                 assert (

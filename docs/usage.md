@@ -88,10 +88,18 @@ reduces input variation; it does not guarantee identical predictions or accuracy
 
 ### Results and controls
 
+Filter types appear in this order: Category, Source, Host, Search Text, Review Status. Category is selected initially.
+
+Choose **Filter Type** on the left and set its value on the right. Review Status,
+Category, Host, and Source use a dropdown; Search Text uses a text field. Switching
+types preserves applied conditions and does not refresh results. Conditions combine
+with AND and appear as removable buttons below the toolbar. Use **Clear All** to reset
+them. Long Source values are shortened on the button; its tooltip keeps the full path.
+
 Each result displays the original input data in bold; JSON and Action code keep
 their own formatting.
 
-Newest **completed** chunks appear first, with 50 results per page by default (Settings → Configurations: 10, 30, 50, or 100); this is
+Newest **completed** chunks appear first, with 30 results per page by default (Settings → Configurations: 10, 30, 50, or 100); this is
 completion order, not log timestamp order. File locations show **File line(s)**
 for Batch and **Observed line(s)** for Realtime—the sequence read since monitoring
 started or the file rotated. `1 event (max 5)` means one event was submitted
@@ -140,9 +148,9 @@ means no Uncertain flag, not verified accuracy. Use labeled logs to evaluate
 misclassifications and review workload before treating the thresholds as an
 operating policy.
 
-Filter **All results / Needs Review / No review needed**. Both review groups include
-only successful classifications. To inspect failures, choose All results and the
-Request failed category. Category filtering
+Filter **All Results / Needs Review / No Review Needed**. Both review groups include
+only successful classifications. To inspect failures, choose All Results and the
+Request Failed category. Category filtering
 and case-insensitive literal search of original log text combine with the review
 filter. **Source**, after Search data, filters by an entered path/pattern and shows
 completed counts, including failures. Overlapping patterns retain all matches in
@@ -158,7 +166,7 @@ with no completed records. Opening it does not reconnect to hosts.
 Host collection states (Pending, Reading, Completed, Failed, Stopped) are separate
 from decision counts: collection can finish while inference is still running.
 SSH connect/read failures appear as **Source failed** records, with host details
-and no AI probabilities; use All results / Request failed to find them. Other
+and no AI probabilities; use All Results / Request Failed to find them. Other
 remote readers continue. See [multi-host execution](tasks.md#multiple-source-hosts).
 
 Main polls only new results for the current Task page approximately once per second
@@ -305,6 +313,19 @@ Uncertain Choice results show a separate small status badge beside the decision
 heading. The prediction value keeps its category color and wraps to show long
 values in both summary and detailed decision cards.
 
+
+## Token Warnings
+
+Affected results show an amber warning above their contents, including in saved runs:
+
+- **Input Token Limit**: the provider reports `usage.truncated=true`. New partial predictions are rejected and original input is preserved. This applies to Laya and Jev when reported.
+- **Criteria Shortened**: the provider reports `usage.criteria_tokens_dropped` by question ID. Predictions are retained and marked Needs Review. The local `laya_server.py` adapter measures discarded instruction/option tokens with the served tokenizer, including option-description caps. Increase `LAYA_HEAD_TOKENS` within the model window or shorten Criteria; longer questions leave less input room.
+- **Request Size Limit**: Jev's local byte budget rejects the request before sending it. This is not token truncation and is excluded from Truncated counts.
+
+The standard Compose Laya server and external providers may not report shortened
+Criteria; absence of a warning does not prove full preservation. Output truncation
+is not inferred from token counts or malformed answers: the current provider
+contract has no separate output-truncation signal. Invalid answers still fail validation.
 
 ## Shareable URLs
 

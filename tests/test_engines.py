@@ -94,10 +94,12 @@ async def test_provider_contract(
 
 
 @pytest.mark.anyio
-async def test_laya_truncation_keeps_original_and_continues(
+@pytest.mark.parametrize("engine_name", ["laya", "jev"])
+async def test_provider_truncation_keeps_original_and_continues(
     monkeypatch: pytest.MonkeyPatch,
+    engine_name: str,
 ) -> None:
-    monkeypatch.setenv("DECISION_ENGINE", "laya")
+    monkeypatch.setenv("DECISION_ENGINE", engine_name)
     engine = get_engine()
 
     def handle_request(request: httpx.Request) -> httpx.Response:
@@ -211,3 +213,44 @@ async def test_remote_laya_uses_client_settings_only(
         result = await classify_log("INFO service started", get_engine(), client)
     assert result["category"] == "normal"
     assert result["engine"] == "laya"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("engine_name", ["laya", "jev"])
+@pytest.mark.parametrize("dropped", [0, 10])
+async def test_shortened_criteria_require_review(
+    monkeypatch: pytest.MonkeyPatch,
+    engine_name: str,
+    dropped: int,
+) -> None:
+    """A valid response with shortened Criteria remains visible for review."""
+    monkeypatch.setenv("DECISION_ENGINE", engine_name)
+    answers = {
+        **DECISION_ANSWERS,
+        "category": {
+            "choice": "normal",
+            "confidence": 1,
+            "probabilities": {name: int(name == "normal") for name in CRITERIA},
+        },
+    }
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                json={
+                    "usage": {
+                        "truncated": False,
+                        "criteria_tokens_dropped": {"category": dropped},
+                    },
+                    "answers": answers,
+                },
+            )
+        )
+    ) as client:
+        result = await classify_log("input", get_engine(), client)
+    assert result["category"] == "normal"
+    assert result["review"] is bool(dropped)
+    assert ("criteria_shortened" in result["reviewReasons"]) is bool(dropped)
+    assert result["providerResponse"]["usage"]["criteria_tokens_dropped"] == {
+        "category": dropped
+    }

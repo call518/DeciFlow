@@ -83,10 +83,18 @@ Authentication은 개별 시도 실패·중단(Warning), 서비스·지원 기�
 
 ### 결과와 조작
 
+필터 종류는 Category, Source, Host, Search Text, Review Status 순서이며 처음에는 Category를 선택합니다.
+
+왼쪽 **Filter Type**에서 종류를 선택하고 오른쪽에서 값을 지정합니다. Review Status,
+Category, Host, Source는 풀다운이며 Search Text는 검색창입니다. 종류만 바꾸면 결과를
+새로 조회하지 않으며 기존 조건도 유지합니다. 여러 조건은 AND로 적용하며 도구 아래의
+작은 버튼으로 표시합니다. 버튼을 누르면 해당 조건을 해제하고 **Clear All**로 전체를
+초기화합니다. 긴 Source 값은 버튼에서 줄여 표시하며 툴팁에 전체 경로를 제공합니다.
+
 각 결과의 원본 입력 데이터는 굵게 표시합니다. JSON과 Action 코드는 각자의 서식을
 유지합니다.
 
-최근 **판정 완료** 청크부터 기본 페이지당 50건을 표시합니다(Settings → Configurations에서 10·30·50·100건 선택). 로그 타임스탬프 순서가
+최근 **판정 완료** 청크부터 기본 페이지당 30건을 표시합니다(Settings → Configurations에서 10·30·50·100건 선택). 로그 타임스탬프 순서가
 아닌 완료 순서입니다. Batch의 **File line(s)**는 실제 파일 라인 번호이고,
 Realtime의 **Observed line(s)**는 감시 시작 또는 파일 회전 이후 읽은 라인 순번입니다.
 `1 event (max 5)`는 최대 5이벤트 설정에서 실제 1이벤트를 제출했다는 뜻입니다.
@@ -132,9 +140,9 @@ DeciFlow는 예측을 유지하면서 검토 표시를 붙입니다. 정식 reje
 **Certain**은 Uncertain 표시가 없다는 뜻이며 검증된 정확도를 뜻하지 않습니다.
 임계값을 운영 정책으로 사용하기 전에 정답이 있는 로그로 오분류와 검토량을 평가하세요.
 
-**All results / Needs Review / No review needed**로 필터링합니다.
-Needs Review와 No review needed는 성공 판정만 표시합니다. 실패는 All results와
-범주 필터 Request failed를 함께 선택해 확인하세요.
+**All Results / Needs Review / No Review Needed**로 필터링합니다.
+Needs Review와 No Review Needed는 성공 판정만 표시합니다. 실패는 All Results와
+범주 필터 Request Failed를 함께 선택해 확인하세요.
 범주 필터와 원본 로그의 대소문자 구분 없는 문자열 검색을 함께 적용할 수 있습니다.
 목록에만 적용하며 지표·차트·JSON 내보내기는 전체 결과 기준입니다.
 
@@ -149,7 +157,7 @@ Needs Review와 No review needed는 성공 판정만 표시합니다. 실패는 
 모달을 열 때 호스트에 다시 접속하지 않습니다. 호스트 수집 상태
 (Pending·Reading·Completed·Failed·Stopped)는 판정 건수와 별개입니다. 수집 완료
 후에도 판정이 진행 중일 수 있습니다. SSH 접속·읽기 실패는 호스트 정보와 함께
-**Source failed**로 표시하고 AI 확률을 만들지 않습니다. All results / Request failed로
+**Source failed**로 표시하고 AI 확률을 만들지 않습니다. All Results / Request Failed로
 확인하며 다른 원격 수집은 계속합니다. [다중 호스트 실행](tasks.ko.md#여러-source-hosts)을 참고하세요.
 
 Main의 Task 결과는 약 1초마다 현재 페이지의 새 결과만 조회하며 기존 카드를 재사용합니다.
@@ -285,6 +293,19 @@ Settings의 **Configurations**은 유지보수 항목을 제공합니다. **Rese
 불확실한 Choice 결과는 판단 항목 제목 옆에 작은 Uncertain 상태 배지를 따로 표시합니다.
 판단값은 분류 색상을 유지하며 요약·상세 카드 모두 긴 값을 줄바꿈하여 표시합니다.
 
+
+## 토큰 경고
+
+저장된 실행을 포함해 해당 결과의 내용 위에 주황색 경고를 표시합니다.
+
+- **Input Token Limit**: 엔진이 `usage.truncated=true`를 보고한 경우입니다. 새 부분 판정은 거절하며 원본 입력은 보존합니다. Laya·Jev가 보고한 경우 모두 적용합니다.
+- **Criteria Shortened**: 엔진이 항목 ID별 `usage.criteria_tokens_dropped`를 보고한 경우입니다. 판정을 유지하면서 Needs Review로 표시합니다. 로컬 `laya_server.py` 어댑터는 실제 토크나이저로 지시문·선택지의 누락 토큰을 계산하며 선택지 설명의 개별 상한도 포함합니다. 모델 한도 내에서 `LAYA_HEAD_TOKENS`를 늘리거나 Criteria를 줄이세요. 질문이 길어지면 본문 공간은 줄어듭니다.
+- **Request Size Limit**: Jev의 로컬 바이트 예산을 초과하여 전송 전에 거절한 경우입니다. 토큰 잘림이 아니므로 Truncated 수에 포함하지 않습니다.
+
+기본 Compose Laya 서버와 외부 제공자는 Criteria 축약을 보고하지 않을 수 있습니다.
+경고가 없다고 전체 보존이 확인된 것은 아닙니다. 현재 응답 계약에는 별도의 출력 잘림
+신호가 없어 토큰 수나 잘못된 답변만으로 출력 잘림을 추측하지 않습니다. 유효하지 않은
+답변은 기존 검증으로 거절합니다.
 
 ## 공유 가능한 URL
 

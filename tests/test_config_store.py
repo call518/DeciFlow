@@ -19,16 +19,20 @@ from config_store import (
 from profiles import DEFAULT_PROFILES, PROFILES, load_profiles
 from result_store import SQLiteResultStore, close_result_store, open_result_store
 from source_registry import (
+    CENTRAL_GOV_SOURCE,
     VOC_SOURCE,
+    ensure_central_gov_source,
     ensure_voc_source,
     load_sources,
     save_sources,
 )
 from tasks import (
+    CENTRAL_GOV_TASK_ID,
     DEFAULT_TASK_ID,
     SYSTEM_MESSAGE_SOURCE_ID,
     SYSTEM_MESSAGE_TASK_ID,
     VOC_TASK_ID,
+    ensure_central_gov_task,
     ensure_default_task,
     ensure_system_message_task,
     ensure_voc_task,
@@ -43,15 +47,15 @@ def test_fresh_defaults_are_persisted_and_empty_lists_stay_empty() -> None:
         ensure_default_task()
         assert load_tasks()[0]["id"] == DEFAULT_TASK_ID
         assert load_tasks()[0]["enabled"] is False
-        assert len(load_sources()) == 5
-        assert load_settings() == {"resultsPerPage": 10}
+        assert len(load_sources()) == 6
+        assert load_settings() == {"resultsPerPage": 30}
         with sqlite3.connect(get_database_path()) as connection:
             counts = dict(
                 connection.execute(
                     "SELECT kind,COUNT(*) FROM configuration_records GROUP BY kind"
                 )
             )
-        assert counts == {"sources": 5, "criteria": 7, "tasks": 1, "settings": 1}
+        assert counts == {"sources": 6, "criteria": 7, "tasks": 1, "settings": 1}
         save_sources([])
         assert load_sources() == []
         assert not list(get_data_directory().rglob("*.json"))
@@ -111,9 +115,9 @@ def test_old_json_and_database_are_not_imported() -> None:
     try:
         load_profiles()
         ensure_default_task()
-        assert load_settings()["resultsPerPage"] == 10
+        assert load_settings()["resultsPerPage"] == 30
         assert load_records("criteria") == DEFAULT_PROFILES
-        assert len(load_sources()) == 5
+        assert len(load_sources()) == 6
         assert load_tasks()[0]["enabled"] is False
     finally:
         PROFILES.clear()
@@ -129,7 +133,7 @@ def test_configuration_reads_continue_during_result_writes() -> None:
         connection.execute("UPDATE runs SET state=state WHERE id='pending'")
         with ThreadPoolExecutor(max_workers=1) as pool:
             assert pool.submit(load_settings).result(timeout=2) == {
-                "resultsPerPage": 10
+                "resultsPerPage": 30
             }
 
 
@@ -182,7 +186,7 @@ def test_english_consultation_updates_only_when_untouched(edited: bool) -> None:
         assert load_records("criteria")["consultation"] == expected
         assert set(PROFILES) == set(saved)
         if not edited:
-            assert expected["label"] == "VOC Consultation Review (KOR)"
+            assert expected["label"] == "VOC Asia Culture Center Consulting QnA"
             assert expected["questions"]["inquiry_type"]["label"] == "문의 유형"
     finally:
         PROFILES.clear()
@@ -190,13 +194,12 @@ def test_english_consultation_updates_only_when_untouched(edited: bool) -> None:
 
 
 @pytest.mark.parametrize("old_label", ["VOC 상담 판단", "VOC 상담 판단 (KOR)"])
-def test_existing_korean_sample_gets_language_label_and_english_sample(
+def test_existing_korean_sample_is_updated_without_language_suffix(
     old_label: str,
 ) -> None:
-    """Upgrade the unedited Korean sample and add its English counterpart."""
+    """Upgrade the unedited sample without adding an English counterpart."""
     original = deepcopy(PROFILES)
     saved = deepcopy(DEFAULT_PROFILES)
-    saved.pop("consultation_eng")
     saved["consultation"] = json.loads(
         (
             Path(__file__).parent / "fixtures/consultation-korean-english-options.json"
@@ -215,26 +218,31 @@ def test_existing_korean_sample_gets_language_label_and_english_sample(
         PROFILES.update(original)
 
 
-def test_consultation_languages_share_decision_structure() -> None:
-    """Both samples keep decision IDs and structure while localizing option names."""
-    korean = DEFAULT_PROFILES["consultation"]
-    english = DEFAULT_PROFILES["consultation_eng"]
-    assert korean["primaryQuestion"] == english["primaryQuestion"]
-    assert list(korean["questions"]) == list(english["questions"])
-    for identity, question in korean["questions"].items():
-        translated = english["questions"][identity]
-        assert question["type"] == translated["type"]
-        assert question["summary"] == translated["summary"]
-        if question["type"] == "choice":
-            assert len(question["criteria"]) == len(translated["criteria"])
-            assert all(
-                any("가" <= char <= "힣" for char in key)
-                for key in question["criteria"]
-            )
-        elif question["type"] == "score":
-            assert len(question["criteria"]) == len(translated["criteria"])
-        assert question["label"] != translated["label"]
-        assert question["instructions"] != translated["instructions"]
+def test_consultation_sample_is_korean_only() -> None:
+    """Only Korean consultation templates are shipped, without language suffixes."""
+    for identity in ("consultation", "central_gov"):
+        profile = DEFAULT_PROFILES[identity]
+        assert not profile["label"].endswith(" (KOR)")
+        assert f"{identity}_eng" not in DEFAULT_PROFILES
+        for question in profile["questions"].values():
+            if question["type"] == "choice":
+                assert all(
+                    any("가" <= char <= "힣" for char in key)
+                    for key in question["criteria"]
+                )
+
+
+def test_default_voc_source_points_to_bundled_sample() -> None:
+    """The seeded VOC Source references an existing sample and content field."""
+    source = next(item for item in load_sources() if item["id"] == VOC_SOURCE["id"])
+    sample = Path(source["path"].removeprefix("/host-logs/"))
+    assert source["name"] == "VOC Asia Culture Center Consulting QnA"
+    assert sample == Path("sample-logs/voc-asia-culture-center-consulting-qna.jsonl")
+    assert source["format"] == "jsonl"
+    with sample.open() as stream:
+        record = json.loads(next(stream))
+    assert isinstance(record[source["contentField"]], str)
+    assert record[source["contentField"]].strip()
 
 
 @pytest.mark.parametrize("existing", ["missing", "edited", "same_path"])
@@ -264,6 +272,10 @@ def test_voc_task_is_manual_disabled_and_preserves_edits() -> None:
         ensure_voc_source()
         ensure_voc_task()
         task = next(task for task in load_tasks() if task["id"] == VOC_TASK_ID)
+        assert task["name"] == "VOC Asia Culture Center Consulting QnA"
+        save_record("tasks", task["id"], {**task, "name": f"{task['name']} (KOR)"})
+        ensure_voc_task()
+        assert load_tasks() == [task]
         assert task["mode"] == "batch"
         assert task["enabled"] is False
         assert task["cron"] == ""
@@ -277,7 +289,7 @@ def test_voc_task_is_manual_disabled_and_preserves_edits() -> None:
             }
         ]
         task["name"] = "My VOC Task"
-        task["sources"][0]["profile"] = "consultation_eng"
+        task["sources"][0]["profile"] = "general"
         save_record("tasks", VOC_TASK_ID, task)
         ensure_voc_task()
         assert load_tasks() == [task]
@@ -395,6 +407,126 @@ def test_korean_option_sample_updates_only_when_untouched(edited: bool) -> None:
             legacy if edited else DEFAULT_PROFILES["consultation"]
         )
         assert load_records("criteria")["consultation"] == PROFILES["consultation"]
+    finally:
+        PROFILES.clear()
+        PROFILES.update(original)
+
+
+@pytest.mark.parametrize("existing", ["missing", "edited", "renamed_id"])
+def test_central_gov_bootstrap_preserves_saved_settings(existing: str) -> None:
+    """Seed both profiles and a disabled Batch once, preserving user records."""
+    original = deepcopy(PROFILES)
+    profiles = deepcopy(DEFAULT_PROFILES)
+    for identity in ("central_gov",):
+        sample = profiles.pop(identity)
+        if existing == "edited":
+            sample["instructions"] = "Keep my government criteria."
+            profiles[identity] = sample
+        elif existing == "renamed_id":
+            profiles[f"custom_{identity}"] = sample
+    save_records("criteria", profiles)
+    source = {**CENTRAL_GOV_SOURCE, "name": "My Government Source"}
+    if existing == "renamed_id":
+        source["id"] = "b" * 32
+    save_sources([] if existing == "missing" else [source])
+    try:
+        load_profiles()
+        ensure_central_gov_source()
+        ensure_central_gov_task()
+        sources = load_sources()
+        assert len(sources) == 1
+        selected = sources[0]
+        assert selected == (CENTRAL_GOV_SOURCE if existing == "missing" else source)
+        task = next(task for task in load_tasks() if task["id"] == CENTRAL_GOV_TASK_ID)
+        assert task["name"] == "VOC Central Gov Consulting QnA"
+        save_record("tasks", task["id"], {**task, "name": f"{task['name']} (KOR)"})
+        ensure_central_gov_task()
+        assert load_tasks() == [task]
+        assert task["mode"] == "batch"
+        assert task["enabled"] is False
+        assert task["resumeOnRestart"] is False
+        assert task["cron"] == ""
+        profile_id = "custom_central_gov" if existing == "renamed_id" else "central_gov"
+        assert task["sources"] == [
+            {
+                "sourceId": selected["id"],
+                "profile": profile_id,
+                "chunkEvents": 1,
+                "actionId": "",
+            }
+        ]
+        if existing != "missing":
+            assert PROFILES == profiles
+        expected = deepcopy(PROFILES)
+        task["name"] = "My Government Task"
+        save_record("tasks", task["id"], task)
+        load_profiles()
+        ensure_central_gov_source()
+        ensure_central_gov_task()
+        assert PROFILES == expected
+        assert load_sources() == sources
+        assert load_tasks() == [task]
+    finally:
+        PROFILES.clear()
+        PROFILES.update(original)
+
+
+def test_central_gov_sample_and_localized_profiles() -> None:
+    """The bundled QnA matches the Source and the two profiles share a schema."""
+    sample = Path(CENTRAL_GOV_SOURCE["path"].removeprefix("/host-logs/"))
+    with sample.open() as stream:
+        records = [json.loads(line) for line in stream if line.strip()]
+    assert len(records) == 3965
+    assert all(
+        isinstance(row[CENTRAL_GOV_SOURCE["contentField"]], str) for row in records
+    )
+    korean = DEFAULT_PROFILES["central_gov"]
+    assert korean["label"] == "VOC Central Gov Consulting QnA"
+    assert korean["primaryQuestion"] == "policy_area"
+    assert set(korean["questions"]) == {
+        "policy_area",
+        "response_type",
+        "follow_up_owner",
+        "urgency",
+        "follow_up_required",
+    }
+
+
+@pytest.mark.parametrize("renamed_id", [False, True])
+@pytest.mark.parametrize("identity", ["consultation", "central_gov"])
+def test_retired_english_sample_relinks_tasks_and_preserves_custom_profiles(
+    identity: str,
+    renamed_id: bool,
+) -> None:
+    """Remove shipped English Criteria and preserve custom profile definitions."""
+    original = deepcopy(PROFILES)
+    saved = deepcopy(DEFAULT_PROFILES)
+    saved[identity]["label"] += " (KOR)"
+    saved[identity]["instructions"] = "Keep my Korean edits."
+    english_id = f"{identity}_eng"
+    saved[english_id] = {**deepcopy(saved[identity]), "label": "Old English sample"}
+    saved["custom_english"] = {
+        **deepcopy(saved[identity]),
+        "label": "My English Criteria",
+    }
+    target = f"custom_{identity}" if renamed_id else identity
+    if renamed_id:
+        saved[target] = saved.pop(identity)
+        saved[target]["label"] = DEFAULT_PROFILES[identity]["label"]
+    save_records("criteria", saved)
+    task = {"id": "a" * 32, "name": "My Task", "sources": [{"profile": english_id}]}
+    save_record("tasks", task["id"], task)
+    try:
+        load_profiles()
+        assert english_id not in PROFILES
+        assert PROFILES[target]["label"] == DEFAULT_PROFILES[identity]["label"]
+        assert PROFILES[target]["instructions"] == "Keep my Korean edits."
+        assert PROFILES["custom_english"] == saved["custom_english"]
+        expected = {**task, "sources": [{"profile": target}]}
+        assert load_tasks() == [expected]
+        assert load_records("criteria") == PROFILES
+        load_profiles()
+        assert load_tasks() == [expected]
     finally:
         PROFILES.clear()
         PROFILES.update(original)

@@ -864,7 +864,7 @@ test('Action list edits one handler, cancels drafts, and saves deletion without 
   assert.equal(sent[0].name, 'First');
   assert.equal(sent[1].name, 'Edited');
   assert.equal(nodes.get('action-editor').hidden, true);
-  await table().children[1].children[4].children[3].onclick();
+  await table().children.find(row=>row.children[0].textContent==='First').children[4].children[3].onclick();
   await nodes.get('save-actions').onclick();
   assert.equal(sent.length, 1);
   assert.equal(sent[0].name, 'Edited');
@@ -1365,17 +1365,17 @@ test('Action status distinguishes saved readiness, reset progress, and other Act
   await new Promise(resolve => setImmediate(resolve));
   vm.runInContext("registeredActions=[{id:'a'.repeat(32), name:'Ready action', pythonVersion:'3.12', environmentStatus:'ready'}, {id:'b'.repeat(32), name:'Missing action', pythonVersion:'3.12', environmentStatus:'not_ready'}, {id:'External',name:'External'}]; renderActions();", context);
   const statuses = () => nodes.get('action-registry').children[0].children.slice(1).map(row => row.children[3].children[0].textContent);
-  assert.deepEqual(statuses(), ['Ready', 'Not ready', 'External']);
+  assert.deepEqual(statuses(), ['External', 'Not ready', 'Ready']);
   let finish;
   context.fetch = () => new Promise(resolve => { finish = resolve; });
-  const resetting = nodes.get('action-registry').children[0].children[1].children[4].children[2].onclick();
-  assert.deepEqual(statuses(), ['Preparing...', 'Not ready', 'External']);
+  const resetting = nodes.get('action-registry').children[0].children[3].children[4].children[2].onclick();
+  assert.deepEqual(statuses(), ['External', 'Not ready', 'Preparing...']);
   finish({ok:true, json:async () => ({action:{id:'a'.repeat(32), name:'Ready action', pythonVersion:'3.12', environmentStatus:'ready'}})});
   await resetting;
-  assert.deepEqual(statuses(), ['Ready', 'Not ready', 'External']);
+  assert.deepEqual(statuses(), ['External', 'Not ready', 'Ready']);
   context.fetch = async () => ({ok:true, json:async () => ({actions:[{id:'a'.repeat(32), environmentStatus:'ready'},{id:'b'.repeat(32), environmentStatus:'ready'}]})});
   await vm.runInContext('handleRefreshActionStatus()', context);
-  assert.deepEqual(statuses(), ['Ready', 'Ready', 'External']);
+  assert.deepEqual(statuses(), ['External', 'Ready', 'Ready']);
   nodes.get('add-action').onclick();
   assert.equal(nodes.get('action-environment-status').hidden, false);
   assert.equal(nodes.get('action-environment-status').textContent, 'Not ready');
@@ -2897,7 +2897,7 @@ test('JSONL Source format requires a content field and fixes Task chunk size at 
   await new Promise(resolve=>setImmediate(resolve));
   vm.runInContext("handleEditSource(registeredSources.length)",context);
   assert.equal(vm.runInContext('sourceFields.contentField.parentElement.hidden',context),true);
-  vm.runInContext("sourceFields.format.value='jsonl';sourceFields.format.onchange();sourceFields.contentField.value='consulting_content';sourceFields.name.value='VOC';sourceFields.path.value='/host-logs/sample-logs/voc-consulting_content.jsonl'",context);
+  vm.runInContext("sourceFields.format.value='jsonl';sourceFields.format.onchange();sourceFields.contentField.value='consulting_content';sourceFields.name.value='VOC';sourceFields.path.value='/host-logs/sample-logs/voc-asia-culture-center-consulting-qna.jsonl'",context);
   assert.equal(vm.runInContext('sourceFields.contentField.parentElement.hidden',context),false);
   await nodes.get('save-sources').onclick();
   assert.equal(vm.runInContext('registeredSources.at(-1).format',context),'jsonl');
@@ -3235,8 +3235,8 @@ test('Task History stays below its row through refresh and closes for another de
 
 test('Result context emphasizes Task name and reports non-JSON API responses', async () => {
   const {nodes,context}=workspace([]);
-  vm.runInContext("renderResultContext('VOC Consultation Review (KOR)','2026-10-17T00:00:00Z','run-one')",context);
-  assert.equal(nodes.get('result-context').children[0].textContent,'VOC Consultation Review (KOR)');
+  vm.runInContext("renderResultContext('VOC Asia Culture Center Consulting QnA','2026-10-17T00:00:00Z','run-one')",context);
+  assert.equal(nodes.get('result-context').children[0].textContent,'VOC Asia Culture Center Consulting QnA');
   assert.equal(nodes.get('result-context').children[0].className,'result-task-name');
   context.htmlResponse={status:502,ok:false,json:async()=>{throw new SyntaxError('Unexpected token <');}};
   await assert.rejects(vm.runInContext("readResultResponse(htmlResponse,'/api/jobs/run-one/results')",context),/\/api\/jobs\/run-one\/results.*invalid JSON.*HTTP 502/);
@@ -3566,4 +3566,116 @@ test('Results omit More Decision Results when every decision is already visible'
   const {nodes}=workspace([result(0,false)]);
   await runTask(nodes);
   assert.equal(nodes.get('results').children[0].children[0].children.some(child=>child.className==='all-decisions'),false);
+});
+
+
+test('Source list separates input metadata and paths and keeps inline View on refresh', async () => {
+  const {context,nodes}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext(`registeredSources=[
+    {id:'local',name:'Local Logs',type:'local',path:'/logs/server.log\\n/logs/access.log'},
+    {id:'remote',name:'Remote QnA',type:'ssh',format:'jsonl',contentField:'consulting_content',path:'/data/<archive>/government-consultations.jsonl'}
+  ];renderSources();`,context);
+  const table=()=>nodes.get('source-registry').children[0];
+  assert.deepEqual(table().children[0].children.map(cell=>cell.textContent),['Name','Input','Manage']);
+  const input=table().children[1].children[1];
+  assert.deepEqual(input.children[0].children.map(tag=>tag.textContent),['Local File','TEXT (Chunk)']);
+  assert.deepEqual(input.children[1].children.map(path=>path.textContent),['/logs/server.log','/logs/access.log']);
+  const remote=table().children[2].children[1];
+  assert.deepEqual(remote.children[0].children.map(tag=>tag.textContent),['Remote File (SSH)','JSONL (Line)']);
+  assert.equal(remote.children[1].children[0].textContent,'/data/<archive>/government-consultations.jsonl');
+  table().children[1].children[2].children[0].onclick();
+  vm.runInContext('renderSources()',context);
+  assert.equal(table().children[2].className,'inline-view-row');
+  assert.equal(nodes.get('source-view').hidden,false);
+  nodes.get('source-search').value='government-consultations';
+  vm.runInContext('renderSources()',context);
+  assert.equal(table().children.length,2);
+  assert.equal(table().children[1].children[0].textContent,'Remote QnA');
+});
+
+
+test('Manager lists sort English and Korean names naturally without changing edit targets', async () => {
+  const names=['Zulu','나무','Alpha 10','가방','alpha 2'];
+  const expected=['가방','나무','alpha 2','Alpha 10','Zulu'];
+  for(const manager of ['source','action','criteria','task']) {
+    const {context,nodes}=workspace([]);
+    await new Promise(resolve=>setImmediate(resolve));
+    const records=names.map((name,index)=>({id:String(index),name,label:name,type:'local',path:`/logs/${index}`,code:'pass',sources:[],mode:'batch',enabled:false,timezone:'UTC',cron:''}));
+    const general={label:'General system',instructions:'Classify the input.',primaryQuestion:'category',questions:{category:{label:'Category',type:'choice',summary:true,criteria:{normal:'Normal',other:'Other'}}}};
+    const setup={
+      source:`registeredSources=${JSON.stringify(records)};renderSources()`,
+      action:`registeredActions=${JSON.stringify(records)};renderActions()`,
+      criteria:`criteriaProfiles={general:${JSON.stringify(general)}};criteriaProfiles={...criteriaProfiles,...Object.fromEntries(${JSON.stringify(records)}.map(item=>[item.id,{...criteriaProfiles.general,label:item.name}]))};renderCriteria()`,
+      task:`registeredTasks=${JSON.stringify(records)};renderTasks()`,
+    };
+    vm.runInContext(setup[manager],context);
+    const table=nodes.get(manager==='task'?'task-list':`${manager}-registry`).children[0];
+    const rows=table.children.slice(1);
+    assert.deepEqual(rows.map(row=>row.children[0].textContent),expected,manager);
+    if(manager!=='criteria') {
+      const collection={source:'registeredSources',action:'registeredActions',task:'registeredTasks'}[manager];
+      assert.equal(vm.runInContext(`JSON.stringify(${collection}.map(item=>item.name))`,context),JSON.stringify(names));
+    }else{
+      assert.equal(nodes.get('criteria-default').children[0].children.length,2);
+    }
+    const selected=rows.find(row=>row.children[0].textContent==='alpha 2');
+    const edit=selected.children.at(-1).children.find(button=>button.textContent==='Edit');
+    await edit.onclick();
+    const selectedId=vm.runInContext({source:'editingSource',action:'editingAction',criteria:'editingCriteria',task:'editingTask'}[manager],context);
+    assert.equal(selectedId,manager==='source' || manager==='action'?4:'4',manager);
+  }
+});
+
+
+test('Token warnings distinguish truncated input, shortened Criteria and unsent requests', async () => {
+  for(const engine of ['laya','jev']){
+    const events=[result(0,false),result(1,false),result(2,false),result(3,false)];
+    events[0].result={...events[0].result,engine,log:'truncated input',error:'Input exceeded the budget.',providerResponse:{usage:{truncated:true}}};
+    events[1].result={...events[1].result,engine,log:'shortened criteria',review:true,providerResponse:{usage:{truncated:false,criteria_tokens_dropped:{category:15}}}};
+    events[2].result={...events[2].result,engine,log:'unsent request',error:'Request too large.',inputLimitExceeded:'request_bytes'};
+    events[3].result={...events[3].result,engine,log:'ordinary failure',error:'Could not inspect token limits.',providerResponse:{usage:{truncated:false,criteria_tokens_dropped:{category:0}}}};
+    const {nodes,context}=workspace(events);
+    await runTask(nodes);
+    const row=log=>nodes.get('results').children.find(item=>item.children[1].textContent===log);
+    const warning=log=>row(log).children[0].children.find(item=>item.className==='result-token-warning');
+    assert.equal(warning('truncated input').children[0].textContent,'Input Token Limit');
+    assert.match(warning('truncated input').children[1].textContent,/prediction was rejected/);
+    assert.equal(warning('shortened criteria').children[0].textContent,'Criteria Shortened');
+    assert.match(warning('shortened criteria').children[1].textContent,/Category/);
+    assert.equal(warning('unsent request').children[0].textContent,'Request Size Limit');
+    assert.match(warning('unsent request').children[1].textContent,/not sent/);
+    assert.equal(warning('ordinary failure'),undefined);
+    assert.match(row('truncated input').className,/token-limited/);
+    vm.runInContext('render()',context);
+    assert.equal(warning('shortened criteria').children[0].textContent,'Criteria Shortened');
+  }
+});
+
+
+test('Result filter type switches controls without changing filters or making requests', async () => {
+  const {context,nodes}=workspace([result(0,false),result(1,true)]);
+  await runTask(nodes);
+  context.fetch=()=>{throw new Error('Switching filter type must not fetch');};
+  nodes.get('review-filter').value='needs-review';nodes.get('review-filter').onchange();
+  assert.deepEqual(logs(nodes),['log-1']);
+  nodes.get('result-filter-type').value='log-search';nodes.get('result-filter-type').onchange();
+  assert.equal(nodes.get('log-search').hidden,false);
+  assert.equal(nodes.get('review-filter').hidden,true);
+  assert.equal(nodes.get('review-filter').value,'needs-review');
+  assert.deepEqual(logs(nodes),['log-1']);
+  nodes.get('log-search').value='log-1';nodes.get('log-search').oninput();
+  const chips=nodes.get('active-result-filters');
+  assert.equal(chips.children.length,3);
+  const first=chips.children[0];
+  vm.runInContext('renderResultFilters()',context);
+  assert.equal(chips.children[0],first);
+  chips.children.find(button=>button.textContent.startsWith('Review Status:')).onclick();
+  assert.equal(nodes.get('review-filter').value,'all');
+  assert.equal(nodes.get('log-search').value,'log-1');
+  chips.children.find(button=>button.textContent==='Clear All').onclick();
+  assert.equal(nodes.get('log-search').value,'');
+  assert.equal(chips.hidden,true);
+  assert.equal(nodes.get('result-filter-type').value,'log-search');
+  assert.deepEqual(logs(nodes),['log-1','log-0']);
 });

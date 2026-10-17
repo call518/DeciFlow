@@ -22,7 +22,13 @@ from config_store import (
 )
 from profiles import DEFAULT_PROFILES, PROFILES
 from result_store import open_result_store
-from source_registry import DEFAULT_SOURCES, VOC_SOURCE, load_sources, save_sources
+from source_registry import (
+    CENTRAL_GOV_SOURCE,
+    DEFAULT_SOURCES,
+    VOC_SOURCE,
+    load_sources,
+    save_sources,
+)
 from source_settings import parse_source_settings
 
 DEFAULT_TASK_NAME = "DeciFlow Server Log"
@@ -30,7 +36,9 @@ DEFAULT_SOURCE_NAME = "Sample DeciFlow Server Log"
 DEFAULT_TASK_ID = uuid5(NAMESPACE_URL, "deciflow:task:server-log").hex
 DEFAULT_SOURCE_ID = uuid5(NAMESPACE_URL, "deciflow:source:server-log").hex
 VOC_TASK_ID = uuid5(NAMESPACE_URL, "deciflow:task:voc-consultations").hex
-VOC_TASK_NAME = "VOC Consultation Review (KOR)"
+VOC_TASK_NAME = "VOC Asia Culture Center Consulting QnA"
+CENTRAL_GOV_TASK_ID = uuid5(NAMESPACE_URL, "deciflow:task:central-gov-qna").hex
+CENTRAL_GOV_TASK_NAME = "VOC Central Gov Consulting QnA"
 SYSTEM_MESSAGE_TASK_ID = uuid5(NAMESPACE_URL, "deciflow:task:system-message").hex
 SYSTEM_MESSAGE_SOURCE_ID = uuid5(NAMESPACE_URL, "deciflow:source:system-message").hex
 
@@ -112,34 +120,52 @@ def ensure_default_task() -> None:
 
 def ensure_voc_task() -> None:
     """Provide a disabled manual VOC Batch without changing existing Tasks."""
-    if any(
-        task["id"] == VOC_TASK_ID or task["name"].casefold() == VOC_TASK_NAME.casefold()
-        for task in load_tasks()
-    ):
-        return
+    _ensure_consultation_task(VOC_TASK_ID, VOC_TASK_NAME, VOC_SOURCE, "consultation")
+
+
+def ensure_central_gov_task() -> None:
+    """Provide a disabled government QnA Batch without changing saved Tasks."""
+    _ensure_consultation_task(
+        CENTRAL_GOV_TASK_ID,
+        CENTRAL_GOV_TASK_NAME,
+        CENTRAL_GOV_SOURCE,
+        "central_gov",
+    )
+
+
+def _ensure_consultation_task(
+    task_id: str, name: str, sample: Result, profile_id: str
+) -> None:
+    for task in load_tasks():
+        if task["id"] == task_id:
+            if task["name"] == f"{name} (KOR)":
+                save_record("tasks", task_id, {**task, "name": name})
+            return
+        if task["name"].casefold() == name.casefold():
+            return
     source = next(
         source
         for source in load_sources()
-        if source["id"] == VOC_SOURCE["id"]
-        or source["name"].casefold() == VOC_SOURCE["name"].casefold()
-        or (source["type"] == "local" and source["path"] == VOC_SOURCE["path"])
+        if source["id"] == sample["id"]
+        or source["name"].casefold() == sample["name"].casefold()
+        or (source["type"] == "local" and source["path"] == sample["path"])
     )
     profile = (
-        "consultation"
-        if "consultation" in PROFILES
+        profile_id
+        if profile_id in PROFILES
         else next(
             identity
             for identity, definition in PROFILES.items()
             if definition["label"].casefold()
-            == DEFAULT_PROFILES["consultation"]["label"].casefold()
+            == DEFAULT_PROFILES[profile_id]["label"].casefold()
         )
     )
     save_record(
         "tasks",
-        VOC_TASK_ID,
+        task_id,
         {
-            "id": VOC_TASK_ID,
-            "name": VOC_TASK_NAME,
+            "id": task_id,
+            "name": name,
             "mode": "batch",
             "cron": "",
             "timezone": "UTC",

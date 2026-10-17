@@ -35,9 +35,9 @@ Local File·Remote File (SSH)와 별도로 **Input Format**을 선택합니다. 
 JSONL의 Task Events/Chunk는 1로 고정합니다. 이스케이프한 줄바꿈은 한 레코드에
 유지하고 같은 레코드가 반복되어도 중복 제거 없이 별개 처리합니다.
 
-제공된 상담 예시는 `/host-logs/sample-logs/voc-consulting_content.jsonl`과
-`consulting_content`, 질문 예시는 `/host-logs/sample-logs/voc-instruction.jsonl`과
-`instruction`을 사용합니다. 이 경로는 Compose의 호스트 샘플 마운트 기준입니다.
+제공된 상담 예시는 `/host-logs/sample-logs/voc-asia-culture-center-consulting-qna.jsonl`과
+`consulting_content`, 다른 상담 예시는 `/host-logs/sample-logs/voc-central-gov-consulting-qna.jsonl`과
+`consulting_content`를 사용합니다. 이 경로는 Compose의 호스트 샘플 마운트 기준입니다.
 
 로컬·SSH의 Batch·Realtime은 같은 파서를 사용합니다. 잘못된 객체·누락되거나 문자열이
 아닌 본문·회전 시 불완전한 레코드는 개별 실패로 남기고 이후 처리를 계속합니다.
@@ -216,8 +216,8 @@ Tasks에 소스 ID·hostIds·실행 설정을 저장합니다. 직접 파일 API
 사용합니다. 인증 정보·SSH 키 경로는 판정 요청이나 결과 항목에 추가하지 않습니다.
 [요청·결과 JSON](results.ko.md)을 참고하세요.
 
-**VOC Consultations** Source는 시작 시 자동 제공됩니다. Local File, JSONL (Line),
-`/host-logs/sample-logs/voc-consulting_content.jsonl`, Content Field
+**VOC Asia Culture Center Consulting QnA** Source는 시작 시 자동 제공됩니다. Local File, JSONL (Line),
+`/host-logs/sample-logs/voc-asia-culture-center-consulting-qna.jsonl`, Content Field
 `consulting_content`로 설정합니다. 기존 등록은 유지하며 같은 로컬 경로가 있으면
 중복 추가하지 않습니다. 비활성 수동 VOC Task도 제공하며 자동 실행하지 않습니다. 경로는 Compose
 샘플 마운트 기준이므로 다른 실행 환경에서는 수정하세요.
@@ -226,3 +226,6 @@ Tasks에 소스 ID·hostIds·실행 설정을 저장합니다. 직접 파일 API
 변경할 수 없습니다. 편집기에 참조 Task 이름을 표시하며 서버도 변경을 차단합니다.
 이름·경로는 계속 수정할 수 있습니다. 타입을 바꾸려면 새 Source를 만들어 Task에서
 교체하거나 모든 Task 참조를 먼저 제거하세요. 미사용 Source의 타입은 변경할 수 있습니다.
+
+정부기관 샘플의 Source·한국어 Criteria·비활성 Batch Task도 시작 시 자동 제공됩니다.
+[VOC Central Gov Consulting QnA 설정](voc.ko.md#정부기관-qna-샘플)을 참고하세요.

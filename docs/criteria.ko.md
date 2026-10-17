@@ -24,7 +24,7 @@
 
 | 화면 입력란 | 목적 | 무엇을 입력하나 |
 | --- | --- | --- |
-| Start From Template | 신규 초안의 출발점 | VOC 전체 대화는 KOR 또는 ENG. Custom Decisions는 빈 사용자 구성에서 시작합니다. 템플릿을 다시 고르면 현재 초안 내용을 대체합니다. |
+| Start From Template | 신규 초안의 출발점 | VOC 전체 대화는 상담용 템플릿을 선택합니다. Custom Decisions는 빈 사용자 구성에서 시작합니다. 템플릿을 다시 고르면 현재 초안 내용을 대체합니다. |
 | Name | Task에서 고를 프로필 이름 | `VOC 상담 후속 조치 테스트`. 기존 프로필과 다른 이름을 사용합니다. |
 | Primary Classification | Overview 차트와 분류 필터에 사용할 대표 판단 | `문의 유형` 같은 Choice 항목 하나. 나머지 항목의 실행 여부를 결정하는 설정은 아닙니다. |
 | Decision Instructions | 모든 Decision에 적용할 공통 원칙 | 판단 시점, 사용할 근거, 추측 금지, 정보 부족 시 대응. 특정 항목의 선택지는 아래 Decision에서 정의합니다. |
@@ -85,8 +85,8 @@ Choice로 지정하고 다음처럼 작성합니다.
 | `unknown` | 대화만으로 종료 시점의 상태를 확인할 수 없음 |
 
 결과와 차트의 선택지 이름은 `booking` → Booking처럼 Option ID를 바탕으로 표시합니다.
-오른쪽 정의는 판단 기준이며 별도의 선택지 표시 이름 칸이 아닙니다. Choice Option ID에는 한국어도 사용할 수 있습니다. KOR 샘플은 예약·고객 조치 대기처럼
-선택지 코드도 한국어이며 ENG는 booking·customer_pending을 사용합니다. Decision ID는 유지합니다.
+오른쪽 정의는 판단 기준이며 별도의 선택지 표시 이름 칸이 아닙니다. Choice Option ID에는 한국어도 사용할 수 있습니다. 기본 샘플은 예약·고객 조치 대기처럼
+선택지 코드도 한국어입니다. Decision ID는 유지합니다.
 
 정의에는 단어 하나보다 **언제 그 답을 선택하는지**를 씁니다. 서로 겹치는 정의에는
 우선순위를 명시하세요. `기타`라는 뜻의 코드로 `other`, 정보 부족은 `unknown`을
@@ -185,7 +185,7 @@ Task가 참조 중이면 차단합니다.
 사용해 전체 판단 정의를 저장합니다. 기존 Task 참조는 유지하며 시스템 결과는 기존
 Actions를 위한 category·urgency·ticket 관련 필드도 유지합니다.
 
-최초 초기화 시 시스템 예시와 **VOC Consultation Review (KOR)** / **VOC Consultation Review (ENG)**을 제공합니다.
+최초 초기화 시 시스템 예시와 **VOC Asia Culture Center Consulting QnA**을 제공합니다.
 기존 설치도 시작할 때 상담 샘플의 ID와 이름이 모두 없으면 자동 추가합니다. 저장된
 프로필은 덮어쓰지 않으며, 이 필수 샘플을 삭제하면 다음 시작 시 다시 추가됩니다.
 다른 예시는 데이터 초기화 없이 **Start From Template**으로 불러옵니다. 상담 상태는 대화 종료 시점의 상태이며 이후 업무 완료 사실은 아닙니다.
@@ -211,9 +211,13 @@ AI와 다른 수정값이 있는 결과를 내보냅니다.
 프로필은 `DECIFLOW_DATA_DIR/deciflow.sqlite3`에 저장합니다. 번들 JSON은 초기값·템플릿이며
 Criteria 관리는 신뢰한 UI Origin에서만 허용합니다.
 
-한국어 KOR을 기준으로 동일한 내용의 영어 ENG 샘플을 제공합니다. 판단 ID·타입·선택지 의미·
-점수 단계·요약 설정은 동일하며 Choice 선택지 코드는 KOR은 한국어, ENG는 영어입니다. 두 샘플 모두 없으면 시작 시 자동 추가합니다.
-수정하지 않은 이전 샘플은 동일 ID로 갱신하며 사용자 수정과 Task 연결은 유지합니다.
+VOC 샘플은 한국어로만 제공하며 누락된 샘플은 시작 시 추가합니다.
+저장된 기본 영어 프로필은 제거하고 Task 연결은 해당 한국어 프로필로 전환합니다.
+이전 실행 결과와 사용자 복제본은 유지합니다. 기본 이름의 `(KOR)` 접미사만 제거하며
+사용자가 바꾼 이름은 유지합니다.
 
 Laya는 본문 한도와 별도로 질문 지시문·선택지의 head 예산을 적용합니다.
 본문이 잘리지 않아도 지시문이 잘릴 수 있습니다. [VOC 토큰 예산 안내](voc.ko.md#laya-질문-토큰-예산-확인)를 확인하세요.
+
+정부기관 샘플의 Source·한국어 Criteria·비활성 Batch Task도 시작 시 자동 제공됩니다.
+[VOC Central Gov Consulting QnA 설정](voc.ko.md#정부기관-qna-샘플)을 참고하세요.

@@ -169,10 +169,9 @@ Confirming Task deletion permanently removes its definition, all run history, re
 Once visible, the tooltip stays open while the pointer is over the Task card or
 tooltip. Move into the tooltip to select/copy text; leaving both closes it.
 
-At startup, **VOC Consultation Review (KOR)** is provided as a disabled manual
-Batch Task using the VOC Consultations Source, KOR Criteria, one event per chunk,
-and Action None. Enable it, then Run to analyze the file. Change Criteria to ENG
-when needed. Existing Task settings are preserved.
+At startup, **VOC Asia Culture Center Consulting QnA** is provided as a disabled manual
+Batch Task using the VOC Asia Culture Center Consulting QnA Source, Korean Criteria, one event per chunk,
+and Action None. Enable it, then Run to analyze the file. Existing Task settings are preserved.
 
 **System Messages** is also provided at startup as a disabled Realtime Task with
 General system, one event per chunk, and Action None. It reuses **System messages**,
@@ -251,3 +250,6 @@ input cursors and cannot be upgraded safely: the first deployment restart ends t
 runs; subsequent new Runs support recovery. Keep the data volume and original files.
 
 Set Criteria to **None** to release its dependency temporarily. Assign Criteria to every Source before running the Task.
+
+The government sample also provides a Source, Korean Criteria, and a disabled
+Batch Task at startup. See [VOC Central Gov Consulting QnA](voc.md#government-qna-sample).

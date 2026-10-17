@@ -35,6 +35,10 @@ truncation metadata causes rejection, with the original log retained.
 truncation, not shortened question instructions. False does not guarantee that
 all instructions or option descriptions were preserved.
 
+The local `laya_server.py` adapter also reports `usage.criteria_tokens_dropped`
+when instruction or option tokens are shortened. DeciFlow flags these results for
+review. The standard Compose server may not provide this metadata.
+
 All three answers must pass validation. Category probabilities must cover all five
 categories and sum approximately to one. Urgency requires the expected legend,
 four valid probabilities, and a score matching their weighted sum. Ticket need is

@@ -148,6 +148,7 @@ async def classify_log(
         metadata["decisionInput"] = decision_input
         metadata["inputNormalization"] = "single_line_syslog_header"
     if byte_limit is not None and len(content) > byte_limit:
+        metadata["inputLimitExceeded"] = "request_bytes"
         raise DecisionError(
             f"This event exceeds the local {byte_limit:,}-byte Jev request budget "
             "(including the question). This is a conservative preflight guard, "
@@ -197,6 +198,9 @@ async def classify_log(
     truncated = False
     try:
         data = response.json()
+        truncated = data.get("usage", {}).get("truncated") is True
+        if truncated:
+            raise ValueError
         if engine.name == "laya":
             if engine.model not in {"english", "multilingual", "typed-decisions"}:
                 routed = data.get("routing", {}).get("model")
@@ -271,6 +275,12 @@ async def classify_log(
             "model": data.get("model"),
             "engine": engine.name,
         }
+        criteria_dropped = data.get("usage", {}).get("criteria_tokens_dropped")
+        if isinstance(criteria_dropped, dict) and any(
+            type(count) is int and count > 0 for count in criteria_dropped.values()
+        ):
+            result["review"] = True
+            result["reviewReasons"] = [*reasons, "criteria_shortened"]
         if "questions" in selected:
             group = sha256(
                 json.dumps(
@@ -303,7 +313,7 @@ async def classify_log(
     except (ValueError, KeyError, TypeError, AttributeError) as error:
         if truncated:
             raise DecisionError(
-                "This event exceeds Laya's token budget including the question. "
+                f"This event exceeds {label}'s token budget including the question. "
                 "The partial prediction was discarded; the original event was retained "
                 "for review without truncation.",
                 metadata,

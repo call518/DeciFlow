@@ -2,6 +2,8 @@ import { readEvents } from './stream.js';
 
 const $ = id => document.getElementById(id);
 const routeOpeners = new Map();
+const resultFilterLabels={'category-filter':'Category','source-filter':'Source','host-filter':'Host','log-search':'Search Text','review-filter':'Review Status'};
+let resultFilterSignature='';
 let applyingRoute = false;
 let routeGeneration = 0;
 const routeBases = {'source-view':'/sources','criteria-view':'/criteria','action-view':'/actions','task-view':'/tasks','task-history':'/tasks','ssh-key-view':'/settings/ssh-keys','ssh-host-view':'/settings/ssh-hosts'};
@@ -233,7 +235,7 @@ async function copyText(text) {
 }
 let results = [];
 let pagedView = null;
-let resultsPerPage = 10;
+let resultsPerPage = 30;
 const resultCursors = new WeakMap();
 let completionOrder = [];
 let elapsedMs = 0;
@@ -296,6 +298,27 @@ function handleEngineConnection(state) {
 }
 function needsReview(result) {
   return !result.error && Boolean(result.review);
+}
+function renderTokenWarning(result) {
+  const usage=result.providerResponse?.usage;
+  const shortened=Object.entries(usage?.criteria_tokens_dropped || {}).filter(([,count])=>Number.isInteger(count) && count>0).map(([id])=>id);
+  let title,text;
+  if(result.inputLimitExceeded==='request_bytes'){
+    title='Request Size Limit';
+    text='This input exceeded the local request-size limit and was not sent to the engine. Original input is preserved. Reduce the input size.';
+  }else if(usage?.truncated===true){
+    title='Input Token Limit';
+    text=`The engine could not use the complete input. ${result.error?'The prediction was rejected.':'Review this partial prediction.'} Original input is preserved. Check the token budget or reduce the input size.`;
+  }else if(shortened.length){
+    title='Criteria Shortened';
+    const definitions=resultDecisionDefinitions(result);
+    const affected=shortened.map(id=>definitions[id]?.label || id);
+    text=`Some instructions or option descriptions were shortened: ${affected.join(', ')}. Review this result and increase the question budget or shorten the Criteria.`;
+  }else return null;
+  const warning=element('div','','result-token-warning');
+  warning.setAttribute('role','note');
+  warning.setAttribute('aria-label',title);
+  warning.append(element('strong',title),element('p',text));return warning;
 }
 function element(tag, text, className = '') {
   const node = document.createElement(tag);
@@ -825,7 +848,7 @@ function renderTasks() {
   const table=element('table','','action-list'); const head=element('tr','');
   for(const title of ['Name','Enabled','Execution','Status','Next Run','Manage']) head.append(element('th',title));
   table.append(head); const query=$('task-search').value.toLowerCase();
-  for(const task of registeredTasks.filter(task=>task.name.toLowerCase().includes(query))) {
+  for(const task of registeredTasks.filter(task=>task.name.toLowerCase().includes(query)).sort(compareNames)) {
     const row=element('tr',''); const run=task.activeRun || task.latestRun;
     const availability=element('td','');
     const toggle=element('button','','task-toggle');toggle.type='button';
@@ -1146,7 +1169,7 @@ function renderActions() {
   const header = element('tr', '');
   for (const title of ['Name', 'Python', 'Modules', 'Status', 'Manage']) header.append(element('th', title));
   table.append(header);
-  registeredActions.forEach((action, index) => {
+  [...registeredActions.entries()].sort(([,left],[,right])=>compareNames(left,right)).forEach(([index, action]) => {
     if (!action.name.toLowerCase().includes(query)) return;
     matches++;
     const row = element('tr', '');
@@ -1371,7 +1394,7 @@ function renderCriteria() {
   table.append(header);
   const query = $('criteria-search').value.trim().toLowerCase();
   let matches = 0;
-  for (const [id, profile] of Object.entries(criteriaProfiles)) {
+  for (const [id, profile] of Object.entries(criteriaProfiles).sort(([,left],[,right])=>compareNames({name:left.label},{name:right.label}))) {
     if (id === 'general' || !profile.label.toLowerCase().includes(query)) continue;
     matches++;
     const row = element('tr', '');
@@ -1419,7 +1442,7 @@ function handleEditCriteria(id, template = null) {
     const label=element('label',caption);const input=element(key==='label'?'input':'textarea','');
     input.value=profile[key];input.setAttribute('aria-label',caption);input.oninput=()=>handleValidateCriteria();
     label.append(input);
-    addHelp(label,input,key==='label'?'Profile name shown when assigning Criteria to a Task. Example: VOC Consultation Review.':'Rules shared by every decision. State the evidence to use and what must not be inferred.');
+    addHelp(label,input,key==='label'?'Profile name shown when assigning Criteria to a Task. Example: VOC Asia Culture Center Consulting QnA.':'Rules shared by every decision. State the evidence to use and what must not be inferred.');
     form.append(label);criteriaFields[key]=input;
   }
   const primaryLabel=element('label','Primary Classification');const primary=element('select','');
@@ -1579,19 +1602,27 @@ let savingSources = false;
 function sourceDescription(source) {
   return `${source.type === 'ssh' ? 'Remote File (SSH)' : 'Local File'} · ${source.format==='jsonl'?'JSONL (Line)':'TEXT (Chunk)'} · ${source.path.split('\n').join(' · ')}`;
 }
+function renderSourceInput(source) {
+  const cell=element('td','','source-input');
+  const metadata=element('div','','source-input-metadata');
+  metadata.append(element('span',source.type==='ssh'?'Remote File (SSH)':'Local File','source-input-tag'),element('span',source.format==='jsonl'?'JSONL (Line)':'TEXT (Chunk)','source-input-tag'));
+  const paths=element('div','','source-input-paths');
+  for(const path of source.path.split('\n').filter(path=>path.trim()))paths.append(element('code',path));
+  cell.append(metadata,paths);return cell;
+}
 function renderSources() {
   handleClearRouteLinks('/sources');
   handleParkInlineView('source-view');
   $('source-list').hidden = editingSource !== null;
-  const table = element('table', '', 'action-list');
+  const table = element('table', '', 'action-list source-list');
   const header = element('tr', '');
-  for (const caption of ['Name', 'Type / Path', 'Manage']) header.append(element('th', caption));
+  for (const caption of ['Name', 'Input', 'Manage']) header.append(element('th', caption));
   table.append(header);
   const query = $('source-search').value.trim().toLowerCase();
-  for (const [index, source] of registeredSources.entries()) {
+  for (const [index, source] of [...registeredSources.entries()].sort(([,left],[,right])=>compareNames(left,right))) {
     if (!`${source.name} ${sourceDescription(source)}`.toLowerCase().includes(query)) continue;
     const row = element('tr', '');
-    row.append(element('td', source.name), element('td', sourceDescription(source)));
+    row.append(element('td', source.name), renderSourceInput(source));
     const controls = element('td', '', 'action-list-controls');
     for (const [caption, handler] of [
       ['View', () => handleViewConfiguration('source-view', source.name, [['Type', source.type === 'ssh' ? 'Remote File (SSH)' : 'Local File'], ['Name', source.name], ['Input Format',source.format==='jsonl'?'JSONL (Line)':'TEXT (Chunk)'],['Content Field',source.format==='jsonl'?source.contentField:undefined], ['Path / Pattern', source.path]])],
@@ -1950,7 +1981,7 @@ function renderSourceHostsDetail(hosts=sourceHostDetails()) {
 function renderHostFilter() {
   const select=$('host-filter');const selected=select.value || 'all';
   const hosts=sourceHostDetails();
-  select.replaceChildren();select.append(new Option('All hosts','all'));
+  select.replaceChildren();select.append(new Option('All Hosts','all'));
   for(const [id,host] of hosts)select.append(new Option(`${host.name}${host.address?` · ${host.address}`:''} (${host.count})`,id));
   select.value=hosts.some(([id])=>id===selected)?selected:'all';select.disabled=!hosts.length;
   $('source-hosts-detail').disabled=!hosts.length;
@@ -1967,7 +1998,7 @@ function renderSourceFilter() {
   const counts = new Map(runSourcePatterns.map(path => [path, 0]));
   for (const [path, count] of updateResultStatistics().sources) counts.set(path, count);
   select.replaceChildren();
-  select.append(new Option(`All sources (${completed})`, 'all'));
+  select.append(new Option(`All Sources (${completed})`, 'all'));
   for (const [path, count] of counts) select.append(new Option(`${path} (${count})`, path));
   select.value = counts.has(selected) ? selected : 'all';
   select.disabled = !counts.size;
@@ -2004,6 +2035,7 @@ function render(updateList = true, incremental = false) {
     renderedCount = completed;
     renderedHosts = runHosts;
   }
+  renderResultFilters();
   $('summary').replaceChildren();
   const processingMs = stats.processingMs;
   const averageMs = stats.total ? processingMs / stats.total : 0;
@@ -2109,6 +2141,8 @@ function render(updateList = true, incremental = false) {
       if (needsReview(result)) metadata.append(element('span', 'Needs Review', 'review'));
       top.append(metadata);
     }
+    const tokenWarning=renderTokenWarning(result);
+    if(tokenWarning){row.className+=' token-limited';top.prepend(tokenWarning);}
     row.append(top);
     if(result.inputFormat==='jsonl'){const original=element('details','','original-input');original.append(element('summary','Input Text'),element('p',result.log,'log'));handleResultDisclosure(original,result,'input');row.append(original);}
     else row.append(element('p',result.log,'log'));
@@ -2316,7 +2350,38 @@ async function handleProcessing(job) {
     }
   }
 }
+function renderResultFilters() {
+  const selected=$('result-filter-type').value || 'category-filter';
+  $('result-filter-type').value=selected;
+  const items=[];
+  for(const [id,label] of Object.entries(resultFilterLabels)){
+    const control=$(id);control.hidden=id!==selected;
+    const value=control.value;
+    if(!value || (id!=='log-search' && value==='all'))continue;
+    const option=id==='log-search'?value:Array.from(control.options).find(option=>option.value===value)?.text || value;
+    const description=id==='log-search' || id==='source-filter'?value:option.replace(/ \(\d+\)$/,'');
+    items.push({id,label,description});
+  }
+  const signature=JSON.stringify(items);
+  if(signature===resultFilterSignature)return;
+  resultFilterSignature=signature;
+  const active=$('active-result-filters');active.replaceChildren();
+  for(const {id,label,description} of items){
+    const control=$(id);
+    const text=`${label}: ${description}`;
+    const remove=element('button',`${text} ×`);remove.type='button';remove.title=`Remove ${text}`;
+    remove.setAttribute('aria-label',`Remove ${text}`);
+    remove.onclick=()=>{control.value=id==='log-search'?'':'all';clearTimeout(resultSearchTimer);return handleResultFilter();};
+    active.append(remove);
+  }
+  active.hidden=!active.children.length;
+  if(active.hidden)return;
+  const clear=element('button','Clear All','clear-result-filters');clear.type='button';
+  clear.onclick=()=>{for(const id of Object.keys(resultFilterLabels))$(id).value=id==='log-search'?'':'all';clearTimeout(resultSearchTimer);return handleResultFilter();};
+  active.append(clear);
+}
 function handleResultFilter() {
+  renderResultFilters();
   page = 0;
   if(pagedView){pagedView.cursors=[null];return handleRefreshResults(true);}
   if (completed) render();
@@ -2324,6 +2389,8 @@ function handleResultFilter() {
 $('review-filter').onchange = handleResultFilter;
 $('category-filter').onchange = handleResultFilter;
 let resultSearchTimer;
+$('result-filter-type').onchange=renderResultFilters;
+renderResultFilters();
 $('log-search').oninput = () => {
   if(!pagedView)return handleResultFilter();
   clearTimeout(resultSearchTimer);resultSearchTimer=setTimeout(()=>handleResultFilter().catch(error=>{handleMessage('message',error.message,true);}),250);
