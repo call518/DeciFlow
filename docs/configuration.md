@@ -30,8 +30,13 @@ with DeciFlow. `COMPOSE_PROFILES` selects `cpu` or `cuda`; empty starts only the
 include `https://*.ngrok-free.app`. Existing `.env` values
 are not overwritten. For native DeciFlow or an external Laya host, set the reachable
 URL explicitly. Both CPU and CUDA publish port 8000.
-Apply Compose environment changes with `docker compose up -d`; `restart` does not
-reload `env_file` values. For native execution, restart the Python process.
+At UI startup, explicit `DECISION_ENGINE`, `LAYA_*`, and `JEV_*` entries in the
+mounted `.env` override the inherited engine environment. After changing them,
+use Docker Desktop Restart on DeciFlow-UI (or `docker compose restart ui`), then
+refresh the browser. Missing entries retain inherited values. Other settings retain
+environment precedence. Changes to ports, mounts, Compose profiles, or the Laya
+service require `docker compose up -d` to recreate affected containers. For native
+execution, restart the Python process.
 See [request/result JSON](results.md) for state, the three questions, and outputs.
 
 `LAYA_HEAD_TOKENS=384` sends `"head_max_len": 384` in each Laya request.
@@ -112,14 +117,15 @@ Copying only the live database can omit data in its WAL. Stop the server before 
 
 Open **Settings → Configurations → Reset DeciFlow**. The in-app warning lists
 what will be lost and the exact `DECIFLOW_DATA_DIR` path. Cancel, Escape, or the
-close button makes no change. **Yes, Reset DeciFlow** permanently deletes every
-entry in that directory, including hidden files, after stopping the scheduler,
+close button makes no change. **Yes, Reset DeciFlow** permanently deletes entries
+in that directory, including hidden files, except `ssh-keys` and its registration, after stopping the scheduler,
 Tasks, and Action subprocesses and closing SQLite. The directory itself remains;
 child symlinks are removed without deleting their external targets.
 
 This removes Sources, Tasks, Actions and their environments, custom Criteria,
-results/history/reviews, managed SSH Keys/Hosts, approved known_hosts, and saved
-settings. Back up the data directory and export any results/reviews first.
+results/history/reviews, managed SSH Hosts, approved known_hosts, and saved
+settings. SSH key files and their IDs/names are preserved and remain usable.
+Back up the data directory and export any results/reviews first.
 Application files, `.env`, Laya/model caches, and inputs/logs outside the data
 directory remain unchanged. Put only DeciFlow-managed data in the configured root.
 

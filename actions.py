@@ -19,6 +19,7 @@ from anyio.abc import ByteReceiveStream
 
 from classifier import Result
 from config_store import get_data_directory, load_records, save_record, save_records
+from result_payload import compact_result
 
 DEFAULT_ACTION_ID = uuid5(NAMESPACE_URL, "deciflow:action:elasticsearch").hex
 DEFAULT_ACTION_CODE = """import json
@@ -534,7 +535,20 @@ async def run_action(action: Result, payload: Result) -> Result:
     """Protect owned data while executing an Action, including direct callers."""
     try:
         with use_actions([action]):
-            return await _run_action(action, payload)
+            return await _run_action(
+                action,
+                {
+                    key: value
+                    for key, value in compact_result(payload).items()
+                    if key
+                    not in {
+                        "_workId",
+                        "_checkpoint",
+                        "_recoveredResult",
+                        "_actionPhase",
+                    }
+                },
+            )
     except ValueError as error:
         return {
             "id": action["id"],

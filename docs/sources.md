@@ -3,7 +3,7 @@
 [English](sources.md) | [한국어](sources.ko.md) | [Documentation](README.md) | [README](../README.md)
 
 Use **Source** in the sidebar to register reusable data inputs. Choose
-**Add Source**, enter Type, Name, and File Path / Pattern in that order, then **Save Changes**. Search by name,
+**Add Source**, enter Type, Name, Input Format, and File Path / Pattern in that order, then **Save Changes**. Search by name,
 or path; use View, Edit, or Delete to manage entries. Deletion takes effect
 when saved and does not delete log files, SSH Hosts, SSH Keys, or known_hosts files.
 For Remote File, enter a reusable remote path; choose source **SSH Hosts** per
@@ -26,6 +26,27 @@ entries share the Task row's Criteria, chunk size, Action, and Source Hosts.
 Overlapping matches within a Source are read once; SSH reuses one connection per
 Source/Host. Batch fails if an entry matches no regular files; Realtime keeps
 watching for new matches.
+
+## Input Format
+
+Select **Input Format** independently of Local File or Remote File (SSH).
+Existing Sources default to **TEXT (Chunk)**: nonempty lines are grouped using
+Task Events/Chunk. **JSONL (Line)** reads one JSON object per nonempty line and
+requires a **Content Field**, a literal top-level key containing nonempty text.
+The Task fixes Events/Chunk to 1 for JSONL. Escaped newlines remain inside one
+record, and repeated records are processed independently without deduplication.
+
+For the supplied consultation sample, use
+`/host-logs/sample-logs/voc-consulting_content.jsonl` and `consulting_content`;
+for the question sample, use `/host-logs/sample-logs/voc-instruction.jsonl` and
+`instruction`. These paths assume the Compose host sample mount.
+
+Local and SSH use the same parser in Batch and Realtime. Malformed objects,
+missing/nontext fields, and incomplete records at rotation become individual
+failures; subsequent records continue. Results retain canonical `log`, remaining `inputRecord` metadata on success,
+`inputContentInLog: true`, and `recordNumber` (file line or
+observed line in Realtime). Malformed raw input is preserved as `rawInput`. Blank lines are skipped. Nested field paths, JSON
+arrays, multiline JSON objects, and CSV are not supported in this version.
 
 ## Select sources in Tasks
 
@@ -204,3 +225,15 @@ Remote results and Action input also include `hostId`, `hostName`, `hostAddress`
 Remote `source` and `sourcePatterns` use `ssh://user@host:port/path` to distinguish
 hosts. Credentials and SSH Key Paths are not added to classification requests or
 result records. See [request/result JSON](results.md).
+
+**VOC Consultations** is provided automatically at startup with Local File,
+JSONL (Line), `/host-logs/sample-logs/voc-consulting_content.jsonl`, and Content
+Field `consulting_content`. Existing registrations are preserved; an equivalent
+local path is reused. A disabled manual VOC Task is also provided; it never starts automatically. The path assumes
+the Compose sample mount; adjust it for other installations.
+
+A Source referenced by any saved Task has its **Type** locked, including when
+the Task is disabled or stopped. The editor lists referencing Task names; the
+server also rejects Type changes. Name and path remain editable. To switch Type,
+create another Source and replace the Task assignment, or remove all referencing
+Task assignments first. Unassigned Sources can change Type.

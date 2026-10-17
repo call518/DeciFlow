@@ -72,7 +72,6 @@ async def test_task_validation_and_timezone(task_setup: Result) -> None:
         {"enabled": "yes"},
         {"resumeOnRestart": 1},
         {"name": ""},
-        {"sources": []},
         {"sources": [{"sourceId": "missing"}]},
         {"sources": [{"sourceId": task_setup["source"]["id"], "chunkEvents": 0}]},
         {"sources": [{"sourceId": task_setup["source"]["id"], "actionId": "unknown"}]},
@@ -484,3 +483,243 @@ async def test_default_task_uses_uuid_and_avoids_name_collisions(
     assert original in tasks
     ensure_default_task()
     assert load_tasks() == tasks
+
+
+async def test_stop_then_run_keeps_old_results_and_starts_independent_counts(
+    task_setup: Result, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Run is a new execution, while the stopped run stays replayable in History."""
+    first_phase = True
+    first_gate = asyncio.Event()
+    second_gate = asyncio.Event()
+
+    async def handle_classify(log: str, *args: object) -> Result:
+        if first_phase and log == "two":
+            await first_gate.wait()
+        if not first_phase:
+            await second_gate.wait()
+        return {"category": "normal", "review": False, "probabilities": {"normal": 1}}
+
+    monkeypatch.setattr(server, "classify_log", handle_classify)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=server.app),
+        base_url="http://localhost",
+        headers={"Origin": "http://localhost"},
+    ) as client:
+        task_id = task_setup["task"]["id"]
+        first = (await client.post(f"/api/tasks/{task_id}/run")).json()
+        async with asyncio.timeout(3):
+            while JOBS[first["jobId"]].counts["completed"] < 1:
+                await asyncio.sleep(0.01)
+        await client.post(f"/api/tasks/{task_id}/stop")
+        first_phase = False
+        second = (await client.post(f"/api/tasks/{task_id}/run")).json()
+        assert first["jobId"] != second["jobId"]
+        assert second["counts"]["completed"] == 0
+        history = (await client.post(f"/api/tasks/{task_id}/runs")).json()["runs"]
+        runs = {run["jobId"]: run for run in history}
+        assert runs[first["jobId"]]["state"] == "stopped"
+        assert runs[first["jobId"]]["counts"]["completed"] == 1
+        assert runs[second["jobId"]]["counts"]["completed"] == 0
+        second_gate.set()
+        await asyncio.wait_for(JOBS[second["jobId"]].task, 3)
+        old = (await client.post(f"/api/jobs/{first['jobId']}/results", json={})).json()
+        new = (
+            await client.post(f"/api/jobs/{second['jobId']}/results", json={})
+        ).json()
+        assert old["summary"]["total"] == 1
+        assert new["summary"]["total"] == 2
+
+
+@pytest.mark.parametrize("engine", ["laya", "jev"])
+async def test_pause_drains_inflight_and_resume_keeps_run(
+    task_setup: Result, monkeypatch: pytest.MonkeyPatch, engine: str
+) -> None:
+    monkeypatch.setenv("DECISION_ENGINE", engine)
+    monkeypatch.setenv(f"{engine.upper()}_CONCURRENCY", "1")
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    calls: list[str] = []
+
+    async def handle_classify(log: str, *args: object) -> Result:
+        calls.append(log)
+        entered.set()
+        await release.wait()
+        return {"category": "normal", "review": False}
+
+    monkeypatch.setattr(server, "classify_log", handle_classify)
+    identity = task_setup["task"]["id"]
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=server.app),
+        base_url="http://localhost",
+        headers={"Origin": "http://localhost"},
+    ) as client:
+        run = (await client.post(f"/api/tasks/{identity}/run")).json()
+        job = JOBS[run["jobId"]]
+        await asyncio.wait_for(entered.wait(), 3)
+        response = await client.post(f"/api/tasks/{identity}/pause")
+        assert response.json()["state"] == "pausing"
+        release.set()
+        async with asyncio.timeout(3):
+            while job.state != "paused" or job.counts["completed"] != 1:
+                await asyncio.sleep(0.01)
+        assert calls == ["one"]
+        assert not job.task.done()
+        assert (await client.post(f"/api/tasks/{identity}/run")).status_code == 409
+        assert (
+            await client.request("DELETE", "/api/tasks", json={"id": identity})
+        ).status_code == 409
+        persisted = task_runs(identity)[0]
+        assert persisted["state"] == "paused"
+        resumed = (await client.post(f"/api/tasks/{identity}/resume")).json()
+        assert resumed["jobId"] == run["jobId"]
+        await asyncio.wait_for(job.task, 3)
+        assert calls == ["one", "two"]
+        assert job.state == "completed" and job.counts["completed"] == 2
+        assert len(task_runs(identity)) == 1
+        assert (await client.post(f"/api/tasks/{identity}/resume")).status_code == 409
+
+
+async def test_paused_job_can_stop_and_is_recovered_after_restart(
+    task_setup: Result, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def handle_classify(log: str, *args: object) -> Result:
+        await asyncio.Event().wait()
+        return {}
+
+    monkeypatch.setattr(server, "classify_log", handle_classify)
+    job = JOBS[(await server.launch_task(task_setup["task"], "manual"))["jobId"]]
+    await job.pause()
+    assert job.state == "paused"
+    await asyncio.wait_for(job.stop(), 3)
+    assert job.state == "stopped"
+    store = open_result_store(get_data_directory())
+    for state in ("paused", "pausing"):
+        snapshot = {
+            **job.snapshot(),
+            "jobId": state,
+            "state": state,
+            "settings": {**job.settings, "recoveryVersion": 0},
+        }
+        store.create(state, snapshot)
+    store.recover_interrupted()
+    for state in ("paused", "pausing"):
+        assert store.state(state)["snapshot"]["state"] == "stopped"
+
+
+@pytest.mark.parametrize("mode", ["batch", "realtime"])
+async def test_paused_task_does_not_block_other_tasks_or_inflight_action(
+    task_setup: Result, monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    monkeypatch.setenv("LAYA_CONCURRENCY", "1")
+    entered = asyncio.Event()
+    action_entered = asyncio.Event()
+    release = asyncio.Event()
+    action_release = asyncio.Event()
+    calls: list[str] = []
+
+    async def handle_classify(log: str, *args: object) -> Result:
+        calls.append(log)
+        if log == "one":
+            entered.set()
+            await release.wait()
+        return {"category": "normal", "review": False}
+
+    original_actions = server._action_results
+
+    async def handle_actions(
+        results: AsyncGenerator[tuple[int, Result], None],
+        actions: list[Result],
+        engine: str,
+    ) -> AsyncGenerator[tuple[int, Result], None]:
+        async for index, result in original_actions(results, actions, engine):
+            if result["log"] == "one":
+                action_entered.set()
+                await action_release.wait()
+            yield index, result
+
+    async def handle_live(specs: list[Result]) -> AsyncGenerator[Result, None]:
+        for log in ("one", "two"):
+            yield {"log": log, "profile": "general"}
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(server, "classify_log", handle_classify)
+    monkeypatch.setattr(server, "_action_results", handle_actions)
+    monkeypatch.setattr(server, "follow_configured", handle_live)
+    task = save_task({**task_setup["task"], "mode": mode})
+    job = JOBS[(await server.launch_task(task, "manual"))["jobId"]]
+    await asyncio.wait_for(entered.wait(), 3)
+    await job.pause()
+    release.set()
+    await asyncio.wait_for(action_entered.wait(), 3)
+    assert job.state == "pausing" and job.counts["completed"] == 0
+    action_release.set()
+    async with asyncio.timeout(3):
+        while job.state != "paused":
+            await asyncio.sleep(0.01)
+    assert calls == ["one"]
+    other_path = task_setup["path"].with_name("other.log")
+    other_path.write_text("other\n")
+    source = save_sources(
+        [*load_sources(), {"name": "Other", "type": "local", "path": str(other_path)}]
+    )[-1]
+    other = save_task(
+        {"name": "Other", "mode": "batch", "sources": [{"sourceId": source["id"]}]}
+    )
+    second = JOBS[(await server.launch_task(other, "manual"))["jobId"]]
+    await asyncio.wait_for(second.task, 3)
+    assert second.state == "completed" and job.state == "paused"
+    await job.resume()
+    async with asyncio.timeout(3):
+        while job.counts["completed"] != 2:
+            await asyncio.sleep(0.01)
+    assert calls == ["one", "other", "two"]
+    if mode == "batch":
+        await asyncio.wait_for(job.task, 3)
+    else:
+        await job.pause()
+        await asyncio.wait_for(job.stop(), 3)
+        assert job.state == "stopped"
+
+
+async def test_task_without_sources_can_be_saved_but_not_run(
+    task_setup: Result,
+) -> None:
+    task = save_task({**task_setup["task"], "sources": []})
+    assert task["sources"] == []
+    assert load_tasks()[0]["sources"] == []
+    with pytest.raises(ValueError, match="Select at least one Source"):
+        await server.launch_task(task, "manual")
+    assert not server.TASK_STARTING
+
+
+@pytest.mark.parametrize("state", ["running", "pausing", "paused", "starting"])
+async def test_active_task_cannot_be_edited(
+    task_setup: Result, monkeypatch: pytest.MonkeyPatch, state: str
+) -> None:
+    task = task_setup["task"]
+    if state == "starting":
+        server.TASK_STARTING.add(task["id"])
+    else:
+        monkeypatch.setattr(server, "active_task_job", lambda identity: object())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=server.app),
+        base_url="http://localhost",
+        headers={"Origin": "http://localhost"},
+    ) as client:
+        response = await client.put("/api/tasks", json={**task, "sources": []})
+    assert response.status_code == 409
+    assert "Stop the Task before editing" in response.json()["error"]
+    assert load_tasks()[0]["sources"] == task["sources"]
+
+
+async def test_task_without_criteria_can_be_saved_but_not_run(
+    task_setup: Result,
+) -> None:
+    task = task_setup["task"]
+    source = {**task["sources"][0], "profile": ""}
+    saved = save_task({**task, "sources": [source]})
+    assert saved["sources"][0]["profile"] == ""
+    with pytest.raises(ValueError, match="Select Criteria for every Source"):
+        await server.launch_task(saved, "manual")
+    assert not server.TASK_STARTING

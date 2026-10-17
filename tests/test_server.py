@@ -25,7 +25,7 @@ async def test_laya_status_without_jev_key(monkeypatch: pytest.MonkeyPatch) -> N
     assert status["engine"] == "laya"
     assert status["configured"] is True
     assert status["model"] == "multilingual"
-    assert status["limits"] == {"context_tokens": 8192}
+    assert status["limits"] == {"context_tokens": 8192, "head_tokens": 256}
 
 
 @pytest.mark.anyio
@@ -41,6 +41,7 @@ async def test_assets_and_status(monkeypatch: pytest.MonkeyPatch) -> None:
             "/vendor/prism/prism-python-1.30.0.min.js",
             "/style.css",
             "/logo.png",
+            "/images/GitHub-Logo.png",
             "/favicon.ico",
             "/icons/deciflow-icon-16.png",
             "/icons/deciflow-icon-32.png",
@@ -58,6 +59,10 @@ async def test_assets_and_status(monkeypatch: pytest.MonkeyPatch) -> None:
                 assert '<html lang="en">' in response.text
                 assert 'id="powered-by"' in response.text
                 assert 'src="/logo.png" alt="DeciFlow"' in response.text
+                assert (
+                    'href="https://github.com/call518/DeciFlow" target="_blank" '
+                    'rel="noopener noreferrer"' in response.text
+                )
                 assert 'href="/favicon.ico?v=deciflow-1"' in response.text
                 assert (
                     'sizes="32x32" href="/icons/deciflow-icon-32.png?v=deciflow-1"'
@@ -69,6 +74,11 @@ async def test_assets_and_status(monkeypatch: pytest.MonkeyPatch) -> None:
                     response.content
                     == (server.ROOT / "images" / "DeciFlow-Logo.png").read_bytes()
                 )
+            if path == "/images/GitHub-Logo.png":
+                assert response.headers["content-type"] == "image/png"
+                assert response.content == (
+                    server.ROOT / "images" / "GitHub-Logo.png"
+                ).read_bytes()
             if path == "/favicon.ico" or path.startswith("/icons/"):
                 name, media_type = server.ASSETS[path]
                 assert response.headers["content-type"] == media_type
@@ -301,3 +311,43 @@ async def test_realtime_mode_normalizes_legacy_requests(
     events = [json.loads(line) for line in response.text.splitlines()]
     assert events[0]["mode"] == "realtime"
     assert events[-1]["type"] == "done"
+
+
+@pytest.mark.anyio
+async def test_clean_ui_routes_support_direct_links_without_catching_api_errors() -> (
+    None
+):
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=server.app), base_url="http://localhost"
+    ) as client:
+        for path in (
+            "/tasks",
+            "/tasks/example/history",
+            "/tasks/example/edit",
+            "/tasks/new",
+            "/sources/example",
+            "/sources/new",
+            "/criteria/general",
+            "/actions/example/edit",
+            "/settings",
+            "/settings/configuration",
+            "/settings/ssh-keys/example",
+            "/settings/ssh-hosts/example/edit",
+            "/runs/" + "a" * 32 + "?review=needs-review",
+        ):
+            response = await client.get(path)
+            assert response.status_code == 200, path
+            assert response.headers["content-type"].startswith("text/html")
+            assert 'src="/app.js"' in response.text
+            assert response.headers["cache-control"] == "no-store"
+        for path in (
+            "/api/unknown",
+            "/missing",
+            "/tasks/example/run",
+            "/tasks/example/delete",
+            "/unknown.js",
+        ):
+            response = await client.get(path)
+            assert response.status_code == 404
+            assert response.headers["content-type"].startswith("application/json")
+        assert (await client.post("/tasks")).status_code != 200

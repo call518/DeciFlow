@@ -6,26 +6,27 @@
 
 [English](README.md) | [한국어](README.ko.md)
 
-**로그를 AI로 실시간 분류하고, 오류·보안 이벤트를 한눈에 확인하세요.**
+**시스템 로그와 고객 상담을 AI로 분류하고 필요한 업무 판단을 함께 확인하세요.**
 
 [Demo Video](https://www.youtube.com/watch?v=wGMtxpeHHBs)
 
 [![YouTube에서 DeciFlow 데모 보기](images/DeciFlow-Demo-Screenshot-2026-10-11-034530.png)](https://www.youtube.com/watch?v=wGMtxpeHHBs)
 
-DeciFlow는 로그 이벤트를 청크로 묶어 Laya 또는 Jev로
-**Normal, Warning, Error, Security, Other**로
-분류합니다. 기존 파일은 배치로 분석하고 새 로그는 실시간으로 받아보세요.
-각 줄을 직접 읽는 대신 분류별 확률과 신뢰도를 참고해 검토할 결과를 추릴 수 있습니다.
-소스별 프로필·청크 크기를 지정하고, 실시간 차트로 분포를 보거나 목록 갱신을
-일시정지해 개별 결과를 살펴보세요.
+DeciFlow는 TEXT 로그 청크 또는 JSONL 개별 레코드의 본문을 읽어 Laya나 Jev에
+전달합니다. Criteria 프로필에서 `choice`·`score`·`noul` 판단 항목을 정의하며,
+항목 수와 조합을 설정해 한 요청으로 판단합니다. 기존 시스템 프로필은
+**Normal, Warning, Error, Security, Other**·긴급도·작업 티켓 필요 확률을
+유지합니다. 상담 프로필은 문의 유형·처리 상태·후속 처리 주체·긴급도·후속 조치
+필요성을 판단할 수 있습니다.
 
-각 청크는 로그 이벤트를 줄바꿈으로 연결한 `state` 문자열로 전달합니다.
-Laya 또는 Jev 요청 하나로 **`choice` 분류**, **`score` 긴급도**
-(0–3: Low, Medium, High, Critical), **`noul` 작업 티켓 발행 필요 확률**을 함께 받습니다.
-긴급도는 반올림한 등급이 아닌 확률 가중 점수입니다. 화면에 두 값을 표시하고
-JSON에 모든 답변을 보존합니다. 결과 상단에는 Category·Urgency·Work ticket을
-동일한 크기의 작은 배지와 각각의 확률 분포로 기본 표시합니다. 분류 검토 표시는
-Choice에만 해당하며 티켓을 자동 생성하지는 않습니다.
+결과에는 프로필에서 선택한 요약 항목을 표시합니다. **All Decision Results**로
+전체 항목을, **Probabilities and Criteria**로 항목별 확률과 기준을 펼칩니다.
+**Review Decisions**에서 AI 예측을 유지한 채 타입별 검토자 수정값을 기록합니다.
+점수는 반올림한 등급이 아닌 확률 가중 값이며, 티켓을 자동 생성하지는 않습니다.
+
+**Processing Time** 박스에 Avg·Min·Max·P(50)·P(95)·P(99)를 함께 표시합니다. Throughput은 전체
+경과시간당 성공 건수입니다. 모두 선택한 실행 전체 기준이며 필터·페이지 이동으로
+집계 범위가 바뀌지 않습니다.
 
 **DeciFlow**는 로그가 있는 노드에서 실행해 이벤트를 읽고 브라우저에 결과를 표시합니다.
 **Laya 서버**는 같은 호스트 또는 별도 호스트에서 판정 모델을 실행하며, **Jev 서비스**는 대신 선택할 수
@@ -44,6 +45,10 @@ Choice에만 해당하며 티켓을 자동 생성하지는 않습니다.
 
 access 로그, 애플리케이션 오류, 운영 이벤트에 활용하세요.
 기존 로그 파일 하나로 시작해 브라우저에서 판정 결과를 검토할 수 있습니다.
+
+결과 JSON은 원문을 한 번 보존하고 SQLite는 반복 Criteria 정의를 실행별로 공유 저장합니다. 사용자 Action은 [간결한 v2 계약](docs/actions.ko.md#간결한-결과-json-계약-버전-2)을 참고하세요.
+
+메뉴·항목 상세/편집·Task History·실행 결과는 [공유 가능한 일반 URL](docs/usage.ko.md#공유-가능한-url)을 제공하며 결과 필터·커서 페이지도 유지합니다. 기존 해시 링크도 지원합니다.
 
 ## 아키텍처
 
@@ -98,7 +103,7 @@ docker compose logs --follow laya-cpu
 **Sample HTTP access** 경로를 `/host-logs/sample-logs/access-100.log`로 수정하고 저장합니다.
 **Tasks**에서 이름을 지정한 **Batch / Manual** Task를 추가하고
 **Sample HTTP access**, **Sample HTTP access** 기준, **Events/Chunk: 1**,
-**Action: None**을 선택해 저장합니다. Tasks에서 **Run**을 누르고 **Main**의 Task Monitor 목록에서 선택해 결과를 확인하세요.
+**Action: None**을 선택해 저장합니다. Tasks에서 **Run**을 누르면 Main으로 자동 이동해 결과를 표시합니다. Tasks의 **Pause / Resume**으로 같은 실행을 잠시 멈췄다가 이어갈 수 있습니다. 새 실행은 서버 재시작 후에도 복구하며 일시정지 상태도 유지합니다. [복구 제한](docs/tasks.ko.md#서버-재시작-후-복구)을 확인하세요.
 
 선택 사항인 GPU 가속은 [Docker 배포 상세](#laya-docker),
 유료 API를 사용하려면 [Jev](#jev)를 참고하세요.
@@ -108,6 +113,35 @@ docker compose logs --follow laya-cpu
 
 Classification Results의 **Export Reviewed JSON**으로 선택한 실행에서 사람의
 리뷰 Category가 AI Category와 다른 결과만 내려받을 수 있습니다.
+
+## 고객 상담 분석
+
+로그 예시 대신 아래 흐름을 선택할 수 있으며 두 방식 모두 지원합니다.
+
+1. **Sources**에서 읽을 수 있는 파일을 등록하고 **JSONL (Line)**과 **Content Field**를
+   지정합니다. 예를 들어 `consulting_content` 또는 `instruction`입니다. 제공된 호스트
+   샘플과 Compose 마운트를 사용하면 각각
+   `/host-logs/sample-logs/voc-consulting_content.jsonl` 또는
+   `/host-logs/sample-logs/voc-instruction.jsonl`을 지정합니다.
+   상담 파일용 **VOC Consultations** Source는 시작 시 자동 제공됩니다.
+2. **Criteria**에서 **VOC Consultation Review (KOR)** / **VOC Consultation Review (ENG)**을 사용하거나 Clone하여 수정합니다.
+   샘플이 없으면 시작 시 자동 추가됩니다. 질문만 있는 자료에는
+   문의 분류용 프로필을 사용하세요. 후속 처리 판단에는 대화 내용이 필요합니다.
+3. 기본 **VOC Consultation Review (KOR)** Batch Task를 활성화한 뒤 Run합니다.
+   또는 원하는 Source와 Criteria, Action None으로 별도 Task를 만듭니다.
+   JSONL은 한 줄의 객체를 한 건씩 처리하며 동일한 대화도 별도 레코드로 유지합니다.
+   제공된 상담 파일은 입력 2,817건입니다.
+4. **Main**에서 Task를 선택해 결과를 확인하고 수정합니다. 서로 다른 분류 체계는
+   차트의 **Classification**에서 별도로 선택합니다.
+
+Content Field는 비어 있지 않은 문자열을 담은 최상위 필드의 정확한 이름입니다.
+잘못된 JSONL 레코드는 실패로 보존하고 이후 레코드를 계속 처리합니다. 파일은 DeciFlow
+컨테이너 안에서 접근 가능해야 하며 이 흐름은 파일 업로드 기능이 아닙니다.
+기존 Source는 **TEXT (Chunk)**로 처리합니다. 설정과 제한은
+[Sources](docs/sources.ko.md)·[Criteria](docs/criteria.ko.md)를 참고하세요.
+
+[VOC 실습 가이드·전체 샘플 입력값](docs/voc.ko.md)과
+[Criteria 필드별 작성 가이드](docs/criteria.ko.md)를 참고하여 수정하세요.
 
 ## 사용법과 설정
 
@@ -121,7 +155,7 @@ Classification Results의 **Export Reviewed JSON**으로 선택한 실행에서 
 | [Sources](docs/sources.ko.md) | 로컬·SSH 파일 소스 등록, Settings의 SSH 키 관리, 정렬된 풀다운 선택 |
 | [사용법](docs/usage.ko.md) | 입력 모드·판정 기준·필터·수동 검토·재접속·시간 지표 |
 | [설정](docs/configuration.ko.md) | 환경변수·모델·입력 예산 |
-| [Criteria](docs/criteria.ko.md) | 내부 UUID 기반 고정 5개 범주 프로필 관리; Default Criteria는 읽기 전용이며 복제 가능 |
+| [Criteria](docs/criteria.ko.md) | 내부 UUID 기반 타입별 판단 프로필 관리; Default Criteria는 읽기 전용이며 복제 가능 |
 | [Python Actions](docs/actions.ko.md) | 구성 보기·환경 Status·pip 포함 환경·Reset venv·삭제·소스 할당 |
 | [결과 JSON](docs/results.ko.md) | 현재 요청·결과 예시와 필드 설명 |
 
@@ -134,7 +168,7 @@ Source에는 경로·패턴을 한 줄에 하나씩 여러 개 등록할 수 있
 브라우저는 새 결과만 집계하고 기존 카드를 재사용합니다. Main이나 탭이 숨겨지면
 그리기를 미루며 Task는 계속 실행하고 전체 결과는 유지합니다.
 
-Main 아래에 Source·Criteria·Actions·Tasks, Settings 아래에 SSH Keys·SSH Hosts·Configurations(기본 페이지 크기 50건 및 유지 관리)를
+Main 아래에 Source·Criteria·Actions·Tasks, Settings 아래에 SSH Keys·SSH Hosts·Configurations(기본 페이지 크기 10건 및 유지 관리)를
 배치합니다. 사이드바로 재진입하면 목록을 열고 미저장 초안은 버립니다.
 화면 경로·결과 조작·재접속은 [사용법](docs/usage.ko.md)을 참고하세요.
 설정과 실행 결과는 `DECIFLOW_DATA_DIR/deciflow.sqlite3`에서 통합 관리하며 SSH 키·known_hosts·Action 실행 파일은 파일로 유지합니다. 테스트 단계의 저장 구조 변경으로 이전 JSON·DB를 이관하지 않습니다. 사용 전 앱 데이터를 초기화하세요.
@@ -343,8 +377,11 @@ Sources·Tasks와 실행 이력·Actions·Criteria·SSH 키 쌍·SSH Host를 저
 Compose Laya 주소는 `http://laya:8000/v1/systemone`입니다. 외부 서버는 컨테이너에서
 접근 가능한 주소를 사용하세요. `127.0.0.1`은 UI 컨테이너 자신입니다.
 사이드바의 호스트·OS·IP 정보도 컨테이너를 나타냅니다.
-`.env` 변경 후 `docker compose up -d`로 영향을 받는 컨테이너를 재생성하세요.
-`restart`만으로는 Compose가 전달한 환경변수가 갱신되지 않습니다.
+`.env`의 엔진 설정(`DECISION_ENGINE`·`LAYA_*`·`JEV_*`)은 Docker Desktop에서
+DeciFlow-UI를 Restart하거나 `docker compose restart ui`를 실행한 뒤 브라우저를
+새로고침하면 적용됩니다. UI가 시작할 때 마운트된 파일의 엔진 설정을 다시 읽습니다.
+포트·마운트·Compose 프로필·Laya 서비스 설정은 `docker compose up -d`로
+해당 컨테이너를 재생성해야 합니다.
 소스 변경은 `docker compose restart ui`로 적용하고 UI 변경 후 브라우저를 새로고침하세요.
 Dockerfile을 수정한 경우에만 `docker build --tag call518/deciflow-ui:0.0.1 .`로
 UI 이미지를 직접 빌드한 뒤 `docker compose up -d --force-recreate ui`로 적용합니다.

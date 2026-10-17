@@ -30,22 +30,17 @@ Batch는 선택한 파일을 동시에 읽고 준비된 청크를 교차 공급�
 다르게 완료될 수 있습니다. 엔진 동시 요청 제한은 파일별이 아닌 전체 실행에 적용하고
 값이 1이면 순차 요청합니다. 원격 입력도 로컬 파일과 같은 엔진·Action 흐름을 사용합니다.
 
-선택한 Source에 **Criteria**와 **Events/Chunk**를 지정하세요.
-기본값은 **General system**, **청크당 1이벤트**입니다. 현재 비어 있지 않은
-한 줄이 1이벤트이며 멀티라인 경계는 아직 자동 인식하지 않습니다. 모든 프로필은
-`choice`로 **Normal, Warning, Error, Security, Other** 중 하나를 선택하며 설명과
-지시문만 다릅니다. Laya·Jev에 동일한 선택 기준을 적용합니다. 유형은 사용자가
-선택합니다. 같은 요청에서 `score`로 긴급도(0–3: Low, Medium, High, Critical),
-`noul`로 작업 티켓 발행 필요 확률도 평가합니다. 이 두 운영 질문은 모든
-프로필·엔진에서 고정입니다. 각 결과 상단에는 **Category (Choice)**,
-**Urgency (Score)** 연속 점수(0–3), **Work Ticket (Noul)** Yes 확률의 상세 카드를
-기본 표시하고 좁은 영역에서는 세로로 배치합니다. 배지는 모두 같은 작은 크기
-(132×22px)이며 간략 보기나 접기·펼치기 전환은 없습니다. 처리 시간·분류 검토 상태는
-카드 아래에 표시합니다. 각 카드에는 범주별·긴급도 단계별(0–3)·티켓 Yes/No의
-확률 분포를 각각 표시합니다. No 확률은 `1 − Yes`로 계산하며 세 판단을 합친
-확률이 아닙니다. 분류 불확실성 사유는 Category 카드 안에 표시하며
-**Category needs review**는 Choice만의 검토 표시입니다. Action 실행·Source·분류 기준·
-청크 크기는 별도 라벨로 구분합니다. 티켓을 자동 생성하지 않습니다. 답변 누락·오류는 전체 판정 실패로 처리합니다.
+Criteria는 Choice·Score·Noul 판단 항목의 개수·선택지·단계·요약 표시를 설정합니다.
+기존 시스템 프로필은 Category·Urgency·Work Ticket을 유지하고 사용자 프로필은
+자신의 판단 항목을 지정합니다. TEXT는 비어 있지 않은 줄을 묶으며 JSONL은 설정한
+본문 필드를 추출해 한 줄의 객체를 한 건씩 처리합니다. [Criteria](criteria.ko.md)를 참고하세요.
+
+선택한 요약 항목은 작은 카드로 표시합니다. **All Decision Results**에서 모든 항목,
+**Probabilities and Criteria**에서 항목별 확률과 기준을 펼칩니다. **Review Decisions**로
+타입별 수정값을 기록합니다. Choice 불확실성은 항목별로 표시하며 어느 Choice든 검토가
+필요하면 Needs Review가 됩니다. 차트의 확실성은 대표 Choice 기준입니다. 각 판단은
+별개이며 확률을 하나로 합치지 않습니다. 티켓을 자동 생성하지 않고 답변 누락·오류는
+전체 요청 실패로 처리합니다.
 
 | Criteria 프로필 | 판정 대상 |
 | --- | --- |
@@ -56,7 +51,8 @@ Batch는 선택한 파일을 동시에 읽고 준비된 청크를 교차 공급�
 | Sample Network / tcpdump text | 텍스트의 연결·패킷 증거; 바이너리 PCAP 미지원 |
 
 프로필은 사이드바의 **Criteria**에서 추가·수정·삭제합니다.
-결과 범주는 Normal·Warning·Error·Security·Other로 고정하며 `general`은 삭제할 수 없습니다.
+시스템 프로필은 Normal·Warning·Error·Security·Other를 유지하고 사용자 프로필은
+선택지를 지정합니다. `general`은 삭제할 수 없습니다.
 **Save Changes** 후 다음 분석부터 적용하고, 실행 중인 작업은 기존 기준을 유지합니다.
 저장 위치와 Task 참조에 따른 삭제 제한은 [Criteria 관리](criteria.ko.md)를 참고하세요.
 기준에는 사건의 결과와 증거를 설명하고 특정 로그 문자열은 검증 샘플에서 다룹니다.
@@ -147,7 +143,10 @@ Needs Review와 No review needed는 성공 판정만 표시합니다. 실패는 
 한 번만 처리합니다. 필터는 목록에만 적용하고 지표·차트·내보내기에는 영향을 주지 않습니다.
 
 **Host**는 선택한 실행에 저장된 호스트별로 필터링하며 Source·범주·검토·로그 검색과
-함께 적용합니다. 지표·차트·내보내기는 바뀌지 않습니다. 호스트 수집 상태
+함께 적용합니다. 지표·차트·내보내기는 바뀌지 않습니다.
+**Source Hosts Detail**을 누르면 스크롤 가능한 모달에서 완료 건이 없는 호스트까지
+전체 실행의 호스트별 수집 상태와 Success / Failed / Total을 확인합니다.
+모달을 열 때 호스트에 다시 접속하지 않습니다. 호스트 수집 상태
 (Pending·Reading·Completed·Failed·Stopped)는 판정 건수와 별개입니다. 수집 완료
 후에도 판정이 진행 중일 수 있습니다. SSH 접속·읽기 실패는 호스트 정보와 함께
 **Source failed**로 표시하고 AI 확률을 만들지 않습니다. All results / Request failed로
@@ -159,12 +158,12 @@ Main의 Task 결과는 약 1초마다 현재 페이지의 새 결과만 조회�
 
 | 조작 | 동작 |
 | --- | --- |
-| Pause Updates / Resume Updates | 첫 결과 전부터 목록을 고정·재개합니다. 분석·지표·차트는 계속 갱신합니다. 필터·페이지 이동은 고정된 목록에 적용하고 버튼에 새 결과 수를 표시합니다. |
+| Pause Display Updates / Resume Display Updates | 첫 결과 전부터 목록을 고정·재개합니다. 분석·지표·차트는 계속 갱신합니다. 필터·페이지 이동은 고정된 목록에 적용하고 버튼에 새 결과 수를 표시합니다. |
 | Stop (Tasks) | 파일 읽기·진행 중 요청을 취소하고 완료 결과는 보존합니다. 미제출 청크는 버리며 원격지의 추론은 완료될 수 있습니다. |
 | View JSON | 실패 정보, 프로필·청크 정보, 수동 리뷰 값을 포함한 개별 JSON을 펼칩니다. 목록 갱신에도 펼친 상태를 유지합니다. JSON 영역 안의 Copy는 수동 리뷰 값을 포함한 현재 항목을 클립보드에 복사합니다. |
-| Reviewer category | `reviewerCategory`를 기록합니다. AI 범주·검토 상태·차트를 바꾸거나 모델을 학습시키지 않습니다. |
+| Review Decisions | 판단 항목별 타입에 맞는 수정값을 기록합니다. AI 예측·검토 표시·차트·모델 가중치는 바꾸지 않습니다. |
 | Export All JSON | 실행 중에도 내보내기 시작 시점까지의 Task 전체 결과를 스트리밍합니다. Pause·필터로 숨겨진 결과도 포함합니다. |
-| Export Reviewed JSON | 현재 실행에서 reviewerCategory가 비어 있지 않고 AI 원래 Category와 다른 성공 결과만 내보냅니다. 원본 입력·AI 결과·리뷰 값을 포함하며 화면 필터와 무관합니다. 같은 값으로 검토한 항목과 Not reviewed는 제외합니다. |
+| Export Reviewed JSON | 어떤 항목이든 AI와 다른 수정값이 있는 성공 결과를 원래 답변·reviewerDecisions와 함께 내보냅니다. 비우거나 원래 값과 같은 수정은 제외하며 화면 필터는 무시합니다. |
 
 **Classification Overview**는 불확실한 선택을 포함해 전체 소스의 AI 분류 개수를
 합산합니다. 개수는 원본 라인이 아닌 **청크** 기준이며, 비율은 판정에 성공한 청크
@@ -210,9 +209,10 @@ Settings 자체는 SSH Keys·SSH Hosts로 이동하는 목록을 표시합니다
 해당 실행을 유지합니다.
 
 Task 정의·실행 상태·설정 스냅샷·결과·Action 실행 결과를
-`DECIFLOW_DATA_DIR`에 보존합니다(설정과 결과 모두 `deciflow.sqlite3`). 재시작 시 중단된 실행은 Stopped로 표시합니다.
-Batch는 자동 재시도하지 않으며 Realtime은 Resume on restart가 켜진 경우에만
-새 실행을 시작합니다. [Tasks](tasks.ko.md)를 참고하세요.
+`DECIFLOW_DATA_DIR`에 보존합니다(설정과 결과 모두 `deciflow.sqlite3`). 체크포인트가
+있는 Running 실행은 재시작 후 같은 실행 ID로 복구하고 Paused·Pausing은 Paused로
+복구합니다. 체크포인트가 없는 구버전 실행은 Stopped로 정리합니다. 선택적 Realtime
+시작 옵션은 복구할 실행이 없을 때만 새 실행을 만듭니다. [Tasks](tasks.ko.md)를 참고하세요.
 
 데이터 경로마다 DeciFlow 서버 프로세스·인스턴스 하나를 사용합니다. 결과와 수동
 정정은 SQLite에 저장하며 브라우저는 현재 페이지만 유지합니다. 필터·페이지 위치·
@@ -233,12 +233,12 @@ Batch는 자동 재시도하지 않으며 Realtime은 Resume on restart가 켜�
 | Success / Failed / Total | 유효한 판정 성공 청크 / 실패 청크 / 처리 완료 전체 청크(성공 + 실패). 연결 오류·시간 초과·입력 거절·응답 검증 실패를 실패에 포함 |
 | Action Success / Failed / Total | 완료된 Action 성공 / 실패 / 전체 실행 수. Action 미할당·의사결정 실패 청크는 제외하며 의사결정 집계와 독립 |
 | Needs Review | 성공 판정 중 Uncertain(낮은 확률·근접한 확률·선택지 구분 소실) 또는 Other. 실패·거절은 제외 |
-| Throughput | 최근 5초의 성공 판정 청크/초; 유휴시간 포함, 시작 후 5초 미만은 경과시간 기준; 중지·완료 시 마지막 값 유지 |
+| Throughput | 선택한 실행의 전체 성공 결과 수 ÷ 전체 경과 초; 유휴시간·Action 전달 대기 포함, 중지·완료 시 마지막 값 유지 |
 | Total Elapsed Time | 실행 시작 이후 전체 경과시간; 유휴시간 포함 |
 | Active Processing Time | 요청이 하나 이상 진행 중인 구간을 중복 없이 합산; 전체 경과시간 대비 비율 |
-| Average Processing Time | 실패를 포함한 완료 요청의 평균 소요시간; 청크 기준 |
+| Processing Time | 다른 지표와 같은 크기의 작은 박스 안에 Avg·Min·Max·P(50)·P(95)·P(99) 라벨과 값을 나란히 표시합니다. 실패를 포함한 전체 완료 레코드 기준이며 Action 시간은 제외합니다. Avg는 산술평균, P(50)은 가운데 값의 평균, P(95)·P(99)는 nearest-rank 방식입니다. |
 
-Total Elapsed Time·Active Processing Time·Average Processing Time은 값에 따라
+Total Elapsed Time·Active Processing Time·Processing Time의 값은 크기에 따라
 ms·sec·min·hour·day로 표시합니다. JSON 시간값은 밀리초를 유지합니다.
 
 Action 실행 실패는 판정 성공·실패 집계나 엔진 연결 상태에 영향을 주지 않습니다.
@@ -249,8 +249,14 @@ Active·Average에는 네트워크·서버 대기가 포함됩니다. Active는 
 재접속 시 서버 진행 상태를 복원합니다. 중지 시 마지막 값을 보존하므로
 약 1초의 차이가 있을 수 있습니다.
 
+시간 지표는 필터·페이지·목록 일시정지와 무관하게 선택한 실행 전체를 집계합니다.
+Throughput은 소수 셋째 자리까지 표시하며 양수이지만 0.001 미만이면 `<0.001 chunks/s>`로
+표시합니다. 실제 결과 전달 속도이며 엔진의 최대 성능은 아닙니다. 완료 건이 없으면
+P(50)·P(95)·P(99)는 N/A입니다. 표본이 작으면 P(95)·P(99)가 최댓값과 같을 수 있습니다.
 
-Task 처리량은 최근 5초를 100ms 버킷으로 집계하므로 경계에서 근사값입니다.
+SQLite에 처리 시간별 건수를 증분 갱신합니다. 분위수는 원문 결과를 다시 읽거나 정렬하지
+않고 시간별 건수를 순서대로 집계합니다. 기존 실행은 처음 조회할 때 과거 건수에 비례하는
+한 번의 히스토그램 생성을 수행하고 이후 재사용합니다. 근사 샘플링이나 추가 의존성은 없습니다.
 
 모든 목록 Delete는 공통 디자인의 확인창을 사용합니다. 취소·Esc·닫기는 변경하지 않습니다. Source·Criteria·Actions 삭제는 승인 후 Save Changes로 확정하며 Task·SSH Keys·SSH Hosts는 승인 즉시 서버에 적용합니다.
 
@@ -275,3 +281,36 @@ Source 설정과 호스트 이름·SSH 주소를 확인합니다. 클릭하면 �
 Settings의 **Configurations**은 유지보수 항목을 제공합니다. **Reset DeciFlow**는
 삭제 경고창에서 **Yes, Reset DeciFlow**를 눌러야 실행하며 취소하면 변경하지 않습니다.
 사용 전 [초기화 범위와 재시작](configuration.ko.md#deciflow-초기화)을 확인하세요.
+
+불확실한 Choice 결과는 판단 항목 제목 옆에 작은 Uncertain 상태 배지를 따로 표시합니다.
+판단값은 분류 색상을 유지하며 요약·상세 카드 모두 긴 값을 줄바꿈하여 표시합니다.
+
+
+## 공유 가능한 URL
+
+해시만 사용하는 주소 대신 일반 경로를 사용합니다. 브라우저 주소를 복사하거나 조회
+링크를 새 탭으로 열 수 있고, 새로고침·뒤로/앞으로 이동으로 같은 대상을 복원합니다.
+기존 `/#tasks`, `/#settings/...` 링크는 자동으로 변환합니다.
+
+| 대상 | 경로 |
+| --- | --- |
+| Tasks 목록 | `/tasks` |
+| Task 상세 / 이력 / 편집 | `/tasks/{id}`, `/tasks/{id}/history`, `/tasks/{id}/edit` |
+| Source·Criteria·Action | `/sources/{id}`, `/criteria/{id}`, `/actions/{id}` |
+| SSH Key / Host | `/settings/ssh-keys/{id}`, `/settings/ssh-hosts/{id}` |
+| 등록 항목 추가 / 편집 | 목록 경로에 `/new`, 항목 경로에 `/edit` 추가 |
+| Configurations | `/settings/configuration` |
+| 특정 실행 | `/runs/{run-id}` |
+
+실행 URL에는 결과 필터·커서 페이지·특정 결과의 펼친 영역을 쿼리 매개변수
+(`review`, `category`, `host`, `source`, `search`, `cursors`, `through`, `result`,
+`detail`)로 유지합니다. Source Hosts Detail은 `dialog=hosts`를 사용합니다.
+자동 갱신은 현재 주소를 교체하며 갱신마다 방문 기록을 쌓지 않습니다.
+Run·Stop·Pause/Resume·Delete·Save·Export는 명시적 명령으로 유지하여 링크를 여는
+것만으로 실행되지 않습니다. 미저장 입력값·인증 정보는 URL에 넣지 않습니다.
+삭제된 항목이나 실행은 사용할 수 없다고 표시합니다.
+
+일반 경로로 직접 접속하려면 DeciFlow UI 서버/컨테이너를 한 번 재시작해야 합니다.
+모든 경로가 DeciFlow로 전달된다면 별도 프록시 rewrite는 필요 없습니다. 공유 링크에도
+기존 접근·Origin 규칙이 적용됩니다. 미저장 초안이나 삭제된 Task를 별도 보관하는
+기능은 아닙니다.

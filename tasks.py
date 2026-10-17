@@ -20,14 +20,19 @@ from config_store import (
     save_record,
     save_records,
 )
+from profiles import DEFAULT_PROFILES, PROFILES
 from result_store import open_result_store
-from source_registry import load_sources, save_sources
+from source_registry import DEFAULT_SOURCES, VOC_SOURCE, load_sources, save_sources
 from source_settings import parse_source_settings
 
 DEFAULT_TASK_NAME = "DeciFlow Server Log"
 DEFAULT_SOURCE_NAME = "Sample DeciFlow Server Log"
 DEFAULT_TASK_ID = uuid5(NAMESPACE_URL, "deciflow:task:server-log").hex
 DEFAULT_SOURCE_ID = uuid5(NAMESPACE_URL, "deciflow:source:server-log").hex
+VOC_TASK_ID = uuid5(NAMESPACE_URL, "deciflow:task:voc-consultations").hex
+VOC_TASK_NAME = "VOC Consultation Review (KOR)"
+SYSTEM_MESSAGE_TASK_ID = uuid5(NAMESPACE_URL, "deciflow:task:system-message").hex
+SYSTEM_MESSAGE_SOURCE_ID = uuid5(NAMESPACE_URL, "deciflow:source:system-message").hex
 
 
 def load_tasks() -> list[Result]:
@@ -105,6 +110,128 @@ def ensure_default_task() -> None:
     )
 
 
+def ensure_voc_task() -> None:
+    """Provide a disabled manual VOC Batch without changing existing Tasks."""
+    if any(
+        task["id"] == VOC_TASK_ID or task["name"].casefold() == VOC_TASK_NAME.casefold()
+        for task in load_tasks()
+    ):
+        return
+    source = next(
+        source
+        for source in load_sources()
+        if source["id"] == VOC_SOURCE["id"]
+        or source["name"].casefold() == VOC_SOURCE["name"].casefold()
+        or (source["type"] == "local" and source["path"] == VOC_SOURCE["path"])
+    )
+    profile = (
+        "consultation"
+        if "consultation" in PROFILES
+        else next(
+            identity
+            for identity, definition in PROFILES.items()
+            if definition["label"].casefold()
+            == DEFAULT_PROFILES["consultation"]["label"].casefold()
+        )
+    )
+    save_record(
+        "tasks",
+        VOC_TASK_ID,
+        {
+            "id": VOC_TASK_ID,
+            "name": VOC_TASK_NAME,
+            "mode": "batch",
+            "cron": "",
+            "timezone": "UTC",
+            "enabled": False,
+            "resumeOnRestart": False,
+            "sources": [
+                {
+                    "sourceId": source["id"],
+                    "profile": profile,
+                    "chunkEvents": 1,
+                    "actionId": "",
+                }
+            ],
+        },
+    )
+
+
+def ensure_system_message_task() -> None:
+    """Reuse System messages and repair the untouched duplicate sample."""
+    name = "System Messages"
+    sources = load_sources()
+    default = DEFAULT_SOURCES[0]
+    source = next(
+        (item for item in sources if item["id"] == default["id"]),
+        None,
+    )
+    if source is None:
+        source = next(
+            (
+                item
+                for item in sources
+                if item["name"].casefold() == default["name"].casefold()
+                or (item["type"] == "local" and item["path"] == default["path"])
+            ),
+            None,
+        )
+    if source is None:
+        source = dict(default)
+        save_record("sources", source["id"], source)
+    legacy = {
+        "id": SYSTEM_MESSAGE_SOURCE_ID,
+        "name": "System Message",
+        "type": "local",
+        "path": "/host-logs/var/log/message",
+        "format": "text",
+    }
+    tasks = load_tasks()
+    if legacy in sources:
+        for task in tasks:
+            changed = False
+            for assignment in task["sources"]:
+                if assignment["sourceId"] == SYSTEM_MESSAGE_SOURCE_ID:
+                    assignment["sourceId"] = source["id"]
+                    changed = True
+            if changed:
+                save_record("tasks", task["id"], task)
+        delete_record("sources", SYSTEM_MESSAGE_SOURCE_ID)
+    existing = next(
+        (task for task in tasks if task["id"] == SYSTEM_MESSAGE_TASK_ID), None
+    )
+    if existing is not None:
+        if existing["name"] == "System Message" and not any(
+            task["name"].casefold() == name.casefold() for task in tasks
+        ):
+            existing["name"] = name
+            save_record("tasks", existing["id"], existing)
+        return
+    if any(task["name"].casefold() == name.casefold() for task in tasks):
+        return
+    save_record(
+        "tasks",
+        SYSTEM_MESSAGE_TASK_ID,
+        {
+            "id": SYSTEM_MESSAGE_TASK_ID,
+            "name": name,
+            "mode": "realtime",
+            "cron": "",
+            "timezone": "UTC",
+            "enabled": False,
+            "resumeOnRestart": False,
+            "sources": [
+                {
+                    "sourceId": source["id"],
+                    "profile": "general",
+                    "chunkEvents": 1,
+                    "actionId": "",
+                }
+            ],
+        },
+    )
+
+
 def next_run(task: Result, now: datetime) -> datetime:
     """Calculate the next five-field cron occurrence in the explicit timezone."""
     local = now.astimezone(ZoneInfo(task["timezone"]))
@@ -122,16 +249,15 @@ def save_task(value: object) -> Result:
     if mode not in {"batch", "realtime"}:
         raise ValueError("Select Batch or Realtime.")
     identities = value.get("sources")
-    if (
-        not isinstance(identities, list)
-        or not identities
-        or any(
-            not isinstance(item, dict) or not item.get("sourceId")
-            for item in identities
-        )
+    if not isinstance(identities, list) or any(
+        not isinstance(item, dict) or not item.get("sourceId") for item in identities
     ):
         raise ValueError("Select at least one registered Source.")
-    specs = parse_source_settings(identities)
+    specs = (
+        parse_source_settings(identities, allow_unassigned_profile=True)
+        if identities
+        else []
+    )
     if len({item["sourceId"] for item in identities}) != len(identities):
         raise ValueError("Select each Source only once per Task.")
     selections: dict[str, Result] = {}
@@ -264,15 +390,21 @@ def record_unstarted_run(task: Result, state: str, trigger: str, error: str) -> 
 
 
 def recover_interrupted_runs() -> None:
-    """Mark interrupted executions stopped; never automatically retry a Batch."""
+    """Stop legacy interrupted executions while preserving checkpoint-enabled runs."""
     open_result_store(get_data_directory()).recover_interrupted()
 
 
 class TaskScheduler:
     """Run cron occurrences once, skipping downtime and overlapping executions."""
 
-    def __init__(self, launch: Callable[[Result, str], Awaitable[Result]]) -> None:
+    def __init__(
+        self,
+        launch: Callable[[Result, str], Awaitable[Result]],
+        restore: Callable[[], Awaitable[set[str]]] | None = None,
+    ) -> None:
         self.launch = launch
+        self.restore = restore
+        self.ready = asyncio.Event()
         self.due: dict[str, tuple[tuple, datetime]] = {}
 
     async def tick(self, now: datetime) -> None:
@@ -293,17 +425,21 @@ class TaskScheduler:
                 await self.launch(task, "cron")
 
     async def run(self) -> None:
-        """Rebuild schedules at startup and resume only opted-in Realtime Tasks."""
+        """Recover interrupted runs before accepting schedules or new UI starts."""
+        self.ready.clear()
         self.due.clear()
         ensure_default_task()
+        recovered = await self.restore() if self.restore else set()
         recover_interrupted_runs()
         for task in load_tasks():
             if (
                 task["enabled"]
                 and task["mode"] == "realtime"
                 and task["resumeOnRestart"]
+                and task["id"] not in recovered
             ):
                 await self.launch(task, "restart")
+        self.ready.set()
         while True:
             await self.tick(datetime.now(UTC))
             await asyncio.sleep(1)

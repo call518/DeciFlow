@@ -3,6 +3,7 @@
 import asyncio
 from pathlib import Path
 
+import asyncssh
 import httpx
 import pytest
 
@@ -117,7 +118,9 @@ async def test_reset_deletes_after_jobs_stop_and_restarts(
         server.app.state.reset_root = root
         server.app.state.reset_requested = True
     assert calls == ["delete", "restart"]
-    assert root.is_dir() and not list(root.iterdir())
+    assert root.is_dir()
+    assert [entry.name for entry in root.iterdir()] == ["ssh-keys"]
+    assert not list((root / "ssh-keys").iterdir())
 
 
 @pytest.mark.anyio
@@ -145,3 +148,26 @@ async def test_reset_reports_incomplete_cleanup_after_restart(
         server.app.state.reset_requested = True
     assert restarted == [True]
     assert "incomplete" in server.os.environ["_DECIFLOW_RESET_ERROR"]
+
+
+def test_reset_preserves_ssh_key_files_and_registration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Preserved keys remain visible and usable after other app data is reset."""
+    from config_store import save_records
+    from ssh_keys import add_key, get_key, list_keys
+
+    root = tmp_path / "data"
+    monkeypatch.setenv("DECIFLOW_DATA_DIR", str(root))
+    key = add_key(
+        "Keep Key",
+        asyncssh.generate_private_key("ssh-ed25519").export_private_key().decode(),
+    )
+    private_path = Path(key["privatePath"])
+    before = private_path.read_bytes()
+    save_records("tasks", {"old": {"name": "Remove"}})
+    reset_data(reset_directory())
+    assert private_path.read_bytes() == before
+    assert get_key(key["id"])["name"] == "Keep Key"
+    assert [item["id"] for item in list_keys()] == [key["id"]]
+    assert load_tasks() == []

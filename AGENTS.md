@@ -48,6 +48,9 @@
 
 # UI consistency and space efficiency
 
+- Within an editor, use shared section headers, borders, backgrounds, and spacing
+  for related settings; review the whole form for visual consistency.
+
 - When changing a UI pattern, inspect all screens using the same pattern and apply
   the improvement consistently within the authorized scope. Do not fix only the
   example screen and leave equivalent Views, lists, or dialogs inconsistent.

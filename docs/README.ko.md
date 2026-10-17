@@ -15,7 +15,8 @@ Source → Criteria → 선택적 Actions → Tasks 순으로 구성하고 Main�
 | [Sources](sources.ko.md) | 로컬·SSH 파일 소스 등록과 Tasks에서 선택 |
 | [사용법](usage.ko.md) | 로그 분석·결과 필터·판정 검토·재접속·지표 확인 |
 | [설정](configuration.ko.md) | 환경변수·Laya/Jev 모델·요청 예산 설정 |
-| [Criteria](criteria.ko.md) | 분류 지시문·범주 정의 생성과 관리 |
+| [VOC 상담 처리](voc.ko.md) | 기본 샘플 실행·전체 Criteria 입력값·판단 기준 검증 |
+| [Criteria](criteria.ko.md) | 필드별 작성법·타입별 예시·저장 오류 해결 |
 | [Python Actions](actions.ko.md) | 판정 후 Python 코드 실행과 실행 환경 관리 |
 | [Tasks](tasks.ko.md) | 재사용 실행 설정·Cron 예약·연속 감시·영속 실행 이력 |
 | [결과 저장](result-storage.ko.md) | SQLite 저장·페이지 크기·설정·결과 통합 저장·백업·DB 확장 |

@@ -71,7 +71,14 @@ def test_keyset_pages_filters_and_aggregates_stay_independent(tmp_path: Path) ->
     stats = store.state(run["jobId"])["summary"]
     assert stats["total"] == 1000 and stats["review"] == 500
     assert stats["categories"]["all"]["normal"] == 1000
-    assert len(stats["throughputBuckets"]) <= 51
+    assert stats["processingPercentiles"] == {
+        "minMs": 2,
+        "maxMs": 2,
+        "medianMs": 2,
+        "p95Ms": 2,
+        "p99Ms": 2,
+    }
+    assert "throughputBuckets" not in stats
     with store.reader() as connection:
         plan = connection.execute(
             "EXPLAIN QUERY PLAN SELECT * FROM events "
@@ -116,7 +123,7 @@ async def test_paged_api_settings_reviews_export_and_archive(
             assert (await client.post(url + "/results", json={})).status_code == 403
             client.headers["Origin"] = "http://localhost"
             initial = (await client.post(url + "/results", json={})).json()
-            assert len(initial["items"]) == 50
+            assert len(initial["items"]) == 10
             assert initial["summary"]["total"] == 300
             for invalid in (0, 31, True, "30"):
                 assert (
@@ -264,3 +271,88 @@ def test_reviewed_export_queries_only_changes_in_bounded_batches(
         assert result["reviewerCategory"] == "security"
         assert result["category"] == "normal"
     assert store.state(identity)["summary"]["total"] == 300
+
+
+@pytest.mark.parametrize(
+    "durations", [[], [7], [1, 1, 1, 100], [183, 214, 270, 299], list(range(1, 101))]
+)
+def test_whole_run_percentiles_and_histogram_counts(
+    tmp_path: Path, durations: list[int]
+) -> None:
+    """Check exact median/nearest-rank tails including failed records."""
+    import statistics
+    from math import ceil
+
+    store = SQLiteResultStore(tmp_path / "percentiles.db")
+    run = snapshot()
+    store.create(run["jobId"], run)
+    for number, duration in enumerate(reversed(durations)):
+        item = event(number)
+        item["result"]["elapsedMs"] = duration
+        item["result"]["actionExecution"] = {"status": "success", "elapsedMs": 5000}
+        if number == 0:
+            item["result"]["error"] = "Request failed"
+        store.append(run["jobId"], item, run)
+    stats = store.state(run["jobId"])["summary"]
+    ordered = sorted(durations)
+    expected = {
+        "minMs": min(ordered) if ordered else None,
+        "maxMs": max(ordered) if ordered else None,
+        "medianMs": statistics.median(ordered) if ordered else None,
+        "p95Ms": ordered[ceil(len(ordered) * 0.95) - 1] if ordered else None,
+        "p99Ms": ordered[ceil(len(ordered) * 0.99) - 1] if ordered else None,
+    }
+    assert stats["processingPercentiles"] == expected
+    assert stats["processingMs"] == sum(durations)
+    assert stats["total"] == len(durations)
+    with store.reader() as connection:
+        assert connection.execute(
+            "SELECT COALESCE(SUM(samples),0) FROM processing_times"
+        ).fetchone()[0] == len(durations)
+    store.close()
+
+
+@pytest.mark.parametrize("backfill_on_read", [True, False])
+def test_old_runs_backfill_once_then_use_histograms(
+    tmp_path: Path, backfill_on_read: bool
+) -> None:
+    """An existing run is migrated once and retains exact subsequent appends."""
+    store = SQLiteResultStore(tmp_path / "old-times.db")
+    run = snapshot()
+    store.create(run["jobId"], run)
+    for number, duration in enumerate([100, 200, 300, 400]):
+        item = event(number)
+        item["result"]["elapsedMs"] = duration
+        store.append(run["jobId"], item, run)
+    with store.transaction() as connection:
+        connection.execute("DELETE FROM processing_times")
+    store.append(run["jobId"], {"type": "done"}, run)
+    assert (
+        store.connection.execute("SELECT COUNT(*) FROM processing_times").fetchone()[0]
+        == 0
+    )
+    if backfill_on_read:
+        first = store.state(run["jobId"])["summary"]
+        assert first["processingPercentiles"] == {
+            "minMs": 100,
+            "maxMs": 400,
+            "medianMs": 250,
+            "p95Ms": 400,
+            "p99Ms": 400,
+        }
+    item = event(4)
+    item["result"]["elapsedMs"] = 500
+    store.append(run["jobId"], item, run)
+    assert (
+        store.state(run["jobId"])["summary"]["processingPercentiles"]["medianMs"] == 300
+    )
+    statements: list[str] = []
+    store.connection.set_trace_callback(statements.append)
+    store.state(run["jobId"])
+    assert not any("FROM events" in statement for statement in statements)
+    store.delete_task(run["settings"]["taskId"])
+    assert (
+        store.connection.execute("SELECT COUNT(*) FROM processing_times").fetchone()[0]
+        == 0
+    )
+    store.close()

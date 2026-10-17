@@ -112,12 +112,20 @@ Action 실패로 표시합니다. 중복 패턴은 프로필, 청크 크기, Act
 
 성공한 판정마다(불확실한 판정 포함) 새 Python 프로세스의 표준 입력으로 JSON
 객체 하나를 전달합니다. 기존 결과의 로그 원문, 출처, 줄 범위, 프로필, 확률,
-검토 표시와 함께 `schemaVersion: 1`, `eventId`, UTC `decidedAt`, `engine`이
+검토 표시와 함께 `schemaVersion: 2`, `eventId`, UTC `decidedAt`, `engine`이
 포함됩니다. 이벤트 ID는 이번 실행을 식별하며, 같은 배치를 다시 실행하면 새 ID가
 생성됩니다. 코드에서 범주나 검토 표시를 기준으로 필터링할 수 있습니다.
 Laya와 Jev는 같은 계약을 사용합니다. 판정 실패·Source 읽기 실패·미할당 소스에는 실행하지 않습니다.
 원격 입력에는 `hostId`·`hostName`·`hostAddress`·`hostPort`·`chunkSequence`도
 포함하며, 로그 원문을 바꾸지 않고 대상 호스트를 식별합니다.
+
+사용자 프로필은 검증한 답변을 `decisions[decision_id]`, 고정한 구성을
+`decisionDefinitions`에 제공합니다. `category`는 대표 Choice이며 표준
+Category/Urgency/Work Ticket 프로필은 기존 운영 필드도 유지합니다. JSONL에는 추출한
+`log`, 본문을 제외한 `inputRecord` 메타데이터, `inputContentInLog: true`,
+`recordNumber`가 추가됩니다. 유효한 입력의 중복 `rawInput`은 생략합니다.
+필요한 업무 중복 방지는 출처·레코드 번호 등을 사용하세요. eventId는 재실행 시 바뀝니다.
+Action은 이후 사람의 수정 전에 실행되며 검토자가 결과를 수정해도 자동 재실행하지 않습니다.
 
 [Python 핸들러 예제](../examples/action_print.py)를 편집기에 복사해 사용할 수 있습니다.
 
@@ -145,3 +153,26 @@ Docker Compose는 `deciflow-data` 볼륨을 `DECIFLOW_DATA_DIR`
 필요하지 않습니다. [Docker 배포](../README.ko.md#deciflow-docker)를 참고하세요.
 
 구문 색상은 로컬에 포함한 PrismJS 1.30.0의 Core·Python 구성(약 9.4KiB, MIT)으로 처리합니다. 실행 중 외부 CDN을 요청하지 않으며 버전이 고정된 파일은 브라우저에 캐시합니다. 원본·라이선스·SHA-256은 `public/vendor/prism/`에 기록하며 버전 교체 시 해당 기록과 UI 검증을 함께 갱신합니다. 편집 입력·스크롤은 기존 방식을 유지합니다.
+
+
+## 간결한 결과 JSON 계약 (버전 2)
+
+상담 원문은 `log` 한 곳에 저장하고 JSONL의 나머지 필드는 `inputRecord`에 유지합니다.
+`inputContentInLog: true`이면 `contentField`가 가리키는 값은 `log`에 있습니다.
+기존 사용자 Action에서 `inputRecord[contentField]`를 읽었다면 `log`로 변경하세요.
+원래 JSON 객체가 필요하면 다음처럼 복원합니다(원래 줄의 공백·이스케이프 형식까지
+복원하는 것은 아닙니다).
+
+```python
+record = dict(result.get("inputRecord", {}))
+if result.get("inputContentInLog"):
+    record[result["contentField"]] = result["log"]
+```
+
+잘못된 JSONL·불일치하는 원본의 `rawInput`과 오류 진단은 보존합니다. 성공한 결과의
+반복 `questions`는 제외하며, 판정 정의는 `decisionDefinitions`에 있습니다.
+`providerResponse.answersInDecisions: true`이면 동일한 답변은 `decisions`에 한 번만
+있습니다. 사용량·모델·라우팅과 다른 제공자 정보는 유지합니다. 내부 DB 작업 ID와
+체크포인트는 Action에 전달하지 않습니다. 사용자 스크립트나 기존 ES 문서는 자동으로
+수정하지 않으며, Elasticsearch 샘플처럼 전체 결과를 보내는 Action은 새 계약을 그대로
+전달합니다. Laya·Jev, TEXT·JSONL에 공통 적용합니다.

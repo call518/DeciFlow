@@ -6,26 +6,28 @@
 
 [English](README.md) | [한국어](README.ko.md)
 
-**Classify logs in real time with AI and spot error and security events at a glance.**
+**Make typed AI decisions over system logs and customer consultations.**
 
 [Demo Video](https://www.youtube.com/watch?v=wGMtxpeHHBs)
 
 [![Watch the DeciFlow demo on YouTube](images/DeciFlow-Demo-Screenshot-2026-10-11-034530.png)](https://www.youtube.com/watch?v=wGMtxpeHHBs)
 
-DeciFlow groups log events into chunks and classifies each chunk as **Normal, Warning, Error, Security, or Other**
-with Laya or Jev. Scan a batch, follow new events, and focus your review with
-category probabilities and confidence instead of reading every line unaided.
-Choose a domain profile and chunk size per source; compare category counts in a
-live chart and pause list updates to inspect individual results.
+DeciFlow reads TEXT log chunks or individual JSONL records and sends their text
+to Laya or Jev. A Criteria profile defines named `choice`, `score`, and `noul`
+decisions in one request; the number and mix of decisions are configurable.
+System profiles retain **Normal, Warning, Error, Security, Other**, urgency, and
+work-ticket probability. Consultation profiles can classify inquiry type,
+handling status, follow-up ownership, urgency, and follow-up need.
 
-Each chunk is sent as the request's `state` string (events joined with newlines).
-It receives three decisions in one Laya or Jev request: **`choice` for category**,
-**`score` for urgency** (0–3: Low, Medium, High, Critical), and **`noul` for the
-probability that a work ticket is needed**. Urgency is a probability-weighted score,
-not a rounded grade. Results show both values and retain all answers in JSON.
-Each result shows Category, Urgency, and Work ticket together with their separate
-probability distributions. All three use equally sized compact badges. Category review flags
-apply to Choice only. DeciFlow does not create tickets automatically.
+Each result shows the profile's selected summary decisions. Expand **All Decision
+Results** for every decision and **Probabilities and Criteria** for its distribution
+and definitions. **Review Decisions** records typed human corrections without
+changing AI predictions. Scores are probability-weighted values, not rounded grades.
+DeciFlow does not create tickets automatically.
+
+The **Processing Time** card groups Avg, Min, Max, P(50), P(95), and P(99). Throughput shows
+successful results per total elapsed second. All metrics cover the selected run;
+filters and pagination do not change them.
 
 **DeciFlow** runs on the node containing your logs, reads events, and displays
 results in a browser. The **Laya server** runs the decision model on the same or a separate
@@ -46,6 +48,10 @@ selected engine and receives predictions.
 
 For access logs, application errors, and operational events—start with an existing
 log file and review the predictions in your browser.
+
+Result JSON keeps input text once; SQLite shares repeated Criteria definitions per run. Custom Actions should follow the [compact v2 contract](docs/actions.md#compact-result-json-contract-version-2).
+
+Menus, item details/editors, Task History, and execution results have [shareable clean URLs](docs/usage.md#shareable-urls), including result filters and cursor pages. Legacy hash links remain supported.
 
 ## Architecture
 
@@ -99,7 +105,7 @@ Open **http://127.0.0.1:4000** on the same host. In **Sources**, edit
 **Sample HTTP access** to use `/host-logs/sample-logs/access-100.log` and save.
 In **Tasks**, add a named **Batch / Manual** Task, select **Sample HTTP access**,
 **Sample HTTP access** criteria, **Events/Chunk: 1**, and **Action: None**, then save.
-Click **Run** in Tasks; select the Task in **Main → Task Monitor** to view its results.
+Click **Run** in Tasks to open Main and view its results automatically. Use **Pause / Resume** in Tasks to continue the same execution later. New active executions also recover after a server restart; paused executions stay paused. See [recovery limits](docs/tasks.md#recovery-after-a-server-restart).
 
 For optional GPU acceleration, see [Docker deployment details](#laya-docker);
 for a paid API, see [Jev](#jev).
@@ -109,6 +115,35 @@ A built-in **DeciFlow Server Log** Task monitors `DECIFLOW_LOG_DIR/server.log` /
 
 Use **Export Reviewed JSON** in Classification Results to download only results
 whose human reviewer category differs from the AI category in the selected run.
+
+## Analyze customer consultations
+
+Use this workflow as an alternative to the log example; both remain supported.
+
+1. In **Sources**, use the automatically provided **VOC Consultations** sample,
+   or register a readable file, select **JSONL (Line)**, and enter its
+   **Content Field** (for example, `consulting_content` or `instruction`). With the
+   supplied host samples and Compose mount, use
+   `/host-logs/sample-logs/voc-consulting_content.jsonl` or
+   `/host-logs/sample-logs/voc-instruction.jsonl` respectively.
+2. In **Criteria**, select **VOC Consultation Review (KOR)** / **VOC Consultation Review (ENG)**, automatically added
+   at startup when absent, or Clone it to customize. Use a query-specific profile
+   for question-only inputs; follow-up judgments require conversation evidence.
+3. Enable the provided **VOC Consultation Review (KOR)** Batch Task and Run, or
+   create a Task with the desired Source and Criteria and Action None.
+   JSONL always processes one object per line, preserving repeated conversations
+   as separate records. The supplied consultation file has 2,817 input records.
+4. In **Main**, select the Task, inspect results, and record corrections. Mixed
+   classification schemes have separate choices under **Classification** in the chart.
+
+Content Field is a literal top-level key containing nonempty text. Malformed JSONL
+records are retained as failures while later records continue. Files must be
+accessible inside the DeciFlow container; this workflow does not upload files.
+Existing Sources default to **TEXT (Chunk)**. See [Sources](docs/sources.md) and
+[Criteria](docs/criteria.md) for configuration and limits.
+
+See the [VOC walkthrough and complete sample form values](docs/voc.md) and
+[field-by-field Criteria authoring guide](docs/criteria.md) before customizing.
 
 ## Usage and configuration
 
@@ -122,7 +157,7 @@ and request/result examples.
 | [Sources](docs/sources.md) | Register local/SSH sources, manage SSH Keys in Settings, and select sorted dropdown entries |
 | [Usage](docs/usage.md) | Input modes, criteria, filters, human review, reconnecting, timing |
 | [Configuration](docs/configuration.md) | Environment variables, models, input budgets |
-| [Criteria](docs/criteria.md) | Manage fixed-category profiles with internal UUIDs; Default Criteria is read-only and cloneable |
+| [Criteria](docs/criteria.md) | Manage typed decision profiles with internal UUIDs; Default Criteria is read-only and cloneable |
 | [Python Actions](docs/actions.md) | Configuration viewing, environment Status, pip-enabled environments, Reset venv, deletion, source assignment |
 | [Result JSON](docs/results.md) | Current request/result examples and field reference |
 
@@ -134,7 +169,7 @@ The browser updates only new results and reuses existing cards. Rendering pauses
 while Main or the tab is hidden; Tasks keep running and all results are retained.
 
 Main groups Source, Criteria, Actions, and Tasks; Settings groups SSH Keys and
-SSH Hosts and Configurations (result page size, default 50, and maintenance). Returning through the sidebar opens lists and discards unsaved drafts.
+SSH Hosts and Configurations (result page size, default 10, and maintenance). Returning through the sidebar opens lists and discards unsaved drafts.
 [Usage](docs/usage.md) covers navigation, result controls, and reconnecting.
 Settings and results share `DECIFLOW_DATA_DIR/deciflow.sqlite3`; only SSH key material, known_hosts and Action execution files remain on disk. This test-stage storage change does not import earlier JSON registries or databases: reset application data before use.
 
@@ -345,8 +380,11 @@ path `/host-logs/custom/app.log`. The process needs permission to read host file
 The Compose Laya address is `http://laya:8000/v1/systemone`; for an external server,
 use an address reachable from the container. `127.0.0.1` refers to the UI container.
 Sidebar host/OS/IP information describes the container.
-After changing `.env`, run `docker compose up -d` to recreate affected containers;
-`restart` alone does not refresh the environment supplied by Compose.
+For `.env` engine settings (`DECISION_ENGINE`, `LAYA_*`, `JEV_*`), use Docker
+Desktop Restart on DeciFlow-UI or `docker compose restart ui`, then refresh the
+browser. The UI reloads explicit engine settings from the mounted file at startup.
+Ports, mounts, Compose profiles, and Laya service settings still require
+`docker compose up -d` to recreate affected containers.
 For source changes, run `docker compose restart ui` and refresh the browser after UI
 changes. If you modify the Dockerfile, build the UI image explicitly with
 `docker build --tag call518/deciflow-ui:0.0.1 .`, then run

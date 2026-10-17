@@ -5,7 +5,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from config_store import get_data_directory
+from config_store import get_data_directory, load_records, save_records
 from result_store import close_result_store
 
 
@@ -34,15 +34,21 @@ def reset_directory() -> Path:
 
 
 def reset_data(root: Path) -> None:
-    """Close SQLite and delete root contents, never following child symlinks."""
+    """Reset application data while preserving SSH key files and registration."""
     if root != reset_directory():
         raise ValueError("The data directory changed during reset.")
     close_result_store(root)
+    keys = load_records("ssh_keys")
     for entry in root.iterdir():
+        if entry.name == "ssh-keys":
+            continue
         if entry.is_dir() and not entry.is_symlink():
             shutil.rmtree(entry)
         else:
             entry.unlink()
+
+    if keys:
+        save_records("ssh_keys", keys)
 
 
 def restart_process() -> None:

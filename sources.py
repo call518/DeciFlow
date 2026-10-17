@@ -6,12 +6,13 @@ import os
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from functools import partial
+from hashlib import sha256
 from pathlib import Path
 from typing import BinaryIO
 
 import anyio
 
-from classifier import Result
+from classifier import EXECUTION_CONTROL, Result
 
 
 def resolve_source(value: object, *, follow: bool = False) -> Path:
@@ -27,15 +28,63 @@ def resolve_source(value: object, *, follow: bool = False) -> Path:
     return path
 
 
+def _file_cursor(file: BinaryIO, offset: int, line: int) -> Result:
+    stat = os.fstat(file.fileno())
+    position = file.tell()
+    file.seek(0)
+    prefix = file.read(256)
+    file.seek(position)
+    return {
+        "offset": offset,
+        "line": line,
+        "device": stat.st_dev,
+        "inode": stat.st_ino,
+        "prefix": sha256(prefix).hexdigest(),
+        "prefixBytes": len(prefix),
+    }
+
+
+def _restore_file_cursor(file: BinaryIO, saved: Result) -> None:
+    stat = os.fstat(file.fileno())
+    prefix = file.read(saved["prefixBytes"])
+    if (
+        stat.st_dev != saved["device"]
+        or stat.st_ino != saved["inode"]
+        or stat.st_size < saved["offset"]
+        or sha256(prefix).hexdigest() != saved["prefix"]
+    ):
+        raise ValueError(
+            "Source changed since checkpoint; automatic recovery was stopped."
+        )
+    file.seek(saved["offset"])
+
+
 async def read_file(path: Path) -> AsyncGenerator[Result, None]:
-    """Yield UTF-8 lines without reading the entire batch file into memory."""
+    """Read bounded UTF-8 lines, resuming only a validated physical file."""
     resolve_source(str(path))
-    async with await anyio.open_file(path, encoding="utf-8") as file:
-        line_number = 0
-        async for line in file:
+    control = EXECUTION_CONTROL.get()
+    with path.open("rb") as file:
+        saved = control.cursors.get(str(path)) if control else None
+        line_number = saved["line"] if saved else 0
+        if saved:
+            _restore_file_cursor(file, saved)
+        if control and control.checkpoint:
+            await control.checkpoint(
+                str(path), _file_cursor(file, file.tell(), line_number)
+            )
+        while raw := await anyio.to_thread.run_sync(file.readline):
             line_number += 1
-            if log := line.strip():
-                yield {"log": log, "source": str(path), "line": line_number}
+            if log := raw.decode("utf-8").strip():
+                yield {
+                    "log": log,
+                    "source": str(path),
+                    "line": line_number,
+                    **(
+                        {"_checkpoint": _file_cursor(file, file.tell(), line_number)}
+                        if control and control.checkpoint
+                        else {}
+                    ),
+                }
 
 
 async def follow_file(
@@ -45,7 +94,12 @@ async def follow_file(
     file: BinaryIO | None = None
     identity: tuple[int, int] | None = None
     pending = b""
-    initialized = from_start or not path.exists()
+    control = EXECUTION_CONTROL.get()
+    saved = control.cursors.get(str(path)) if control else None
+    initialized = (
+        from_start or not path.exists() or bool(control and control.recovering)
+    )
+    offset = 0
     line_number = 0
     try:
         while True:
@@ -64,14 +118,33 @@ async def follow_file(
                     file.seek(0, os.SEEK_END)
                     initialized = True
                 line_number = 0
+                if saved:
+                    _restore_file_cursor(file, saved)
+                    line_number = saved["line"]
+                    saved = None
+                offset = file.tell()
+                if control and control.checkpoint:
+                    await control.checkpoint(
+                        str(path), _file_cursor(file, offset, line_number)
+                    )
             chunk = await anyio.to_thread.run_sync(file.read, 65536)
             if chunk:
                 pending += chunk
                 while b"\n" in pending:
                     line, pending = pending.split(b"\n", 1)
                     line_number += 1
+                    offset += len(line) + 1
                     if log := line.decode("utf-8").strip():
-                        yield {"log": log, "source": str(path), "line": line_number}
+                        yield {
+                            "log": log,
+                            "source": str(path),
+                            "line": line_number,
+                            **(
+                                {"_checkpoint": _file_cursor(file, offset, line_number)}
+                                if control and control.checkpoint
+                                else {}
+                            ),
+                        }
                 continue
             if removed is not None and removed.is_set():
                 if pending and (log := pending.decode("utf-8").strip()):
@@ -80,6 +153,15 @@ async def follow_file(
                         "source": str(path),
                         "line": line_number + 1,
                         "incomplete": True,
+                        **(
+                            {
+                                "_checkpoint": _file_cursor(
+                                    file, offset + len(pending), line_number + 1
+                                )
+                            }
+                            if control and control.checkpoint
+                            else {}
+                        ),
                     }
                 return
             try:
@@ -97,6 +179,15 @@ async def follow_file(
                         "source": str(path),
                         "line": line_number + 1,
                         "incomplete": True,
+                        **(
+                            {
+                                "_checkpoint": _file_cursor(
+                                    file, offset + len(pending), line_number + 1
+                                )
+                            }
+                            if control and control.checkpoint
+                            else {}
+                        ),
                     }
                 pending = b""
                 file.close()

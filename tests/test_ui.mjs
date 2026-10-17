@@ -20,8 +20,11 @@ function workspace(events, status, storage = { getItem: () => null, setItem() {}
     showModal() { this.returnValue='delete'; this.onclose(); },
     append(...children) { for(const child of children){if(child?.parentNode)child.parentNode.removeChild(child);this.children.push(child);if(child && typeof child==='object')child.parentNode=this;} },
     remove() { this.parentNode?.removeChild(this); },
+    get parentElement() { return this.parentNode; },
+    get options() { return this.children; },
+    prepend(...children) { for(const child of children.toReversed())this.insertBefore(child,this.children[0] || null); },
     get nextSibling() { return this.parentNode?.children[this.parentNode.children.indexOf(this)+1] || null; },
-    replaceChildren(...children) { this.children = children; },
+    replaceChildren(...children) { this.children = []; this.append(...children); },
     insertBefore(child, reference) {
       const previous=this.children.indexOf(child);
       if(previous!==-1)this.children.splice(previous,1);
@@ -33,7 +36,7 @@ function workspace(events, status, storage = { getItem: () => null, setItem() {}
     setAttribute(name, value) { this.attributes[name] = value; },
   });
   const context = vm.createContext({
-    Prism:prismRuntime.Prism, crypto: webcrypto,
+    Prism:prismRuntime.Prism, crypto: webcrypto, structuredClone,
     ...(navigation ? { location: navigation, addEventListener: (name, handler) => listeners.set(name, handler) } : {}),
     document: {
       getElementById(id) {
@@ -83,6 +86,12 @@ function workspace(events, status, storage = { getItem: () => null, setItem() {}
   return { nodes, context, requests, listeners };
 }
 
+function processingValues(nodes) {
+  return Object.fromEntries(nodes.get('summary').children[5].children[0].children.map(item=>[
+    item.children[0].textContent,item.children[1].children[0].textContent,
+  ]));
+}
+
 function result(index, review = true) {
   return {
     type: 'result', index, elapsedMs: index,
@@ -114,11 +123,11 @@ test('arrival order, filtering, corrections, pagination and restart', async () =
   nodes.get('review-filter').onchange();
   nodes.get('next').onclick();
   assert.deepEqual(logs(nodes), ['log-4', 'log-3', 'log-1', 'log-2']);
-  const select = nodes.get('results').children[0].children.at(-2).children[0];
+  const select = nodes.get('results').children[0].children.at(-2).children[1].children[0].children[0];
   select.value = 'warning';
   select.onchange();
   vm.runInContext('render()', context);
-  assert.equal(nodes.get('results').children[0].children.at(-2).children[0].value,
+  assert.equal(nodes.get('results').children[0].children.at(-2).children[1].children[0].children[0].value,
     'warning');
   events.splice(0, events.length, { type: 'start', engine: 'jev', total: 1 }, result(0));
   await runTask(nodes);
@@ -133,7 +142,7 @@ test('average request duration includes failures, ignores filters, and resets', 
   const events = [{ type: 'start', engine: 'laya', total: 2 }, first, failed,
     { type: 'done', elapsedMs: 5000 }];
   const { nodes, context } = workspace(events);
-  const average = () => nodes.get('summary').children[5].children[0].textContent;
+  const average = () => processingValues(nodes).Avg;
   vm.runInContext('render()', context);
   assert.equal(average(), '0 ms');
   await runTask(nodes);
@@ -164,7 +173,7 @@ test('review filters exclude failures without changing success and failure total
     nodes.get('review-filter').onchange();
     assert.deepEqual(logs(nodes), expected);
     assert.equal(nodes.get('summary').children[0].children[0].children.map(node => node.textContent).join(''), '2 / 1 / 3');
-    assert.equal(nodes.get('summary').children[2].children[0].textContent, '1');
+    assert.equal(nodes.get('summary').children[6].children[0].textContent, '1');
   }
   nodes.get('review-filter').value = 'no-review';
   events.splice(0, events.length, { type: 'start', engine: 'jev', total: 1 }, result(0));
@@ -282,7 +291,7 @@ test('individual JSON reflects review changes and stays open after rendering', a
   details.open = true; details.ontoggle();
   assert.equal(JSON.parse(details.children[1].children[1].textContent).lineEnd, 11);
   assert.equal(JSON.parse(details.children[1].children[1].textContent).log, '<script>example</script>');
-  const select = row.children.at(-2).children[0];
+  const select = row.children.at(-2).children[1].children[0].children[0];
   select.value = 'warning'; select.onchange();
   assert.equal(JSON.parse(details.children[1].children[1].textContent).reviewerCategory, 'warning');
   vm.runInContext('render()', context);
@@ -318,7 +327,7 @@ test('pause freezes rows while analysis continues; resume includes pending resul
   assert.equal(nodes.get('results').children[0], original);
   assert.equal(details.open, true);
   assert.equal(nodes.get('summary').children[0].children[0].children.map(node => node.textContent).join(''), '3 / 0 / 3');
-  assert.equal(nodes.get('pause-updates').textContent, 'Resume Updates (2 new)');
+  assert.equal(nodes.get('pause-updates').textContent, 'Resume Display Updates (2 new)');
   nodes.get('review-filter').value = 'needs-review';
   nodes.get('review-filter').onchange();
   assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
@@ -333,16 +342,16 @@ test('pause freezes rows while analysis continues; resume includes pending resul
   assert.deepEqual(logs(nodes), ['log-0']);
   finish(); await run;
   assert.deepEqual(logs(nodes), ['log-0']);
-  assert.equal(nodes.get('pause-updates').textContent, 'Resume Updates (2 new)');
+  assert.equal(nodes.get('pause-updates').textContent, 'Resume Display Updates (2 new)');
   nodes.get('pause-updates').onclick();
   assert.deepEqual(logs(nodes), ['log-2', 'log-1', 'log-0']);
-  assert.equal(nodes.get('pause-updates').textContent, 'Pause Updates');
+  assert.equal(nodes.get('pause-updates').textContent, 'Pause Display Updates');
   nodes.get('pause-updates').onclick();
   context.readEvents = async (_, callback) => {
     callback({ type: 'start', engine: 'laya', total: 1 }); callback(result(0));
   };
   await runTask(nodes);
-  assert.equal(nodes.get('pause-updates').textContent, 'Pause Updates');
+  assert.equal(nodes.get('pause-updates').textContent, 'Pause Display Updates');
   assert.deepEqual(logs(nodes), ['log-0']);
 });
 
@@ -353,7 +362,7 @@ test('pause excludes received results that have not yet been displayed', async (
   nodes.get('pause-updates').onclick();
   nodes.get('review-filter').onchange();
   assert.deepEqual(logs(nodes), ['log-0']);
-  assert.equal(nodes.get('pause-updates').textContent, 'Resume Updates (1 new)');
+  assert.equal(nodes.get('pause-updates').textContent, 'Resume Display Updates (1 new)');
 });
 
 test('file line labels distinguish batch from observed realtime sequences', async () => {
@@ -368,8 +377,8 @@ test('file line labels distinguish batch from observed realtime sequences', asyn
     const prefix = mode === 'realtime' ? 'Observed' : 'File';
     assert.equal(rows[1].children[2].textContent, `Source: /var/log/secure · ${prefix} line 1`);
     assert.equal(rows[0].children[2].textContent, `Source: /var/log/secure · ${prefix} lines 10–12`);
-    assert.equal(rows[1].children[3].textContent, 'Category criteria (Choice): General system · Chunk: 1 event (max 1)');
-    assert.equal(rows[0].children[3].textContent, 'Category criteria (Choice): Sample Authentication · Chunk: 1 event (max 5)');
+    assert.equal(rows[1].children[3].textContent, 'Criteria: General system · Chunk: 1 event (max 1)');
+    assert.equal(rows[0].children[3].textContent, 'Criteria: Sample Authentication · Chunk: 1 event (max 5)');
     if (mode === 'realtime') assert.ok(rows[1].children[2].title.includes('not an absolute'));
     nodes.get('source-mode').value = mode === 'realtime' ? 'batch' : 'realtime';
     nodes.get('source-mode').onchange();
@@ -394,7 +403,7 @@ test('realtime can pause before receiving its first result', async () => {
   receive(result(0));
   vm.runInContext('render(false)', context);
   assert.equal(nodes.get('results').children[0], original);
-  assert.equal(nodes.get('pause-updates').textContent, 'Resume Updates (1 new)');
+  assert.equal(nodes.get('pause-updates').textContent, 'Resume Display Updates (1 new)');
   nodes.get('pause-updates').onclick();
   assert.deepEqual(logs(nodes), ['log-0']);
   finish(); await run;
@@ -453,7 +462,7 @@ test('uncertain category is explicitly provisional without changing the model ch
   const { nodes } = workspace([{ type: 'start', engine: 'jev', total: 1 }, event]);
   await runTask(nodes);
   const row = nodes.get('results').children[0];
-  assert.equal(decisionCards(row)[0].children[1].textContent, 'Uncertain · Error');
+  assert.equal(decisionCards(row)[0].children[1].textContent, 'Error');
   assert.ok(decisionCards(row)[0].children.at(-1).textContent.includes('Error 41.0% vs Other 40.0%'));
   assert.ok(decisionCards(row)[0].children.at(-1).textContent.includes('close category probabilities'));
   const details = row.children.at(-1); details.open = true; details.ontoggle();
@@ -563,7 +572,7 @@ test('result label uses selected category probability rather than provider confi
   Object.assign(event.result, { confidence: .16, answerProbability: .9 });
   const { nodes } = workspace([{ type: 'start', engine: 'laya', total: 1 }, event]);
   await runTask(nodes);
-  assert.equal(decisionCards(nodes.get('results').children[0])[0].children[2].textContent, '90.0% category probability');
+  assert.equal(decisionCards(nodes.get('results').children[0])[0].children[2].textContent, '90.0% selected probability');
 });
 
 test('collapsed options show the rendering integrity warning', async () => {
@@ -585,7 +594,7 @@ test('Copy JSON copies current reviewer edits and reports success or failure', a
   context.navigator = { clipboard: { writeText: async text => { copied = text; } } };
   await runTask(nodes);
   const row = nodes.get('results').children[0];
-  const reviewer = row.children.at(-2).children[0];
+  const reviewer = row.children.at(-2).children[1].children[0].children[0];
   reviewer.value = 'warning';
   reviewer.onchange();
   const actions = row.children.at(-1).children[1].children[0];
@@ -680,7 +689,8 @@ test('uncertain results retain their category color class', async () => {
       const category = categories[categories.length - 1 - index];
       const badge = decisionCards(row)[0].children[1];
       assert.equal(badge.className, `badge ${category}${uncertain ? ' uncertain' : ''}`);
-      assert.equal(badge.textContent.startsWith('Uncertain · '), uncertain);
+      assert.equal(badge.textContent.startsWith('Uncertain · '), false);
+      assert.equal(decisionCards(row)[0].children[0].children.some(node=>node.className==='decision-uncertainty' && node.textContent==='Uncertain'),uncertain);
     }
   }
   const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8').replace(/\s*([{}:;])\s*/g, '$1');
@@ -699,7 +709,7 @@ test('chart bars and result badges share the same category colors', () => {
 });
 
 
-test('throughput tracks a rolling five-second window and resets between runs', async () => {
+test('throughput uses all successful results and total elapsed time, then resets', async () => {
   const success = (index, elapsedMs) => ({ ...result(index), elapsedMs });
   const failed = success(3, 5600);
   failed.result.error = 'timeout';
@@ -707,19 +717,19 @@ test('throughput tracks a rolling five-second window and resets between runs', a
     success(0, 1000), success(1, 2000), success(2, 5500), failed,
     { type: 'timing', elapsedMs: 7000 }];
   const { nodes } = workspace(events);
-  const rate = () => nodes.get('summary').children[6].children[0].textContent;
+  const rate = () => nodes.get('summary').children[2].children[0].textContent;
   await runTask(nodes);
-  assert.equal(rate(), '0.2 chunks/s');
+  assert.equal(rate(), '0.429 chunks/s');
   nodes.get('review-filter').value = 'no-review';
   nodes.get('review-filter').onchange();
-  assert.equal(rate(), '0.2 chunks/s');
+  assert.equal(rate(), '0.429 chunks/s');
   events.push({ type: 'timing', elapsedMs: 11000 });
   await runTask(nodes);
-  assert.equal(rate(), '0.0 chunks/s');
+  assert.equal(rate(), '0.273 chunks/s');
   events.splice(0, events.length, { type: 'start', engine: 'jev', total: 1 },
     success(0, 1000));
   await runTask(nodes);
-  assert.equal(rate(), '1.0 chunks/s');
+  assert.equal(rate(), '1.000 chunks/s');
 });
 
 
@@ -1160,7 +1170,7 @@ test('View shows all Criteria definitions and preserves the edit draft', async (
   controls()[0].onclick();
   const values = () => nodes.get('criteria-view').children[1].children.map(field => field.children[1]);
   assert.ok(values().every(value => value.className !== 'action-code'));
-  assert.deepEqual(values().slice(2).map(input => input.textContent), Object.values(definitions));
+  assert.equal(values()[2].textContent,'Category');assert.ok(values()[3].textContent.includes('normal: normal evidence'));
   assert.equal(vm.runInContext('editingCriteria', context), null);
   controls()[1].onclick();
   assert.equal(nodes.get('criteria-view').hidden, true);
@@ -1253,7 +1263,7 @@ test('engine connection follows actual requests for both providers without local
     await runTask(nodes);
     assert.equal(nodes.get('summary').children[0].textContent, 'Success / Failed / Total');
     assert.equal(nodes.get('summary').children[0].children[0].children.map(node => node.textContent).join(''), '2 / 4 / 6');
-    assert.equal(nodes.get('summary').children[2].children[0].textContent, '2');
+    assert.equal(nodes.get('summary').children[6].children[0].textContent, '2');
     nodes.get('review-filter').value = 'needs-review'; nodes.get('review-filter').onchange();
     assert.deepEqual(logs(nodes), ['event-5', 'event-0']);
     assert.equal(connection.className, 'engine-connection connected');
@@ -1396,7 +1406,7 @@ test('duration metrics use readable units without changing millisecond data', ()
   vm.runInContext("elapsedMs=3720000; activeProcessingMs=65000; results=[{elapsedMs:1500, log:'event', category:'normal', probabilities:{normal:1}}]; completionOrder=[0]; completed=1; render();", context);
   assert.equal(nodes.get('summary').children[3].children[0].textContent, '1 hour 2 min');
   assert.equal(nodes.get('summary').children[4].children[0].textContent, '1 min 5 sec (1.7%)');
-  assert.equal(nodes.get('summary').children[5].children[0].textContent, '1.5 sec');
+  assert.equal(processingValues(nodes).Avg, '1.5 sec');
   assert.equal(vm.runInContext('elapsedMs', context), 3720000);
   assert.equal(vm.runInContext('activeProcessingMs', context), 65000);
   assert.equal(vm.runInContext('orderedResult(results[0]).elapsedMs', context), 1500);
@@ -1444,7 +1454,7 @@ test('Action metrics count completed executions separately from decision outcome
   assert.equal(nodes.get('summary').children[1].textContent, 'Action Success / Failed / Total');
   assert.equal(counts(0), '3 / 1 / 4');
   assert.equal(counts(1), '1 / 1 / 2');
-  assert.equal(nodes.get('summary').children[2].children[0].textContent, '0');
+  assert.equal(nodes.get('summary').children[6].children[0].textContent, '0');
   nodes.get('review-filter').value='needs-review'; nodes.get('review-filter').onchange();
   assert.equal(counts(1), '1 / 1 / 2');
   nodes.get('pause-updates').onclick();
@@ -1456,10 +1466,11 @@ test('Action metrics count completed executions separately from decision outcome
 });
 
 
-test('Throughput follows all other classification metrics', () => {
+test('Throughput occupies the third metric and Needs Review appears last', () => {
   const { nodes, context } = workspace([]);
   vm.runInContext('render()', context);
-  assert.equal(nodes.get('summary').children.at(-1).textContent, 'Throughput');
+  assert.equal(nodes.get('summary').children[2].textContent, 'Throughput');
+  assert.equal(nodes.get('summary').children.at(-1).textContent, 'Needs Review');
 });
 
 
@@ -1501,7 +1512,7 @@ test('Sources navigation and SSH registration feed searchable Main choices by ID
   assert.equal(navigation.hash, '#sources');
   nodes.get('add-registered-source').onclick();
   vm.runInContext(`sourceFields.name.value='Production logs'; sourceFields.type.value='ssh'; sourceFields.type.onchange(); sourceFields.path.value='/var/log/app/*.log';`, context);
-  assert.equal(vm.runInContext('Object.keys(sourceFields).join(",")',context),'type,name,path');
+  assert.equal(vm.runInContext('Object.keys(sourceFields).join(",")',context),'type,name,format,contentField,path');
   let saved;
   context.fetch = async (path,options) => {
     if (path === '/api/sources') {
@@ -1716,7 +1727,7 @@ test('SSH Hosts CRUD and Remote File selection share saved connection settings',
   await get('ssh-host-form').onsubmit({preventDefault(){}});
   assert.equal(JSON.parse(requests[1].options.body).id,'host-1');
   vm.runInContext('handleEditSource(registeredSources.length)',context);
-  assert.equal(vm.runInContext('Object.keys(sourceFields).join(",")',context),'type,name,path');
+  assert.equal(vm.runInContext('Object.keys(sourceFields).join(",")',context),'type,name,format,contentField,path');
   context.handleConfirmDelete=async()=>false;
   await row.children[4].children[2].onclick(); assert.equal(requests.length,2);
   context.handleConfirmDelete=async()=>true;
@@ -1785,15 +1796,15 @@ for (const engine of ['laya', 'jev']) {
     await runTask(nodes);
     const header=nodes.get('results').children[0].children[0];
     const cards=header.children[0].children;
-    const distribution=card=>card.children.find(child=>child.className==='decision-probabilities');
+    const distribution=card=>card.children.find(child=>child.className==='decision-distribution').children[1];
     const entries=card=>distribution(card).children.map(entry=>entry.children.map(value=>value.textContent).join(': '));
     assert.deepEqual(entries(cards[0]),['Normal: 27.5%','Warning: 20.0%','Error: 25.1%','Security: 11.0%','Other: 16.4%']);
     assert.deepEqual(entries(cards[1]),['0 · Low: 10.0%','1 · Medium: 20.0%','2 · High: 30.0%','3 · Critical: 40.0%']);
     assert.deepEqual(entries(cards[2]),['Yes: 27.5%','No: 72.5%']);
-    assert.match(cards[0].children.at(-1).textContent,/Category \(Choice\) provisional:/);
+    assert.match(cards[0].children.at(-1).textContent,/Provisional:/);
     assert.equal(cards[1].children.some(child=>child.className==='uncertainty-note'),false);
     assert.equal(cards[2].children.some(child=>child.className==='uncertainty-note'),false);
-    assert.equal(header.children[1].children.find(child=>child.className==='review').textContent,'Category needs review');
+    assert.equal(header.children.at(-1).children.find(child=>child.className==='review').textContent,'Needs Review');
   });
 }
 
@@ -1834,7 +1845,7 @@ test('Task navigation lists registered Tasks and exposes their run history', asy
   assert.equal(nodes.get('tasks-page').hidden,false);
   assert.equal(nodes.get('main-page').hidden,true);
   const controls=nodes.get('task-list').children[0].children[1].children.at(-1);
-  assert.deepEqual(controls.children.map(button=>button.textContent),['Run','Stop','View','Edit','History','Delete']);
+  assert.deepEqual(controls.children.map(button=>button.textContent),['Run','Stop','Pause','View','Edit','History','Delete']);
   assert.equal(controls.children[1].disabled,true);
 });
 
@@ -1852,8 +1863,8 @@ test('Source and Action dropdowns retain every sorted option with an existing se
   const row=nodes.get('source-settings').children[0];
   const source=row.children[0].children[0]; const action=row.children[3].children[0];
   const expected=['가나다','나다라','Alpha','Zulu'];
-  assert.deepEqual(source.children.map(option=>option.text),expected);
-  assert.deepEqual(source.children.map(option=>option.value),['1','3','2','0']);
+  assert.deepEqual(source.children.map(option=>option.text),['None',...expected]);
+  assert.deepEqual(source.children.map(option=>option.value),['','1','3','2','0']);
   assert.equal(source.value,'0');
   assert.deepEqual(action.children.map(option=>option.value),['','Alpha','Zulu']);
   assert.equal(action.value,'Zulu');
@@ -1907,7 +1918,7 @@ test('Required selectors omit Select placeholders without silently choosing a de
   assert.deepEqual(key.children.map(option=>option.text),['Key']);
   assert.equal(key.value,'');
   const source=nodes.get('source-settings').children[0].children[0].children[0];
-  assert.deepEqual(source.children.map(option=>option.text),['Logs']);
+  assert.deepEqual(source.children.map(option=>option.text),['None','Logs']);
   assert.equal(source.value,'');
   const script=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
   assert.doesNotMatch(script,/new Option\('Select /);
@@ -2128,7 +2139,16 @@ test('Host filter combines with Source filters and retains host failure diagnost
   await runTask(nodes);
   nodes.get('host-filter').value='b';nodes.get('host-filter').onchange();
   assert.deepEqual(logs(nodes),['','log-1']);
-  assert.match(nodes.get('host-status').children[0].textContent,/Beta.*failed.*Host unavailable/);
+  assert.equal((nodes.get('source-hosts-rows')?.children.length || 0),0);
+  const dialog=nodes.get('source-hosts-dialog');
+  dialog.showModal=()=>{dialog.open=true;};
+  nodes.get('source-hosts-detail').onclick();
+  const row=nodes.get('source-hosts-rows').children.find(row=>row.children[0].children[0].textContent==='Beta');
+  assert.equal(row.children[1].textContent,'Failed');
+  assert.equal(row.children[1].children[0].textContent,'Host unavailable');
+  assert.deepEqual(row.children[2].children.map(node=>node.textContent),['1',' / ','1',' / ','2']);
+  dialog.open=false;dialog.onclose();
+  assert.equal((nodes.get('source-hosts-rows')?.children.length || 0),0);
   assert.equal(nodes.get('results').children[0].children[0].children[0].textContent,'Source failed');
   nodes.get('source-filter').value='/same';nodes.get('source-filter').onchange();
   assert.deepEqual(logs(nodes),['log-1']);
@@ -2242,7 +2262,7 @@ function pagedWorkspace() {
       let items=records.filter(item=>(query.before==null || item.sequence<query.before) && (query.after==null || item.sequence>query.after) && (query.through==null || item.sequence<=query.through));
       if(query.search)items=items.filter(item=>item.result.log.includes(query.search));
       items=items.toReversed();
-      const summary={total:records.length,failed:0,review:0,truncated:0,processingMs:records.length,actionSuccess:0,actionFailed:0,groups:{all:records.length,certain:records.length,uncertain:0},categories:Object.fromEntries(['all','certain','uncertain'].map(group=>[group,{normal:group==='uncertain'?0:records.length,warning:0,error:0,security:0,other:0}])),hosts:{'host-1':{name:'Host',count:records.length,failed:0}},sources:{},throughputBuckets:{}};
+      const summary={total:records.length,failed:0,review:0,truncated:0,processingMs:records.length,actionSuccess:0,actionFailed:0,groups:{all:records.length,certain:records.length,uncertain:0},categories:Object.fromEntries(['all','certain','uncertain'].map(group=>[group,{normal:group==='uncertain'?0:records.length,warning:0,error:0,security:0,other:0}])),hosts:{'host-1':{name:'Host',count:records.length,failed:0}},sources:{},processingPercentiles:{medianMs:1,p95Ms:1,p99Ms:1}};
       return {ok:true,json:async()=>JSON.parse(JSON.stringify({snapshot:{jobId:'paged',state:'completed',settings:{mode:'batch',taskName:'Paged Task'},hosts:[],elapsedMs:1000},summary,sequence:records.length,...(query.onlySummary?{}:{items:items.slice(0,limit),hasNext:items.length>limit,limit})}))};
     }
     if(path.endsWith('/review'))return {ok:true,json:async()=>({saved:true})};
@@ -2284,7 +2304,7 @@ test('Paged polling only requests new rows and freezes historical or paused page
   await nodes.get('pause-updates').onclick();assert.equal(logs(nodes)[0],'record-1002');
   nodes.get('pause-updates').onclick();append();await vm.runInContext('handleRefreshResults(false,true)',context);
   assert.equal(logs(nodes)[0],'record-1002');
-  assert.equal(nodes.get('pause-updates').textContent,'Resume Updates (1 new)');
+  assert.equal(nodes.get('pause-updates').textContent,'Resume Display Updates (1 new)');
   await nodes.get('pause-updates').onclick();assert.equal(logs(nodes)[0],'record-1003');
 });
 
@@ -2361,12 +2381,13 @@ test('Task View groups source fields and host names in structured cards',()=>{
   assert.equal(fields[1].children[0].textContent,'File Path / Pattern');
   assert.equal(fields[1].children[1].textContent,'/var/log/*');
   assert.equal(fields[2].children[1].textContent,'Remote File (SSH)');
-  assert.equal(fields[5].children[1].textContent,'5');
-  assert.equal(fields[6].children[1].textContent,'Notify');
+  assert.equal(fields.find(field=>field.children[0].textContent==='Input Format').children[1].textContent,'TEXT (Chunk)');
+  assert.equal(fields.find(field=>field.children[0].textContent==='Events per Chunk').children[1].textContent,'5');
+  assert.equal(fields.find(field=>field.children[0].textContent==='Action').children[1].textContent,'Notify');
   assert.equal(fields[3].children[0].textContent,'Source Hosts (2)');
   assert.deepEqual(fields[3].children[1].children.map(host=>host.textContent),['Oracle','Raspberry Pi']);
   const local=cards[1].children[0].children;
-  assert.equal(local[6].children[1].textContent,'None');
+  assert.equal(local.find(field=>field.children[0].textContent==='Action').children[1].textContent,'None');
   assert.equal(local[3].children[1].children[0].textContent,'DeciFlow (Local)');
 });
 
@@ -2525,7 +2546,7 @@ test('Criteria View uses compact full-width rows for instructions and category d
   vm.runInContext("criteriaProfiles={application:{label:'Application',instructions:'Distinguish retries from final failures.',criteria:{normal:'Successful operation.',warning:'Recoverable issue.',error:'Final failure.',security:'Unauthorized action.',other:'Insufficient context.'}}};handleViewCriteria('application')",context);
   const fields=nodes.get('criteria-view').children[1];
   assert.ok(fields.className.includes('criteria-details'));
-  assert.deepEqual(fields.children.map(field=>field.children[0].textContent),['Name','Decision Instructions','Normal','Warning','Error','Security','Other']);
+  assert.deepEqual(fields.children.map(field=>field.children[0].textContent),['Name','Decision Instructions','Primary Classification','Category (Choice)','Urgency (Score)','Work Ticket (Noul)']);
   const css=readFileSync(new URL('../public/style.css',import.meta.url),'utf8');
   assert.match(css,/\.criteria-details > div:nth-child\(n\+3\) \{ grid-column: 1 \/ -1;/);
 });
@@ -2537,7 +2558,7 @@ test('Selecting a Task without history clears another Task results and statistic
   await nodes.get('running-tasks').children[0].onclick();
   assert.equal(vm.runInContext('results.length',context),0);
   assert.equal(vm.runInContext('completed',context),0);
-  assert.equal(nodes.get('result-context').textContent,'Never Run');
+  assert.equal(nodes.get('result-context').children[0].textContent,'Never Run');
   assert.equal(nodes.get('message').textContent,'No executions yet.');
 });
 
@@ -2747,20 +2768,20 @@ test('Clone Criteria opens an unsaved Add Profile draft and preserves source met
   assert.equal(vm.runInContext('criteriaFields.id', context), undefined);
   assert.equal(vm.runInContext('criteriaFields.label.value', context), 'Authentication (Clone)');
   assert.equal(vm.runInContext('criteriaFields.instructions.value', context), profiles.custom.instructions);
-  for (const key of Object.keys(criteria)) assert.equal(vm.runInContext(`criteriaFields.${key}.value`, context), criteria[key]);
+  for (const key of Object.keys(criteria)) assert.equal(vm.runInContext(`decisionRows[0].options.find(option=>option.key.value==='${key}').text.value`, context), criteria[key]);
   assert.equal(vm.runInContext('Object.keys(criteriaProfiles).length', context), 2);
   nodes.get('cancel-criteria').onclick();
   nodes.get('criteria-default').children[0].children[1].children[1].children[1].onclick();
   assert.equal(vm.runInContext('criteriaFields.label.value', context), 'General (Clone)');
   nodes.get('cancel-criteria').onclick();
-  vm.runInContext("handleCloneCriteria('custom'); criteriaFields.normal.value='Edited definition';", context);
+  vm.runInContext("handleCloneCriteria('custom'); decisionRows[0].options[0].text.value='Edited definition';", context);
   const cloneId = vm.runInContext('criteriaDraftId', context);
   let saved;
   context.fetch = async (_path, options) => { saved = JSON.parse(options.body); return { ok: true, json: async () => ({ profiles: saved }) }; };
   await nodes.get('save-criteria').onclick();
   assert.equal(saved[cloneId].normalization, profiles.custom.normalization);
   assert.equal(saved[cloneId].label, 'Authentication (Clone)');
-  assert.equal(saved[cloneId].criteria.normal, 'Edited definition');
+  assert.equal(saved[cloneId].questions.category.criteria.normal, 'Edited definition');
   assert.deepEqual(saved.custom, profiles.custom);
   assert.equal(nodes.get('criteria-editor').hidden, true);
 });
@@ -2869,4 +2890,579 @@ test('SSH connection status distinguishes key UUIDs and ignores display renames'
   assert.equal(keys[0],keys[1]);
   assert.notEqual(keys[0],keys[2]);
   assert.equal(keys[0],keys[3]);
+});
+
+test('JSONL Source format requires a content field and fixes Task chunk size at one',async()=>{
+  const {context,nodes}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext("handleEditSource(registeredSources.length)",context);
+  assert.equal(vm.runInContext('sourceFields.contentField.parentElement.hidden',context),true);
+  vm.runInContext("sourceFields.format.value='jsonl';sourceFields.format.onchange();sourceFields.contentField.value='consulting_content';sourceFields.name.value='VOC';sourceFields.path.value='/host-logs/sample-logs/voc-consulting_content.jsonl'",context);
+  assert.equal(vm.runInContext('sourceFields.contentField.parentElement.hidden',context),false);
+  await nodes.get('save-sources').onclick();
+  assert.equal(vm.runInContext('registeredSources.at(-1).format',context),'jsonl');
+  vm.runInContext("updateSourceSettings([registeredSources.at(-1).id]);",context);
+  assert.equal(vm.runInContext('sourceRows[0].size.disabled',context),true);
+  assert.equal(vm.runInContext('sourceRows[0].size.value',context),'1');
+  vm.runInContext("sourceRows[0].name.value=registeredSources[0].id;sourceRows[0].name.onchange()",context);
+  assert.equal(vm.runInContext('sourceRows[0].size.disabled',context),false);
+});
+
+test('Ten mixed decisions share summary, detail, classification and typed review UI',async()=>{
+  const event=result(0,false),definitions={},answers={};
+  for(let i=0;i<10;i++) {
+    const type=i<2?'choice':i<5?'score':'noul';
+    definitions[`q${i}`]={label:`Decision ${i}`,type,summary:i<3,instructions:'Use observed evidence.',...(type==='choice'?{criteria:{pending:'Pending.',done:'Done.'}}:type==='score'?{criteria:['Low','High']}:{})};
+    answers[`q${i}`]=type==='choice'?{choice:'pending',confidence:1,probabilities:{pending:1,done:0}}:type==='score'?{score:.25,probabilities:{0:.75,1:.25}}:{noul:.8};
+  }
+  Object.assign(event.result,{inputFormat:'jsonl',category:'pending',categoryFilter:'voc:pending',classificationGroup:'voc',primaryQuestion:'q0',profileLabel:'VOC',decisionDefinitions:definitions,decisions:answers});
+  const {context,nodes}=workspace([event]);await runTask(nodes);
+  const row=nodes.get('results').children[0];assert.equal(decisionCards(row).length,3);
+  const details=row.children[0].children.find(child=>child.className==='all-decisions');
+  assert.equal(details.children[1].children.length,10);
+  assert.equal(row.children[1].className,'original-input');
+  assert.ok(nodes.get('category-filter').children.some(option=>option.value==='voc:pending'));
+  const reviews=row.children.at(-2).children[1];assert.equal(reviews.children.length,10);
+  const input=reviews.children[5].children[0];input.value='0.2';await input.onchange();
+  assert.equal(vm.runInContext('results[0].reviewerDecisions.q5',context),.2);
+  assert.equal(vm.runInContext('results[0].decisions.q5.noul',context),.8);
+  assert.equal(vm.runInContext('hasReviewerChange(results[0])',context),true);
+  details.open=true;details.ontoggle();vm.runInContext('render()',context);
+  assert.equal(nodes.get('results').children[0].children[0].children.find(child=>child.className==='all-decisions').open,true);
+});
+
+test('Criteria editor adds, reorders and saves typed decisions without editing templates',async()=>{
+  const criteria={general:{label:'General',instructions:'Default',criteria:{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'}}};
+  const {context,nodes}=workspace([],undefined,undefined,criteria);await nodes.get('nav-criteria').onclick();
+  nodes.get('add-criteria').onclick();
+  vm.runInContext("criteriaFields.label.value='Customer Review';criteriaFields.label.oninput()",context);
+  nodes.get('criteria-editor').children.at(-1).onclick();
+  vm.runInContext("decisionRows[1].label.value='Follow-up';decisionRows[1].instructions.value='Is follow-up required?';decisionRows[1].type.value='noul';decisionRows[1].type.onchange();decisionRows[1].panel.children.at(-1).children[0].onclick()",context);
+  assert.equal(vm.runInContext('decisionRows[0].type.value',context),'noul');
+  await nodes.get('save-criteria').onclick();
+  assert.equal(vm.runInContext("Object.values(criteriaProfiles).find(p=>p.label==='Customer Review').questions.decision_2.type",context),'noul');
+  assert.equal(vm.runInContext('criteriaProfiles.general.questions',context),undefined);
+});
+
+for(const engine of ['laya','jev']) {
+  test(`${engine} screenshot metrics separate request time, Action time and idle output rate`,async()=>{
+    const durations=[299,270,183,214],arrivals=[18319,24444,28936,37917];
+    const events=[{type:'start',engine,total:null},...durations.map((duration,index)=>{
+      const item=result(index,false);item.elapsedMs=arrivals[index];item.result.elapsedMs=duration;
+      item.result.actionExecution={name:'Elasticsearch',status:'success',elapsedMs:[716,462,308,357][index]};return item;
+    }),{type:'timing',elapsedMs:55000,activeProcessingMs:966}];
+    const {context,nodes}=workspace(events);await runTask(nodes);
+    assert.equal(nodes.get('summary').children[3].children[0].textContent,'55 sec');
+    assert.equal(nodes.get('summary').children[4].children[0].textContent,'966 ms (1.8%)');
+    assert.equal(processingValues(nodes).Avg,'241.5 ms');
+    assert.equal(nodes.get('summary').children[2].children[0].textContent,'0.073 chunks/s');
+    vm.runInContext('elapsedMs=40000;render()',context);
+    assert.equal(nodes.get('summary').children[2].children[0].textContent,'0.100 chunks/s');
+  });
+}
+
+test('Paged metrics use whole-run counts and server percentiles independently of visible rows',()=>{
+  const {nodes,context}=workspace([]);
+  vm.runInContext(`
+    results=[{log:'visible',category:'normal',elapsedMs:9999}];completionOrder=[0];completed=100;
+    elapsedMs=10000;
+    const stats=updateResultStatistics(false);
+    pagedView={summary:{...stats,total:100,failed:5,processingMs:20000,
+      processingPercentiles:{minMs:12,maxMs:700,medianMs:180,p95Ms:300,p99Ms:500}},snapshotTotal:100,hasNext:false};
+    render();
+  `,context);
+  const metric=index=>index>=5 && index<=8?processingValues(nodes)[['Avg','P(50)','P(95)','P(99)'][index-5]]:nodes.get('summary').children[index===9?2:index].children[0].textContent;
+  assert.equal(processingValues(nodes).Min,'12 ms');assert.equal(processingValues(nodes).Max,'700 ms');
+  assert.equal(metric(5),'200 ms');assert.equal(metric(6),'180 ms');
+  assert.equal(metric(7),'300 ms');assert.equal(metric(8),'500 ms');assert.equal(metric(9),'9.500 chunks/s');
+  nodes.get('review-filter').value='needs-review';vm.runInContext('render()',context);
+  assert.equal(metric(5),'200 ms');assert.equal(metric(9),'9.500 chunks/s');
+  vm.runInContext('elapsedMs=20000;render()',context);assert.equal(metric(9),'4.750 chunks/s');
+  vm.runInContext('elapsedMs=100000000;render()',context);assert.equal(metric(9),'<0.001 chunks/s');
+});
+
+for(const values of [[],[7],[183,214,270,299],Array.from({length:100},(_,i)=>i+1)]) {
+  test(`Whole-run latency percentiles for ${values.length} records include failures and ignore Action time`,()=>{
+    const {nodes,context}=workspace([]);
+    context.durations=values;
+    vm.runInContext(`results=durations.map((elapsedMs,index)=>({log:'case '+index,category:'normal',elapsedMs,...(index===durations.length-1?{error:'failed'}:{}),actionExecution:{status:'success',elapsedMs:5000}}));completionOrder=results.map((_,index)=>index);completed=results.length;render()`,context);
+    const actual=index=>processingValues(nodes)[['P(50)','P(95)','P(99)'][index-6]];
+    const sorted=[...values].sort((a,b)=>a-b),n=sorted.length;
+    assert.equal(processingValues(nodes).Min,n?vm.runInContext(`formatDuration(${sorted[0]})`,context):'N/A');
+    assert.equal(processingValues(nodes).Max,n?vm.runInContext(`formatDuration(${sorted[n-1]})`,context):'N/A');
+    const median=n?(sorted[Math.floor((n-1)/2)]+sorted[Math.floor(n/2)])/2:null;
+    for(const [index,value] of [[6,median],[7,n?sorted[Math.ceil(.95*n)-1]:null],[8,n?sorted[Math.ceil(.99*n)-1]:null]])assert.equal(actual(index),value===null?'N/A':vm.runInContext(`formatDuration(${value})`,context));
+  });
+}
+
+
+test('Processing Time groups six small labels in one metric without separate percentile boxes',()=>{
+  const {nodes,context}=workspace([]);
+  vm.runInContext("results=[{log:'one',category:'normal',elapsedMs:200}];completionOrder=[0];completed=1;render()",context);
+  const metrics=nodes.get('summary').children;
+  assert.equal(metrics.length,7);
+  assert.equal(metrics[5].textContent,'Processing Time');
+  assert.equal(metrics[5].children[0].attributes['aria-label'],'Processing Time Statistics');
+  assert.deepEqual(processingValues(nodes),{Avg:'200 ms',Min:'200 ms',Max:'200 ms','P(50)':'200 ms','P(95)':'200 ms','P(99)':'200 ms'});
+  assert.equal(metrics.at(-1).textContent,'Needs Review');
+});
+
+
+test('Source Hosts Detail builds many hosts only on demand and refreshes whole-run counts',()=>{
+  const {nodes,context}=workspace([]);
+  vm.runInContext(`
+    runHosts=Array.from({length:200},(_,i)=>({hostId:'host-'+i,hostName:'Host '+String(i).padStart(3,'0'),collectionState:'reading'}));
+    results=[{log:'record',hostId:'host-0',hostName:'Host 000',category:'normal',elapsedMs:2}];
+    completionOrder=[0];completed=1;render();
+  `,context);
+  assert.equal(nodes.get('source-hosts-detail').disabled,false);
+  assert.equal((nodes.get('source-hosts-rows')?.children.length || 0),0);
+  nodes.get('source-hosts-dialog').showModal=()=>{nodes.get('source-hosts-dialog').open=true;};
+  nodes.get('source-hosts-detail').onclick();
+  const rows=nodes.get('source-hosts-rows');
+  assert.equal(rows.children.length,200);
+  assert.deepEqual(rows.children[0].children[2].children.map(node=>node.textContent),['1',' / ','0',' / ','1']);
+  assert.deepEqual(rows.children[199].children[2].children.map(node=>node.textContent),['0',' / ','0',' / ','0']);
+  nodes.get('host-filter').value='host-199';nodes.get('host-filter').onchange();
+  assert.equal(rows.children.length,200);
+  assert.deepEqual(rows.children[0].children[2].children.map(node=>node.textContent),['1',' / ','0',' / ','1']);
+});
+
+
+test('Score levels use a dedicated layout and keep added level IDs hidden',()=>{
+  const {context}=workspace([]);
+  context.consultationFixture=JSON.parse(readFileSync(new URL('../profiles/consultation.json',import.meta.url),'utf8'));
+  vm.runInContext(`
+    criteriaProfiles={general:consultationFixture,consultation:consultationFixture};
+    handleEditCriteria('consultation');
+    const scoreRow=decisionRows.find(row=>row.type.value==='score');
+    if(scoreRow.options.some(option=>!option.key.hidden))throw Error('Visible score ID');
+    const scoreOptions=scoreRow.options[0].entry.parentElement;
+    if(scoreOptions.attributes['data-type']!=='score')throw Error('Wrong score layout');
+    scoreRow.panel.children.find(node=>node.textContent==='Add Option / Level').onclick();
+    if(!scoreRow.options.at(-1).key.hidden)throw Error('New score ID visible');
+    scoreRow.type.value='choice';scoreRow.type.onchange();
+    if(scoreOptions.attributes['data-type']!=='choice' || scoreRow.options.some(option=>option.key.hidden))throw Error('Choice layout not restored');
+  `,context);
+});
+
+
+test('Decision headers track names, types and positions through editor changes',()=>{
+  const {context}=workspace([]);
+  context.consultationFixture=JSON.parse(readFileSync(new URL('../profiles/consultation.json',import.meta.url),'utf8'));
+  const headers=()=>JSON.parse(vm.runInContext('JSON.stringify(decisionRows.map(row=>row.legend.textContent))',context));
+  vm.runInContext("criteriaProfiles={general:consultationFixture,consultation:consultationFixture};handleEditCriteria('consultation')",context);
+  assert.equal(headers()[0],'Decision 1 · 문의 유형 · Choice');
+  assert.equal(headers()[3],'Decision 4 · 긴급도 · Score');
+  vm.runInContext("decisionRows[0].label.value='Renamed';decisionRows[0].label.oninput();decisionRows[0].type.value='noul';decisionRows[0].type.onchange()",context);
+  assert.equal(headers()[0],'Decision 1 · Renamed · Noul');
+  vm.runInContext("decisionRows[0].panel.children.at(-1).children[1].onclick()",context);
+  assert.equal(headers()[1],'Decision 2 · Renamed · Noul');
+  vm.runInContext("decisionRows[0].panel.children.at(-1).children.at(-1).onclick()",context);
+  assert.equal(headers()[0],'Decision 1 · Renamed · Noul');
+  vm.runInContext("$('criteria-editor').children.at(-1).onclick()",context);
+  assert.equal(headers().at(-1),'Decision 5 · decision_5 · Choice');
+});
+
+
+test('Profile settings and Decisions share the same section design',()=>{
+  const {context,nodes}=workspace([]);
+  vm.runInContext("criteriaProfiles={general:{label:'General',instructions:'Use evidence.',criteria:{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'}}};handleEditCriteria('general')",context);
+  const profile=nodes.get('criteria-editor').children[2];
+  assert.equal(profile.className,'criteria-section profile-settings');
+  assert.equal(profile.children[0].textContent,'Profile Settings');
+  assert.equal(profile.children[1].className,'action-registration');
+  assert.equal(vm.runInContext("decisionRows.every(row=>row.panel.className.includes('criteria-section'))",context),true);
+});
+
+
+test('Custom classification colors differ by option and match result badges',()=>{
+  const {context,nodes}=workspace([]);
+  context.vocFixture=JSON.parse(readFileSync(new URL('../profiles/consultation.json',import.meta.url),'utf8'));
+  vm.runInContext(`
+    const definition=vocFixture.questions.inquiry_type;
+    results=Object.keys(definition.criteria).map(choice=>({log:choice,category:choice,
+      categoryFilter:'voc:'+choice,classificationGroup:'voc',profileLabel:vocFixture.label,
+      primaryQuestion:'inquiry_type',decisionDefinitions:{inquiry_type:definition},
+      decisions:{inquiry_type:{choice,probabilities:{[choice]:1}}},elapsedMs:1}));
+    completionOrder=results.map((_,i)=>i);completed=results.length;render();
+  `,context);
+  const styles=nodes.get('category-chart').children.map(row=>row.children[1].children[0].attributes.style);
+  assert.equal(new Set(styles).size,5);
+  for(const [index,choice] of ['예약','취소·변경·환불','요금·할인','시설·이용 안내'].entries()){
+    context.selectedChoice=choice;
+    const badgeStyle=vm.runInContext("renderDecisionCard('inquiry_type',vocFixture.questions.inquiry_type,{choice:selectedChoice,probabilities:{[selectedChoice]:1}},{}).children[1].attributes.style",context);
+    assert.ok(styles[index].endsWith(badgeStyle));
+  }
+  assert.match(styles[4],/background:#84938c/);
+  const before=[...styles];nodes.get('chart-uncertain').onclick();
+  assert.deepEqual(nodes.get('category-chart').children.map(row=>row.children[1].children[0].attributes.style.split(';background:')[1]),before.map(style=>style.split(';background:')[1]));
+});
+
+
+test('Criteria field help explains scope, IDs, summary visibility and answer types',()=>{
+  const {context,nodes}=workspace([]);
+  context.vocHelpFixture=JSON.parse(readFileSync(new URL('../profiles/consultation.json',import.meta.url),'utf8'));
+  vm.runInContext("criteriaProfiles={general:vocHelpFixture,consultation:vocHelpFixture};handleEditCriteria('consultation')",context);
+  const profile=nodes.get('criteria-editor').children[2].children[1];
+  assert.match(profile.children[0].children.at(-1).textContent,/Profile name/);
+  assert.match(profile.children[1].children.at(-1).textContent,/Other decisions still run/);
+  assert.match(profile.children[2].children.at(-1).textContent,/Rules shared by every decision/);
+  assert.match(vm.runInContext("decisionRows[0].id.attributes['aria-description']",context),/Unique result key/);
+  assert.match(vm.runInContext("decisionRows[0].summary.attributes['aria-description']",context),/Unchecked decisions still run/);
+  assert.match(vm.runInContext("decisionRows[0].panel.children.find(node=>node.className==='criteria-help').textContent",context),/unique Option ID/);
+  vm.runInContext("decisionRows[0].type.value='score';decisionRows[0].type.onchange()",context);
+  assert.match(vm.runInContext("decisionRows[0].panel.children.find(node=>node.className==='criteria-help').textContent",context),/lowest to highest/);
+  vm.runInContext("decisionRows[0].type.value='noul';decisionRows[0].type.onchange()",context);
+  assert.match(vm.runInContext("decisionRows[0].panel.children.find(node=>node.className==='criteria-help').textContent",context),/Yes probability/);
+  assert.equal(vm.runInContext("Object.hasOwn(readDecisionProfile().questions.inquiry_type,'criteria')",context),false);
+});
+
+
+test('Running a Task opens Main',async()=>{
+  const {nodes,context}=workspace([{type:'start',engine:'laya',total:0},{type:'done',elapsedMs:0}]);
+  vm.runInContext("handleNavigation('tasks')",context);
+  await runTask(nodes);
+  assert.equal(vm.runInContext('currentView',context),'main');
+  assert.equal(nodes.get('tasks-page').hidden,true);
+  assert.equal(nodes.get('main-page').hidden,false);
+});
+
+
+test('Sources used by Tasks lock Type and explain which Tasks reference them',async()=>{
+  const {nodes,context}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext(`
+    registeredSources=[{id:'local-source',name:'Logs',type:'local',path:'/logs'},{id:'unused',name:'Unused',type:'ssh',path:'/logs'}];
+    registeredTasks=[{id:'task',name:'My Monitor',enabled:false,sources:[{sourceId:'local-source'}]}];
+    handleEditSource(0);
+  `,context);
+  assert.equal(vm.runInContext('sourceFields.type.disabled',context),true);
+  assert.match(vm.runInContext("sourceFields.type.attributes['aria-description']",context),/My Monitor/);
+  assert.notEqual(vm.runInContext('sourceFields.path.disabled',context),true);
+  context.fetch=async()=>({ok:false,json:async()=>({error:'Save failed'})});
+  await nodes.get('save-sources').onclick();
+  assert.equal(vm.runInContext('sourceFields.type.disabled',context),true);
+  vm.runInContext('handleCloseSource();handleEditSource(1)',context);
+  assert.equal(vm.runInContext('sourceFields.type.disabled',context),false);
+});
+
+
+test('Criteria token estimates update for shared rules, options and structural changes without saving',()=>{
+  const {context,nodes,requests}=workspace([]);
+  context.tokenFixture=JSON.parse(readFileSync(new URL('../profiles/consultation.json',import.meta.url),'utf8'));
+  vm.runInContext("criteriaProfiles={general:tokenFixture,consultation:tokenFixture};criteriaTokenLimits={head_tokens:256,context_tokens:8192};handleEditCriteria('consultation')",context);
+  const total=()=>vm.runInContext('criteriaTokenEstimates().reduce((sum,q)=>sum+q.tokens,0)',context);
+  const panel=()=>nodes.get('criteria-editor').children[1];
+  assert.equal(panel().attributes.role,'status');
+  assert.match(panel().children[1].textContent,/Total ≈/);
+  const initial=total(),calls=requests.length;
+  vm.runInContext("criteriaFields.instructions.value+='A'.repeat(400);criteriaFields.instructions.oninput()",context);
+  assert.ok(total()>=initial+500);
+  const shared=total();
+  vm.runInContext("decisionRows[0].summary.checked=false;handleRenderCriteriaTokens()",context);
+  assert.equal(total(),shared);
+  vm.runInContext("decisionRows[0].options[0].text.value+='가'.repeat(200);decisionRows[0].options[0].text.oninput()",context);
+  assert.equal(total(),shared+160);
+  assert.ok(panel().children.some(node=>/48-token/.test(node.textContent || '')));
+  const options=total();
+  vm.runInContext("decisionRows[0].options[0].entry.children[2].onclick()",context);
+  assert.ok(total()<options);
+  const beforeAdd=total();
+  nodes.get('criteria-editor').children.at(-1).onclick();
+  assert.ok(total()>beforeAdd);
+  vm.runInContext("decisionRows.at(-1).panel.children.at(-1).children.at(-1).onclick()",context);
+  assert.equal(total(),beforeAdd);
+  assert.equal(requests.length,calls);
+});
+
+test('Criteria estimates distinguish Laya head and Jev request limits and retain expanded details',()=>{
+  const {context,nodes}=workspace([]);
+  vm.runInContext("criteriaProfiles={general:{label:'General',instructions:'Use evidence.',criteria:{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'}}};criteriaTokenLimits={head_tokens:1,context_tokens:8192};handleEditCriteria('general')",context);
+  const panel=()=>nodes.get('criteria-editor').children[1];
+  assert.match(panel().className,/estimate-warning/);
+  assert.ok(panel().children.some(node=>/question head budget/.test(node.textContent || '')));
+  const details=panel().children.at(-1);details.open=true;details.ontoggle();
+  vm.runInContext("engine='jev';engineLabel='Jev';criteriaTokenLimits={head_tokens:1,context_tokens:32000,request_tokens:64000};handleRenderCriteriaTokens()",context);
+  assert.equal(panel().className,'criteria-token-estimate');
+  assert.ok(panel().children.at(-1).open);
+  assert.ok(panel().children.some(node=>/64,000/.test(node.textContent || '')));
+  vm.runInContext('criteriaTokenLimits.request_tokens=1;handleRenderCriteriaTokens()',context);
+  assert.match(panel().className,/estimate-warning/);
+  assert.ok(panel().children.some(node=>/before input is added/.test(node.textContent || '')));
+});
+
+
+test('Uncertainty stays separate from the complete long decision value in summary and details',()=>{
+  const {context}=workspace([]);
+  const values=vm.runInContext(`
+    const choice='시설·이용 안내 및 프로그램 이용 방법에 관한 긴 문의';
+    const definition={label:'문의 유형',type:'choice',criteria:{[choice]:'시설 문의'}};
+    const record={primaryQuestion:'inquiry_type',uncertain:true,candidates:[choice],reviewReasons:['low_answer_probability']};
+    const card=renderDecisionCard('inquiry_type',definition,{choice,probabilities:{[choice]:.4}},record);
+    [card.children[1].textContent,card.children[0].children[0].textContent,card.children[1].title];
+  `,context);
+  assert.equal(values[0],'시설·이용 안내 및 프로그램 이용 방법에 관한 긴 문의');
+  assert.equal(values[1],'Uncertain');
+  assert.ok(values[2].includes(values[0]));
+});
+
+test('Task History stays below its row through refresh and closes for another detail', async () => {
+  const {nodes,context}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  context.fetch=async()=>({ok:true,json:async()=>({runs:[]})});
+  vm.runInContext(`registeredTasks=[{id:'one',name:'One',mode:'batch',sources:[]},{id:'two',name:'Two',mode:'batch',sources:[]}];renderTasks()`,context);
+  const table=()=>nodes.get('task-list').children[0];
+  const click=(row,label)=>table().children[row].children.at(-1).children.find(button=>button.textContent===label).onclick();
+  click(1,'History');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(table().children[2].children[0].children[0],nodes.get('task-history'));
+  assert.equal(nodes.get('task-registry').hidden,false);
+  vm.runInContext('renderTasks()',context);
+  assert.equal(table().children[2].children[0].children[0],nodes.get('task-history'));
+  click(3,'View');
+  assert.equal(nodes.get('task-history').hidden,true);
+  assert.equal(table().children[3].children[0].children[0],nodes.get('task-view'));
+  click(1,'History');
+  click(1,'History');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(nodes.get('task-history').hidden,true);
+  assert.equal(table().children.length,3);
+});
+
+
+test('Result context emphasizes Task name and reports non-JSON API responses', async () => {
+  const {nodes,context}=workspace([]);
+  vm.runInContext("renderResultContext('VOC Consultation Review (KOR)','2026-10-17T00:00:00Z','run-one')",context);
+  assert.equal(nodes.get('result-context').children[0].textContent,'VOC Consultation Review (KOR)');
+  assert.equal(nodes.get('result-context').children[0].className,'result-task-name');
+  context.htmlResponse={status:502,ok:false,json:async()=>{throw new SyntaxError('Unexpected token <');}};
+  await assert.rejects(vm.runInContext("readResultResponse(htmlResponse,'/api/jobs/run-one/results')",context),/\/api\/jobs\/run-one\/results.*invalid JSON.*HTTP 502/);
+});
+
+
+test('Task polling reports HTML response metadata and preserves existing Tasks',async()=>{
+  const {context,nodes}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  const count=vm.runInContext('registeredTasks.length',context);
+  context.fetch=async()=>({ok:false,status:502,url:'http://localhost/api/tasks',headers:{get:()=> 'text/html'},json:async()=>{throw new SyntaxError("Unexpected token '<'");}});
+  await vm.runInContext('handleLoadTasks()',context);
+  assert.match(nodes.get('message').textContent,/\/api\/tasks.*HTTP 502, text\/html/);
+  assert.equal(vm.runInContext('registeredTasks.length',context),count);
+});
+
+test('Task Pause and Resume controls follow active state without starting a new run',async()=>{
+  const {nodes,context}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext("registeredTasks=[{id:'pause-task',name:'Pausing Task',mode:'batch',sources:[],activeRun:{jobId:'same-run',state:'running'}}];handleNavigation('tasks');renderTasks()",context);
+  const controls=()=>nodes.get('task-list').children[0].children[1].children.at(-1).children;
+  const button=label=>controls().find(item=>item.textContent===label);
+  assert.equal(button('Pause').disabled,false);
+  assert.equal(button('Resume'),undefined);
+  const paths=[];
+  context.fetch=async path=>{
+    paths.push(path);
+    if(path==='/api/tasks')return {ok:true,json:async()=>({tasks:vm.runInContext('registeredTasks',context)})};
+    const state=path.endsWith('/pause')?'paused':'running';
+    vm.runInContext(`registeredTasks[0].activeRun.state='${state}'`,context);
+    return {ok:true,json:async()=>({jobId:'same-run',state})};
+  };
+  await button('Pause').onclick();
+  assert.equal(button('Pause'),undefined);
+  assert.equal(button('Resume').disabled,false);
+  assert.equal(button('Stop').disabled,false);
+  assert.equal(button('Run').disabled,true);
+  assert.equal(vm.runInContext('currentView',context),'tasks');
+  await button('Resume').onclick();
+  assert.equal(button('Pause').disabled,false);
+  assert.equal(button('Resume'),undefined);
+  assert.deepEqual(paths,['/api/tasks/pause-task/pause','/api/tasks','/api/tasks/pause-task/resume','/api/tasks']);
+});
+
+
+test('Pause on an older server explains restart without parsing its plain-text response',async()=>{
+  const {nodes,context}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  context.fetch=async()=>({status:405,ok:false,json:async()=>{throw new Error('Should not parse Method Not Allowed');}});
+  await vm.runInContext("handlePauseTask('task-one','pause')",context);
+  assert.match(nodes.get('task-message').textContent,/Pause\/Resume is unavailable.*restart.*Restarting interrupts active executions/);
+});
+
+
+test('Main reconnects to the same recovered execution after a server outage',async()=>{
+  const {context}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext(`currentView='main';monitoringReady=true;followLatestTask=false;busy=false;
+    activeJobId='same-run';selectedTaskId=registeredTasks[0].id;
+    registeredTasks[0].activeRun={jobId:'same-run',state:'paused'};
+    globalThis.watched=[];handleWatchRun=async run=>{watched.push(run.jobId);busy=true;};`,context);
+  await vm.runInContext('handleLoadTasks()',context);
+  assert.equal(vm.runInContext('watched.join()',context),'same-run');
+  await vm.runInContext('handleLoadTasks()',context);
+  assert.equal(vm.runInContext('watched.length',context),1);
+});
+
+function enableCleanRoutes(context,navigation) {
+  const writes=[];
+  const write=(replace,path)=>{
+    const url=new URL(path,'http://localhost');
+    navigation.pathname=url.pathname;navigation.search=url.search;navigation.hash=url.hash;
+    writes.push({replace,path});
+  };
+  context.URLSearchParams=URLSearchParams;
+  context.history={pushState:(_state,_title,path)=>write(false,path),replaceState:(_state,_title,path)=>write(true,path)};
+  return writes;
+}
+
+test('Task History, View, Edit and Cancel expose distinct clean URLs',async()=>{
+  const navigation={pathname:'/tasks',search:'',hash:''};
+  const {context,nodes,listeners}=workspace([],undefined,undefined,undefined,navigation);
+  await new Promise(resolve=>setImmediate(resolve));
+  const writes=enableCleanRoutes(context,navigation);
+  context.fetch=async path=>{
+    if(path==='/api/tasks/test-task/runs')return {ok:true,json:async()=>({runs:[]})};
+    if(path==='/api/tasks')return {ok:true,json:async()=>({tasks:vm.runInContext('registeredTasks',context)})};
+    return {ok:true,json:async()=>({hosts:[],keys:[]})};
+  };
+  vm.runInContext('renderTasks()',context);
+  const controls=()=>nodes.get('task-list').children[0].children[1].children.at(-1).children;
+  const button=label=>controls().find(item=>item.textContent===label);
+  assert.equal(button('History').attributes.href,'/tasks/test-task/history');
+  button('History').onclick();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(navigation.pathname,'/tasks/test-task/history');
+  assert.equal(nodes.get('task-history').hidden,false);
+  button('View').onclick();
+  assert.equal(navigation.pathname,'/tasks/test-task');
+  await button('Edit').onclick();
+  assert.equal(navigation.pathname,'/tasks/test-task/edit');
+  nodes.get('cancel-task').onclick();
+  assert.equal(navigation.pathname,'/tasks');
+  navigation.pathname='/tasks/test-task/history';
+  await listeners.get('popstate')();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(nodes.get('task-history').hidden,false);
+  assert.ok(writes.every(write=>!write.path.includes('#')));
+});
+
+test('Direct execution link loads its exact ID without running a Task',async()=>{
+  const navigation={pathname:'/',search:'',hash:''};
+  const {context,listeners}=workspace([],undefined,undefined,undefined,navigation);
+  await new Promise(resolve=>setImmediate(resolve));
+  enableCleanRoutes(context,navigation);
+  const paths=[];
+  context.fetch=async path=>{paths.push(path);return {ok:true,json:async()=>({jobId:'linked-run',state:'stopped',settings:{taskId:'test-task'}})};};
+  vm.runInContext('globalThis.watched=[];handleWatchRun=async job=>{watched.push(job.jobId);}',context);
+  navigation.pathname='/runs/linked-run';
+  await listeners.get('popstate')();
+  assert.equal(vm.runInContext('watched.join()',context),'linked-run');
+  assert.deepEqual(paths,['/api/jobs/linked-run']);
+});
+
+test('Run filter URLs preserve pages while background polls replace history',async()=>{
+  const navigation={pathname:'/',search:'',hash:''};
+  const {context,nodes}=workspace([],undefined,undefined,undefined,navigation);
+  await new Promise(resolve=>setImmediate(resolve));
+  const writes=enableCleanRoutes(context,navigation);
+  vm.runInContext("currentView='main';activeJobId='linked-run';pagedView={id:'linked-run',cursors:[null,100,70],through:130};page=2",context);
+  nodes.get('review-filter').value='needs-review';nodes.get('log-search').value='synthetic query';
+  vm.runInContext('handleSyncRunRoute()',context);
+  const params=new URLSearchParams(navigation.search);
+  assert.equal(navigation.pathname,'/runs/linked-run');
+  assert.equal(params.get('cursors'),'100,70');assert.equal(params.get('through'),'130');
+  assert.equal(params.get('review'),'needs-review');assert.equal(params.get('search'),'synthetic query');
+  nodes.get('host-filter').value='host-two';
+  vm.runInContext('handleSyncRunRoute(true)',context);
+  assert.equal(writes.at(-1).replace,true);
+});
+
+test('Resource links share stable IDs across Sources Actions Criteria and SSH lists',async()=>{
+  const navigation={pathname:'/',search:'',hash:''};
+  const {context,nodes}=workspace([],undefined,undefined,undefined,navigation);
+  await new Promise(resolve=>setImmediate(resolve));
+  enableCleanRoutes(context,navigation);
+  vm.runInContext(`
+    registeredSources=[{id:'source-id',name:'Source',type:'local',path:'/synthetic'}];
+    registeredActions=[{id:'action-id',name:'Action',code:'print(1)',modules:[]}];
+    criteriaProfiles={general:{label:'General system',instructions:'Test',criteria:{normal:'Normal'}},'criteria-id':{label:'Criteria',instructions:'Test',criteria:{normal:'Normal'}}};
+    sshKeys=[{id:'key-id',name:'Key',privatePath:'/synthetic/key',publicKey:'synthetic'}];
+    sshHosts=[{id:'host-id',name:'Host',host:'synthetic',port:22,username:'reader',keyId:'key-id'}];
+    renderSources();renderActions();renderCriteria();renderSSHKeys();renderSSHHosts();
+  `,context);
+  for(const path of ['/sources/source-id','/actions/action-id','/criteria/criteria-id','/settings/ssh-keys/key-id','/settings/ssh-hosts/host-id']){
+    assert.equal(vm.runInContext(`routeOpeners.has(${JSON.stringify(path)})`,context),true);
+    assert.equal(vm.runInContext(`routeOpeners.has(${JSON.stringify(path+'/edit')})`,context),true);
+    vm.runInContext(`routeOpeners.get(${JSON.stringify(path)})()`,context);
+    assert.equal(navigation.pathname,path);
+  }
+});
+
+test('Modified clicks preserve native link behavior and commands have no href',async()=>{
+  const navigation={pathname:'/tasks',search:'',hash:''};
+  const {nodes,context}=workspace([],undefined,undefined,undefined,navigation);
+  await new Promise(resolve=>setImmediate(resolve));enableCleanRoutes(context,navigation);
+  vm.runInContext('renderTasks()',context);
+  const controls=nodes.get('task-list').children[0].children[1].children.at(-1).children;
+  const view=controls.find(button=>button.textContent==='View');
+  view.onclick({ctrlKey:true,preventDefault(){throw Error('Native link was intercepted');}});
+  assert.equal(navigation.pathname,'/tasks');
+  for(const label of ['Run','Stop','Pause','Delete'])assert.equal(controls.find(button=>button.textContent===label).attributes.href,undefined);
+});
+
+test('Back and Forward restore filters within a live execution without restarting its watcher',async()=>{
+  const navigation={pathname:'/',search:'',hash:''};
+  const {context,listeners}=workspace([],undefined,undefined,undefined,navigation);
+  await new Promise(resolve=>setImmediate(resolve));enableCleanRoutes(context,navigation);
+  vm.runInContext("busy=true;activeJobId='same';pagedView={id:'same'};globalThis.applied=[];handleApplyRunRoute=async path=>applied.push(path);handleWatchRun=()=>{throw Error('Live watcher restarted');}",context);
+  context.fetch=async()=>({ok:true,json:async()=>({jobId:'same',state:'running',settings:{taskId:'test-task'}})});
+  navigation.pathname='/runs/same';navigation.search='?review=needs-review';
+  await listeners.get('popstate')();
+  assert.equal(vm.runInContext('applied.join()',context),'/runs/same?review=needs-review');
+});
+
+test('Reopening a completed execution at its base URL clears stale expanded sections',async()=>{
+  const navigation={pathname:'/',search:'',hash:''};
+  const {context}=workspace([],undefined,undefined,undefined,navigation);
+  await new Promise(resolve=>setImmediate(resolve));enableCleanRoutes(context,navigation);
+  navigation.pathname='/runs/same';
+  vm.runInContext("expandedResultDetails.set('same:2',new Set(['input']));handleLoadResultSettings=async()=>{};handleRefreshResults=async()=>{};handleLoadTasks=async()=>{}",context);
+  await vm.runInContext("handlePagedProcessing({jobId:'same',state:'completed',settings:{mode:'batch',taskName:'Same'}})",context);
+  assert.equal(vm.runInContext('expandedResultDetails.size',context),0);
+});
+
+
+test('Task Source None clears its dependency and active Tasks disable editing', async () => {
+  const {nodes,context}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext(`
+    registeredSources=[{id:'source',name:'Logs',type:'local',path:'/input.log'}];
+    updateSourceSettings(['source']);
+    sourceRows[0].name.value='';sourceRows[0].name.onchange();
+  `,context);
+  assert.equal(vm.runInContext('sourceRows[0].path',context),'');
+  assert.equal(nodes.get('file-path').value,'');
+  for(const state of ['running','pausing','paused']) {
+    vm.runInContext(`registeredTasks=[{id:'task',name:'Logs',mode:'batch',sources:[],activeRun:{state:'${state}'}}];renderTasks()`,context);
+    const table=nodes.get('task-list').children[0];
+    const controls=table.children[1].children.at(-1).children;
+    assert.equal(controls.find(button=>button.textContent==='Edit').disabled,true);
+    assert.equal(controls.find(button=>button.textContent==='Run').disabled,true);
+  }
+});
+
+
+test('Criteria None survives profile refresh and blocks Task execution', async () => {
+  const {nodes,context}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext(`
+    updateSourceSettings(['1'.padStart(32,'0')]);
+    sourceRows[0].profile.value='';sourceRows[0].profile.onchange();
+    handleCriteriaLabels({general:{label:'General system'}});
+  `,context);
+  assert.equal(vm.runInContext('sourceRows[0].profile.value',context),'');
+  assert.equal(vm.runInContext('sourceRows[0].profile.children[0].text',context),'None');
+  vm.runInContext(`registeredTasks=[{id:'task',name:'Logs',mode:'batch',sources:[{sourceId:'source',profile:''}]}];renderTasks()`,context);
+  const controls=nodes.get('task-list').children[0].children[1].children.at(-1).children;
+  assert.equal(controls.find(button=>button.textContent==='Run').disabled,true);
+  assert.equal(Boolean(controls.find(button=>button.textContent==='Edit').disabled),false);
 });

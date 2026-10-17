@@ -7,7 +7,7 @@ from conftest import DECISION_ANSWERS
 from dotenv import dotenv_values
 
 from classifier import Result, classify_batch, classify_log, parse_logs
-from config import get_engine, get_jev_input_bytes
+from config import get_engine, get_jev_input_bytes, load_startup_settings
 
 
 def test_example_laya_settings_pass_startup_validation(
@@ -19,9 +19,9 @@ def test_example_laya_settings_pass_startup_validation(
             monkeypatch.setenv(key, value)
     engine = get_engine()
     assert engine.name == "laya"
-    assert engine.model == "english"
-    assert engine.context_tokens == 512
-    assert engine.head_tokens == 256
+    assert engine.model == settings["LAYA_MODEL"]
+    assert engine.context_tokens == (512 if engine.model == "english" else 8192)
+    assert engine.head_tokens == int(settings["LAYA_HEAD_TOKENS"] or "256")
 
 
 def test_english_rejects_oversized_total_budget(
@@ -351,3 +351,45 @@ async def test_custom_model_requires_server_routing_confirmation(
         else:
             with pytest.raises(ValueError, match="confirm.*custom model"):
                 await classify_log("example", get_engine(), client)
+
+
+@pytest.mark.parametrize("selected", ["laya", "jev"])
+def test_restart_reloads_mounted_engine_settings_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, selected: str
+) -> None:
+    """Docker's stale engine values yield to .env; container paths remain fixed."""
+    path = tmp_path / ".env"
+    settings = {
+        "DECISION_ENGINE": selected,
+        "LAYA_API_URL": "http://laya:8000/v1/systemone",
+        "LAYA_MODEL": "multilingual",
+        "LAYA_API_KEY": "test-laya-new",
+        "LAYA_MAX_TOKENS": "8192",
+        "LAYA_HEAD_TOKENS": "256",
+        "LAYA_CONCURRENCY": "2",
+        "JEV_MODEL": "jev-latest",
+        "JEV_API_KEY": "test-jev-new",
+        "JEV_CONCURRENCY": "3",
+        "JEV_MAX_INPUT_BYTES": "20000",
+    }
+    for key in settings:
+        monkeypatch.setenv(key, "old")
+    monkeypatch.setenv("PORT", "4000")
+    monkeypatch.setenv("DECIFLOW_DATA_DIR", "/mounted-data")
+    path.write_text(
+        "\n".join(f"{key}={value}" for key, value in settings.items())
+        + "\nPORT=9999\nDECIFLOW_DATA_DIR=/other-data\n"
+    )
+    load_startup_settings(path)
+    engine = get_engine()
+    assert engine.name == selected
+    assert engine.api_key == settings[f"{selected.upper()}_API_KEY"]
+    assert engine.model == settings[f"{selected.upper()}_MODEL"]
+    assert engine.concurrency == int(settings[f"{selected.upper()}_CONCURRENCY"])
+    import os
+
+    assert os.environ["PORT"] == "4000"
+    assert os.environ["DECIFLOW_DATA_DIR"] == "/mounted-data"
+    path.unlink()
+    load_startup_settings(path)
+    assert get_engine() == engine

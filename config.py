@@ -3,7 +3,10 @@
 import os
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import urlsplit
+
+from dotenv import dotenv_values, load_dotenv
 
 # https://docs.typesafe.ai/models (verified 2026-10-10).
 JEV_MODEL = "jev-1.13.0"
@@ -59,6 +62,17 @@ class Engine:
                 f"for {self.model}."
             )
         return value
+
+
+def load_startup_settings(path: Path) -> None:
+    """Reload explicit engine settings from .env when the UI process starts."""
+    load_dotenv(path)
+    # Compose retains env_file values across Restart; the mounted file is current.
+    for key, value in dotenv_values(path).items():
+        if value is not None and (
+            key == "DECISION_ENGINE" or key.startswith(("LAYA_", "JEV_"))
+        ):
+            os.environ[key] = value
 
 
 def get_engine() -> Engine:

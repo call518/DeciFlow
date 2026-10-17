@@ -6,15 +6,19 @@ append/page/events/review/summary contract; callers never issue SQL themselves.
 
 import json
 import sqlite3
+from collections import OrderedDict
 from collections.abc import Iterator
 from contextlib import closing, contextmanager
 from datetime import UTC, datetime
 from functools import lru_cache
+from hashlib import sha256
 from pathlib import Path
 from threading import RLock
 from typing import Protocol
 
 from classifier import Result
+from decisions import answer_value, is_probability
+from result_payload import compact_result
 
 CATEGORIES = ("normal", "warning", "error", "security", "other")
 
@@ -34,6 +38,7 @@ def empty_summary() -> Result:
             group: dict.fromkeys(CATEGORIES, 0)
             for group in ("all", "certain", "uncertain")
         },
+        "classificationGroups": {},
         "hosts": {},
         "sources": {},
     }
@@ -61,11 +66,31 @@ def _aggregate(stats: Result, result: Result) -> None:
     stats["actionSuccess"] += action == "success"
     stats["actionFailed"] += action == "failed"
     category = result.get("category")
-    if not failed and category in CATEGORIES:
+    if not failed and category is not None:
         group = "uncertain" if result.get("uncertain") else "certain"
+        filter_key = result.get("categoryFilter", category)
         for name in ("all", group):
             stats["groups"][name] += 1
-            stats["categories"][name][category] += 1
+            counts = stats["categories"][name]
+            counts[filter_key] = counts.get(filter_key, 0) + 1
+        identity = result.get("classificationGroup", "system")
+        if identity not in stats.setdefault("classificationGroups", {}):
+            primary = result.get("primaryQuestion", "category")
+            definition = result.get("decisionDefinitions", {}).get(primary, {})
+            options = definition.get("criteria", dict.fromkeys(CATEGORIES, ""))
+            stats["classificationGroups"][identity] = {
+                "label": (
+                    result.get("profileLabel", "")
+                    + " · "
+                    + definition.get("label", "Category")
+                )
+                if identity != "system"
+                else "System Category",
+                "options": {
+                    (f"{identity}:{key}" if identity != "system" else key): key
+                    for key in options
+                },
+            }
     host = _host_id(result)
     entry = stats["hosts"].setdefault(
         host,
@@ -94,11 +119,24 @@ class ResultRepository(Protocol):
     def save_snapshot(self, run_id: str, snapshot: Result) -> None: ...
     def append(self, run_id: str, event: Result, snapshot: Result) -> None: ...
     def recover_interrupted(self) -> None: ...
+    def recoverable_runs(self) -> list[Result]: ...
+    def checkpoint(self, run_id: str, source: str, cursor: Result) -> None: ...
+    def checkpoints(self, run_id: str) -> dict[str, Result]: ...
+    def enqueue(self, run_id: str, record: Result) -> Result: ...
+    def pending(self, run_id: str, after: int) -> list[Result]: ...
+    def action_checkpoint(self, run_id: str, result: Result, phase: str) -> None: ...
     def delete_task(self, task_id: str) -> None: ...
     def history(self, task_id: str, limit: int) -> list[Result]: ...
     def state(self, run_id: str) -> Result: ...
     def page(self, run_id: str, filters: Result, limit: int) -> Result: ...
-    def review(self, run_id: str, sequence: int, category: str) -> None: ...
+    def review(
+        self,
+        run_id: str,
+        sequence: int,
+        category: str,
+        question: str | None = None,
+        value: object = None,
+    ) -> None: ...
     def events(
         self, run_id: str, after: int = 0, *, reviewed_only: bool = False
     ) -> list[tuple[int, str]]: ...
@@ -111,6 +149,7 @@ class SQLiteResultStore:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
         self.lock = RLock()
+        self.context_cache: OrderedDict[tuple[str, str], str] = OrderedDict()
         self.connection = sqlite3.connect(path, timeout=30, check_same_thread=False)
         path.chmod(0o600)
         self.connection.row_factory = sqlite3.Row
@@ -148,7 +187,41 @@ class SQLiteResultStore:
             );
             CREATE INDEX IF NOT EXISTS result_source
                 ON sources(run_id, source, sequence);
+            CREATE TABLE IF NOT EXISTS result_contexts (
+                run_id TEXT NOT NULL, key TEXT NOT NULL, payload TEXT NOT NULL,
+                PRIMARY KEY (run_id, key)
+            );
+            CREATE TABLE IF NOT EXISTS source_checkpoints (
+                run_id TEXT NOT NULL, source TEXT NOT NULL, payload TEXT NOT NULL,
+                PRIMARY KEY (run_id, source)
+            );
+            CREATE TABLE IF NOT EXISTS pending_work (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL,
+                payload TEXT NOT NULL, phase TEXT NOT NULL DEFAULT 'pending'
+            );
+            CREATE INDEX IF NOT EXISTS pending_run ON pending_work(run_id,id);
+            CREATE TABLE IF NOT EXISTS processing_times (
+                run_id TEXT NOT NULL, elapsed_ms REAL NOT NULL,
+                samples INTEGER NOT NULL,
+                PRIMARY KEY (run_id, elapsed_ms)
+            );
         """)
+
+        columns = {
+            row[1] for row in self.connection.execute("PRAGMA table_info(events)")
+        }
+        for name, kind in (
+            ("reviews", "TEXT"),
+            ("changed", "INTEGER NOT NULL DEFAULT 0"),
+        ):
+            if name not in columns:
+                self.connection.execute(f"ALTER TABLE events ADD COLUMN {name} {kind}")
+        self.connection.execute(
+            "CREATE INDEX IF NOT EXISTS reviewed_any_changes "
+            "ON events(run_id,sequence) WHERE kind='result' AND failed=0 "
+            "AND ((reviewer<>'' AND reviewer<>category) OR changed=1)"
+        )
+        self.connection.commit()
 
     def close(self) -> None:
         """Release the database connection after all application jobs stop."""
@@ -215,6 +288,46 @@ class SQLiteResultStore:
                 (json.dumps(snapshot), snapshot["state"], run_id),
             )
 
+    def _pack(
+        self, connection: sqlite3.Connection, run_id: str, result: Result
+    ) -> Result:
+        item = compact_result(result)
+        refs = {}
+        for field in ("decisionDefinitions", "questions"):
+            if field not in item:
+                continue
+            payload = json.dumps(item.pop(field), ensure_ascii=False)
+            key = sha256(payload.encode()).hexdigest()
+            connection.execute(
+                "INSERT OR IGNORE INTO result_contexts VALUES(?,?,?)",
+                (run_id, key, payload),
+            )
+            refs[field] = key
+        if refs:
+            item["_contextRefs"] = refs
+        return item
+
+    def _expand(self, run_id: str, result: Result) -> Result:
+        item = dict(result)
+        for field, key in item.pop("_contextRefs", {}).items():
+            cache_key = (run_id, key)
+            with self.lock:
+                payload = self.context_cache.get(cache_key)
+                if payload is None:
+                    row = self.connection.execute(
+                        "SELECT payload FROM result_contexts WHERE run_id=? AND key=?",
+                        (run_id, key),
+                    ).fetchone()
+                    if row is None:
+                        raise ValueError("Stored result context is missing.")
+                    payload = row[0]
+                    self.context_cache[cache_key] = payload
+                    if len(self.context_cache) > 128:
+                        self.context_cache.popitem(last=False)
+                self.context_cache.move_to_end(cache_key)
+            item[field] = json.loads(payload)
+        return compact_result(item)
+
     def _append(
         self,
         connection: sqlite3.Connection,
@@ -228,13 +341,18 @@ class SQLiteResultStore:
         result = event.get("result", {})
         failed = bool(result.get("error"))
         connection.execute(
-            "INSERT INTO events VALUES(?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO events(run_id,sequence,kind,payload,category,host,review,failed,log_folded,reviewer) VALUES(?,?,?,?,?,?,?,?,?,?)",
             (
                 run_id,
                 sequence,
                 event["type"],
-                json.dumps(event, ensure_ascii=False),
-                result.get("category"),
+                json.dumps(
+                    {**event, "result": self._pack(connection, run_id, result)}
+                    if event["type"] == "result"
+                    else event,
+                    ensure_ascii=False,
+                ),
+                result.get("categoryFilter", result.get("category")),
                 _host_id(result),
                 int(not failed and bool(result.get("review"))),
                 int(failed),
@@ -245,14 +363,11 @@ class SQLiteResultStore:
         if event["type"] != "result":
             return
         _aggregate(stats, result)
-        elapsed = event.get("elapsedMs", 0)
-        buckets = stats.setdefault("throughputBuckets", {})
-        for bucket in list(buckets):
-            if int(bucket) * 100 <= elapsed - 5000:
-                del buckets[bucket]
-        if not failed:
-            bucket = str(int(elapsed / 100))
-            buckets[bucket] = buckets.get(bucket, 0) + 1
+        connection.execute(
+            "INSERT INTO processing_times VALUES(?,?,1) "
+            "ON CONFLICT(run_id,elapsed_ms) DO UPDATE SET samples=samples+1",
+            (run_id, result.get("elapsedMs", 0)),
+        )
         connection.executemany(
             "INSERT INTO sources VALUES(?,?,?)",
             [
@@ -271,7 +386,32 @@ class SQLiteResultStore:
                 "SELECT summary,sequence FROM runs WHERE id=?", (run_id,)
             ).fetchone()
             stats = json.loads(row["summary"])
+            if event["type"] == "result":
+                self._ensure_processing_times(connection, run_id, stats["total"])
+            stats.pop("throughputBuckets", None)
+            stats.pop("throughputBucketMs", None)
             sequence = row["sequence"] + 1
+            result = event.get("result", {})
+            work_id = result.get("_workId")
+            if work_id is not None:
+                event = {
+                    **event,
+                    "result": {
+                        key: value
+                        for key, value in result.items()
+                        if key
+                        not in {
+                            "_workId",
+                            "_checkpoint",
+                            "_recoveredResult",
+                            "_actionPhase",
+                        }
+                    },
+                }
+                connection.execute(
+                    "DELETE FROM pending_work WHERE run_id=? AND id=?",
+                    (run_id, work_id),
+                )
             self._append(connection, run_id, event, sequence, stats)
             connection.execute(
                 "UPDATE runs SET summary=?,sequence=?,snapshot=?,state=? WHERE id=?",
@@ -284,12 +424,96 @@ class SQLiteResultStore:
                 ),
             )
 
+    def recoverable_runs(self) -> list[Result]:
+        """Find checkpoint-enabled executions interrupted by a process restart."""
+        with self.reader() as connection:
+            rows = connection.execute(
+                "SELECT snapshot FROM runs WHERE state IN ('running','pausing','paused') "
+                "AND json_extract(snapshot,'$.settings.recoveryVersion')=1"
+            ).fetchall()
+            return [json.loads(row[0]) for row in rows]
+
+    def checkpoint(self, run_id: str, source: str, cursor: Result) -> None:
+        """Save an initial reader position without overtaking queued work."""
+        with self.transaction() as connection:
+            connection.execute(
+                "INSERT OR IGNORE INTO source_checkpoints VALUES(?,?,?)",
+                (run_id, source, json.dumps(cursor)),
+            )
+
+    def checkpoints(self, run_id: str) -> dict[str, Result]:
+        """Load one durable position per physical source."""
+        with self.reader() as connection:
+            return {
+                row[0]: json.loads(row[1])
+                for row in connection.execute(
+                    "SELECT source,payload FROM source_checkpoints WHERE run_id=?",
+                    (run_id,),
+                )
+            }
+
+    def enqueue(self, run_id: str, record: Result) -> Result:
+        """Atomically retain an input and advance its source cursor before inference."""
+        item = {key: value for key, value in record.items() if key != "_checkpoint"}
+        with self.transaction() as connection:
+            row = connection.execute(
+                "INSERT INTO pending_work(run_id,payload) VALUES(?,?)",
+                (run_id, json.dumps(self._pack(connection, run_id, item))),
+            )
+            if cursor := record.get("_checkpoint"):
+                connection.execute(
+                    "INSERT OR REPLACE INTO source_checkpoints VALUES(?,?,?)",
+                    (run_id, record["source"], json.dumps(cursor)),
+                )
+            return {**item, "_workId": row.lastrowid}
+
+    def pending(self, run_id: str, after: int) -> list[Result]:
+        """Read a bounded page of unfinished records, including uncertain Actions."""
+        with self.reader() as connection:
+            rows = connection.execute(
+                "SELECT id,payload,phase FROM pending_work WHERE run_id=? AND id>? ORDER BY id LIMIT 128",
+                (run_id, after),
+            ).fetchall()
+        items = []
+        for row in rows:
+            item = {**self._expand(run_id, json.loads(row[1])), "_workId": row[0]}
+            if row[2] != "pending":
+                item.update(_recoveredResult=True, _actionPhase=row[2])
+            if row[2] == "action":
+                item.update(
+                    review=True,
+                    actionExecution={
+                        "status": "failed",
+                        "name": item.get("action", "Action"),
+                        "elapsedMs": 0,
+                        "interrupted": True,
+                        "error": "Action outcome is unknown after restart; verify externally before retrying.",
+                    },
+                )
+            items.append(item)
+        return items
+
+    def action_checkpoint(self, run_id: str, result: Result, phase: str) -> None:
+        """Record Action intent before side effects, and outcome before publication."""
+        with self.transaction() as connection:
+            connection.execute(
+                "UPDATE pending_work SET payload=?,phase=? WHERE run_id=? AND id=?",
+                (
+                    json.dumps(self._pack(connection, run_id, result)),
+                    phase,
+                    run_id,
+                    result["_workId"],
+                ),
+            )
+
     def recover_interrupted(self) -> None:
-        """Stop interrupted DB runs in bounded batches without replaying inputs."""
+        """Stop legacy interrupted runs; checkpoint-enabled runs are recovered separately."""
         while True:
             with self.reader() as connection:
                 rows = connection.execute(
-                    "SELECT id,snapshot FROM runs WHERE state='running' LIMIT 128"
+                    "SELECT id,snapshot FROM runs "
+                    "WHERE state IN ('running','pausing','paused') "
+                    "AND COALESCE(json_extract(snapshot,'$.settings.recoveryVersion'),0)<>1 LIMIT 128"
                 ).fetchall()
             if not rows:
                 return
@@ -314,23 +538,72 @@ class SQLiteResultStore:
     def delete_task(self, task_id: str) -> None:
         """Delete all run records and related rows for exactly one Task."""
         with self.transaction() as connection:
-            for table in ("sources", "events"):
+            for table in (
+                "sources",
+                "events",
+                "processing_times",
+                "source_checkpoints",
+                "pending_work",
+                "result_contexts",
+            ):
                 connection.execute(
                     f"DELETE FROM {table} WHERE run_id IN "
                     "(SELECT id FROM runs WHERE task_id=?)",
                     (task_id,),
                 )
             connection.execute("DELETE FROM runs WHERE task_id=?", (task_id,))
+            self.context_cache.clear()
+
+    @staticmethod
+    def _ensure_processing_times(
+        connection: sqlite3.Connection, run_id: str, total: int
+    ) -> None:
+        """Build an old run's histogram once, inside the caller's transaction."""
+        if (
+            not total
+            or connection.execute(
+                "SELECT 1 FROM processing_times WHERE run_id=? LIMIT 1", (run_id,)
+            ).fetchone()
+        ):
+            return
+        connection.execute(
+            "INSERT INTO processing_times "
+            "SELECT run_id,COALESCE(json_extract(payload,'$.result.elapsedMs'),0),COUNT(*) "
+            "FROM events WHERE run_id=? AND kind='result' GROUP BY 1,2",
+            (run_id,),
+        )
 
     def state(self, run_id: str) -> Result:
-        """Read a bounded run snapshot and aggregate record."""
-        with self.lock:
-            row = self.connection.execute(
+        """Read whole-run aggregates and exact percentiles from duration counts."""
+        with self.transaction() as connection:
+            row = connection.execute(
                 "SELECT * FROM runs WHERE id=?", (run_id,)
             ).fetchone()
+            stats = json.loads(row["summary"])
+            total = stats["total"]
+            self._ensure_processing_times(connection, run_id, total)
+            values = connection.execute(
+                "SELECT MIN(elapsed_ms) AS minMs,MAX(elapsed_ms) AS maxMs,"
+                "(MIN(CASE WHEN n>=? THEN elapsed_ms END)+"
+                " MIN(CASE WHEN n>=? THEN elapsed_ms END))/2.0 AS medianMs,"
+                "MIN(CASE WHEN n>=? THEN elapsed_ms END) AS p95Ms,"
+                "MIN(CASE WHEN n>=? THEN elapsed_ms END) AS p99Ms "
+                "FROM (SELECT elapsed_ms,SUM(samples) OVER (ORDER BY elapsed_ms) AS n "
+                "FROM processing_times WHERE run_id=?)",
+                (
+                    (total + 1) // 2,
+                    total // 2 + 1,
+                    (95 * total + 99) // 100,
+                    (99 * total + 99) // 100,
+                    run_id,
+                ),
+            ).fetchone()
+            stats["processingPercentiles"] = dict(values)
+            stats.pop("throughputBuckets", None)
+            stats.pop("throughputBucketMs", None)
             return {
                 "snapshot": json.loads(row["snapshot"]),
-                "summary": json.loads(row["summary"]),
+                "summary": stats,
                 "sequence": row["sequence"],
             }
 
@@ -351,7 +624,16 @@ class SQLiteResultStore:
         if category == "failed":
             where.append("e.failed=1")
         elif category != "all":
-            if category not in CATEGORIES:
+            with self.lock:
+                row = self.connection.execute(
+                    "SELECT summary FROM runs WHERE id=?", (run_id,)
+                ).fetchone()
+                options = json.loads(row["summary"]).get("classificationGroups", {})
+            allowed = {
+                *CATEGORIES,
+                *(key for group in options.values() for key in group["options"]),
+            }
+            if category not in allowed:
                 raise ValueError("Invalid category filter.")
             where.extend(["e.category=?", "e.failed=0"])
             params.append(category)
@@ -380,7 +662,7 @@ class SQLiteResultStore:
             params.append(search.lower())
         with self.reader() as connection:
             rows = connection.execute(
-                "SELECT e.sequence,e.payload,e.reviewer FROM events e WHERE "
+                "SELECT e.run_id,e.sequence,e.payload,e.reviewer,e.reviews FROM events e WHERE "
                 + " AND ".join(where)
                 + " ORDER BY e.sequence DESC LIMIT ?",
                 (*params, limit + 1),
@@ -394,46 +676,101 @@ class SQLiteResultStore:
             "limit": limit,
         }
 
-    @staticmethod
-    def _result(row: sqlite3.Row) -> Result:
-        result = json.loads(row["payload"])["result"]
+    def _result(self, row: sqlite3.Row) -> Result:
+        result = self._expand(row["run_id"], json.loads(row["payload"])["result"])
         if row["reviewer"] is not None:
             result["reviewerCategory"] = row["reviewer"]
+        if row["reviews"]:
+            result["reviewerDecisions"] = json.loads(row["reviews"])
         return result
 
-    def review(self, run_id: str, sequence: int, category: str) -> None:
-        """Save a human correction without altering AI categories or aggregates."""
-        if type(sequence) is not int or category not in (*CATEGORIES, ""):
-            raise ValueError("Invalid reviewer category or result cursor.")
+    def review(
+        self,
+        run_id: str,
+        sequence: int,
+        category: str,
+        question: str | None = None,
+        value: object = None,
+    ) -> None:
+        """Save typed human corrections without changing original model answers."""
+        if type(sequence) is not int:
+            raise ValueError("Invalid result cursor.")
         with self.transaction() as connection:
-            cursor = connection.execute(
-                "UPDATE events SET reviewer=? WHERE run_id=? AND sequence=? "
+            row = connection.execute(
+                "SELECT payload,reviews FROM events WHERE run_id=? AND sequence=? "
                 "AND kind='result' AND failed=0",
-                (category, run_id, sequence),
-            )
-            if not cursor.rowcount:
+                (run_id, sequence),
+            ).fetchone()
+            if row is None:
                 raise ValueError("Result not found or classification failed.")
+            result = self._expand(run_id, json.loads(row["payload"])["result"])
+            if question is None:
+                options = result.get("probabilities", dict.fromkeys(CATEGORIES))
+                if category != "" and category not in options:
+                    raise ValueError("Invalid reviewer category.")
+                connection.execute(
+                    "UPDATE events SET reviewer=? WHERE run_id=? AND sequence=?",
+                    (category, run_id, sequence),
+                )
+                return
+            definition = result.get("decisionDefinitions", {}).get(question)
+            if definition is None:
+                raise ValueError("Unknown decision.")
+            kind = definition["type"]
+            if value is not None:
+                valid = (
+                    isinstance(value, str) and value in definition["criteria"]
+                    if kind == "choice"
+                    else is_probability(value)
+                    if kind == "noul"
+                    else isinstance(value, (int, float))
+                    and not isinstance(value, bool)
+                    and 0 <= value <= len(definition["criteria"]) - 1
+                )
+                if not valid:
+                    raise ValueError("Invalid reviewer decision value.")
+            reviews = json.loads(row["reviews"] or "{}")
+            if value is None:
+                reviews.pop(question, None)
+            else:
+                reviews[question] = value
+            changed = any(
+                v != answer_value(result["decisions"][k]) for k, v in reviews.items()
+            )
+            if question == "category" and not result.get("classificationGroup"):
+                connection.execute(
+                    "UPDATE events SET reviewer=? WHERE run_id=? AND sequence=?",
+                    (value or "", run_id, sequence),
+                )
+            connection.execute(
+                "UPDATE events SET reviews=?,changed=? WHERE run_id=? AND sequence=?",
+                (json.dumps(reviews), int(changed), run_id, sequence),
+            )
 
     def events(
         self, run_id: str, after: int = 0, *, reviewed_only: bool = False
     ) -> list[tuple[int, str]]:
         """Read bounded events, optionally only human changes to AI categories."""
         selection = (
-            " AND kind='result' AND failed=0 AND reviewer<>'' AND reviewer<>category"
+            " AND kind='result' AND failed=0 AND ((reviewer<>'' AND reviewer<>category) OR changed=1)"
             if reviewed_only
             else ""
         )
         with self.reader() as connection:
             rows = connection.execute(
-                "SELECT sequence,payload,reviewer,kind FROM events "
+                "SELECT sequence,payload,reviewer,reviews,kind FROM events "
                 f"WHERE run_id=? AND sequence>?{selection} ORDER BY sequence LIMIT 128",
                 (run_id, after),
             ).fetchall()
         output = []
         for row in rows:
             event = json.loads(row["payload"])
+            if event.get("type") == "result":
+                event["result"] = self._expand(run_id, event["result"])
             if row["kind"] == "result" and row["reviewer"] is not None:
                 event["result"]["reviewerCategory"] = row["reviewer"]
+            if row["kind"] == "result" and row["reviews"]:
+                event["result"]["reviewerDecisions"] = json.loads(row["reviews"])
             output.append((row["sequence"], json.dumps(event) + "\n"))
         return output
 

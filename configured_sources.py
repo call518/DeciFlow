@@ -8,7 +8,7 @@ from pathlib import Path
 
 import anyio
 
-from chunks import chunk_records
+from chunks import source_records
 from classifier import Result
 from source_settings import resolve_configured_sources
 from sources import follow_file, merge_batch, read_file
@@ -27,9 +27,7 @@ async def _source_chunks(
         if live
         else read_file(path)
     )
-    async with aclosing(
-        chunk_records(source, spec["profile"], spec["chunkEvents"], live=live)
-    ) as records:
+    async with aclosing(source_records(source, spec, live=live)) as records:
         async for record in records:
             yield {
                 **record,

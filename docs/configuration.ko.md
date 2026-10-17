@@ -30,8 +30,12 @@ Laya 서버 설정은 Laya 호스트에서 관리하며, Compose는 `LAYA_API_KE
 `https://*.ngrok-free.app`을 포함합니다. 기존 `.env` 값은
 덮어쓰지 않습니다. 네이티브 DeciFlow·외부 Laya는 접근 가능한 URL을 직접 설정하세요.
 CPU·CUDA 모두 8000 포트를 공개합니다.
-Compose 환경변수 변경은 `docker compose up -d`로 적용합니다. `restart`만으로는
-`env_file` 값이 갱신되지 않습니다. 네이티브 실행은 Python 프로세스를 재시작하세요.
+UI 시작 시 마운트된 `.env`에 명시한 `DECISION_ENGINE`·`LAYA_*`·`JEV_*` 값은
+기존 엔진 환경변수보다 우선합니다. 변경 후 Docker Desktop에서 DeciFlow-UI를
+Restart하거나 `docker compose restart ui`를 실행하고 브라우저를 새로고침하세요.
+파일에 없는 항목은 기존 환경값을 유지합니다. 다른 설정의 환경변수 우선순위는
+유지합니다. 포트·마운트·Compose 프로필·Laya 서비스 변경은 `docker compose up -d`로
+해당 컨테이너를 재생성해야 합니다. 네이티브 실행은 Python 프로세스를 재시작하세요.
 state·세 질문·출력은 [요청·결과 JSON](results.ko.md)을 참고하세요.
 
 `LAYA_HEAD_TOKENS=384`이면 매 Laya 요청에 `"head_max_len": 384`를 전송합니다.
@@ -114,10 +118,10 @@ uv run python -m scripts.evaluate_laya --output /tmp/laya-validation.json
 **Settings → Configurations → Reset DeciFlow**를 엽니다. 사이트 디자인의 확인창에
 삭제 항목과 실제 `DECIFLOW_DATA_DIR` 경로를 표시합니다. Cancel·Escape·닫기는
 변경하지 않습니다. **Yes, Reset DeciFlow**는 스케줄러·Task·Action 하위 프로세스를
-중지하고 SQLite를 닫은 뒤 해당 디렉토리 내부의 모든 항목과 숨김 파일을 영구
-삭제합니다. 디렉토리 자체는 유지하며 내부 심볼릭 링크의 외부 대상은 삭제하지 않습니다.
+중지하고 SQLite를 닫은 뒤 해당 디렉토리 내부 항목과 숨김 파일을 영구
+삭제하되 `ssh-keys` 폴더와 키 등록 정보(ID·이름)는 보존합니다. 디렉토리 자체는 유지하며 내부 심볼릭 링크의 외부 대상은 삭제하지 않습니다.
 
-Sources·Tasks·Actions 및 가상환경·사용자 Criteria·결과/이력/리뷰·관리 SSH Keys/Hosts·
+Sources·Tasks·Actions 및 가상환경·사용자 Criteria·결과/이력/리뷰·관리 SSH Hosts·
 승인한 known_hosts·저장 설정이 삭제됩니다. 필요한 데이터는 먼저 백업하고 결과·리뷰를
 내보내세요. 앱 파일·`.env`·Laya/모델 캐시·데이터 디렉토리 밖의 입력/로그는 유지합니다.
 설정한 데이터 디렉토리는 DeciFlow 전용으로 사용하세요.

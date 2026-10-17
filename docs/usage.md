@@ -33,24 +33,18 @@ completion first, so parallel requests can finish out of collection order. Engin
 to the entire run, not separately to each file. A limit of 1 serializes requests.
 Remote connections use the same engine and Action flow as local files.
 
-Choose **Criteria** and **Events/Chunk** for each selected Source.
-Defaults: **General system**, **1 event per chunk**. Currently, each nonempty line
-is one event; multiline boundaries are not yet detected. Every profile uses `choice` with
-**Normal, Warning, Error, Security, Other**; only the descriptions and instructions
-differ. Laya and Jev use the same selected profile. Type detection is manual;
-`score` also evaluates urgency (0–3: Low, Medium, High, Critical), and `noul`
-returns the probability that a work ticket is needed, in the same request.
-These shared operational questions are fixed across profiles and engines.
-Each result shows **Category (Choice)**, **Urgency (Score)** as a continuous 0–3
-value, and **Work Ticket (Noul)** as the Yes probability in three cards by default.
-The cards stack on narrow panels. All three badges use the same compact size
-(132 × 22 px); there is no separate summary or expand/collapse control.
-Processing time and category review status follow the cards. Each has its own probability
-distribution: category options, urgency levels 0–3, or ticket Yes/No (`No = 1 − Yes`).
-These are separate judgments, not a combined probability. Category uncertainty
-reasons stay inside the Category card; **Category needs review** applies only to
-Choice. Action execution, Source, category criteria, and chunk size are labeled
-separately. No ticket is created automatically. Missing or invalid answers fail the whole decision.
+Choose **Criteria** and **Events/Chunk** per Source. TEXT groups nonempty lines;
+JSONL extracts the configured text field and always handles one object per line.
+Criteria defines any number of named Choice, Score, and Noul decisions. Existing
+system profiles retain Category, Urgency, and Work Ticket. New profiles configure
+their own options, levels, and summary decisions. See [Criteria](criteria.md).
+
+Selected summary items appear in compact cards. **All Decision Results** expands
+every item; **Probabilities and Criteria** expands its distribution and definitions.
+**Review Decisions** records typed corrections. Choice uncertainty is shown per
+item; Needs Review can come from any Choice, while chart certainty refers to the
+primary Choice. These are separate judgments, not one combined probability.
+No ticket is created automatically. Missing or invalid answers fail the whole request.
 
 | Criteria profile | Focus |
 | --- | --- |
@@ -61,8 +55,8 @@ separately. No ticket is created automatically. Missing or invalid answers fail 
 | Sample Network / tcpdump text | Connection/packet evidence in text; binary PCAP is unsupported |
 
 Use **Criteria** in the sidebar to add, edit, or delete profiles.
-Result categories remain Normal, Warning, Error, Security, and Other; `general` cannot
-be deleted. **Save Changes** applies to new runs; running jobs keep their original
+System profiles retain Normal, Warning, Error, Security, and Other; custom
+profiles choose their own options. `general` cannot be deleted. **Save Changes** applies to new runs; running jobs keep their original
 criteria. See [Criteria management](criteria.md) for storage and deletion restrictions on Task references.
 Describe outcomes and evidence; keep specific log strings in evaluation samples.
 
@@ -157,6 +151,10 @@ not metrics, chart, or JSON export.
 
 **Host** filters the selected run by its saved host identity and combines with Source,
 category, review, and log-text filters. It does not change metrics, charts, or export.
+**Source Hosts Detail** opens a scrollable dialog with each host’s collection status
+and Success / Failed / Total counts for the entire selected run, including hosts
+with no completed records. Opening it does not reconnect to hosts.
+
 Host collection states (Pending, Reading, Completed, Failed, Stopped) are separate
 from decision counts: collection can finish while inference is still running.
 SSH connect/read failures appear as **Source failed** records, with host details
@@ -169,14 +167,15 @@ continue. Older pages stay fixed; Latest Results returns to current results.
 
 | Control | Behavior |
 | --- | --- |
-| Pause Updates / Resume Updates | Freeze/unfreeze the list, including before the first result; analysis, metrics, and chart continue. Filters/pages use the frozen list; the button counts pending results. |
+| Pause Display Updates / Resume Display Updates | Freeze/unfreeze the list, including before the first result; analysis, metrics, and chart continue. Filters/pages use the frozen list; the button counts pending results. |
 | Stop (Tasks) | Cancel file readers and pending engine requests; retain completed results, discard unsubmitted chunks. Remote inference already running may finish. |
 | View JSON | Expand one result, including failures, profile/chunk metadata, and reviewer edits. Expanded state survives list refreshes. Copy inside the JSON panel copies the current result, including reviewer edits. |
-| Reviewer category | Record `reviewerCategory`; does not change AI category, review status, chart, or train the model. |
+| Review Decisions | Record typed corrections per decision; AI predictions, review flags, charts, and model weights remain unchanged. |
 | Export All JSON | Stream all Task results recorded when export starts, including paused or filtered-out rows; available during execution too. |
-| Export Reviewed JSON | Export only this run’s successful results with a nonempty reviewer category different from the original AI category. Includes input, original result, and reviewerCategory; ignores display filters. Unchanged reviews and Not reviewed are excluded. |
+| Export Reviewed JSON | Export successful results with any human correction different from its AI value, including original answers and reviewerDecisions. Cleared and unchanged corrections are excluded; display filters are ignored. |
 
-**Classification Overview** combines AI category counts across all sources,
+**Classification Overview** separates custom primary definitions; select a
+classification to see its AI counts across sources,
 including uncertain choices. Counts are **chunks**, not raw lines; percentages use
 successfully classified chunks. Failed requests are shown separately. Filters and
 reviewer edits do not change the chart. Use the **All / Certain / Uncertain** buttons to chart all
@@ -225,9 +224,11 @@ without repeating classification or Actions. Main follows new executions of the
 selected Task; explicitly viewing a historical run keeps that run selected.
 
 Task definitions, run status, settings snapshots, results, and Action outcomes
-persist under `DECIFLOW_DATA_DIR` (configurations and results in `deciflow.sqlite3`). A restart marks interrupted executions
-Stopped. Batch is not automatically retried; Realtime starts a new run only when
-Resume on restart is enabled. See [Tasks](tasks.md).
+persist under `DECIFLOW_DATA_DIR` (configurations and results in `deciflow.sqlite3`).
+Checkpoint-enabled Running executions recover under the same run ID after restart;
+Paused/Pausing executions recover as Paused. Older executions without checkpoints
+become Stopped. The optional Realtime startup setting starts a new run only when
+no execution is recoverable. See [Tasks](tasks.md).
 
 Use one DeciFlow server process/instance per data directory. Results and reviewer
 corrections persist in SQLite; only the current page is loaded in the browser.
@@ -248,12 +249,12 @@ checks still apply; file access requires a local/trusted UI Origin.
 | Success / Failed / Total | Valid classifications / failed chunks / total completed chunks (success + failure); failures include connection errors, timeouts, rejected inputs, and invalid responses |
 | Action Success / Failed / Total | Completed Action successes / failures / total; excludes unassigned sources and failed decisions; independent of decision counts |
 | Needs Review | Successful Uncertain (low probability, close probabilities, or collapsed options) or Other classifications; excludes failed/rejected requests |
-| Throughput | Successfully classified chunks/s over the last 5 seconds, including idle time; uses elapsed time during the first 5 seconds; freezes when stopped/completed |
+| Throughput | All successful results divided by total elapsed seconds in the selected run, including idle time and Action delivery; freezes when stopped/completed |
 | Total Elapsed Time | Time since the run started, including idle periods |
 | Active Processing Time | Time with at least one request in flight, counting overlap once; percentage of total elapsed time |
-| Average Processing Time | Mean completed request duration, including failures; per chunk |
+| Processing Time | One compact card, the same size as the other metrics, showing Avg, Min, Max, P(50), P(95), and P(99) with small inline labels. All completed record durations, including failures; Action time excluded. Avg is the arithmetic mean; P(50) averages the central values; P(95)/P(99) use nearest rank. |
 
-Total Elapsed Time, Active Processing Time, and Average Processing Time use
+Total Elapsed Time, Active Processing Time, and the values in Processing Time use
 ms, sec, min, hour, or day as appropriate. JSON duration values remain milliseconds.
 
 Action execution failures do not affect classification counts or engine connection status.
@@ -264,8 +265,17 @@ pure inference time. Timing refreshes once per second while waiting; stopping or
 disconnecting freezes only the browser display; reconnecting restores server
 progress. Stopping retains the last snapshot, which may lag by about one second.
 
+Timing metrics cover the entire selected run regardless of filters, pages, or
+paused list updates. Throughput uses three decimal places; positive rates below
+0.001 are displayed as `<0.001 chunks/s`. It is observed output rate, not maximum
+engine capacity. P(50)/P(95)/P(99) are N/A before any records complete;
+small samples can have P(95)/P(99) equal to their maximum duration.
 
-Task throughput uses 100 ms buckets over the last 5 seconds and is approximate at bucket boundaries.
+Duration counts are updated incrementally in SQLite. Percentiles scan these
+counts in duration order without re-reading or sorting original results. An older
+run builds its histogram once on first access; that initial pass is proportional
+to its history size. Later reads reuse the histogram. No approximate sampling or
+extra dependency is used.
 
 All list Delete actions use a shared styled confirmation dialog. Cancel, Escape, or close makes no change. Source, Criteria, and Actions deletions require Save Changes after confirmation; Task, SSH Keys, and SSH Hosts deletions are submitted immediately after confirmation.
 
@@ -290,3 +300,37 @@ tooltip. Move into the tooltip to select/copy text; leaving both closes it.
 Settings includes **Configurations** for maintenance. **Reset DeciFlow** opens a
 destructive warning and requires **Yes, Reset DeciFlow**; Cancel changes nothing.
 See [reset scope and restart](configuration.md#reset-deciflow) before using it.
+
+Uncertain Choice results show a separate small status badge beside the decision
+heading. The prediction value keeps its category color and wraps to show long
+values in both summary and detailed decision cards.
+
+
+## Shareable URLs
+
+Navigation uses clean paths instead of hash-only addresses. Copy the browser address,
+open a navigation link in a new tab, reload it, or use Back/Forward to restore it.
+Existing `/#tasks` and `/#settings/...` links are converted automatically.
+
+| Target | Path |
+| --- | --- |
+| Tasks | `/tasks` |
+| Task details / history / editor | `/tasks/{id}`, `/tasks/{id}/history`, `/tasks/{id}/edit` |
+| Sources, Criteria, Actions | `/sources/{id}`, `/criteria/{id}`, `/actions/{id}` |
+| SSH Key / Host | `/settings/ssh-keys/{id}`, `/settings/ssh-hosts/{id}` |
+| Add / edit a registered item | Append `/new` to its list path, or `/edit` to its item path |
+| Configurations | `/settings/configuration` |
+| A specific execution | `/runs/{run-id}` |
+
+Execution URLs retain result filters, cursor pages, and an expanded result section
+using query parameters (`review`, `category`, `host`, `source`, `search`, `cursors`,
+`through`, `result`, `detail`). Source Hosts Detail uses `dialog=hosts`.
+Automatic polling replaces the current URL rather than creating a history entry
+for every update. Run, Stop, Pause/Resume, Delete, Save, and Export remain explicit
+commands: visiting a link never runs those commands. Unsaved form contents and
+credentials are not encoded in URLs. A deleted item or run is reported unavailable.
+
+Restart the DeciFlow UI server/container once to enable direct clean-path requests;
+no proxy rewrite is needed when all paths are forwarded to DeciFlow. URL sharing
+uses the same access/origin rules as the application and does not preserve unsaved
+drafts or create permanent archives of deleted Tasks.

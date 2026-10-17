@@ -116,12 +116,20 @@ Action.
 Each successful decision (including uncertain decisions) is passed as one JSON
 object on stdin to a new Python process. The payload is the existing result,
 including log text, source, line range, profile, probabilities, and review flags,
-plus `schemaVersion: 1`, `eventId`, UTC `decidedAt`, and `engine`. The event ID
+plus `schemaVersion: 2`, `eventId`, UTC `decidedAt`, and `engine`. The event ID
 identifies this execution; rerunning a batch creates new IDs. Filter categories
 or review flags in your code. Both Laya and Jev use the same contract. Provider
 failures, Source read failures, and unassigned sources do not trigger Actions.
 Remote input also includes `hostId`, `hostName`, `hostAddress`, `hostPort`, and
 `chunkSequence`; these identify the source host without changing the log text.
+
+Custom profiles expose validated answers under `decisions[decision_id]` and frozen
+configuration under `decisionDefinitions`. `category` remains the primary Choice;
+standard Category/Urgency/Work Ticket profiles also retain legacy operational
+fields. JSONL adds canonical `log`, remaining `inputRecord` metadata,
+`inputContentInLog: true`, and `recordNumber`; redundant valid `rawInput` is omitted. Use the source location/record number for business deduplication
+when appropriate; eventId changes on reruns. Actions run before later human
+corrections and do not automatically rerun when a reviewer edits a result.
 
 You can copy the [Python handler example](../examples/action_print.py) into the editor.
 
@@ -151,3 +159,27 @@ Compose configuration with `docker compose up -d ui`. Rebuilding the UI image is
 unnecessary for data-path changes. See [Docker deployment](../README.md#deciflow-docker).
 
 Syntax colors use vendored PrismJS 1.30.0 Core + Python (about 9.4 KiB, MIT). No external CDN is contacted at runtime; the versioned asset is browser-cacheable. Sources, license, and SHA-256 checksums are recorded in `public/vendor/prism/`; update these records and rerun UI checks when upgrading. Existing editor input and scrolling are preserved.
+
+
+## Compact Result JSON Contract (Version 2)
+
+Input text lives once in `log`; other JSONL fields remain in `inputRecord`.
+With `inputContentInLog: true`, the field named by `contentField` lives in `log`.
+Custom Actions reading `inputRecord[contentField]` must read `log` instead.
+Reconstruct the parsed input object as follows; original whitespace and escape
+formatting are not reproduced:
+
+```python
+record = dict(result.get("inputRecord", {}))
+if result.get("inputContentInLog"):
+    record[result["contentField"]] = result["log"]
+```
+
+Malformed or differing original `rawInput` and failure diagnostics are retained.
+Successful results omit repeated `questions`; definitions remain in
+`decisionDefinitions`. With `providerResponse.answersInDecisions: true`, identical
+answers live once in `decisions`. Usage, model, routing, and other provider fields
+remain. Internal work IDs and checkpoints are excluded from Action stdin.
+User scripts and existing ES documents are not automatically rewritten. Actions
+that forward the whole result, including the Elasticsearch sample, forward this
+new contract. It applies to Laya/Jev and TEXT/JSONL alike.

@@ -1,5 +1,6 @@
 """Explicit, domain-specific decision profiles shared by both engines."""
 
+import hashlib
 import json
 import re
 from collections.abc import Iterator
@@ -9,7 +10,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from config_store import load_records, save_records
+from config_store import load_records, save_record, save_records
 
 DEFAULT_PROFILES = {
     path.stem: json.loads(path.read_text())
@@ -68,14 +69,17 @@ def validate_profiles(values: object) -> ProfileMap:
         if name in names:
             raise ValueError("Criteria names must be unique.")
         names.add(name)
-        criteria = value.get("criteria")
-        if not isinstance(criteria, dict) or set(criteria) != set(CATEGORIES):
-            raise ValueError(
-                "Criteria must define Normal, Warning, Error, Security and Other."
-            )
-        if any(not isinstance(v, str) or not v.strip() for v in criteria.values()):
-            raise ValueError("Every category needs a nonempty definition.")
-        fields["criteria"] = {key: criteria[key].strip() for key in CATEGORIES}
+        if "questions" in value:
+            fields.update(_validate_questions(value))
+        else:
+            criteria = value.get("criteria")
+            if not isinstance(criteria, dict) or set(criteria) != set(CATEGORIES):
+                raise ValueError(
+                    "Criteria must define Normal, Warning, Error, Security and Other."
+                )
+            if any(not isinstance(v, str) or not v.strip() for v in criteria.values()):
+                raise ValueError("Every category needs a nonempty definition.")
+            fields["criteria"] = {key: criteria[key].strip() for key in CATEGORIES}
         normalization = value.get("normalization")
         if normalization is not None:
             if normalization != "single_line_syslog_header":
@@ -87,9 +91,88 @@ def validate_profiles(values: object) -> ProfileMap:
     return validated
 
 
+def _validate_questions(profile: dict[str, Any]) -> dict[str, Any]:
+    questions = profile["questions"]
+    if not isinstance(questions, dict) or not questions:
+        raise ValueError("Add at least one decision.")
+    cleaned = {}
+    for identity, definition in questions.items():
+        if (
+            not isinstance(identity, str)
+            or not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", identity)
+            or not isinstance(definition, dict)
+        ):
+            raise ValueError("Decision IDs must be unique lowercase identifiers.")
+        kind = definition.get("type")
+        if kind not in {"choice", "score", "noul"}:
+            raise ValueError("Select Choice, Score or Noul.")
+        item = {"type": kind}
+        for key in ("label", "instructions"):
+            text = definition.get(key)
+            if not isinstance(text, str) or not text.strip():
+                raise ValueError(f"Enter a nonempty decision {key}.")
+            item[key] = text.strip()
+        summary = definition.get("summary", True)
+        if not isinstance(summary, bool):
+            raise TypeError("Summary must be a boolean.")
+        item["summary"] = summary
+        criteria = definition.get("criteria")
+        if kind == "choice":
+            if (
+                not isinstance(criteria, dict)
+                or not 2 <= len(criteria) <= 255
+                or any(
+                    not isinstance(k, str) or not k.strip() or k in {"all", "failed"}
+                    for k in criteria
+                )
+            ):
+                raise ValueError(
+                    "Choice requires 2–255 named options; all/failed are reserved."
+                )
+        elif kind == "score" and (
+            not isinstance(criteria, list) or not 2 <= len(criteria) <= 10
+        ):
+            raise ValueError("Score requires 2–10 ordered levels.")
+        if kind != "noul":
+            assert isinstance(criteria, (dict, list))
+            texts = criteria.values() if isinstance(criteria, dict) else criteria
+            if any(not isinstance(v, str) or not v.strip() for v in texts):
+                raise ValueError("Every option or level needs a nonempty definition.")
+            item["criteria"] = deepcopy(criteria)
+        cleaned[identity] = item
+    primary = profile.get("primaryQuestion")
+    if primary not in cleaned or cleaned[primary]["type"] != "choice":
+        raise ValueError("Select a Choice decision for the primary classification.")
+    return {"questions": cleaned, "primaryQuestion": primary}
+
+
 def load_profiles() -> None:
-    """Load saved criteria, persisting current defaults on the first startup."""
+    """Load saved criteria and ensure the required consultation samples exist."""
     values = validate_profiles(load_records("criteria", DEFAULT_PROFILES))
+    # Update only untouched samples, preserving saved Task IDs and user edits.
+    legacy_hashes = {
+        "eaaeb8160dec0b9b1e1ba1406087995f46126008936fbf8753fb926fd1ea2366",
+        "5cdb1ea0a7e66c3d541df8248989898612c3616dbe395579d9fdecf47a253a23",
+        "c4ca8223b173892bc9f1b24a4a5daf754d0b9086b6280506b6a35f009041c58a",
+        "139d8de41dc425a8339bf9707dd5747a9f87c76398db743496ba1db74d00910f",
+    }
+    for identity in ("consultation", "consultation_eng"):
+        sample = DEFAULT_PROFILES[identity]
+        saved = values.get(identity)
+        name_exists = any(
+            key != identity
+            and profile["label"].casefold() == sample["label"].casefold()
+            for key, profile in values.items()
+        )
+        untouched = (
+            identity == "consultation"
+            and saved is not None
+            and hashlib.sha256(json.dumps(saved, sort_keys=True).encode()).hexdigest()
+            in legacy_hashes
+        )
+        if not name_exists and (saved is None or untouched):
+            save_record("criteria", identity, sample)
+            values[identity] = deepcopy(sample)
     PROFILES.clear()
     PROFILES.update(values)
 

@@ -18,7 +18,9 @@ from source_settings import parse_source_settings, resolve_configured_sources
 
 
 @pytest.mark.parametrize("engine", ["laya", "jev"])
-@pytest.mark.parametrize("profile", list(PROFILES))
+@pytest.mark.parametrize(
+    "profile", [key for key, value in PROFILES.items() if "criteria" in value]
+)
 @pytest.mark.anyio
 async def test_profiles_reach_both_engines(
     monkeypatch: pytest.MonkeyPatch, engine: str, profile: str

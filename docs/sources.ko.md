@@ -3,7 +3,7 @@
 [English](sources.md) | [한국어](sources.ko.md) | [문서 안내](README.ko.md) | [README](../README.ko.md)
 
 사이드바 **Source**에서 재사용할 데이터 입력을 등록합니다.
-**Add Source**로 Type·Name·File Path / Pattern 순서로 입력하고 **Save Changes**로 저장하세요.
+**Add Source**로 Type·Name·Input Format·File Path / Pattern 순서로 입력하고 **Save Changes**로 저장하세요.
 이름·경로로 검색하고 View·Edit·Delete로 관리합니다. 삭제는 저장 시 적용하며,
 로그 파일·SSH Host·SSH 키·known_hosts 파일을 삭제하지 않습니다.
 Remote File에는 재사용할 경로를 지정합니다. Task의 Source별로 검색 가능한 체크박스에서
@@ -25,6 +25,26 @@ Criteria·청크 크기·Action·Source Hosts 설정을 공유합니다. 같은 
 겹쳐도 동일 파일은 한 번만 읽으며 SSH 연결은 Source/Host별로 하나를 재사용합니다.
 Batch는 어느 항목이든 일반 파일과 일치하지 않으면 실패하고, Realtime은 새로 일치하는
 파일을 계속 감시합니다.
+
+## 입력 형식
+
+Local File·Remote File (SSH)와 별도로 **Input Format**을 선택합니다. 기존 Source는
+**TEXT (Chunk)**가 기본이며 비어 있지 않은 줄을 Task의 Events/Chunk로 묶습니다.
+**JSONL (Line)**은 비어 있지 않은 한 줄의 JSON 객체를 한 건씩 읽으며, 비어 있지 않은
+문자열을 담은 최상위 필드의 정확한 이름을 **Content Field**로 지정해야 합니다.
+JSONL의 Task Events/Chunk는 1로 고정합니다. 이스케이프한 줄바꿈은 한 레코드에
+유지하고 같은 레코드가 반복되어도 중복 제거 없이 별개 처리합니다.
+
+제공된 상담 예시는 `/host-logs/sample-logs/voc-consulting_content.jsonl`과
+`consulting_content`, 질문 예시는 `/host-logs/sample-logs/voc-instruction.jsonl`과
+`instruction`을 사용합니다. 이 경로는 Compose의 호스트 샘플 마운트 기준입니다.
+
+로컬·SSH의 Batch·Realtime은 같은 파서를 사용합니다. 잘못된 객체·누락되거나 문자열이
+아닌 본문·회전 시 불완전한 레코드는 개별 실패로 남기고 이후 처리를 계속합니다.
+결과에는 원문 `log`, 본문을 제외한 `inputRecord` 메타데이터, `inputContentInLog: true`,
+`recordNumber`(파일 줄 번호 또는 Realtime 관측 줄 번호)를 보존합니다. 잘못된 원본은
+`rawInput`으로 보존합니다. 빈 줄은 건너뜁니다.
+이 버전에서는 중첩 필드 경로·JSON 배열·여러 줄 JSON 객체·CSV를 지원하지 않습니다.
 
 ## Tasks에서 선택
 
@@ -195,3 +215,14 @@ Tasks에 소스 ID·hostIds·실행 설정을 저장합니다. 직접 파일 API
 원격 `source`·`sourcePatterns`는 호스트 구분을 위해 `ssh://사용자@호스트:포트/경로`를
 사용합니다. 인증 정보·SSH 키 경로는 판정 요청이나 결과 항목에 추가하지 않습니다.
 [요청·결과 JSON](results.ko.md)을 참고하세요.
+
+**VOC Consultations** Source는 시작 시 자동 제공됩니다. Local File, JSONL (Line),
+`/host-logs/sample-logs/voc-consulting_content.jsonl`, Content Field
+`consulting_content`로 설정합니다. 기존 등록은 유지하며 같은 로컬 경로가 있으면
+중복 추가하지 않습니다. 비활성 수동 VOC Task도 제공하며 자동 실행하지 않습니다. 경로는 Compose
+샘플 마운트 기준이므로 다른 실행 환경에서는 수정하세요.
+
+저장된 Task가 참조하는 Source는 Task의 활성·실행 여부와 무관하게 **Type**을
+변경할 수 없습니다. 편집기에 참조 Task 이름을 표시하며 서버도 변경을 차단합니다.
+이름·경로는 계속 수정할 수 있습니다. 타입을 바꾸려면 새 Source를 만들어 Task에서
+교체하거나 모든 Task 참조를 먼저 제거하세요. 미사용 Source의 타입은 변경할 수 있습니다.

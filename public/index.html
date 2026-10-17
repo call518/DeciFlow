@@ -8,19 +8,19 @@
   <title>DeciFlow · Data Decisions</title><link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <aside><a class="brand" href="/"><img src="/logo.png" alt="DeciFlow" width="2172" height="724"></a><p class="caption">DECISION WORKSPACE</p><section class="host-info" aria-label="DeciFlow host"><div class="host-label">DECIFLOW HOST</div><strong id="host-name">Loading…</strong><div id="host-addresses">—</div><div id="host-os">—</div></section><nav class="sidebar-nav" aria-label="Workspace">
-    <button id="nav-main" class="nav" type="button" aria-current="page">Main</button>
+  <aside><a class="brand" href="/"><img src="/logo.png" alt="DeciFlow" width="2172" height="724"></a><a class="github-link" href="https://github.com/call518/DeciFlow" target="_blank" rel="noopener noreferrer" aria-label="DeciFlow On GitHub"><img src="/images/GitHub-Logo.png" alt="GitHub" width="1128" height="448"></a><p class="caption">DECISION WORKSPACE</p><section class="host-info" aria-label="DeciFlow host"><div class="host-label">DECIFLOW HOST</div><strong id="host-name">Loading…</strong><div id="host-addresses">—</div><div id="host-os">—</div></section><nav class="sidebar-nav" aria-label="Workspace">
+    <a id="nav-main" href="/" class="nav" aria-current="page">Main</a>
     <div class="nav-children" role="group" aria-label="Main tools">
-      <button id="nav-sources" class="nav" type="button">Source</button>
-      <button id="nav-criteria" class="nav" type="button">Criteria</button>
-      <button id="nav-actions" class="nav" type="button">Actions</button>
-      <button id="nav-tasks" class="nav" type="button">Tasks</button>
+      <a id="nav-sources" href="/sources" class="nav">Source</a>
+      <a id="nav-criteria" href="/criteria" class="nav">Criteria</a>
+      <a id="nav-actions" href="/actions" class="nav">Actions</a>
+      <a id="nav-tasks" href="/tasks" class="nav">Tasks</a>
     </div>
-    <button id="nav-settings" class="nav" type="button">Settings</button>
+    <a id="nav-settings" href="/settings" class="nav">Settings</a>
     <div class="nav-children" role="group" aria-label="Settings sections">
-      <button id="nav-ssh-keys" class="nav" type="button">SSH Keys</button>
-      <button id="nav-ssh-hosts" class="nav" type="button">SSH Hosts</button>
-      <button id="nav-configuration" class="nav" type="button">Configurations</button>
+      <a id="nav-ssh-keys" href="/settings/ssh-keys" class="nav">SSH Keys</a>
+      <a id="nav-ssh-hosts" href="/settings/ssh-hosts" class="nav">SSH Hosts</a>
+      <a id="nav-configuration" href="/settings/configuration" class="nav">Configurations</a>
     </div>
   </nav><div class="aside-bottom"><br><span id="powered-by">Loading engine…</span><br><span>Small decisions. Faster flow.</span></div></aside>
   <main>
@@ -28,15 +28,15 @@
     <section class="intro"><div class="intro-title"><h1>Main</h1><span id="status" class="pill" role="status">Checking connection</span></div><p class="caption">Monitor running tasks and review their results.</p></section>
     <div class="workspace">
       <div class="input-column">
-      <section class="card category-overview" aria-labelledby="chart-title"><div class="card-title"><h2 id="chart-title">Classification Overview</h2><span id="chart-totals" class="caption">0 classified chunks · 0 failed requests</span></div><div class="filter chart-filter"><span>Show Chart:</span><div class="chart-groups" role="group" aria-label="Chart certainty"><button id="chart-all" type="button" aria-pressed="true">All · 0</button><button id="chart-certain" type="button" aria-pressed="false" title="Certain means no Uncertain flag; it does not guarantee accuracy">Certain · 0 (0.0%)</button><button id="chart-uncertain" type="button" aria-pressed="false">Uncertain · 0 (0.0%)</button></div></div><span id="chart-truncated" class="caption" title="All responses reporting usage.truncated=true; included in failed requests">Truncated: 0</span><p class="chart-note">All sources · AI category counts per chunk · Percentages within selected group · Failed requests and reviewer edits excluded. Certain means no Uncertain flag, not verified accuracy.</p><div id="category-chart" class="category-chart" role="list" aria-label="Classified chunks by category"></div></section>
+      <section class="card category-overview" aria-labelledby="chart-title"><div class="card-title"><h2 id="chart-title">Classification Overview</h2><span id="chart-totals" class="caption">0 classified chunks · 0 failed requests</span></div><div class="filter chart-filter"><span>Show Chart:</span><div class="chart-groups" role="group" aria-label="Chart certainty"><button id="chart-all" type="button" aria-pressed="true">All · 0</button><button id="chart-certain" type="button" aria-pressed="false" title="Certain means no Uncertain flag; it does not guarantee accuracy">Certain · 0 (0.0%)</button><button id="chart-uncertain" type="button" aria-pressed="false">Uncertain · 0 (0.0%)</button></div></div><span id="chart-truncated" class="caption" title="All responses reporting usage.truncated=true; included in failed requests">Truncated: 0</span><p class="chart-note">Selected classification · AI primary classification counts per event · Percentages within selected group · Failed requests and reviewer edits excluded. Certain means no Uncertain flag, not verified accuracy.</p><label class="filter">Classification <select id="classification-group" aria-label="Chart Classification"></select></label><div id="category-chart" class="category-chart" role="list" aria-label="Classified chunks by category"></div></section>
       <section class="card task-monitor">
         <div class="card-title"><h2>Task Monitor</h2></div>
         <div id="running-tasks" class="running-tasks" role="group" aria-label="Tasks"></div>
       </section>
       </div>
-      <section class="card output"><div class="card-title"><h2>Classification Results</h2><div class="result-actions"><button id="pause-updates" class="quiet" aria-pressed="false" title="Pause list updates while analysis continues" disabled>Pause Updates</button><button id="export" class="quiet" title="Export all results in this run, including results hidden by filters" disabled>Export All JSON ↓</button><button id="export-reviewed" class="quiet" title="Export only results whose reviewer category differs from the AI category in this run" disabled>Export Reviewed JSON ↓</button></div></div><p id="result-context" class="caption" aria-live="polite">Select a Task to view its results.</p><div id="message" role="status" aria-live="polite"></div><div id="summary" class="summary"></div><div id="host-status" class="host-status" aria-live="polite"></div><div class="result-filters"><label class="filter" for="review-filter">Show Results: <select id="review-filter"><option value="all">All results</option><option value="needs-review">Needs Review</option><option value="no-review">No review needed</option></select></label><label class="filter" for="category-filter">Category: <select id="category-filter"><option value="all">All categories</option><option value="normal">Normal</option><option value="warning">Warning</option><option value="error">Error</option><option value="security">Security</option><option value="other">Other</option><option value="failed">Request failed</option></select></label><label class="filter log-search" for="log-search">Search Data: <input id="log-search" type="search" placeholder="Contains text…" title="Case-insensitive literal search in original input text"></label><label class="filter" for="host-filter">Host: <select id="host-filter"><option value="all">All hosts</option></select></label><label class="filter source-filter" for="source-filter">Source: <select id="source-filter"><option value="all">All sources</option></select></label></div><div id="results"><div class="empty"><h3>Ready for Your Next Decision</h3><p>Select a Task to view its latest execution.</p></div></div><div class="card-title"><button id="previous" class="quiet" disabled>← Previous</button><span id="page-info" class="caption">50 results per page</span><button id="next" class="quiet" disabled>Next →</button></div></section>
+      <section class="card output"><div class="card-title"><h2>Classification Results</h2><div class="result-actions"><button id="pause-updates" class="quiet" aria-pressed="false" title="Pause list updates while analysis continues" disabled>Pause Display Updates</button><button id="export" class="quiet" title="Export all results in this run, including results hidden by filters" disabled>Export All JSON ↓</button><button id="export-reviewed" class="quiet" title="Export only results with a human correction to an AI decision in this run" disabled>Export Reviewed JSON ↓</button></div></div><p id="result-context" class="caption" aria-live="polite">Select a Task to view its results.</p><div id="message" role="status" aria-live="polite"></div><div id="summary" class="summary"></div><div id="host-status" class="host-status"><button id="source-hosts-detail" type="button" class="quiet" aria-haspopup="dialog" disabled>Source Hosts Detail</button></div><div class="result-filters"><label class="filter" for="review-filter">Show Results: <select id="review-filter"><option value="all">All results</option><option value="needs-review">Needs Review</option><option value="no-review">No review needed</option></select></label><label class="filter" for="category-filter">Category: <select id="category-filter"><option value="all">All categories</option><option value="normal">Normal</option><option value="warning">Warning</option><option value="error">Error</option><option value="security">Security</option><option value="other">Other</option><option value="failed">Request failed</option></select></label><label class="filter log-search" for="log-search">Search Data: <input id="log-search" type="search" placeholder="Contains text…" title="Case-insensitive literal search in original input text"></label><label class="filter" for="host-filter">Host: <select id="host-filter"><option value="all">All hosts</option></select></label><label class="filter source-filter" for="source-filter">Source: <select id="source-filter"><option value="all">All sources</option></select></label></div><div id="results"><div class="empty"><h3>Ready for Your Next Decision</h3><p>Select a Task to view its latest execution.</p></div></div><div class="card-title"><button id="previous" class="quiet" disabled>← Previous</button><span id="page-info" class="caption">50 results per page</span><button id="next" class="quiet" disabled>Next →</button></div></section>
     </div>
-    <footer>Results below 70% selected category probability, with a top-two probability gap below 10 percentage points, or classified as Other need review. Uncertain categories are provisional. Category probability is a model estimate, not measured accuracy.</footer>
+    <footer>Choice results below 70% selected probability, with a top-two gap below 10 percentage points, or classified as Other or Unknown need review. Uncertain choices are provisional. Probability is a model estimate, not measured accuracy.</footer>
     </div>
     <section id="tasks-page" hidden aria-labelledby="tasks-title">
       <section class="intro"><h1 id="tasks-title">Tasks</h1><p class="caption">Save and run data analysis tasks.</p></section>
@@ -58,11 +58,11 @@
               <label id="task-cron-field" hidden>Cron Expression<input id="task-cron" type="text" placeholder="*/15 * * * *"></label>
               <label id="task-timezone-field" hidden>Timezone (IANA)<input id="task-timezone" type="text" placeholder="Asia/Seoul"></label>
               <label id="task-enabled-field" class="task-checkbox"><input id="task-enabled" type="checkbox" checked>Enable Task</label>
-              <label id="task-resume-field" class="task-checkbox" hidden><input id="task-resume" type="checkbox">Start Realtime automatically after a server restart</label>
+              <label id="task-resume-field" class="task-checkbox" hidden><input id="task-resume" type="checkbox">Start Realtime If No Recoverable Execution Exists</label>
             </div>
             <p id="task-mode-note" class="caption"></p>
             <h3>Sources and Decisions</h3>
-            <p class="caption">Select registered Sources. Choose Criteria, Events/Chunk, and Action for each Source. One event currently means one nonempty line.</p>
+            <p class="caption">Select registered Sources. Choose Criteria, Events/Chunk, and Action for each Source. TEXT groups nonempty lines into chunks. JSONL processes one object per line using its configured content field.</p>
             <button id="add-source" type="button" class="quiet">Add Source</button><button id="reset-sources" type="button" class="quiet">Reset Selections</button>
             <textarea id="file-path" hidden aria-hidden="true"></textarea><div id="source-settings" class="source-settings input-column"></div>
             <button id="save-task" type="submit" class="primary">Save Task</button>
@@ -76,16 +76,16 @@
       <section id="settings-overview" class="card">
         <div class="card-title"><h2>Settings Sections</h2></div>
         <div class="settings-links">
-          <a class="settings-link" href="#settings/ssh-keys"><strong>SSH Keys</strong><span class="caption">Manage authentication keys for SSH connections.</span></a>
-          <a class="settings-link" href="#settings/ssh-hosts"><strong>SSH Hosts</strong><span class="caption">Manage remote hosts and test SSH connections.</span></a>
-          <a class="settings-link" href="#settings/configuration"><strong>Configurations</strong><span class="caption">Manage result display and application maintenance settings.</span></a>
+          <a class="settings-link" href="/settings/ssh-keys"><strong>SSH Keys</strong><span class="caption">Manage authentication keys for SSH connections.</span></a>
+          <a class="settings-link" href="/settings/ssh-hosts"><strong>SSH Hosts</strong><span class="caption">Manage remote hosts and test SSH connections.</span></a>
+          <a class="settings-link" href="/settings/configuration"><strong>Configurations</strong><span class="caption">Manage result display and application maintenance settings.</span></a>
         </div>
       </section>
       <section id="settings-configuration" class="card" hidden>
         <form id="results-settings-form">
           <div class="configuration-row">
             <label for="results-per-page"><strong>Results per Page</strong></label>
-            <select id="results-per-page"><option value="10">10</option><option value="30">30</option><option value="50" selected>50</option><option value="100">100</option></select>
+            <select id="results-per-page"><option value="10" selected>10</option><option value="30">30</option><option value="50">50</option><option value="100">100</option></select>
             <p class="caption">Controls displayed results only. Stored results are retained.</p>
           </div>
         <div class="configuration-row">
@@ -167,7 +167,7 @@
       </section>
     </section>
     <section id="criteria-page" hidden aria-labelledby="criteria-title">
-      <section class="intro"><h1 id="criteria-title">Criteria</h1><p class="caption">Define criteria for category decisions.</p></section>
+      <section class="intro"><h1 id="criteria-title">Criteria</h1><p class="caption">Define typed decisions, their criteria, and result summaries.</p></section>
       <section class="card actions-manager">
         <div id="criteria-list">
         <div class="card-title"><h2>Criteria Profiles</h2></div>
@@ -226,12 +226,22 @@
       <footer class="ssh-trust-actions"><button id="delete-cancel" type="submit" value="cancel" class="quiet" autofocus>Cancel</button><button id="delete-approve" type="submit" value="delete" class="danger">Delete</button></footer>
     </form>
   </dialog>
+  <dialog id="source-hosts-dialog" class="ssh-trust-dialog source-hosts-dialog" aria-labelledby="source-hosts-title" aria-describedby="source-hosts-count">
+    <form method="dialog">
+      <header class="ssh-trust-header"><h2 id="source-hosts-title">Source Hosts Detail</h2><button type="submit" value="close" class="quiet ssh-trust-close" aria-label="Close source host details">×</button></header>
+      <div class="ssh-trust-body">
+        <p id="source-hosts-count" class="caption"></p>
+        <div class="source-hosts-scroll"><table class="source-hosts-table"><thead><tr><th scope="col">Host</th><th scope="col">Collection</th><th scope="col">Success / Failed / Total</th></tr></thead><tbody id="source-hosts-rows"></tbody></table></div>
+      </div>
+      <footer class="ssh-trust-actions"><button type="submit" value="close" class="quiet" autofocus>Close</button></footer>
+    </form>
+  </dialog>
   <dialog id="reset-dialog" class="ssh-trust-dialog delete-dialog" aria-labelledby="reset-title" aria-describedby="reset-description">
     <form method="dialog">
       <header class="ssh-trust-header"><h2 id="reset-title">Reset DeciFlow?</h2><button type="submit" value="cancel" class="quiet ssh-trust-close" aria-label="Cancel reset">×</button></header>
       <div class="ssh-trust-body">
         <p id="reset-description"><strong>This permanently deletes all DeciFlow application data. This cannot be undone.</strong></p>
-        <p>All running Tasks will stop. Tasks, Sources, custom Criteria, Actions and their environments, results, run history, reviews, SSH Keys, SSH Hosts, trusted host keys, and saved settings will be deleted.</p>
+        <p>All running Tasks will stop. Tasks, Sources, custom Criteria, Actions and their environments, results, run history, reviews, SSH Hosts, trusted host keys, and saved settings will be deleted. SSH Keys and their registration will be preserved.</p>
         <p>Everything inside <strong id="reset-confirm-directory"></strong> will be removed, including hidden files. Back up anything you need before continuing.</p>
         <p>DeciFlow will restart with its default configuration. The data directory itself, application files, .env, input files outside this directory, and logs outside this directory are retained.</p>
       </div>

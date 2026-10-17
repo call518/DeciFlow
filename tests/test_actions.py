@@ -66,7 +66,7 @@ async def test_file_action_delivery(
     assert received["log"] == "hello"
     assert received["source"] == str(source)
     assert received["engine"] == engine
-    assert received["schemaVersion"] == 1
+    assert received["schemaVersion"] == 2
     assert received["eventId"] == result["eventId"]
     assert "actionExecution" not in received
     assert result["actionExecution"]["status"] == "success"

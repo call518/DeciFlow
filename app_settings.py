@@ -6,7 +6,7 @@ from config_store import load_records, save_record
 
 def load_settings() -> Result:
     """Read preferences, persisting the default page size on first access."""
-    return load_records("settings", {"application": {"resultsPerPage": 50}})[
+    return load_records("settings", {"application": {"resultsPerPage": 10}})[
         "application"
     ]
 

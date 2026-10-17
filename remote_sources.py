@@ -4,6 +4,7 @@ import asyncio
 import posixpath
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
+from hashlib import sha256
 from time import monotonic
 
 import asyncssh
@@ -13,8 +14,8 @@ from asyncssh.constants import (
     FILEXFER_TYPE_UNKNOWN,
 )
 
-from chunks import chunk_records
-from classifier import Result
+from chunks import source_records
+from classifier import EXECUTION_CONTROL, Result
 from source_registry import source_paths, source_pattern, source_patterns
 from sources import merge_batch
 from ssh_hosts import ssh_connection_options
@@ -96,6 +97,21 @@ async def _lines(
     pending = b""
     line_number = 0
     uri = source_pattern({**spec, "path": path})
+    control = EXECUTION_CONTROL.get()
+    saved = control.cursors.get(uri) if control else None
+    line_position = 0
+
+    def cursor() -> Result:
+        return {
+            "offset": line_position,
+            "line": line_number,
+            "prefix": sha256(prefix).hexdigest(),
+            "prefixBytes": len(prefix),
+        }
+
+    def metadata() -> Result:
+        return {"_checkpoint": cursor()} if control and control.checkpoint else {}
+
     while True:
         if removed is not None and removed.is_set():
             if pending and (log := pending.decode("utf-8").strip()):
@@ -104,6 +120,17 @@ async def _lines(
                     "source": uri,
                     "line": line_number + 1,
                     "incomplete": True,
+                    **(
+                        {
+                            "_checkpoint": {
+                                **cursor(),
+                                "offset": line_position + len(pending),
+                                "line": line_number + 1,
+                            }
+                        }
+                        if control and control.checkpoint
+                        else {}
+                    ),
                 }
             return
         try:
@@ -111,8 +138,30 @@ async def _lines(
                 attrs = await file.stat()
                 size = attrs.size or 0
                 if position is None:
-                    position = size if live and not from_start else 0
-                    prefix = await file.read(min(position, 256), offset=0)
+                    position = (
+                        size
+                        if live
+                        and not from_start
+                        and not (control and control.recovering)
+                        else 0
+                    )
+                    if saved:
+                        position, line_number = int(saved["offset"]), int(saved["line"])
+                        prefix = await file.read(saved["prefixBytes"], offset=0)
+                        if (
+                            size < position
+                            or sha256(prefix).hexdigest() != saved["prefix"]
+                        ):
+                            raise ValueError(
+                                "Remote source changed since checkpoint; automatic recovery was stopped."
+                            )
+                        saved = None
+                    else:
+                        prefix = await file.read(min(position, 256), offset=0)
+                    assert position is not None
+                    line_position = position
+                    if control and control.checkpoint:
+                        await control.checkpoint(uri, cursor())
                 elif size < position or (
                     prefix and await file.read(len(prefix), offset=0) != prefix
                 ):
@@ -122,8 +171,21 @@ async def _lines(
                             "source": uri,
                             "line": line_number + 1,
                             "incomplete": True,
+                            **(
+                                {
+                                    "_checkpoint": {
+                                        **cursor(),
+                                        "offset": line_position + len(pending),
+                                        "line": line_number + 1,
+                                    }
+                                }
+                                if control and control.checkpoint
+                                else {}
+                            ),
                         }
                     position, line_number, pending, prefix = 0, 0, b"", b""
+                    line_position = 0
+                assert position is not None
                 while chunk := await file.read(65536, offset=position):
                     position += len(chunk)
                     if not prefix:
@@ -132,14 +194,22 @@ async def _lines(
                     while b"\n" in pending:
                         line, pending = pending.split(b"\n", 1)
                         line_number += 1
+                        line_position += len(line) + 1
                         if log := line.decode("utf-8").strip():
-                            yield {"log": log, "source": uri, "line": line_number}
+                            yield {
+                                "log": log,
+                                "source": uri,
+                                "line": line_number,
+                                **metadata(),
+                            }
         except asyncssh.SFTPNoSuchFile:
             if not live:
                 raise
         if not live:
             if pending and (log := pending.decode("utf-8").strip()):
-                yield {"log": log, "source": uri, "line": line_number + 1}
+                line_position += len(pending)
+                line_number += 1
+                yield {"log": log, "source": uri, "line": line_number, **metadata()}
             return
         if changed is None:
             await asyncio.sleep(0.25)
@@ -159,7 +229,7 @@ async def _chunks(
     removed: asyncio.Event | None = None,
 ) -> AsyncGenerator[Result, None]:
     async with aclosing(
-        chunk_records(
+        source_records(
             _lines(
                 sftp,
                 path,
@@ -169,8 +239,7 @@ async def _chunks(
                 changed=changed,
                 removed=removed,
             ),
-            spec["profile"],
-            spec["chunkEvents"],
+            spec,
             live=live,
         )
     ) as records:

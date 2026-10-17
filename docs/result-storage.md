@@ -10,7 +10,7 @@ inside the DB. No separate DB server or new environment setting is required.
 
 ## Bounded Result Loading
 
-- Settings → Configurations sets Results per Page: **50** by default, with 10/30/50/100 options.
+- Settings → Configurations sets Results per Page: **10** by default, with 10/30/50/100 options.
 - The server applies filters and cursor pagination before returning results. The
   browser retains only the current page; previous pages are fetched when needed.
 - Latest-page polling requests results after the last received cursor. Polling is
@@ -20,14 +20,20 @@ inside the DB. No separate DB server or new environment setting is required.
   regardless of the page or filters.
 - Writes update aggregates incrementally. Each live job retains at most 128 recent
   events, and completed job objects are evicted beyond 32 cached jobs. Durable Task
-  history remains available. Throughput uses bounded 100 ms buckets over 5 seconds.
+  history remains available. Throughput uses whole-run success counts and elapsed
+  time. Exact Median/P95/P99 use incrementally maintained duration counts in
+  `processing_times`, not full result scans on every poll. Each distinct duration
+  occupies one row per run. Legacy runs backfill once on first access; Task
+  deletion removes the corresponding histogram rows.
 - **Export All JSON** streams the entire run up to the starting cursor, including
   reviewer corrections, without loading all results into browser/server memory.
-- **Export Reviewed JSON** queries only nonempty reviewer categories that differ
-  from the original AI category in the selected run. It uses a partial index and
-  bounded batches, retains complete original results plus `reviewerCategory`,
-  and does not duplicate data in a separate review store. Display filters do not
-  affect either export. Cleared and unchanged reviews are excluded.
+- **Export Reviewed JSON** queries successful results with any human correction
+  different from its AI value. It uses a partial index and bounded batches, keeps
+  complete original results with `reviewerDecisions` (and legacy
+  `reviewerCategory`), and does not duplicate results in a separate store.
+  Display filters do not affect exports; cleared and unchanged reviews are excluded.
+  Existing SQLite databases gain correction columns and indexes without clearing results.
+
 
 Memory no longer grows with accumulated result count. Active hosts/files, individual
 record size, configured parallelism, and SQLite/OS caches still consume memory.
@@ -36,12 +42,22 @@ search may scan many rows. Search input is debounced. Disk use continues to grow
 there is no automatic retention policy. This is not a guarantee of constant CPU
 under every query or input workload.
 
+## Execution Recovery
+
+`pending_work` retains bounded unfinished inputs; `source_checkpoints` stores one
+read cursor per physical source. Queue insertion and cursor advancement share a
+transaction, as do result insertion and queue removal. Action intent/outcome are
+journaled separately to avoid automatically repeating uncertain external effects.
+Frozen Criteria/Action definitions are part of the run snapshot. Existing SQLite
+histories gain these tables automatically; no Reset is needed. See [Tasks](tasks.md#recovery-after-a-server-restart)
+for restart states, file validation, and the boundary for older executions.
+
 ## Initialization and Backups
 
 On a fresh data directory, bundled Sources, Criteria, the Elasticsearch sample Action and disabled default
 Task are created in SQLite. Empty saved lists remain empty. No configuration JSON,
 run.json, or events.ndjson is generated or imported. Previous JSON registries and
-older result databases are not read; reset application data before using this version.
+older unrelated result databases are not imported. Existing deciflow.sqlite3 histories are migrated in place.
 Bundled Criteria JSON files under `profiles/` remain read-only seed definitions.
 
 Use one DeciFlow process per data directory on a local filesystem. SQLite uses WAL,
@@ -68,3 +84,16 @@ Confirming Task deletion permanently removes its definition, all run history, re
 For a complete reset, use **Settings → Configurations → Reset DeciFlow**.
 It stops execution, closes SQLite, removes all application data, and restarts the
 server only after confirmation. See [reset details](configuration.md#reset-deciflow).
+
+
+## Compact Payload Storage
+
+New results and recovery queue items store input text once. SQLite shares repeated
+Criteria and diagnostic question definitions in `result_contexts` per run, keyed
+by content hash. Indexed pages, review validation, replay, and exports restore
+those definitions transparently; the cache is bounded. Standalone Action/export
+results retain their definitions so they do not depend on a private SQLite DB.
+`log_folded` remains a deliberate case-insensitive search copy. Task deletion also
+removes its shared contexts. Existing historical payloads and ES documents are not
+rewritten; legacy results remain readable and are compacted in returned JSON.
+No automatic bulk history migration or VACUUM is performed.

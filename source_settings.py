@@ -4,12 +4,14 @@ from pathlib import Path
 from typing import Any
 
 from profiles import validate_settings
-from source_registry import load_sources, source_paths
+from source_registry import input_settings, load_sources, source_paths
 from sources import resolve_sources
 from ssh_hosts import load_hosts
 
 
-def parse_source_settings(values: object) -> list[dict[str, Any]]:
+def parse_source_settings(
+    values: object, *, allow_unassigned_profile: bool = False
+) -> list[dict[str, Any]]:
     """Accept configured sources or preserve legacy path inputs with defaults."""
     if isinstance(values, str):
         values = [line.strip() for line in values.splitlines() if line.strip()]
@@ -36,10 +38,13 @@ def parse_source_settings(values: object) -> list[dict[str, Any]]:
         path = definition.get("path", value.get("path"))
         if not isinstance(path, str) or not path.strip():
             raise ValueError("Enter a source path or pattern.")
-        profile, events = validate_settings(
-            value.get("profile", "general"),
-            value.get("chunkEvents", value.get("chunkLines", 1)),
-        )
+        profile = value.get("profile", "general")
+        events = value.get("chunkEvents", value.get("chunkLines", 1))
+        if allow_unassigned_profile and profile == "":
+            if type(events) is not int or events < 1:
+                raise ValueError("Chunk events must be a positive integer.")
+        else:
+            profile, events = validate_settings(profile, events)
         if value.get("action"):
             raise ValueError("Select the Action again using its UUID.")
         action = value.get("actionId", "")
@@ -52,6 +57,9 @@ def parse_source_settings(values: object) -> list[dict[str, Any]]:
             "chunkEvents": events,
             **({"actionId": action.strip()} if action.strip() else {}),
         }
+        spec.update(input_settings(definition or value))
+        if spec.get("format") == "jsonl":
+            spec["chunkEvents"] = 1
         if definition.get("type") != "ssh":
             if value.get("hostIds"):
                 raise ValueError("Local File Sources cannot select SSH Hosts.")
@@ -103,9 +111,18 @@ def resolve_configured_sources(
                     result[path]["profile"],
                     result[path]["chunkEvents"],
                     result[path].get("actionId", ""),
-                ) != (spec["profile"], spec["chunkEvents"], spec.get("actionId", "")):
+                    result[path].get("format", "text"),
+                    result[path].get("contentField"),
+                ) != (
+                    spec["profile"],
+                    spec["chunkEvents"],
+                    spec.get("actionId", ""),
+                    spec.get("format", "text"),
+                    spec.get("contentField"),
+                ):
                     raise ValueError(
-                        f"Conflicting profile, chunk size, or action for: {path}"
+                        f"Conflicting profile, input format, content field, chunk size, "
+                        f"or action for: {path}"
                     )
                 if path not in result:
                     result[path] = {**spec, "sourcePatterns": [pattern]}

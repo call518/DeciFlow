@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import platform
+import re
 import signal
 import socket
 import sqlite3
@@ -22,7 +23,6 @@ from uuid import uuid4
 import anyio
 import httpx
 import uvicorn
-from dotenv import load_dotenv
 from starlette.applications import Starlette
 from starlette.background import BackgroundTask
 from starlette.requests import Request
@@ -41,19 +41,28 @@ from actions import (
     use_actions,
 )
 from app_settings import load_settings, save_settings
-from classifier import Result, classify_log, classify_stream, parse_logs
+from classifier import (
+    EXECUTION_CONTROL,
+    ExecutionControl,
+    Result,
+    classify_log,
+    classify_stream,
+    parse_logs,
+)
 from config import (
     JEV_CONTEXT_TOKENS,
     JEV_REQUEST_TOKENS,
     Engine,
     get_engine,
     get_jev_input_bytes,
+    load_startup_settings,
 )
 from config_store import get_data_directory
 from configured_sources import follow_configured, read_configured
 from host_sources import host_metadata, read_host_sources
 from jobs import JOBS, Job, read_archived_run, replay_archived_run
 from profiles import (
+    DEFAULT_PROFILES,
     PROFILES,
     load_profiles,
     save_profiles,
@@ -61,8 +70,14 @@ from profiles import (
     validate_settings,
 )
 from reset import reset_data, reset_directory, restart_process
+from result_payload import compact_result
 from result_store import open_result_store
-from source_registry import load_sources, save_sources, source_patterns
+from source_registry import (
+    ensure_voc_source,
+    load_sources,
+    save_sources,
+    source_patterns,
+)
 from source_settings import parse_source_settings, resolve_configured_sources
 from sources import follow_sources, read_sources
 from ssh_hosts import delete_host, load_hosts, save_host, test_host_connection
@@ -77,6 +92,8 @@ from ssh_keys import (
 from tasks import (
     TaskScheduler,
     delete_task,
+    ensure_system_message_task,
+    ensure_voc_task,
     load_tasks,
     next_run,
     record_unstarted_run,
@@ -107,6 +124,7 @@ ASSETS = {
         "image/png",
     ),
     "/logo.png": ("../images/DeciFlow-Logo.png", "image/png"),
+    "/images/GitHub-Logo.png": ("../images/GitHub-Logo.png", "image/png"),
 }
 
 
@@ -166,7 +184,10 @@ async def handle_status(request: Request) -> Response:
                 "request_tokens": JEV_REQUEST_TOKENS,
             }
             if engine.name == "jev"
-            else {"context_tokens": engine.context_tokens},
+            else {
+                "context_tokens": engine.context_tokens,
+                "head_tokens": engine.head_tokens,
+            },
         },
     )
 
@@ -176,11 +197,20 @@ def _encode(event: Result) -> str:
 
 
 class _ProcessingClock:
-    def __init__(self) -> None:
-        self.started = perf_counter()
+    def __init__(self, previous: Result | None = None) -> None:
+        previous = previous or {}
+        elapsed = previous.get("elapsedMs", 0) / 1000
+        if previous.get("startedAt"):
+            elapsed = max(
+                0,
+                (
+                    datetime.now(UTC) - datetime.fromisoformat(previous["startedAt"])
+                ).total_seconds(),
+            )
+        self.started = perf_counter() - elapsed
         self.pending = 0
         self.active_since = self.started
-        self.active_seconds = 0.0
+        self.active_seconds = previous.get("activeProcessingMs", 0) / 1000
 
     def begin(self) -> None:
         if self.pending == 0:
@@ -221,6 +251,7 @@ async def _timed_results(
             except StopAsyncIteration:
                 break
             pending = None
+            result = compact_result(result)
             completed += 1
             yield _encode(
                 {
@@ -376,6 +407,19 @@ async def handle_classify(request: Request) -> Response:
     )
 
 
+async def handle_recovered_records(
+    records: AsyncGenerator[Result, None], control: ExecutionControl
+) -> AsyncGenerator[Result, None]:
+    """Drain durable unfinished inputs before reading beyond saved source cursors."""
+    async with aclosing(records):
+        if control.replay is not None:
+            async with aclosing(control.replay()) as replay:
+                async for record in replay:
+                    yield record
+        async for record in records:
+            yield record
+
+
 async def handle_file_events(
     values: object,
     paths: list[Path] | dict[Path, Result],
@@ -384,13 +428,14 @@ async def handle_file_events(
     specs: list[Result] | None = None,
     actions: list[Result] | None = None,
     profile_snapshot: dict[str, Result] | None = None,
+    previous: Result | None = None,
 ) -> AsyncGenerator[str, None]:
     """Stream classifications from a file without buffering its full contents."""
     with use_actions(actions or []):
         snapshot = (
             profile_snapshot if profile_snapshot is not None else deepcopy(PROFILES)
         )
-        clock = _ProcessingClock()
+        clock = _ProcessingClock(previous)
         host_states = {
             spec["hostId"]: {**host_metadata(spec), "collectionState": "pending"}
             for spec in specs or []
@@ -426,6 +471,9 @@ async def handle_file_events(
             records = read_host_sources(
                 records, specs, live=mode == "realtime", statuses=host_states
             )
+        control = EXECUTION_CONTROL.get()
+        if control is not None and control.replay is not None:
+            records = handle_recovered_records(records, control)
         try:
             async with httpx.AsyncClient(timeout=engine.timeout) as client:
 
@@ -521,7 +569,15 @@ async def prepare_file_execution(
         raise EngineUnavailableError(
             "Set the JEV_API_KEY environment variable on the server."
         )
-    settings = {"mode": mode, "sources": specs}
+    settings = {
+        "mode": mode,
+        "sources": specs,
+        "recoveryVersion": 1,
+        "profileSnapshot": profile_snapshot,
+        "actionSnapshot": actions,
+        "engine": engine.name,
+        "model": engine.model,
+    }
     return settings, handle_file_events(
         values, paths, mode, engine, specs, actions, profile_snapshot
     )
@@ -583,6 +639,10 @@ async def launch_task(task: Result, trigger: str) -> Result:
                 task, "skipped", trigger, "Previous execution is still running."
             )
         raise ValueError("This Task is already running.")
+    if not task["sources"]:
+        raise ValueError("Select at least one Source before running the Task.")
+    if any(not source.get("profile") for source in task["sources"]):
+        raise ValueError("Select Criteria for every Source before running the Task.")
     TASK_STARTING.add(identity)
     try:
         try:
@@ -606,7 +666,76 @@ async def launch_task(task: Result, trigger: str) -> Result:
         TASK_STARTING.discard(identity)
 
 
-SCHEDULER = TaskScheduler(launch_task)
+async def restore_task_runs() -> set[str]:
+    """Restore checkpointed runs under their original IDs and frozen definitions."""
+    store = open_result_store(get_data_directory())
+    restored: set[str] = set()
+    tasks = {task["id"]: task for task in load_tasks()}
+    for snapshot in await anyio.to_thread.run_sync(store.recoverable_runs):
+        settings = snapshot["settings"]
+        identity = settings.get("taskId")
+        if not identity:
+            continue
+        restored.add(identity)
+        task = tasks.get(identity)
+        try:
+            if task is None or not task["enabled"]:
+                snapshot.update(
+                    state="stopped",
+                    error="Task was disabled or removed before recovery.",
+                )
+                raise ValueError(snapshot["error"])
+            engine = get_engine()
+            if engine.name != settings["engine"] or engine.model != settings["model"]:
+                raise ValueError(
+                    "Decision engine or model changed; recovery was stopped to preserve execution settings."
+                )
+            if engine.name == "jev" and not engine.api_key:
+                raise ValueError("Set JEV_API_KEY before recovering this execution.")
+            specs = settings["sources"]
+            actions = settings.get("actionSnapshot", [])
+            ensure_actions_available(actions)
+            paths = await anyio.to_thread.run_sync(
+                partial(
+                    resolve_configured_sources,
+                    specs,
+                    follow=settings["mode"] == "realtime",
+                )
+            )
+            events = handle_file_events(
+                specs,
+                paths,
+                settings["mode"],
+                engine,
+                specs,
+                actions,
+                settings["profileSnapshot"],
+                snapshot,
+            )
+            job = Job(settings, events, get_data_directory(), restored=snapshot)
+            JOBS[job.id] = job
+        except (ValueError, TypeError, OSError) as error:
+            snapshot.update(
+                state="stopped" if snapshot.get("state") == "stopped" else "failed",
+                finishedAt=datetime.now(UTC).isoformat(),
+                error=f"Execution recovery failed: {error}",
+            )
+            await anyio.to_thread.run_sync(
+                store.append,
+                snapshot["jobId"],
+                {"type": "error", "error": snapshot["error"]},
+                snapshot,
+            )
+            await anyio.to_thread.run_sync(
+                store.append,
+                snapshot["jobId"],
+                {"type": "done", "state": snapshot["state"]},
+                snapshot,
+            )
+    return restored
+
+
+SCHEDULER = TaskScheduler(launch_task, restore_task_runs)
 
 
 def deletion_dependencies(kind: str, identity: str) -> list[str]:
@@ -641,7 +770,7 @@ def deletion_dependencies(kind: str, identity: str) -> list[str]:
             if matches(host):
                 references.add(f"SSH Host: {host['name']}")
     for job_id, job in list(JOBS.items()):
-        if job.state != "running":
+        if job.state not in {"running", "pausing", "paused"}:
             continue
         if (kind == "Task" and job.settings.get("taskId") == identity) or any(
             matches(source) for source in job.settings.get("sources", [])
@@ -687,7 +816,11 @@ async def handle_tasks(request: Request) -> Response:
         return _json(403, {"error": "Task management requires a trusted UI origin."})
     try:
         if request.method == "PUT":
-            saved = save_task(await request.json())
+            body = await request.json()
+            identity = body.get("id") if isinstance(body, dict) else None
+            if identity and (identity in TASK_STARTING or active_task_job(identity)):
+                return _json(409, {"error": "Stop the Task before editing it."})
+            saved = save_task(body)
             if not saved["enabled"]:
                 SCHEDULER.due.pop(saved["id"], None)
                 job = active_task_job(saved["id"])
@@ -760,6 +893,15 @@ async def handle_task_operation(request: Request) -> Response:
             return _json(
                 200, {"runs": await anyio.to_thread.run_sync(task_runs, identity)}
             )
+        if operation in {"pause", "resume"}:
+            job = active_task_job(identity)
+            if job is None:
+                raise ValueError("This Task has no active execution.")
+            if operation == "pause":
+                await job.pause()
+            else:
+                await job.resume()
+            return _json(200, job.snapshot())
         if operation == "stop":
             job = active_task_job(identity)
             if job:
@@ -777,18 +919,27 @@ async def _action_results(
 ) -> AsyncGenerator[tuple[int, Result], None]:
     registered = {action["id"]: action for action in actions}
     async for index, result in results:
+        result = compact_result(result)
         identity = result.get("actionId")
+        control = EXECUTION_CONTROL.get()
+        if result.get("_actionPhase") in {"action", "acted"}:
+            yield index, result
+            continue
         if identity and not result.get("error"):
             result.update(
                 {
                     "action": registered[identity]["name"],
-                    "schemaVersion": 1,
+                    "schemaVersion": 2,
                     "eventId": str(uuid4()),
                     "decidedAt": datetime.now(UTC).isoformat(),
                     "engine": engine,
                 }
             )
+            if control and control.action_checkpoint and "_workId" in result:
+                await control.action_checkpoint(result, "action")
             result["actionExecution"] = await run_action(registered[identity], result)
+            if control and control.action_checkpoint and "_workId" in result:
+                await control.action_checkpoint(result, "acted")
         yield index, result
 
 
@@ -830,7 +981,7 @@ async def handle_ssh_hosts(request: Request) -> Response:
             active = [
                 source
                 for job in JOBS.values()
-                if job.state == "running"
+                if job.state in {"running", "pausing", "paused"}
                 for source in job.settings.get("sources", [])
             ]
             saved = [
@@ -874,7 +1025,7 @@ async def handle_ssh_keys(request: Request) -> Response:
                 active = [
                     source
                     for job in JOBS.values()
-                    if job.state == "running"
+                    if job.state in {"running", "pausing", "paused"}
                     for source in job.settings.get("sources", [])
                 ]
                 require_unused("SSH Key", body.get("id"))
@@ -932,7 +1083,8 @@ async def handle_criteria(request: Request) -> Response:
             if isinstance(values, dict):
                 for task in load_tasks():
                     if any(
-                        source["profile"] not in values for source in task["sources"]
+                        source.get("profile") and source["profile"] not in values
+                        for source in task["sources"]
                     ):
                         raise ValueError(
                             f"Criteria is used by Task '{task['name']}'. Update the Task before deleting it."
@@ -945,7 +1097,7 @@ async def handle_criteria(request: Request) -> Response:
             profiles = deepcopy(PROFILES)
     except (ValueError, TypeError, OSError) as error:
         return _json(400, {"error": str(error)})
-    return _json(200, {"profiles": profiles})
+    return _json(200, {"profiles": profiles, "templates": DEFAULT_PROFILES})
 
 
 async def handle_reset_action(request: Request) -> Response:
@@ -1149,10 +1301,17 @@ async def handle_result_page(request: Request) -> Response:
         if not isinstance(body, dict):
             raise TypeError("Invalid result request.")
         if operation == "review":
-            sequence, category = body.get("sequence"), body.get("category")
-            if type(sequence) is not int or not isinstance(category, str):
-                raise TypeError("Invalid reviewer category or result cursor.")
-            await anyio.to_thread.run_sync(store.review, identity, sequence, category)
+            sequence, category = body.get("sequence"), body.get("category", "")
+            question = body.get("question")
+            if (
+                type(sequence) is not int
+                or not isinstance(category, str)
+                or (question is not None and not isinstance(question, str))
+            ):
+                raise TypeError("Invalid reviewer decision or result cursor.")
+            await anyio.to_thread.run_sync(
+                store.review, identity, sequence, category, question, body.get("value")
+            )
             return _json(200, {"saved": True})
         state = await anyio.to_thread.run_sync(store.state, identity)
         if job is not None:
@@ -1223,18 +1382,32 @@ async def handle_reset(request: Request) -> Response:
 
 @asynccontextmanager
 async def lifespan(application: Starlette) -> AsyncIterator[None]:
-    """Stop background analysis jobs when the server shuts down."""
+    """Recover executions before serving and suspend them on ordinary shutdown."""
     application.state.reset_requested = False
     load_profiles()
+    ensure_voc_source()
+    ensure_voc_task()
+    ensure_system_message_task()
     await initialize_default_action()
     get_keys_directory()
+    SCHEDULER.ready = asyncio.Event()
     scheduler = asyncio.create_task(SCHEDULER.run())
+    startup = asyncio.create_task(SCHEDULER.ready.wait())
     try:
+        await asyncio.wait({scheduler, startup}, return_when=asyncio.FIRST_COMPLETED)
+        if scheduler.done():
+            await scheduler
         yield
     finally:
+        startup.cancel()
         scheduler.cancel()
-        await asyncio.gather(scheduler, return_exceptions=True)
-        await asyncio.gather(*(job.stop() for job in JOBS.values()))
+        await asyncio.gather(startup, scheduler, return_exceptions=True)
+        await asyncio.gather(
+            *(
+                job.suspend() if not application.state.reset_requested else job.stop()
+                for job in JOBS.values()
+            )
+        )
         JOBS.clear()
         if getattr(application.state, "reset_requested", False):
             try:
@@ -1251,6 +1424,14 @@ async def lifespan(application: Starlette) -> AsyncIterator[None]:
 async def handle_asset(request: Request) -> Response:
     """Serve only the UI assets exposed by the original server."""
     asset = ASSETS.get(request.url.path)
+    if request.method == "GET" and re.fullmatch(
+        r"/(?:tasks(?:/[^/]+(?:/(?:edit|history))?)?"
+        r"|(?:sources|actions|criteria)(?:/[^/]+(?:/edit)?)?"
+        r"|runs/[a-f0-9]{32}"
+        r"|settings(?:/configuration|/(?:ssh-keys|ssh-hosts)(?:/[^/]+(?:/edit)?)?)?)/?",
+        request.url.path,
+    ):
+        asset = ASSETS["/"]
     if request.method != "GET" or asset is None:
         return _json(404, {"error": "Not found."})
     name, media_type = asset
@@ -1279,6 +1460,8 @@ app = Starlette(
         Route("/api/tasks", handle_tasks, methods=["POST", "PUT", "DELETE"]),
         Route("/api/tasks/{task_id}/enabled", handle_task_operation, methods=["POST"]),
         Route("/api/tasks/{task_id}/run", handle_task_operation, methods=["POST"]),
+        Route("/api/tasks/{task_id}/pause", handle_task_operation, methods=["POST"]),
+        Route("/api/tasks/{task_id}/resume", handle_task_operation, methods=["POST"]),
         Route("/api/tasks/{task_id}/stop", handle_task_operation, methods=["POST"]),
         Route("/api/tasks/{task_id}/runs", handle_task_operation, methods=["POST"]),
         Route("/api/jobs/{job_id}", handle_job, methods=["POST"]),
@@ -1337,7 +1520,7 @@ def get_log_config() -> Result:
 
 def main(*, host: str = "127.0.0.1") -> None:
     """Read local settings at startup; bind to loopback unless specified."""
-    load_dotenv(ROOT / ".env")
+    load_startup_settings(ROOT / ".env")
     get_engine()
     port = int(os.getenv("PORT") or "4000")
     print(f"DeciFlow: http://{host}:{port}", flush=True)

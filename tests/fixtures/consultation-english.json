@@ -1,0 +1,63 @@
+{
+  "label": "Sample Consultation Follow-up",
+  "instructions": "Judge the conversation at its end. Distinguish completed guidance from completed business processing. A customer's future booking is not an outstanding staff obligation. A promise does not prove execution. Select unknown when evidence is missing. Do not infer dates or identities from masked content.",
+  "questions": {
+    "inquiry_type": {
+      "type": "choice",
+      "label": "Inquiry Type",
+      "instructions": "Select the main purpose of this consultation.",
+      "summary": true,
+      "criteria": {
+        "booking": "Booking, availability or group reservations.",
+        "cancellation": "Cancellation, refund or booking changes.",
+        "discount": "Prices, discounts or membership benefits.",
+        "facility": "Facilities, visits, programs, opening hours or access guidance.",
+        "other": "Another purpose or insufficient evidence to identify the main purpose."
+      }
+    },
+    "handling_status": {
+      "type": "choice",
+      "label": "Handling Status",
+      "instructions": "What is the status at the end of this conversation?",
+      "summary": true,
+      "criteria": {
+        "guidance_complete": "Requested guidance or service is complete and no specific follow-up obligation remains.",
+        "customer_pending": "Further processing awaits a specific customer submission or action.",
+        "staff_pending": "Staff or a department owes a promised callback, dispatch, check or other action.",
+        "unknown": "The conversation does not establish the final status."
+      }
+    },
+    "follow_up_owner": {
+      "type": "choice",
+      "label": "Follow-up Owner",
+      "instructions": "Who owns the next outstanding action?",
+      "summary": false,
+      "criteria": {
+        "customer": "The customer must take the next action.",
+        "agent": "The consultation agent must take the next action.",
+        "department": "A responsible department must take the next action.",
+        "none": "No follow-up action is needed.",
+        "unknown": "Ownership cannot be determined from the conversation."
+      }
+    },
+    "urgency": {
+      "type": "score",
+      "label": "Urgency",
+      "instructions": "Rate intervention urgency using explicit harm or time constraints; missing evidence alone is not urgency.",
+      "summary": false,
+      "criteria": [
+        "Low: routine guidance with no urgent harm or deadline.",
+        "Medium: follow-up needed without immediate harm or deadline.",
+        "High: explicit imminent deadline or significant ongoing impact.",
+        "Critical: immediate threat to safety or severe ongoing harm."
+      ]
+    },
+    "follow_up_required": {
+      "type": "noul",
+      "label": "Follow-up Required",
+      "instructions": "Does the organization owe an unresolved action such as a promised callback, document dispatch or departmental check? Customer actions alone do not count.",
+      "summary": true
+    }
+  },
+  "primaryQuestion": "inquiry_type"
+}

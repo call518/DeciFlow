@@ -15,7 +15,8 @@ Source → Criteria → optional Actions → Tasks, and inspect current/latest T
 | [Sources](sources.md) | Register local or SSH file sources and select them in Tasks |
 | [Usage](usage.md) | Analyze logs, filter results, review predictions, reconnect, or understand metrics |
 | [Configuration](configuration.md) | Set environment variables, choose Laya/Jev models, or adjust request budgets |
-| [Criteria](criteria.md) | Create and manage category instructions and definitions |
+| [VOC Consultations](voc.md) | Run the sample, author full Criteria, and validate conversation decisions |
+| [Criteria](criteria.md) | Field-by-field authoring, decision types, examples, and save-error troubleshooting |
 | [Python Actions](actions.md) | Run Python Code after classification and manage execution environments |
 | [Tasks](tasks.md) | Reusable executions, cron schedules, continuous monitoring, and durable run history |
 | [Result Storage](result-storage.md) | Manage SQLite storage, page sizes, configuration records, backups, and database adapters |
