@@ -240,3 +240,5 @@ __marimo__/
 
 # SSH key storage
 ssh-keys/
+
+/temp
