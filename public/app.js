@@ -254,7 +254,7 @@ let statisticsCursor = 0;
 let statisticsResults;
 let filteredResults;
 let renderedRows = new Map();
-let renderedPage = [];
+let renderedPage = null;
 let renderedHosts;
 let renderedCount = -1;
 let activeRequest;
@@ -1000,7 +1000,7 @@ async function handleDeleteTask(task) {
     if(selectedTaskId===task.id){
       selectedTaskId='';activeRequest?.abort();pagedView=null;activeJobId=undefined;rememberJob('');
       results=[];completionOrder=[];pausedOrder=[];displayedOrder=[];completed=0;total=0;runHosts=[];runSourcePatterns=[];
-      statisticsResults=undefined;filteredResults=undefined;renderedRows.clear();renderedPage=[];render();
+      statisticsResults=undefined;filteredResults=undefined;renderedRows.clear();renderedPage=null;render();
       $('result-context').textContent='Select a Task to view its results.';handleMessage('message','');
     }
     renderTasks();
@@ -1065,7 +1065,7 @@ async function handleSelectTask(identity) {
   pagedView=null;activeJobId=undefined;activeJobState=undefined;rememberJob('');
   results=[];completionOrder=[];pausedOrder=[];displayedOrder=[];completed=0;page=0;total=0;
   elapsedMs=0;activeProcessingMs=0;runHosts=[];runSourcePatterns=[];updatesPaused=false;
-  statisticsResults=undefined;filteredResults=undefined;renderedRows.clear();renderedPage=[];render();
+  statisticsResults=undefined;filteredResults=undefined;renderedRows.clear();renderedPage=null;render();
   $('result-context').replaceChildren(element('strong',task?.name || 'Select a Task to view its results.','result-task-name'));
   $('message').className='';handleMessage('message',task?'No executions yet.':'');
 
@@ -2193,7 +2193,7 @@ function render(updateList = true, incremental = false) {
   $('next').disabled = page >= pages - 1;
   const pageResults = (pagedView ? visible : visible.slice(Math.max(0, visible.length-(page+1)*pageSize),visible.length-page*pageSize)).toReversed().map(index=>results[index]);
   if (!updatesPaused) { displayedOrder = completionOrder; displayedCount = completionOrder.length; }
-  if (incremental && pageResults.length === renderedPage.length && pageResults.every((result, index) => result === renderedPage[index])) return;
+  if (incremental && renderedPage && pageResults.length === renderedPage.length && pageResults.every((result, index) => result === renderedPage[index])) return;
   const previousRows = incremental ? renderedRows : new Map();
   renderedRows = new Map();
   renderedPage = pageResults;
@@ -2648,7 +2648,7 @@ async function handleApplyRunRoute(path) {
   if(params.has('through') && (!Number.isSafeInteger(through) || through<0))throw new Error('Invalid result page link.');
   if(params.has('through'))pagedView.through=through;
   expandedResultDetails.clear();for(const result of results)expandedJson.delete(result);
-  renderedRows.clear();renderedPage=[];
+  renderedRows.clear();renderedPage=null;
   const view=pagedView;view.restoringRoute=true;
   try{await handleRefreshResults(true);}finally{if(pagedView===view)view.restoringRoute=false;}
   const dialog=$('source-hosts-dialog');
@@ -2664,7 +2664,7 @@ async function handlePagedProcessing(job) {
   activeRequest=new AbortController();const controller=activeRequest;
   pagedView={id:job.jobId,items:[],cursors:[null],sequence:0,through:null,hasNext:false,snapshotTotal:0,revision:0,restoringRoute:true};
   page=0;updatesPaused=false;results=[];completionOrder=[];pausedOrder=[];displayedOrder=[];
-  statisticsResults=undefined;filteredResults=undefined;renderedRows.clear();renderedPage=[];
+  statisticsResults=undefined;filteredResults=undefined;renderedRows.clear();renderedPage=null;
   $('category-filter').value='all';$('review-filter').value='all';$('source-filter').value='all';$('host-filter').value='all';$('log-search').value='';
   try{
     await handleLoadResultSettings();await handleRefreshResults(true);

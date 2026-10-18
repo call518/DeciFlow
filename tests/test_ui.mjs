@@ -3801,3 +3801,24 @@ test('New Criteria separates optional AI generation from template and manual aut
   assert.ok(generator<divider && divider<template && template<profile);
   assert.equal(children[template].children[0].attributes['aria-label'],'Start From Template');
 });
+
+
+test('Starting an empty paged run removes the previous run cards', async()=>{
+  const {nodes,context}=pagedWorkspace();
+  await vm.runInContext("handlePagedProcessing({jobId:'previous',state:'completed',settings:{mode:'batch'},pagedResults:true})",context);
+  assert.equal(nodes.get('results').children.length,50);
+  const original=context.fetch;
+  context.fetch=async(path,options)=>{
+    const response=await original(path,options);
+    if(!path.endsWith('/results'))return response;
+    const data=await response.json();
+    data.items=[];data.sequence=0;data.hasNext=false;
+    data.summary.total=0;data.summary.groups={all:0,certain:0,uncertain:0};
+    return {ok:true,json:async()=>data};
+  };
+  await vm.runInContext("handlePagedProcessing({jobId:'new',state:'completed',settings:{mode:'batch'},pagedResults:true})",context);
+  assert.equal(vm.runInContext('completed',context),0);
+  assert.equal(nodes.get('results').children.length,1);
+  assert.equal(nodes.get('results').children[0].textContent,'No results to display.');
+  assert.equal(nodes.get('page-info').textContent,'Page 1 · 0 results shown');
+});
