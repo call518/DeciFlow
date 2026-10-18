@@ -7,6 +7,66 @@ and response validation. A profile contains a name, shared instructions, ordered
 named decisions, and one **Primary Classification** (`choice`) for charts and filters.
 There is no fixed three-decision limit; provider input and runtime limits still apply.
 
+## Generate Criteria With AI
+
+In **Add Profile**, expand **Generate With AI**. Configure `OPENAI_API_KEY` and
+`OPENAI_CRITERIA_MODEL` (default `gpt-5.6-terra`, requires Responses API Structured
+Outputs) in DeciFlow's `.env` and restart DeciFlow. The key stays on the backend.
+
+
+AI generation is optional assistance for authoring the core rules that shape
+classification quality. No OpenAI key is needed to create, edit, or save Criteria
+manually using this guide. The default model balances intelligence and cost;
+review generated rules against representative samples. `.env.example` lists
+representative model names and links to the official catalog for availability.
+
+1. Select a registered Source; select one SSH Host for a Remote File Source.
+2. Set Events Per Sample for TEXT input, then select **Preview Source Samples**.
+   JSONL shows a read-only explanation: one record is one sample, using the configured content field.
+3. Review, edit, or remove the samples. Preview reads up to 8 complete inputs,
+   totaling at most 24,000 UTF-8 bytes; it does not send them to OpenAI.
+4. Leave **Analysis Purpose Mode** on **Automatic (ChatGPT)** (the default) to
+   infer a purpose from the samples, or choose **Manual** and enter your purpose.
+   Select **Generate Criteria**. The shown samples, mode, manual purpose (if any),
+   and application authoring rules are sent to OpenAI.
+   Remove sensitive content first. Generation incurs OpenAI API charges.
+5. Review **Suggested Analysis Purpose** in automatic mode, or **Analysis Purpose**
+   in manual mode, plus the populated Name, shared instructions, Decisions, options or
+   levels, summary visibility, Primary Classification, and token estimates.
+6. Select **Save Changes** to persist the complete profile. Assign it to a Task
+   separately and check representative classification results.
+
+**Events Per Sample** controls how many TEXT events form each preview sample;
+for example, 5 groups five events into one sample. Match the grouping you plan to
+use in the Task. This field does not update Task settings. For JSONL, this input
+is hidden: each record is one complete sample, using the Source's content field.
+The format rule applies equally to local and remote Sources.
+
+**Analysis Purpose Mode** defaults to **Automatic (ChatGPT)**. No purpose input
+is required: AI suggests an objective supported by the samples and generates the
+complete Criteria in the same request. Review the suggestion before saving; samples
+do not establish your actual business requirements. The purpose is included in the
+profile's shared instructions so it remains part of saved Criteria.
+
+Choose **Manual** when you know your objective. **Analysis Purpose** then tells AI
+what decisions to design. In plain language, describe the
+input, desired questions or categories, judgment time, priority rules, exclusions,
+and how to handle missing evidence. Mention the desired language for labels and
+rules if needed. JSON and field-by-field Criteria definitions are unnecessary.
+
+Example: “For customer consultations, classify inquiry type, urgency, and whether
+staff owe a follow-up at the end of the conversation. Count promised callbacks as
+outstanding work; exclude actions owed only by the customer. Use Unknown when
+evidence is insufficient. Write labels and rules in Korean.”
+
+Generation replaces the current new-profile draft. Invalid, duplicate, refused,
+or incomplete responses do not populate the editor or change saved Criteria.
+Generation failure preserves the draft and sample edits so you can retry.
+Validation checks structure and required fields, not business-rule accuracy.
+Samples come from the beginning of matched inputs and may miss rare cases.
+OpenAI drafts Criteria only; actual classification still uses Laya or Jev with no
+provider fallback. Existing profiles can be cloned before generating a new draft.
+
 ## Understand the Three Parts First
 
 - **Source** defines what to read. Configure the JSONL content field there.

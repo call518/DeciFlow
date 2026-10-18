@@ -70,7 +70,7 @@ def load_startup_settings(path: Path) -> None:
     # Compose retains env_file values across Restart; the mounted file is current.
     for key, value in dotenv_values(path).items():
         if value is not None and (
-            key == "DECISION_ENGINE" or key.startswith(("LAYA_", "JEV_"))
+            key == "DECISION_ENGINE" or key.startswith(("LAYA_", "JEV_", "OPENAI_"))
         ):
             os.environ[key] = value
 

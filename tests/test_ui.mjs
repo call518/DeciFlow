@@ -3542,7 +3542,7 @@ test('Elapsed times use separate metrics and review count appears beside host de
   assert.deepEqual(elapsedValues(nodes),['1 min 5 sec','28.9 sec (44.5%)']);
   assert.equal(nodes.get('needs-review-count').textContent,'Needs Review: 0');
   const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
-  assert.match(html,/id="host-status"[^]*?Source Hosts Detail<\/button><span id="needs-review-count"/);
+  assert.match(html,/class="result-toolbar"[^]*?id="result-filter-type"[^]*?id="host-status"[^]*?id="needs-review-count"[^]*?id="source-hosts-detail"/);
 });
 
 
@@ -3678,4 +3678,126 @@ test('Result filter type switches controls without changing filters or making re
   assert.equal(chips.hidden,true);
   assert.equal(nodes.get('result-filter-type').value,'log-search');
   assert.deepEqual(logs(nodes),['log-1','log-0']);
+});
+
+test('AI Criteria previews editable samples and preserves every generated field through save', async()=>{
+  const general=JSON.parse(readFileSync(new URL('../profiles/general.json',import.meta.url),'utf8'));
+  const generated=JSON.parse(readFileSync(new URL('../profiles/consultation.json',import.meta.url),'utf8'));
+  generated.label='AI Generated Test';
+  const {nodes,context}=workspace([],undefined,undefined,{general});
+  await new Promise(resolve=>setImmediate(resolve));
+  await nodes.get('nav-criteria').onclick();
+  vm.runInContext("handleEditCriteria('')",context);
+  const walk=node=>[node,...(node.children || []).flatMap(child=>typeof child==='object'?walk(child):[])];
+  const details=walk(nodes.get('criteria-editor')).find(node=>node.className?.includes('criteria-generator'));
+  const fetch=context.fetch;let submitted;
+  context.fetch=async(path,options)=>{
+    if(path==='/api/criteria/samples')return {ok:true,json:async()=>({samples:['Private sample','Other sample']})};
+    if(path==='/api/criteria/generate'){submitted=JSON.parse(options.body);return {ok:true,json:async()=>({profile:generated,analysisPurpose:'Evaluate status and urgency'})};}
+    return fetch(path,options);
+  };
+  details.open=true;await details.ontoggle();
+  const findLabel=label=>walk(details).find(node=>node.attributes?.['aria-label']===label);
+  findLabel('Sample Source').value=vm.runInContext('sampleSources[0].id',context);
+  findLabel('Sample Source').onchange();
+  const button=caption=>walk(details).find(node=>node.textContent===caption && node.onclick);
+  await button('Preview Source Samples').onclick();
+  findLabel('Sample 1').value='Redacted sample';
+  findLabel('Analysis Purpose Mode').value='manual';findLabel('Analysis Purpose Mode').onchange();
+  findLabel('Analysis Purpose').value='Evaluate status and urgency';
+  await button('Generate Criteria').onclick();
+  assert.deepEqual(submitted,{purposeMode:'manual',purpose:'Evaluate status and urgency',samples:['Redacted sample','Other sample']});
+  assert.deepEqual(JSON.parse(vm.runInContext('JSON.stringify(readDecisionProfile())',context)),generated);
+  assert.equal(Object.keys(vm.runInContext('criteriaProfiles',context)).length,1);
+  const id=vm.runInContext('criteriaDraftId',context);
+  await nodes.get('save-criteria').onclick();
+  assert.deepEqual(JSON.parse(vm.runInContext(`JSON.stringify(criteriaProfiles['${id}'])`,context)),generated);
+});
+
+test('Failed AI generation preserves the draft and edited samples',async()=>{
+  const general=JSON.parse(readFileSync(new URL('../profiles/general.json',import.meta.url),'utf8'));
+  const {nodes,context}=workspace([],undefined,undefined,{general});await new Promise(resolve=>setImmediate(resolve));
+  await nodes.get('nav-criteria').onclick();
+  vm.runInContext("handleEditCriteria('');criteriaFields.label.value='Keep This Draft'",context);
+  const walk=node=>[node,...(node.children || []).flatMap(child=>typeof child==='object'?walk(child):[])];
+  const details=walk(nodes.get('criteria-editor')).find(node=>node.className?.includes('criteria-generator'));
+  const original=context.fetch;
+  context.fetch=async(path,options)=>path==='/api/criteria/generate'?{ok:false,json:async()=>({error:'Generation failed.'})}:path==='/api/criteria/samples'?{ok:true,json:async()=>({samples:['sample']})}:original(path,options);
+  details.open=true;await details.ontoggle();
+  await walk(details).find(node=>node.textContent==='Preview Source Samples').onclick();
+  const input=walk(details).find(node=>node.attributes?.['aria-label']==='Sample 1');input.value='Edited sample';
+  walk(details).find(node=>node.attributes?.['aria-label']==='Analysis Purpose').value='Classify';
+  await walk(details).find(node=>node.textContent==='Generate Criteria').onclick();
+  assert.equal(vm.runInContext('criteriaFields.label.value',context),'Keep This Draft');
+  assert.equal(input.value,'Edited sample');
+  assert.ok(walk(details).some(node=>node.textContent==='Generation failed.'));
+});
+
+test('AI sample guidance explains TEXT grouping, fixed JSONL records, SSH selection and purpose',async()=>{
+  const {context}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
+  const original=context.fetch;
+  context.fetch=async(path,options)=>path==='/api/sources'?{ok:true,json:async()=>({sources:[
+    {id:'local-text',name:'Local Text',type:'local',format:'text'},
+    {id:'local-jsonl',name:'Local JSONL',type:'local',format:'jsonl'},
+    {id:'remote-text',name:'Remote Text',type:'ssh',format:'text'},
+    {id:'remote-jsonl',name:'Remote JSONL',type:'ssh',format:'jsonl'},
+  ]})}:original(path,options);
+  const details=vm.runInContext('renderCriteriaGenerator()',context);
+  const walk=node=>[node,...(node.children || []).flatMap(child=>typeof child==='object'?walk(child):[])];
+  const field=label=>walk(details).find(node=>node.attributes?.['aria-label']===label);
+  details.open=true;await details.ontoggle();
+  const source=field('Sample Source'),count=field('Events Per Sample'),host=field('Sample SSH Host');
+  for(const type of ['local','remote']){
+    source.value=`${type}-text`;source.onchange();count.value='5';
+    assert.equal(count.disabled,false);assert.equal(count.parentElement.hidden,false);assert.equal(host.parentElement.hidden,type==='local');
+    assert.match(count.attributes['aria-description'],/five events/);
+    assert.match(count.attributes['aria-description'],/does not change any Task/);
+    source.value=`${type}-jsonl`;source.onchange();
+    assert.equal(count.disabled,true);assert.equal(count.value,'1');
+    assert.equal(count.parentElement.hidden,true);
+    assert.ok(walk(details).some(node=>node.textContent?.includes('One JSONL record is one sample')));
+    assert.ok(walk(details).some(node=>node.textContent?.includes('up to 8 samples')));
+  }
+  assert.match(field('Analysis Purpose').attributes['aria-description'],/priority rules, exclusions/);
+  assert.ok(walk(details).some(node=>node.textContent?.includes('Count promised callbacks as outstanding work')));
+});
+
+test('Analysis purpose defaults to automatic and preserves manual input when switching',async()=>{
+  const general=JSON.parse(readFileSync(new URL('../profiles/general.json',import.meta.url),'utf8'));
+  const generated=JSON.parse(readFileSync(new URL('../profiles/consultation.json',import.meta.url),'utf8'));
+  const {nodes,context}=workspace([],undefined,undefined,{general});await new Promise(resolve=>setImmediate(resolve));
+  await nodes.get('nav-criteria').onclick();vm.runInContext("handleEditCriteria('')",context);
+  const walk=node=>[node,...(node.children || []).flatMap(child=>typeof child==='object'?walk(child):[])];
+  const details=walk(nodes.get('criteria-editor')).find(node=>node.className?.includes('criteria-generator'));
+  const field=label=>walk(details).find(node=>node.attributes?.['aria-label']===label);
+  const mode=field('Analysis Purpose Mode'),purpose=field('Analysis Purpose');
+  assert.equal(mode.value,'automatic');assert.equal(purpose.parentElement.hidden,true);
+  mode.value='manual';mode.onchange();assert.equal(purpose.parentElement.hidden,false);purpose.value='My objective';
+  mode.value='automatic';mode.onchange();assert.equal(purpose.value,'My objective');assert.equal(purpose.disabled,true);
+  let submitted;const original=context.fetch;
+  context.fetch=async(path,options)=>{
+    if(path==='/api/criteria/samples')return {ok:true,json:async()=>({samples:['A consultation']})};
+    if(path==='/api/criteria/generate'){submitted=JSON.parse(options.body);return {ok:true,json:async()=>({profile:generated,analysisPurpose:'Suggested follow-up analysis'})};}
+    return original(path,options);
+  };
+  details.open=true;await details.ontoggle();
+  await walk(details).find(node=>node.textContent==='Preview Source Samples').onclick();
+  await walk(details).find(node=>node.textContent==='Generate Criteria').onclick();
+  assert.equal(submitted.purposeMode,'automatic');assert.equal(submitted.purpose,'');
+  assert.ok(walk(nodes.get('criteria-editor')).some(node=>node.textContent==='Suggested Analysis Purpose'));
+  assert.ok(walk(nodes.get('criteria-editor')).some(node=>node.textContent==='Suggested follow-up analysis'));
+});
+
+test('New Criteria separates optional AI generation from template and manual authoring',async()=>{
+  const general=JSON.parse(readFileSync(new URL('../profiles/general.json',import.meta.url),'utf8'));
+  const {nodes,context}=workspace([],undefined,undefined,{general});await new Promise(resolve=>setImmediate(resolve));
+  await nodes.get('nav-criteria').onclick();
+  vm.runInContext("criteriaTemplates={general:criteriaProfiles.general};handleEditCriteria('')",context);
+  const children=nodes.get('criteria-editor').children;
+  const generator=children.findIndex(node=>node.className==='criteria-section criteria-generator');
+  const divider=children.findIndex(node=>node.className==='criteria-authoring-divider');
+  const template=children.findIndex(node=>node.className==='criteria-template-start');
+  const profile=children.findIndex(node=>node.className==='criteria-section profile-settings');
+  assert.ok(generator<divider && divider<template && template<profile);
+  assert.equal(children[template].children[0].attributes['aria-label'],'Start From Template');
 });

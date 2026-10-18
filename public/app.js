@@ -1421,7 +1421,87 @@ function handleCloneCriteria(id) {
   const profile = criteriaProfiles[id];
   handleEditCriteria('', { ...profile, label: `${profile.label} (Clone)`, ...(profile.criteria?{criteria:{...profile.criteria}}:{questions:structuredClone(profile.questions)}) });
 }
-function handleEditCriteria(id, template = null) {
+function renderCriteriaGenerator() {
+  const details=element('details','','criteria-section criteria-generator');
+  details.append(element('summary','Generate With AI'));
+  const panel=element('fieldset','','action-registration');details.append(panel);
+  panel.append(element('p','Preview and edit the samples before sending them to OpenAI. Generation uses the configured API key and incurs API charges. Review the generated draft, then select Save Changes.','criteria-help'));
+  const source=element('select','');source.setAttribute('aria-label','Sample Source');
+  const host=element('select','');host.setAttribute('aria-label','Sample SSH Host');
+  const count=element('input','');count.type='number';count.min='1';count.value='1';count.setAttribute('aria-label','Events Per Sample');
+  const purpose=element('textarea','');purpose.rows=3;purpose.maxLength=4000;purpose.setAttribute('aria-label','Analysis Purpose');purpose.placeholder='Describe what to judge, when to judge it, and any rules or exclusions.';
+  const samples=element('div','','criteria-samples');const sampleInputs=[];
+  const preview=element('button','Preview Source Samples','quiet');preview.type='button';
+  const generate=element('button','Generate Criteria','quiet');generate.type='button';generate.disabled=true;
+  const message=element('p','','criteria-help');message.setAttribute('role','status');
+  const addField=(caption,input,help='')=>{const label=element('label',caption);label.append(input);if(help){label.append(element('span',help,'criteria-help'));input.setAttribute('aria-description',help);}panel.append(label);return label;};
+  addField('Source',source,'Select a registered Local File or Remote File (SSH) Source. Its input format determines how samples are grouped.');
+  const hostLabel=addField('SSH Host',host,'Select one registered SSH Host to read this remote Source. The existing SSH key and host verification settings are used.');
+  const countLabel=addField('Events Per Sample',count);const countHelp=element('span','','criteria-help');countLabel.append(countHelp);
+  const sampleHelp=element('p','','criteria-help');sampleHelp.setAttribute('role','status');panel.append(sampleHelp);
+  const purposeMode=element('select','');purposeMode.setAttribute('aria-label','Analysis Purpose Mode');
+  purposeMode.append(new Option('Automatic (ChatGPT)','automatic'),new Option('Manual','manual'));purposeMode.value='automatic';
+  addField('Analysis Purpose Mode',purposeMode,'Automatic: AI suggests an analysis purpose and Criteria from the samples. Manual: describe your own objective. Review the suggested purpose before saving.');
+  const purposeLabel=addField('Analysis Purpose',purpose,'Tell AI what decisions this Criteria should make. Describe the input, the questions or categories you need, when to judge them, and any priority rules, exclusions, or handling of missing evidence. Plain language is enough; you do not need to write JSON or fill in every Criteria field.');
+  purposeLabel.append(element('span','Example: For customer consultations, classify inquiry type, urgency, and whether staff owe a follow-up at the end of the conversation. Count promised callbacks as outstanding work; exclude actions owed only by the customer. Use Unknown when evidence is insufficient. Write labels and rules in Korean.','criteria-help'));
+  const updatePurposeMode=()=>{purposeLabel.hidden=purposeMode.value==='automatic';purpose.disabled=purposeLabel.hidden;};
+  purposeMode.onchange=updatePurposeMode;updatePurposeMode();
+  panel.append(preview,samples,generate,message);
+  let initialized=false;let availableSources=[];
+  const resetSamples=()=>{sampleInputs.length=0;samples.replaceChildren();generate.disabled=true;message.textContent='';};
+  const updateSource=()=>{
+    resetSamples();const selected=availableSources.find(item=>item.id===source.value);
+    const jsonl=selected?.format==='jsonl';hostLabel.hidden=selected?.type!=='ssh';
+    count.disabled=jsonl;countLabel.hidden=!selected || jsonl;if(jsonl)count.value='1';
+    countHelp.textContent='Number of TEXT events in each sample, not the number of samples. For example, 5 groups five events into one sample. Match the grouping planned for the Task; this does not change any Task.';
+    count.setAttribute('aria-description',countHelp.textContent);
+    sampleHelp.textContent=(jsonl?'One JSONL record is one sample; only the configured content field is read. ':'')+'Preview reads up to 8 samples, totaling at most 24,000 UTF-8 bytes. Review the samples before sending them to OpenAI.';
+  };
+  source.onchange=updateSource;host.onchange=count.oninput=resetSamples;
+  details.ontoggle=async()=>{
+    if(!details.open || initialized)return;initialized=true;panel.disabled=true;
+    try {
+      const responses=await Promise.all(['/api/sources','/api/ssh-hosts'].map(path=>fetch(path,{method:'POST'})));
+      const data=await Promise.all(responses.map(readApiJsonResponse));
+      if(responses.some(response=>!response.ok))throw new Error('Could not load Sources or SSH Hosts.');
+      source.replaceChildren(new Option('None',''));
+      for(const item of data[0].sources)source.append(new Option(`${item.name} · ${item.type==='ssh'?'Remote File (SSH)':'Local File'} · ${item.format==='jsonl'?'JSONL':'TEXT'}`,item.id));
+      availableSources=data[0].sources;
+      host.replaceChildren(new Option('None',''));
+      for(const item of data[1].hosts)host.append(new Option(item.name,item.id));
+      updateSource();
+    } catch(error){initialized=false;message.textContent=error.message;}
+    finally{panel.disabled=false;}
+  };
+  preview.onclick=async()=>{
+    resetSamples();panel.disabled=true;message.textContent='Reading up to 8 complete samples (24,000 bytes total)…';
+    try {
+      const response=await fetch('/api/criteria/samples',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceId:source.value,hostIds:hostLabel.hidden?[]:[host.value],chunkEvents:Number(count.value)})});
+      const data=await readApiJsonResponse(response);if(!response.ok)throw new Error(data.error);
+      for(const [index,text] of data.samples.entries()){
+        const label=element('label',`Sample ${index+1}`);const input=element('textarea','');input.rows=4;input.value=text;input.setAttribute('aria-label',`Sample ${index+1}`);
+        const remove=element('button','Remove Sample','quiet');remove.type='button';remove.onclick=()=>{sampleInputs.splice(sampleInputs.indexOf(input),1);label.remove();generate.disabled=!sampleInputs.length;};
+        label.append(input,remove);samples.append(label);sampleInputs.push(input);
+      }
+      generate.disabled=false;message.textContent='Only the samples shown here and your analysis purpose will be sent to OpenAI. Remove or redact sensitive content before generating.';
+    } catch(error){message.textContent=error.message;}
+    finally{panel.disabled=false;}
+  };
+  generate.onclick=async()=>{
+    if(purposeMode.value==='manual' && !purpose.value.trim()){message.textContent='Enter an analysis purpose.';return;}
+    const draftId=criteriaDraftId;panel.disabled=true;message.textContent='Generating Criteria…';
+    try {
+      const response=await fetch('/api/criteria/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({purposeMode:purposeMode.value,purpose:purposeMode.value==='manual'?purpose.value:'',samples:sampleInputs.map(input=>input.value)})});
+      const data=await readApiJsonResponse(response);if(!response.ok)throw new Error(data.error);
+      if(criteriaDraftId!==draftId)return;
+      handleEditCriteria('',data.profile,{text:data.analysisPurpose,automatic:purposeMode.value==='automatic'});
+      handleMessage('criteria-message','Generated all Criteria fields. Review the draft and token estimates, then select Save Changes.');
+    } catch(error){message.textContent=error.message;}
+    finally{panel.disabled=false;}
+  };
+  return details;
+}
+function handleEditCriteria(id, template = null, generatedPurpose = null) {
   handleWriteRoute(id?`/criteria/${encodeURIComponent(id)}/edit`:'/criteria/new');
   criteriaTokenPanel=null;criteriaTokenDetailsOpen=false;
   handleCloseConfiguration('criteria-view');
@@ -1500,10 +1580,13 @@ function handleEditCriteria(id, template = null) {
   criteriaTokenPanel=element('div','','criteria-token-estimate');
   criteriaTokenPanel.setAttribute('role','status');criteriaTokenPanel.setAttribute('aria-live','polite');
   $('criteria-editor').replaceChildren(element('h3',id?'Edit Profile':'Add Profile'),criteriaTokenPanel,profilePanel,list,add);
+  if(generatedPurpose){const review=element('div','','criteria-token-estimate');review.append(element('h4',generatedPurpose.automatic?'Suggested Analysis Purpose':'Analysis Purpose'),element('p',generatedPurpose.text));$('criteria-editor').insertBefore(review,profilePanel);}
+  if(!id)$('criteria-editor').insertBefore(renderCriteriaGenerator(),profilePanel);
+  if(!id)$('criteria-editor').insertBefore(element('hr','','criteria-authoring-divider'),profilePanel);
   if(!id && Object.keys(criteriaTemplates).length) {
-    const label=element('label','Start From Template');const select=element('select','');select.append(new Option('Custom Decisions',''));
+    const label=element('label','Start From Template','criteria-template-start');const select=element('select','');select.setAttribute('aria-label','Start From Template');select.append(new Option('Custom Decisions',''));
     for(const [key,value] of Object.entries(criteriaTemplates))select.append(new Option(value.label,key));
-    select.onchange=()=>{if(select.value){const template=structuredClone(criteriaTemplates[select.value]);if(Object.values(criteriaProfiles).some(profile=>profile.label===template.label))template.label+=' (Clone)';handleEditCriteria('',template);}};label.append(select);addHelp(label,select,'Load a starting definition into this draft. Choose VOC KOR or ENG for full conversations; choosing a template replaces the current draft.');$('criteria-editor').insertBefore(label,profilePanel);
+    select.onchange=()=>{if(select.value){const template=structuredClone(criteriaTemplates[select.value]);if(Object.values(criteriaProfiles).some(profile=>profile.label===template.label))template.label+=' (Clone)';handleEditCriteria('',template);}};label.append(select);addHelp(label,select,'Choose a template as the starting point, or select Custom Decisions to write your own. Choosing a template replaces the current draft.');$('criteria-editor').insertBefore(label,profilePanel);
   }
   $('criteria-editor').hidden=false;$('cancel-criteria').hidden=false;handleValidateCriteria();renderCriteria();
 }

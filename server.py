@@ -59,6 +59,7 @@ from config import (
 )
 from config_store import get_data_directory
 from configured_sources import follow_configured, read_configured
+from criteria_generation import generate_criteria, preview_samples
 from host_sources import host_metadata, read_host_sources
 from jobs import JOBS, Job, read_archived_run, replay_archived_run
 from profiles import (
@@ -1073,6 +1074,40 @@ async def handle_sources(request: Request) -> Response:
     return _json(200, {"sources": sources})
 
 
+async def handle_criteria_generation(request: Request) -> Response:
+    """Preview Source inputs or generate a draft only from explicitly sent samples."""
+    if not _allowed_origin(request, files=True):
+        return _json(
+            403, {"error": "Criteria generation requires a trusted UI origin."}
+        )
+    try:
+        raw = bytearray()
+        async for chunk in request.stream():
+            raw.extend(chunk)
+            if len(raw) > 160_000:
+                raise ValueError("Criteria generation request is too large.")
+        body = json.loads(raw)
+        if not isinstance(body, dict):
+            raise TypeError("Provide a Criteria generation request object.")
+        if request.url.path.endswith("/samples"):
+            return _json(200, {"samples": await preview_samples(body)})
+        return _json(200, await generate_criteria(body))
+    except (httpx.HTTPError, TimeoutError):
+        return _json(
+            502, {"error": "Source or OpenAI request timed out or failed. Retry."}
+        )
+    except (ValueError, TypeError, OSError, KeyError):
+        # Provider bodies and Source contents may contain secrets; never echo them.
+        return _json(
+            400,
+            {
+                "error": "Could not generate Criteria or preview samples. "
+                "Check the Source, samples, purpose, OpenAI settings, and retry. "
+                "No changes were saved."
+            },
+        )
+
+
 async def handle_criteria(request: Request) -> Response:
     """Manage fixed-category profiles with the same trusted-origin rules as Actions."""
     if not _allowed_origin(request, files=True):
@@ -1478,6 +1513,8 @@ app = Starlette(
         Route("/api/ssh-hosts", handle_ssh_hosts, methods=["POST", "PUT", "DELETE"]),
         Route("/api/sources", handle_sources, methods=["POST", "PUT"]),
         Route("/api/criteria", handle_criteria, methods=["POST", "PUT"]),
+        Route("/api/criteria/samples", handle_criteria_generation, methods=["POST"]),
+        Route("/api/criteria/generate", handle_criteria_generation, methods=["POST"]),
         Route("/api/actions/{action_id}/reset", handle_reset_action, methods=["POST"]),
         Route("/api/actions", handle_actions, methods=["GET", "POST", "PUT"]),
         Route("/api/status", handle_status, methods=["GET"]),

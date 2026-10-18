@@ -145,6 +145,20 @@ Existing Sources default to **TEXT (Chunk)**. See [Sources](docs/sources.md) and
 See the [VOC walkthrough and complete sample form values](docs/voc.md) and
 [field-by-field Criteria authoring guide](docs/criteria.md) before customizing.
 
+Criteria can also be drafted with **Generate With AI** in Add Profile. Set
+`OPENAI_API_KEY` and `OPENAI_CRITERIA_MODEL` (default `gpt-5.6-terra`) in DeciFlow's `.env`
+and restart DeciFlow. Select a Source (and one SSH Host for remote files), preview
+and redact up to 8 samples (24,000 bytes total). Analysis Purpose Mode defaults to
+Automatic (ChatGPT); choose Manual to supply your own objective. Review the
+suggested purpose and generated Criteria before saving.
+Events Per Sample groups TEXT events for preview only; JSONL shows an explanation
+that one record is one sample. Purpose guidance explains the desired decisions,
+judgment time, and rules.
+OpenAI receives the edited samples, purpose, and authoring rules; generation incurs
+API charges. Review the complete validated draft and select **Save Changes**.
+Classification continues to use Laya or Jev; generation does not assign a Task.
+See [AI Criteria generation](docs/criteria.md#generate-criteria-with-ai).
+
 ### Government QnA Sample
 
 **VOC Central Gov Consulting QnA** is also added at startup, including to existing

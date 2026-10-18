@@ -143,6 +143,19 @@ Content Field는 비어 있지 않은 문자열을 담은 최상위 필드의 �
 [VOC 실습 가이드·전체 샘플 입력값](docs/voc.ko.md)과
 [Criteria 필드별 작성 가이드](docs/criteria.ko.md)를 참고하여 수정하세요.
 
+Add Profile의 **Generate With AI**로 Criteria 전체 초안을 작성할 수도 있습니다.
+DeciFlow의 `.env`에 `OPENAI_API_KEY`와 `OPENAI_CRITERIA_MODEL`(기본 `gpt-5.6-terra`)을
+설정하고 DeciFlow를 재시작하세요. Source(원격 파일은 SSH Host 하나 포함)를 선택하고
+최대 8개 샘플(총 24,000바이트)을 확인·수정하세요. Analysis Purpose Mode의 기본값은
+Automatic (ChatGPT)이며 목적을 직접 지정하려면 Manual을 선택합니다.
+저장 전에 제안한 목적과 생성된 Criteria를 확인하세요.
+Events Per Sample은 미리보기 샘플 하나에 묶을 TEXT 이벤트 수입니다.
+JSONL은 입력칸 대신 레코드 하나가 샘플 하나라는 안내를 표시합니다. 목적 작성 안내에서 판단 항목, 판단 시점, 규칙과 예시를 확인할 수 있습니다.
+수정한 샘플, 목적, 작성 규칙이 OpenAI에 전송되며 API 요금이 발생합니다.
+검증된 전체 초안을 검토하고 **Save Changes**로 저장하세요.
+실제 분류는 계속 Laya 또는 Jev가 수행하며 Task에 자동 할당하지 않습니다.
+[AI Criteria 생성](docs/criteria.ko.md#ai로-criteria-생성)을 참고하세요.
+
 ### 정부기관 QnA 샘플
 
 **VOC Central Gov Consulting QnA**는 기존 설치를 포함해 시작 시 자동 추가됩니다.
