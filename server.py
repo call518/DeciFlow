@@ -195,6 +195,51 @@ async def handle_status(request: Request) -> Response:
     )
 
 
+async def _check_engine_connection(engine: Engine, client: httpx.AsyncClient) -> str:
+    """Probe the selected provider without submitting an inference request."""
+    if engine.name == "jev" and not engine.api_key:
+        return "authentication_error"
+    url = httpx.URL(engine.url)
+    prefix = url.path.removesuffix("/v1/systemone")
+    path = f"{prefix}/health" if engine.name == "laya" else "/v1/models"
+    url = url.copy_with(path=path, query=None, fragment=None)
+    headers = {"Authorization": f"Bearer {engine.api_key}"} if engine.api_key else {}
+    try:
+        async with asyncio.timeout(5):
+            response = await client.get(url, headers=headers)
+    except (TimeoutError, httpx.TimeoutException):
+        return "timeout"
+    except httpx.RequestError:
+        return "disconnected"
+    if response.status_code in {401, 403}:
+        return "authentication_error"
+    if not response.is_success:
+        return "api_error"
+    try:
+        data = response.json()
+    except ValueError:
+        return "api_error"
+    if not isinstance(data, dict):
+        return "api_error"
+    valid = (
+        data.get("status") == "ok"
+        if engine.name == "laya"
+        else isinstance(data.get("models"), list)
+    )
+    return "connected" if valid else "api_error"
+
+
+async def handle_engine_health(request: Request) -> Response:
+    """Check provider reachability without inference or exposing credentials."""
+    try:
+        engine = get_engine()
+    except ValueError:
+        return _json(503, {"error": "Invalid decision engine configuration."})
+    async with httpx.AsyncClient(timeout=5) as client:
+        state = await _check_engine_connection(engine, client)
+    return _json(200, {"engine": engine.name, "connection": state})
+
+
 def _encode(event: Result) -> str:
     return json.dumps(event, ensure_ascii=True, allow_nan=False) + "\n"
 
@@ -1518,6 +1563,7 @@ app = Starlette(
         Route("/api/actions/{action_id}/reset", handle_reset_action, methods=["POST"]),
         Route("/api/actions", handle_actions, methods=["GET", "POST", "PUT"]),
         Route("/api/status", handle_status, methods=["GET"]),
+        Route("/api/engine-health", handle_engine_health, methods=["GET"]),
         Route("/api/classify", handle_classify, methods=["POST"]),
         Route("/api/file-source", handle_file_source, methods=["POST"]),
         Route("/{path:path}", handle_asset),

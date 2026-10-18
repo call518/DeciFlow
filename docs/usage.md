@@ -6,9 +6,7 @@ On wide screens, the left **40%** shows **Classification Overview → Task Monit
 the right **60%** shows **Classification Results**. On wide screens, the left information panel and right results panel scroll independently. Narrow screens stack the panels and use normal page scrolling.
 The sidebar identifies the DeciFlow reader host by hostname, detected IPs, and
 OS/version. In WSL or containers, these identify that environment, not its host OS;
-IPs are not a full interface inventory. Source SSH hosts are selected per Source in Tasks. The status in parentheses after the engine name, e.g. **Laya (Connected)**, reports the last actual request: Not checked
-before a request, then Connected, Disconnected, Timed out, or API error. It is not
-a continuous health check; local input rejections do not change the status.
+IPs are not a full interface inventory. Source SSH hosts are selected per Source in Tasks. The engine status starts with Checking… on each page load or refresh. DeciFlow checks Laya `GET /health` or Jev `GET /v1/models` once on the backend, without inference. A successful HTTP check shows Reachable; it does not guarantee model readiness or authentication on Laya versions with public health endpoints. New classification requests then show Operational, Unreachable, Timed Out, Auth Error, or API Error. The tooltip includes the check basis and time. Historical results and local input rejections do not change the status; view changes do not repeat the HTTP check. A late HTTP check cannot overwrite an actual request result. This is not continuous monitoring. A missing DeciFlow check endpoint shows Check Unavailable (restart the UI server); a failed check request shows Check Failed, distinct from an engine API Error.
 
 ### Tasks and criteria
 

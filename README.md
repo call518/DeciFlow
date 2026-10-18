@@ -233,7 +233,7 @@ See [Sources and SSH settings](docs/sources.md) for setup and trust management.
 - **Batch:** Analyze registered local or SSH files. Docker maps host `/var/log` to `/host-logs/var/log`.
 - **Realtime:** Follow new logs; choose criteria and chunk size per source.
 - **Processing status:** Success / Failed / Total shows classified, failed, and total completed chunks. Action Success / Failed / Total counts follow-up executions separately. Needs Review
-  counts successful classifications only. Engine connection shows the last actual request; initially Not checked.
+  counts successful classifications only. On page load, an HTTP-only check shows Reachable when the engine responds. New classification requests then update the status to Operational or an error. Historical results do not change it.
 - **Review:** Filter Needs Review and record corrections. **Export All JSON** includes the entire selected run; **Export Reviewed JSON** includes only results with human corrections to Choice, Score, or Noul decisions. Certain does not
   guarantee accuracy. Task definitions and run history persist in the data volume; reviewer corrections persist in SQLite.
 

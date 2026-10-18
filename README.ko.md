@@ -228,7 +228,7 @@ SSH와 별개인 `DECIFLOW_DATA_DIR/ssh-hosts/known_hosts`에만 보존합니다
 - **Batch:** 등록한 로컬·SSH 파일을 분석합니다. Docker에서 호스트 `/var/log`는 `/host-logs/var/log`입니다.
 - **Realtime:** 새 로그를 감시합니다. 소스별 판정 기준과 청크 크기를 선택합니다.
 - **처리 지표:** Success / Failed / Total로 성공·실패·처리 완료 전체 청크를 표시합니다. Action Success / Failed / Total은 후속 작업을 별도 집계합니다. Needs Review는 성공 판정만 집계합니다.
-  엔진·모델 옆 연결 상태는 마지막 실제 요청 기준이며 요청 전에는 Not checked입니다.
+  페이지 로드 시 HTTP 점검에서 엔진이 응답하면 Reachable을 표시합니다. 이후 새 분류 요청 결과에 따라 Operational 또는 오류 상태로 갱신하며, 과거 결과 조회는 상태를 바꾸지 않습니다.
 - **검토:** Needs Review로 결과를 추리고 수동 정정을 기록합니다. **Export All JSON**은 선택한 실행 전체, **Export Reviewed JSON**은 Choice·Score·Noul 중 하나라도 사람이 정정한 결과만 내보냅니다.
   Certain은 정확도 보장이 아닙니다. Task 정의·실행 이력은 데이터 볼륨에 보존하며 수동 정정은 SQLite에 보존합니다.
 

@@ -286,15 +286,45 @@ let engine = 'laya';
 let resultEngine = engine;
 let resultSourceMode = sourceMode;
 let engineLabel = 'Laya';
-let engineConnection = 'not_checked';
+let engineConnection = 'checking';
 let engineConnectionNode;
-function handleEngineConnection(state) {
+let engineRequestObserved = false;
+let engineConnectionDetail = '';
+const engineRunSequences = new Map();
+function handleEngineConnection(state, source = 'request') {
   engineConnection = state;
+  if(source === 'request')engineRequestObserved = true;
+  const basis=source === 'request' ? 'Last actual classification request' : 'HTTP check on page load; inference has not been verified';
+  engineConnectionDetail=`${basis} · ${new Date().toISOString()}${state === 'authentication_error' ? ' · Authentication failed; check the API key and permissions.' : state === 'check_unavailable' ? ' · Restart the DeciFlow UI server to enable this HTTP check.' : ''}`;
+  renderEngineConnection();
+}
+function renderEngineConnection() {
   if (!engineConnectionNode) return;
-  const captions = { not_checked: 'Not checked', connected: 'Connected', disconnected: 'Disconnected', timeout: 'Timed out', api_error: 'API error' };
-  engineConnectionNode.textContent = ` (${captions[state]})`;
-  engineConnectionNode.className = `engine-connection ${state}`;
-  engineConnectionNode.title = 'Last actual engine request; not a continuous health check. Local input rejections do not change this status.';
+  const captions = { checking: 'Checking…', reachable: 'Reachable', connected: 'Operational', disconnected: 'Unreachable', timeout: 'Timed Out', authentication_error: 'Auth Error', api_error: 'API Error', check_unavailable: 'Check Unavailable', check_error: 'Check Failed' };
+  engineConnectionNode.textContent = ` (${captions[engineConnection]})`;
+  engineConnectionNode.className = `engine-connection ${engineConnection}`;
+  engineConnectionNode.title = engineConnectionDetail;
+}
+function handleEngineResultConnection(result) {
+  if(result.engine && result.engine !== engine)return;
+  if(result.engineConnection){
+    const state=[401,403].includes(result.httpStatus) ? 'authentication_error' : result.error && result.engineConnection === 'connected' ? 'api_error' : result.engineConnection;
+    handleEngineConnection(state);
+  }
+  else if(!result.error)handleEngineConnection('connected');
+}
+async function handleCheckEngineConnection() {
+  if(!engineRequestObserved)handleEngineConnection('checking','health');
+  try {
+    const response = await fetch('/api/engine-health');
+    if([404,405].includes(response.status)){
+      if(!engineRequestObserved)handleEngineConnection('check_unavailable','health');
+      return;
+    }
+    const data = await readApiJsonResponse(response);
+    if (!response.ok || data.engine !== engine) throw new Error('Connection check failed.');
+    if(!engineRequestObserved)handleEngineConnection(data.connection === 'connected' ? 'reachable' : data.connection,'health');
+  } catch { if(!engineRequestObserved)handleEngineConnection('check_error','health'); }
 }
 function needsReview(result) {
   return !result.error && Boolean(result.review);
@@ -1038,6 +1068,7 @@ async function handleRunTask(identity) {
   try {
     if(task.activeRun){handleNavigation('main',null,`/runs/${task.activeRun.jobId}`);return await handleWatchRun(task.activeRun);}
     const response=await fetch(`/api/tasks/${identity}/run`,{method:'POST'});const job=await readApiJsonResponse(response);if(!response.ok)throw new Error(job.error);
+    engineRunSequences.set(job.jobId,0);
     await handleLoadTasks();handleNavigation('main',null,`/runs/${job.jobId}`);return await handleWatchRun(job);
   }catch(error){$('message').className='error-message';handleMessage('message',error.message,true);}
 }
@@ -2371,6 +2402,8 @@ async function handleProcessing(job) {
   $('message').className = '';
   handleMessage('message',`${engineLabel} is classifying your data…`);
   let started = false;
+  let replayedResults = 0;
+  const previousCompleted = job.counts?.completed || 0;
   try {
     activeJobId = job.jobId; activeJobState = job.state; rememberJob(activeJobId);
     const response = await fetch(`/api/jobs/${activeJobId}/events`, { method: 'POST', signal: activeRequest.signal });
@@ -2402,8 +2435,8 @@ async function handleProcessing(job) {
         results[event.index] = event.result;
         completionOrder.push(event.index);
         completed++;
-        if (event.result.engineConnection) handleEngineConnection(event.result.engineConnection);
-        else if (!event.result.error) handleEngineConnection('connected');
+        if(engineRunSequences.has(job.jobId) || (['running','pausing','paused'].includes(job.state) && replayedResults>=previousCompleted))handleEngineResultConnection(event.result);
+        replayedResults++;
         elapsedMs = event.elapsedMs;
       } else if (event.type === 'done') {
         elapsedMs = event.elapsedMs;
@@ -2612,9 +2645,12 @@ async function handleRefreshResults(reset=false,poll=false) {
   if(data.items){
     const previous=new Map(view.items.map(item=>[item.sequence,item]));
     let items=data.items.map(item=>previous.get(item.sequence) || item);
-    const latest=items[0]?.result;
-    if(latest?.engineConnection)handleEngineConnection(latest.engineConnection);
-    else if(latest && !latest.error)handleEngineConnection('connected');
+    const previousSequence=engineRunSequences.get(view.id);
+    if(previousSequence!==undefined){
+      const latest=items.find(item=>item.sequence>previousSequence && (item.result.engineConnection || !item.result.error));
+      if(latest)handleEngineResultConnection(latest.result);
+    }
+    engineRunSequences.set(view.id,Math.max(previousSequence || 0,data.sequence));
     const merged=after!==null?[...items,...view.items].filter((item,index,array)=>array.findIndex(other=>other.sequence===item.sequence)===index):items;
     view.hasNext=after!==null ? view.hasNext || data.hasNext || merged.length>data.limit : data.hasNext;
     resultsPerPage=data.limit;view.items=merged.slice(0,resultsPerPage);
@@ -2700,7 +2736,8 @@ fetch('/api/status').then(async response => {
   engineConnectionNode = element('strong', '');
   engineConnectionNode.setAttribute('role', 'status');
   $('status').append(engineConnectionNode);
-  handleEngineConnection(engineConnection);
+  renderEngineConnection();
+  handleCheckEngineConnection();
   $('status').append(element('span', ' · Model: '));
   $('status').append(element('strong', data.model, 'selected-model'));
   if (!data.configured) $('status').append(element('span', ' · API key required'));

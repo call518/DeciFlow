@@ -71,6 +71,7 @@ function workspace(events, status, storage = { getItem: () => null, setItem() {}
       if (path === '/api/ssh-keys') return { ok: true, json: async () => ({ keys: [] }) };
       if (path === '/api/sources') return { ok: true, json: async () => ({ sources: options.method === 'PUT' ? JSON.parse(options.body).map((source,index)=>({...source,id:source.id || String(index+4).padStart(32,'0')})) : vm.runInContext('sampleSources.map(source=>({...source}))',context) }) };
       if (path === '/api/actions') return { ok: true, json: async () => ({ actions: [] }) };
+      if (path === '/api/engine-health') return {ok:true,json:async()=>({engine:status?.engine || 'laya',connection:'connected'})};
       if (path === '/api/status') return status ? { ok: true, json: async () => status } : new Promise(() => {});
       requests.push(JSON.parse(options.body));
       return { ok: true, body: {} };
@@ -665,7 +666,7 @@ test('selected engine is explicitly named and emphasized for both engines', asyn
       assert.equal(status.children[3].textContent, 'test');
       assert.equal(status.children[3].className, 'selected-model');
       assert.equal(status.children.length, configured ? 4 : 5);
-      assert.equal(status.children[1].textContent, ' (Not checked)');
+      assert.equal(status.children[1].textContent, ' (Reachable)');
       if (!configured) assert.equal(status.children[4].textContent, ' · API key required');
     }
   }
@@ -1041,12 +1042,13 @@ test('status initialization automatically restores the remembered job after refr
   context.fetch = async path => {
     if(path==='/api/tasks')return {ok:true,json:async()=>({tasks:vm.runInContext('registeredTasks',context)})};
     paths.push(path);
+    if (path === '/api/engine-health') return {ok:true,json:async()=>({engine:'laya',connection:'connected'})};
     if (path === '/api/jobs/remembered') return {ok:true,json:async () => ({jobId:'remembered',state:'completed',settings:{mode:'batch',sources:[]}})};
     assert.equal(path, '/api/jobs/remembered/events');
     return {ok:true,body:{}};
   };
   await new Promise(resolve => setImmediate(resolve));
-  assert.deepEqual(paths, ['/api/jobs/remembered', '/api/jobs/remembered/events']);
+  assert.deepEqual(paths, ['/api/engine-health', '/api/jobs/remembered', '/api/jobs/remembered/events']);
   assert.equal(requests.length, 0);
   assert.equal(logs(nodes)[0],'log-0');
   assert.equal(vm.runInContext('completed', context), 1);
@@ -1246,11 +1248,11 @@ test('engine connection follows actual requests for both providers without local
     const { nodes, context } = workspace(events, status);
     await new Promise(resolve => setImmediate(resolve));
     const connection = nodes.get('status').children[1];
-    assert.equal(connection.textContent, ' (Not checked)');
+    assert.equal(connection.textContent, ' (Reachable)');
     const states = [
-      ['connected', 'Connected'], ['disconnected', 'Disconnected'],
-      [undefined, 'Disconnected'], ['timeout', 'Timed out'],
-      ['api_error', 'API error'], ['connected', 'Connected'],
+      ['connected', 'Operational'], ['disconnected', 'Unreachable'],
+      [undefined, 'Unreachable'], ['timeout', 'Timed Out'],
+      ['api_error', 'API Error'], ['connected', 'Operational'],
     ];
     context.readEvents = async (_, receive) => {
       receive(events[0]);
@@ -3821,4 +3823,98 @@ test('Starting an empty paged run removes the previous run cards', async()=>{
   assert.equal(nodes.get('results').children.length,1);
   assert.equal(nodes.get('results').children[0].textContent,'No results to display.');
   assert.equal(nodes.get('page-info').textContent,'Page 1 · 0 results shown');
+});
+
+
+test('HTTP check runs once per load and cannot overwrite actual request status',async()=>{
+  for(const engine of ['laya','jev']){
+    const {nodes,context}=workspace([], {host:{hostname:'host',addresses:[],os:'Linux'},engine,configured:true,model:'test'});
+    const original=context.fetch;let checks=0,finish;
+    context.fetch=(path,options)=>{
+      if(path!=='/api/engine-health')return original(path,options);
+      checks++;return new Promise(resolve=>{finish=resolve;});
+    };
+    await new Promise(resolve=>setImmediate(resolve));
+    const connection=nodes.get('status').children[1];
+    assert.equal(connection.textContent,' (Checking…)');
+    vm.runInContext("handleEngineResultConnection({engineConnection:'connected'})",context);
+    assert.equal(connection.textContent,' (Operational)');
+    assert.match(connection.title,/Last actual classification request/);
+    finish({ok:true,json:async()=>({engine,connection:'disconnected'})});
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(connection.textContent,' (Operational)');
+    vm.runInContext("render();handleNavigation('tasks');handleNavigation('main')",context);
+    assert.equal(checks,1);
+    vm.runInContext("handleEngineResultConnection({engineConnection:'api_error',httpStatus:401})",context);
+    assert.equal(connection.textContent,' (Auth Error)');
+    assert.match(connection.title,/Authentication failed/);
+    vm.runInContext("handleEngineResultConnection({engineConnection:'connected',error:'Invalid classification response'})",context);
+    assert.equal(connection.textContent,' (API Error)');
+  }
+});
+
+test('paged historical results do not override HTTP status but new live results do',async()=>{
+  const {nodes,context,append}=pagedWorkspace();
+  vm.runInContext("engineConnectionNode=document.createElement('strong');handleEngineConnection('reachable','health')",context);
+  const caption=()=>vm.runInContext('engineConnectionNode.textContent',context);
+  await vm.runInContext("handlePagedProcessing({jobId:'live',state:'running',settings:{mode:'batch'},pagedResults:true})",context);
+  assert.equal(caption(),' (Reachable)');
+  append();await vm.runInContext('handleRefreshResults(false,true)',context);
+  assert.equal(caption(),' (Operational)');
+  vm.runInContext("handleEngineResultConnection({engineConnection:'disconnected'})",context);
+  await vm.runInContext("handlePagedProcessing({jobId:'history',state:'completed',settings:{mode:'batch'},pagedResults:true})",context);
+  assert.equal(caption(),' (Unreachable)');
+});
+
+
+test('stream replay ignores completed runs and old requests in running runs',async()=>{
+  for(const state of ['completed','running']){
+    const {context,nodes}=workspace([], {host:{hostname:'host',addresses:[],os:'Linux'},engine:'laya',configured:true,model:'test'});
+    await new Promise(resolve=>setImmediate(resolve));
+    const original=context.fetch;
+    context.fetch=(path,options)=>path.endsWith('/events')?Promise.resolve({ok:true,body:{}}):original(path,options);
+    context.readEvents=async(_,receive)=>{
+      receive({type:'start',engine:'laya',total:1});
+      receive({type:'result',index:0,elapsedMs:1,result:{log:'old',category:'normal',elapsedMs:1,requestedAt:'2000-01-01T00:00:00Z',engineConnection:'connected'}});
+      receive({type:'done',state:'completed',elapsedMs:1});
+    };
+    await vm.runInContext(`handleProcessing({jobId:'old',state:'${state}',settings:{mode:'batch',sources:[]},counts:{completed:1}})`,context);
+    assert.equal(nodes.get('status').children[1].textContent,' (Reachable)');
+  }
+});
+
+
+test('missing HTTP check route is distinct from an engine API error',async()=>{
+  const {nodes,context}=workspace([], {host:{hostname:'host',addresses:[],os:'Linux'},engine:'laya',configured:true,model:'test'});
+  await new Promise(resolve=>setImmediate(resolve));
+  context.fetch=async()=>({ok:false,status:404,json:async()=>{throw Error('Not JSON');}});
+  await vm.runInContext('handleCheckEngineConnection()',context);
+  const connection=nodes.get('status').children[1];
+  assert.equal(connection.textContent,' (Check Unavailable)');
+  assert.match(connection.title,/Restart the DeciFlow UI server/);
+  vm.runInContext("handleEngineResultConnection({engineConnection:'connected'})",context);
+  assert.equal(connection.textContent,' (Operational)');
+});
+
+test('first page of a new stopped run updates availability without replaying old requests',async()=>{
+  for(const engine of ['laya','jev']){
+    const {context,nodes}=pagedWorkspace();
+    vm.runInContext(`engine='${engine}';engineConnectionNode=document.createElement('strong');handleEngineConnection('check_unavailable','health')`,context);
+    const requestedAt='2000-01-01T00:00:00Z';
+    const original=context.fetch;
+    context.fetch=async(path,options)=>{
+      const response=await original(path,options);
+      if(path==='/api/tasks/test-task/run')return {ok:true,json:async()=>({jobId:'new',state:'stopped',settings:{mode:'batch'},pagedResults:true})};
+      if(!path.endsWith('/results'))return response;
+      const data=await response.json();
+      data.snapshot.state='stopped';
+      data.items=[{sequence:2,result:{log:'new',engine,requestedAt,category:'normal',elapsedMs:1,engineConnection:'connected'}}];
+      return {ok:true,json:async()=>data};
+    };
+    await runTask(nodes);
+    assert.equal(vm.runInContext('engineConnectionNode.textContent',context),' (Operational)');
+    vm.runInContext("handleEngineResultConnection({engineConnection:'disconnected'})",context);
+    await vm.runInContext('handleRefreshResults(true)',context);
+    assert.equal(vm.runInContext('engineConnectionNode.textContent',context),' (Unreachable)');
+  }
 });

@@ -7,9 +7,7 @@
 좁은 화면은 세로 배치와 일반 페이지 스크롤을 사용합니다.
 사이드바에는 로그를 읽는 DeciFlow 노드의 hostname, 확인된 IP, OS·버전을 표시합니다.
 WSL·컨테이너에서는 해당 환경의 정보이며 호스트 OS 정보가 아닙니다. IP는 전체
-인터페이스 목록이 아닙니다. 대상 SSH 로그 호스트는 Tasks의 Source별로 지정합니다. 엔진명 뒤 괄호의 상태는 마지막 실제 엔진 요청 결과입니다. 예: **Laya (Connected)**. 요청 전에는
-Not checked, 이후에는 Connected·Disconnected·Timed out·API error를 표시합니다.
-지속적인 상태 검사는 아니며 로컬 입력 거절은 연결 상태를 바꾸지 않습니다.
+인터페이스 목록이 아닙니다. 대상 SSH 로그 호스트는 Tasks의 Source별로 지정합니다. 엔진 상태는 페이지를 열거나 새로고침하면 Checking…으로 시작합니다. DeciFlow 백엔드에서 추론 없이 Laya `GET /health` 또는 Jev `GET /v1/models`를 한 번 호출합니다. HTTP 점검 성공은 Reachable로 표시하며 모델 준비나 공개 health 엔드포인트를 쓰는 Laya 버전의 인증까지 보장하지 않습니다. 이후 새 분류 요청 결과에 따라 Operational·Unreachable·Timed Out·Auth Error·API Error를 표시합니다. 툴팁에는 확인 근거와 시각을 표시합니다. 과거 결과와 로컬 입력 거절은 상태를 바꾸지 않고, 화면 전환은 HTTP 점검을 반복하지 않습니다. 늦게 끝난 HTTP 점검은 실제 요청 결과를 덮어쓰지 않습니다. 지속적인 상태 감시는 아닙니다. DeciFlow 점검 경로가 없으면 Check Unavailable(UI 서버 재시작 필요), 점검 요청 자체가 실패하면 Check Failed를 표시해 엔진 API Error와 구분합니다.
 
 ### Tasks와 판정 기준
 
