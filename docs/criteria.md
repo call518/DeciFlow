@@ -32,7 +32,7 @@ representative model names and links to the official catalog for availability.
    Remove sensitive content first. Generation incurs OpenAI API charges.
 5. Review **Suggested Analysis Purpose** in automatic mode, or **Analysis Purpose**
    in manual mode, plus the populated Name, shared instructions, Decisions, options or
-   levels, summary visibility, Primary Classification, and token estimates.
+   levels, Primary Classification, and token estimates.
 6. Select **Save Changes** to persist the complete profile. Assign it to a Task
    separately and check representative classification results.
 
@@ -111,7 +111,6 @@ or order change.
 | Display Name | Human-readable result heading | `Handling Status`. Korean is also supported. It need not repeat the ID. |
 | Type | Expected answer format | Choice for categories, Score for ordered levels, Noul for Yes probability. |
 | Instructions | Question and rules for this decision only | `Distinguish outstanding organizational actions at the end of the conversation.` Keep shared principles in the upper section. |
-| Show in Result Summary | Whether to show this decision in each result summary | Unchecked decisions still run and appear under **More Decision Results...**. |
 
 **Distinguish the names:** Profile Name identifies the whole bundle selected by a
 Task; Decision ID is a result field key; Display Name is that field's visible
@@ -199,8 +198,7 @@ without calling an external API or tokenizer server.
 - **Jev** compares against the server's request and per-question budgets. Adding
   input consumes additional room in both.
 
-Name, Display Name and summary visibility are not counted as decision instructions.
-Unchecked summary decisions still run and remain in the estimated total.
+Name and Display Name are not counted as decision instructions.
 
 These are **rough character-based estimates**, not exact model tokenizer counts or
 billing. They account for question formatting, options and the app's shared safety
@@ -214,7 +212,7 @@ Warnings do not prevent saving.
 1. Clone or Add Profile. If using a template, select it first.
 2. Enter Name and shared Decision Instructions.
 3. Give each Decision a unique ID, display name, type, and instructions.
-4. Write Choice options or Score levels and select summary visibility.
+4. Write Choice options or Score levels.
 5. Select one Choice as Primary Classification.
 6. Save Changes. Cancel Edit discards the unsaved draft.
 7. Edit the Task, choose the new Criteria for its Source row, and save.
@@ -261,8 +259,7 @@ judgments about resolution or promised follow-up.
 
 ## Results, Review, and Storage
 
-Summary decisions appear on each result. **More Decision Results...** shows only
-items hidden from the summary; **Probabilities and Criteria** shows its distribution and definitions.
+All decisions appear on each result in their configured order; **Probabilities and Criteria** shows its distribution and definitions.
 **Review Decisions** accepts Choice options, bounded Score values, and Noul
 probabilities. Clear a correction to return to Not Reviewed. AI answers and charts
 remain unchanged. Export Reviewed JSON includes results with any changed decision.

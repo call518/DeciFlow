@@ -57,8 +57,7 @@ Batch를 사용하세요. Jev를 선택했다면 유료 API를 사용합니다.
 
 ## 2. 결과에서 확인할 내용
 
-- 요약 카드: 문의 유형, 처리 상태, 후속 조치 필요.
-- **More Decision Results...**: 요약에서 숨긴 후속 조치 담당·긴급도 2개 항목만 표시.
+- 판단 카드에는 후속 조치 담당·긴급도를 포함한 모든 항목을 설정된 순서대로 표시.
 - **Input Text**: 이 판단의 근거가 된 전체 대화.
 - **Probabilities and Criteria**: 항목별 확률·지시문·선택지 정의.
 - **Review Decisions**: 사람이 확인한 정정값. AI 원본과 차트는 유지됩니다.
@@ -129,7 +128,6 @@ DeciFlow의 Jev 입력 바이트 검사는 정확한 토큰 계측이 아닙니�
 | Decision ID | `inquiry_type` |
 | Display Name | 문의 유형 |
 | Type | Choice |
-| Show in Result Summary | 체크 |
 
 **Instructions**
 
@@ -155,7 +153,6 @@ DeciFlow의 Jev 입력 바이트 검사는 정확한 토큰 계측이 아닙니�
 | Decision ID | `handling_status` |
 | Display Name | 처리 상태 |
 | Type | Choice |
-| Show in Result Summary | 체크 |
 
 **Instructions**
 
@@ -181,7 +178,6 @@ DeciFlow의 Jev 입력 바이트 검사는 정확한 토큰 계측이 아닙니�
 | Decision ID | `follow_up_owner` |
 | Display Name | 후속 조치 담당 |
 | Type | Choice |
-| Show in Result Summary | 체크 해제 |
 
 **Instructions**
 
@@ -207,7 +203,6 @@ DeciFlow의 Jev 입력 바이트 검사는 정확한 토큰 계측이 아닙니�
 | Decision ID | `urgency` |
 | Display Name | 긴급도 |
 | Type | Score |
-| Show in Result Summary | 체크 해제 |
 
 **Instructions**
 
@@ -231,7 +226,6 @@ DeciFlow의 Jev 입력 바이트 검사는 정확한 토큰 계측이 아닙니�
 | Decision ID | `follow_up_required` |
 | Display Name | 후속 조치 필요 |
 | Type | Noul |
-| Show in Result Summary | 체크 |
 
 **Instructions**
 

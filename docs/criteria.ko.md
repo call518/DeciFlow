@@ -32,7 +32,7 @@ OpenAI 키 없이도 이 가이드를 따라 Criteria를 직접 작성·수정·
    민감한 내용은 먼저 제거하세요. OpenAI API 요금이 발생합니다.
 5. 자동 모드의 **Suggested Analysis Purpose** 또는 수동 모드의 **Analysis Purpose**와
    자동 입력된 이름, 공통 지침, 순서대로 구성된 Decisions, 선택지·단계,
-   요약 표시 여부, Primary Classification과 토큰 추정치를 검토합니다.
+   Primary Classification과 토큰 추정치를 검토합니다.
 6. **Save Changes**로 전체 프로필을 저장합니다. Task에는 별도로 할당하고
    대표 입력에 대한 실제 분류 결과를 확인하세요.
 
@@ -107,7 +107,6 @@ OpenAI는 Criteria 작성에만 사용하며 실제 분류는 자동 대체 없�
 | Display Name | 사람이 읽는 결과 카드 제목 | `처리 상태`. 한국어 사용 가능. ID를 이름 칸에 반복할 필요는 없습니다. |
 | Type | 어떤 형태의 답을 받을지 선택 | 유형 분류는 Choice, 순서 있는 수준은 Score, 예·아니요 확률은 Noul. |
 | Instructions | 이 항목만의 질문과 판정 규칙 | `대화 종료 시 회사 측 미완료 조치가 남아 있는지 구분한다.` 공통 원칙은 상단에 둡니다. |
-| Show in Result Summary | 각 결과의 요약에 표시할지 | 체크 해제해도 판단은 수행하며 More Decision Results...에서 볼 수 있습니다. |
 
 **세 가지 이름을 구분하세요:** Profile Name은 Task가 선택하는 전체 묶음의 이름,
 Decision ID는 결과 필드 키, Display Name은 그 필드의 화면 제목입니다.
@@ -193,8 +192,7 @@ Add Profile·Edit Profile 제목 아래의 **Estimated Criteria Tokens**는 입�
 - **Jev**: 현재 서버의 전체 요청·질문별 한도와 비교합니다. 본문을 추가하면 두 한도
   모두 추가로 소비합니다.
 
-Name·Display Name·요약 표시 여부는 판단 지시문 비용에 포함하지 않습니다.
-요약 체크를 꺼도 해당 질문은 실행되므로 추정 총량은 줄지 않습니다.
+Name·Display Name는 판단 지시문 비용에 포함하지 않습니다.
 
 이 값은 문자 기반 **근사치**이며 정확한 모델 토크나이저 결과나 과금량이 아닙니다.
 질문별 서식·선택지·앱의 공통 안전 지시문을 반영하지만 실제 토크나이저에 따라 달라집니다.
@@ -207,7 +205,7 @@ N/A로 표시합니다. 경고만으로 저장을 차단하지는 않습니다.
 1. Clone 또는 Add Profile로 시작합니다. 템플릿을 쓸 경우 먼저 선택합니다.
 2. Name과 공통 Decision Instructions를 입력합니다.
 3. 각 Decision의 고유 ID·표시 이름·타입·지시문을 작성합니다.
-4. Choice 선택지 또는 Score 단계를 작성하고, 요약 표시 여부를 정합니다.
+4. Choice 선택지 또는 Score 단계를 작성합니다.
 5. Choice 항목 하나를 Primary Classification으로 선택합니다.
 6. Save Changes로 저장합니다. Cancel Edit는 미저장 초안을 버립니다.
 7. Task를 Edit하여 해당 Source 행의 Criteria에 새 프로필을 선택하고 저장합니다.
@@ -251,7 +249,7 @@ Actions를 위한 category·urgency·ticket 관련 필드도 유지합니다.
 
 ## 결과·검토·저장
 
-각 결과에 요약 대상으로 선택한 항목을 표시합니다. **More Decision Results...**는 요약에서 숨긴 항목만,
+각 결과에 모든 판단 항목을 설정된 순서대로 표시합니다.
 **Probabilities and Criteria**는 항목별 확률과 기준을 표시합니다. **Review Decisions**에서
 Choice 선택지·범위 내 Score 값·Noul 확률을 수정합니다. 수정값을 비우면 Not Reviewed로
 돌아갑니다. AI 원래 답변과 차트는 바꾸지 않습니다. Export Reviewed JSON은 어떤 항목이든

@@ -1398,6 +1398,10 @@ async def handle_result_page(request: Request) -> Response:
         state = await anyio.to_thread.run_sync(store.state, identity)
         if job is not None:
             state["snapshot"] = job.snapshot()
+        # Keep rows within the summary's committed event boundary.
+        through = body.get("through")
+        if through is None or (type(through) is int and through > state["sequence"]):
+            body["through"] = state["sequence"]
         page = (
             {}
             if body.get("onlySummary")

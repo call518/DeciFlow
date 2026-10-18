@@ -691,7 +691,7 @@ test('uncertain results retain their category color class', async () => {
       const badge = decisionCards(row)[0].children[1];
       assert.equal(badge.className, `badge ${category}${uncertain ? ' uncertain' : ''}`);
       assert.equal(badge.textContent.startsWith('Uncertain · '), false);
-      assert.equal(decisionCards(row)[0].children[0].children.some(node=>node.className==='decision-uncertainty' && node.textContent==='Uncertain'),uncertain);
+      assert.equal(decisionCards(row)[0].children[2].children.some(node=>node.className==='decision-uncertainty' && node.textContent==='Uncertain'),uncertain);
     }
   }
   const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8').replace(/\s*([{}:;])\s*/g, '$1');
@@ -2249,9 +2249,9 @@ test('Static page, section and dialog headings consistently use Title Case', () 
   }
 });
 
-function pagedWorkspace() {
+function pagedWorkspace(count=1000) {
   const state=workspace([]);
-  let records=Array.from({length:1000},(_,index)=>({sequence:index+1,result:{log:`record-${index+1}`,category:'normal',elapsedMs:1,review:false,hostId:'host-1'}}));
+  let records=Array.from({length:count},(_,index)=>({sequence:index+1,result:{log:`record-${index+1}`,category:'normal',elapsedMs:1,review:false,hostId:'host-1'}}));
   let limit=50;
   const original=state.context.fetch;const queries=[];
   state.context.fetch=async(path,options)=>{
@@ -2910,7 +2910,7 @@ test('JSONL Source format requires a content field and fixes Task chunk size at 
   assert.equal(vm.runInContext('sourceRows[0].size.disabled',context),false);
 });
 
-test('Ten mixed decisions share summary, detail, classification and typed review UI',async()=>{
+test('All ten mixed decisions appear equally regardless of legacy summary settings',async()=>{
   const event=result(0,false),definitions={},answers={};
   for(let i=0;i<10;i++) {
     const type=i<2?'choice':i<5?'score':'noul';
@@ -2919,11 +2919,9 @@ test('Ten mixed decisions share summary, detail, classification and typed review
   }
   Object.assign(event.result,{inputFormat:'jsonl',category:'pending',categoryFilter:'voc:pending',classificationGroup:'voc',primaryQuestion:'q0',profileLabel:'VOC',decisionDefinitions:definitions,decisions:answers});
   const {context,nodes}=workspace([event]);await runTask(nodes);
-  const row=nodes.get('results').children[0];assert.equal(decisionCards(row).length,3);
-  const details=row.children[0].children.find(child=>child.className==='all-decisions');
-  assert.equal(details.children[1].children.length,7);
-  assert.equal(details.children[0].textContent,'More Decision Results...');
-  assert.deepEqual(details.children[1].children.map(card=>card.children[0].textContent),Array.from({length:7},(_,i)=>`Decision ${i+3} (${i<2?'Score':'Noul'})`));
+  const row=nodes.get('results').children[0];assert.equal(decisionCards(row).length,10);
+  assert.equal(row.children[0].children.some(child=>child.className==='all-decisions'),false);
+  assert.deepEqual(decisionCards(row).map(card=>card.children[0].textContent),Array.from({length:10},(_,i)=>`Decision ${i} (${i<2?'Choice':i<5?'Score':'Noul'})`));
   assert.equal(row.children[1].className,'original-input');
   assert.ok(nodes.get('category-filter').children.some(option=>option.value==='voc:pending'));
   const reviews=row.children.at(-2).children[1];assert.equal(reviews.children.length,10);
@@ -2931,8 +2929,7 @@ test('Ten mixed decisions share summary, detail, classification and typed review
   assert.equal(vm.runInContext('results[0].reviewerDecisions.q5',context),.2);
   assert.equal(vm.runInContext('results[0].decisions.q5.noul',context),.8);
   assert.equal(vm.runInContext('hasReviewerChange(results[0])',context),true);
-  details.open=true;details.ontoggle();vm.runInContext('render()',context);
-  assert.equal(nodes.get('results').children[0].children[0].children.find(child=>child.className==='all-decisions').open,true);
+
 });
 
 test('Criteria editor adds, reorders and saves typed decisions without editing templates',async()=>{
@@ -3104,7 +3101,7 @@ test('Custom classification colors differ by option and match result badges',()=
 });
 
 
-test('Criteria field help explains scope, IDs, summary visibility and answer types',()=>{
+test('Criteria field help explains scope, IDs and answer types',()=>{
   const {context,nodes}=workspace([]);
   context.vocHelpFixture=JSON.parse(readFileSync(new URL('../profiles/consultation.json',import.meta.url),'utf8'));
   vm.runInContext("criteriaProfiles={general:vocHelpFixture,consultation:vocHelpFixture};handleEditCriteria('consultation')",context);
@@ -3113,7 +3110,7 @@ test('Criteria field help explains scope, IDs, summary visibility and answer typ
   assert.match(profile.children[1].children.at(-1).textContent,/Other decisions still run/);
   assert.match(profile.children[2].children.at(-1).textContent,/Rules shared by every decision/);
   assert.match(vm.runInContext("decisionRows[0].id.attributes['aria-description']",context),/Unique result key/);
-  assert.match(vm.runInContext("decisionRows[0].summary.attributes['aria-description']",context),/Unchecked decisions still run/);
+  assert.equal(vm.runInContext("Object.hasOwn(decisionRows[0],'summary')",context),false);
   assert.match(vm.runInContext("decisionRows[0].panel.children.find(node=>node.className==='criteria-help').textContent",context),/unique Option ID/);
   vm.runInContext("decisionRows[0].type.value='score';decisionRows[0].type.onchange()",context);
   assert.match(vm.runInContext("decisionRows[0].panel.children.find(node=>node.className==='criteria-help').textContent",context),/lowest to highest/);
@@ -3164,7 +3161,7 @@ test('Criteria token estimates update for shared rules, options and structural c
   vm.runInContext("criteriaFields.instructions.value+='A'.repeat(400);criteriaFields.instructions.oninput()",context);
   assert.ok(total()>=initial+500);
   const shared=total();
-  vm.runInContext("decisionRows[0].summary.checked=false;handleRenderCriteriaTokens()",context);
+  vm.runInContext("handleRenderCriteriaTokens()",context);
   assert.equal(total(),shared);
   vm.runInContext("decisionRows[0].options[0].text.value+='가'.repeat(200);decisionRows[0].options[0].text.oninput()",context);
   assert.equal(total(),shared+160);
@@ -3204,7 +3201,7 @@ test('Uncertainty stays separate from the complete long decision value in summar
     const definition={label:'문의 유형',type:'choice',criteria:{[choice]:'시설 문의'}};
     const record={primaryQuestion:'inquiry_type',uncertain:true,candidates:[choice],reviewReasons:['low_answer_probability']};
     const card=renderDecisionCard('inquiry_type',definition,{choice,probabilities:{[choice]:.4}},record);
-    [card.children[1].textContent,card.children[0].children[0].textContent,card.children[1].title];
+    [card.children[1].textContent,card.children[2].children[0].textContent,card.children[1].title];
   `,context);
   assert.equal(values[0],'시설·이용 안내 및 프로그램 이용 방법에 관한 긴 문의');
   assert.equal(values[1],'Uncertain');
@@ -3682,7 +3679,7 @@ test('Result filter type switches controls without changing filters or making re
   assert.deepEqual(logs(nodes),['log-1','log-0']);
 });
 
-test('AI Criteria previews editable samples and preserves every generated field through save', async()=>{
+test('AI Criteria preserves generated decisions through save without legacy visibility flags', async()=>{
   const general=JSON.parse(readFileSync(new URL('../profiles/general.json',import.meta.url),'utf8'));
   const generated=JSON.parse(readFileSync(new URL('../profiles/consultation.json',import.meta.url),'utf8'));
   generated.label='AI Generated Test';
@@ -3709,11 +3706,13 @@ test('AI Criteria previews editable samples and preserves every generated field 
   findLabel('Analysis Purpose').value='Evaluate status and urgency';
   await button('Generate Criteria').onclick();
   assert.deepEqual(submitted,{purposeMode:'manual',purpose:'Evaluate status and urgency',samples:['Redacted sample','Other sample']});
-  assert.deepEqual(JSON.parse(vm.runInContext('JSON.stringify(readDecisionProfile())',context)),generated);
+  const visibleProfile=structuredClone(generated);
+  for(const question of Object.values(visibleProfile.questions))delete question.summary;
+  assert.deepEqual(JSON.parse(vm.runInContext('JSON.stringify(readDecisionProfile())',context)),visibleProfile);
   assert.equal(Object.keys(vm.runInContext('criteriaProfiles',context)).length,1);
   const id=vm.runInContext('criteriaDraftId',context);
   await nodes.get('save-criteria').onclick();
-  assert.deepEqual(JSON.parse(vm.runInContext(`JSON.stringify(criteriaProfiles['${id}'])`,context)),generated);
+  assert.deepEqual(JSON.parse(vm.runInContext(`JSON.stringify(criteriaProfiles['${id}'])`,context)),visibleProfile);
 });
 
 test('Failed AI generation preserves the draft and edited samples',async()=>{
@@ -3917,4 +3916,45 @@ test('first page of a new stopped run updates availability without replaying old
     await vm.runInContext('handleRefreshResults(true)',context);
     assert.equal(vm.runInContext('engineConnectionNode.textContent',context),' (Unreachable)');
   }
+});
+
+
+test('Result numbers survive filtering and uncertainty stays beside the unchanged probability',async()=>{
+  const first=result(0,false),second=result(7,false);
+  first.result.uncertain=true;
+  const {nodes,context}=workspace([first,second]);await runTask(nodes);
+  const number=row=>row.children[0].children.find(node=>node.className.includes('result-header')).children[0].textContent;
+  assert.deepEqual(nodes.get('results').children.map(number),['Result #2','Result #1']);
+  const card=decisionCards(nodes.get('results').children[1])[0];
+  assert.equal(card.children[0].children.length,0);
+  assert.match(card.children[2].textContent,/selected probability/);
+  assert.equal(card.children[2].children[0].textContent,'Uncertain');
+  nodes.get('log-search').value='log-7';vm.runInContext('render()',context);
+  assert.deepEqual(nodes.get('results').children.map(number),['Result #2']);
+});
+
+
+test('Latest page numbers follow completed totals and return from an older page',async()=>{
+  const {nodes,context,append}=pagedWorkspace(212);
+  await vm.runInContext("handlePagedProcessing({jobId:'paged',state:'completed',settings:{mode:'batch'},pagedResults:true})",context);
+  const number=()=>nodes.get('results').children[0].children[0].children.find(node=>node.className.includes('result-header')).children[0].textContent;
+  assert.equal(number(),'Result #212');
+  append();await vm.runInContext('handleRefreshResults(false,true)',context);
+  assert.equal(number(),'Result #213');
+  await nodes.get('next').onclick();
+  append();await vm.runInContext('handleRefreshResults(false,true)',context);
+  await nodes.get('pause-updates').onclick();
+  assert.equal(number(),'Result #214');
+});
+
+
+test('Removed More Decision Results links open the latest results instead of freezing an old page',async()=>{
+  const {nodes,context,queries}=pagedWorkspace(212);
+  context.URLSearchParams=URLSearchParams;
+  await vm.runInContext("handlePagedProcessing({jobId:'paged',state:'completed',settings:{mode:'batch'},pagedResults:true})",context);
+  await vm.runInContext("handleApplyRunRoute('/runs/paged?result=101&detail=decisions&cursors=102&through=212')",context);
+  assert.equal(vm.runInContext('page',context),0);
+  assert.equal(queries.at(-1).before,undefined);
+  assert.equal(logs(nodes)[0],'record-212');
+  assert.equal(nodes.get('results').children[0].children[0].children.find(node=>node.className.includes('result-header')).children[0].textContent,'Result #212');
 });

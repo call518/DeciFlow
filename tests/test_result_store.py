@@ -64,6 +64,12 @@ def test_keyset_pages_filters_and_aggregates_stay_independent(tmp_path: Path) ->
         30,
     )
     assert len(filtered["items"]) == 30
+    reopened = SQLiteResultStore(tmp_path / "results.db")
+    for item in filtered["items"]:
+        number = item["result"]["resultNumber"]
+        assert number == int(item["result"]["log"].split()[1]) + 1
+        restored = reopened.page(run["jobId"], {"before": item["sequence"] + 1}, 10)
+        assert restored["items"][0]["result"]["resultNumber"] == number
     assert all(
         item["result"]["hostId"] == "host-1" and item["result"]["review"]
         for item in filtered["items"]
@@ -356,3 +362,67 @@ def test_old_runs_backfill_once_then_use_histograms(
         == 0
     )
     store.close()
+
+
+def test_result_numbers_follow_completion_order_excluding_status_events(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteResultStore(tmp_path / "results.db")
+    run = snapshot()
+    store.create(run["jobId"], run)
+    store.append(run["jobId"], {"type": "start", "engine": "laya"}, run)
+    store.append(run["jobId"], event(7), run)
+    store.append(run["jobId"], {"type": "host-status", "hosts": []}, run)
+    store.append(run["jobId"], event(0), run)
+    legacy = event(2)
+    del legacy["index"]
+    store.append(run["jobId"], legacy, run)
+    page = store.page(run["jobId"], {}, 10)
+    assert [item["result"]["resultNumber"] for item in page["items"]] == [3, 2, 1]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("filters", [{}, {"after": 100}, {"through": 10000}])
+async def test_result_page_excludes_completions_after_its_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, filters: Result
+) -> None:
+    store = SQLiteResultStore(tmp_path / "results.db")
+    run = snapshot()
+    store.create(run["jobId"], run)
+    store.append(run["jobId"], {"type": "start", "engine": "laya"}, run)
+    for number in range(244):
+        store.append(run["jobId"], event(number), run)
+    monkeypatch.setattr(server, "read_archived_run", lambda *_: run)
+    monkeypatch.setattr(server, "open_result_store", lambda *_: store)
+    read_page = store.page
+    appended = False
+
+    def append_then_read(run_id: str, query: Result, limit: int) -> Result:
+        nonlocal appended
+        if not appended:
+            store.append(run_id, event(244), run)
+            appended = True
+        return read_page(run_id, query, limit)
+
+    monkeypatch.setattr(store, "page", append_then_read)
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=server.app),
+            base_url="http://localhost",
+            headers={"Origin": "http://localhost"},
+        ) as client:
+            response = await client.post(
+                f"/api/jobs/{run['jobId']}/results", json=filters
+            )
+            assert response.status_code == 200
+            page = response.json()
+            assert page["summary"]["total"] == 244
+            assert page["items"][0]["result"]["resultNumber"] == 244
+            assert all(item["sequence"] <= page["sequence"] for item in page["items"])
+            next_page = (
+                await client.post(f"/api/jobs/{run['jobId']}/results", json={})
+            ).json()
+            assert next_page["summary"]["total"] == 245
+            assert next_page["items"][0]["result"]["resultNumber"] == 245
+    finally:
+        store.close()

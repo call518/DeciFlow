@@ -35,10 +35,9 @@ Choose **Criteria** and **Events/Chunk** per Source. TEXT groups nonempty lines;
 JSONL extracts the configured text field and always handles one object per line.
 Criteria defines any number of named Choice, Score, and Noul decisions. Existing
 system profiles retain Category, Urgency, and Work Ticket. New profiles configure
-their own options, levels, and summary decisions. See [Criteria](criteria.md).
+their own options and levels. See [Criteria](criteria.md).
 
-Selected summary items appear in compact cards. **More Decision Results...** expands
-only items hidden from the summary; **Probabilities and Criteria** expands its distribution and definitions.
+All decisions appear in compact cards in their configured order; **Probabilities and Criteria** expands its distribution and definitions.
 **Review Decisions** records typed corrections. Choice uncertainty is shown per
 item; Needs Review can come from any Choice, while chart certainty refers to the
 primary Choice. These are separate judgments, not one combined probability.

@@ -128,8 +128,9 @@ function renderDecisionCard(id,definition,answer,result) {
   if(color)badge.setAttribute('style',`background:${color}`);
   badge.title=`${title}: ${value}`;
   const heading=element('span',title,'decision-label');
-  if(kind==='choice' && id===(result.primaryQuestion || 'category') && result.uncertain)heading.append(element('span','Uncertain','decision-uncertainty'));
-  card.append(heading,badge,element('span',detail,'decision-detail'));
+  const detailRow=element('span',detail,'decision-detail');
+  if(kind==='choice' && id===(result.primaryQuestion || 'category') && result.uncertain)detailRow.append(element('span','Uncertain','decision-uncertainty'));
+  card.append(heading,badge,detailRow);
   const details=element('details','','decision-distribution');details.append(element('summary','Probabilities and Criteria'));
   const dl=element('dl','','decision-probabilities');dl.setAttribute('aria-label',`${title} probabilities`);
   for(const [name,p] of distribution) {const entry=element('div','');entry.append(element('dt',name),element('dd',`${(p*100).toFixed(1)}%`));dl.append(entry);}
@@ -1578,7 +1579,6 @@ function handleEditCriteria(id, template = null, generatedPurpose = null) {
       const help={id:'Unique result key within this profile, such as handling_status. Use lowercase letters, digits and underscores; start with a letter.',label:'Readable result heading, such as Handling Status. This is separate from the Decision ID.',type:'Choice selects an option; Score rates ordered levels; Noul estimates the probability of Yes.',instructions:'The question and rules for this decision only. Define boundaries and how to handle missing evidence.'};
       addHelp(label,input,help[key]);panel.append(label);row[key]=input;
     }
-    const summaryLabel=element('label','Show in Result Summary');const summary=element('input','');summary.type='checkbox';summary.checked=definition.summary!==false;summaryLabel.prepend(summary);addHelp(summaryLabel,summary,'Show this decision on the result summary. Unchecked decisions still run and appear under More Decision Results.');panel.append(summaryLabel);row.summary=summary;
     const options=element('div','','decision-options');const optionRows=[];
     const optionHelp=element('p','','criteria-help');
     const addOption=(key,text)=>{
@@ -1627,7 +1627,7 @@ function readDecisionProfile() {
     const id=row.id.value.trim();if(Object.hasOwn(questions,id))throw new Error('Decision IDs must be unique.');
     const criteria=row.type.value==='score'?row.options.map(option=>option.text.value):Object.fromEntries(row.options.map(option=>[option.key.value.trim(),option.text.value]));
     if(row.type.value==='choice' && Object.keys(criteria).length!==row.options.length)throw new Error('Option IDs must be unique.');
-    questions[id]={label:row.label.value,type:row.type.value,instructions:row.instructions.value,summary:row.summary.checked,...(row.type.value==='noul'?{}:{criteria})};
+    questions[id]={label:row.label.value,type:row.type.value,instructions:row.instructions.value,...(row.type.value==='noul'?{}:{criteria})};
   }
   return {label:criteriaFields.label.value,instructions:criteriaFields.instructions.value,primaryQuestion:criteriaFields.primary.value,questions};
 }
@@ -2235,22 +2235,18 @@ function render(updateList = true, incremental = false) {
     }
     const row = element('article', '', 'result');
     const top = element('div', '', result.error ? 'result-top' : 'result-summary');
+    const identity=element('strong',`Result #${result.resultNumber}`,'result-number');
+    identity.title='Completion number within this run; unchanged by filtering or paging.';
     if (result.error) {
-      top.append(element('span', result.sourceFailure?'Source failed':'Request failed', 'badge error'), element('span', `${result.elapsedMs}ms`));
+      top.append(element('span', result.sourceFailure?'Source failed':'Request failed', 'badge error'), element('span', `${result.elapsedMs}ms`),identity);
     } else {
       const decisions = element('div', '', 'decision-grid');
       decisions.setAttribute('role', 'group'); decisions.setAttribute('aria-label', 'Decision results');
       const definitions=resultDecisionDefinitions(result),answers=resultDecisionAnswers(result);
-      for(const [id,q] of Object.entries(definitions))if(q.summary!==false)decisions.append(renderDecisionCard(id,q,answers[id],result));
+      for(const [id,q] of Object.entries(definitions))decisions.append(renderDecisionCard(id,q,answers[id],result));
       top.append(decisions);
-      const hidden=Object.entries(definitions).filter(([,q])=>q.summary===false);
-      if(hidden.length) {
-        const details=element('details','','all-decisions');details.append(element('summary','More Decision Results...'));
-        const full=element('div','','decision-grid');
-        for(const [id,q] of hidden)full.append(renderDecisionCard(id,q,answers[id],result));
-        details.append(full);handleResultDisclosure(details,result,'decisions');top.append(details);
-      }
-      const metadata = element('div', '', 'result-top');
+      const metadata = element('div', '', 'result-top result-header');
+      metadata.append(identity);
       metadata.append(element('span', `Processing: ${result.elapsedMs}ms`));
       if (needsReview(result)) metadata.append(element('span', 'Needs Review', 'review'));
       top.append(metadata);
@@ -2432,6 +2428,7 @@ async function handleProcessing(job) {
       } else if (event.type === 'host-status') {
         runHosts=event.hosts;
       } else if (event.type === 'result') {
+        event.result.resultNumber=completionOrder.length+1;
         results[event.index] = event.result;
         completionOrder.push(event.index);
         completed++;
@@ -2654,7 +2651,7 @@ async function handleRefreshResults(reset=false,poll=false) {
     const merged=after!==null?[...items,...view.items].filter((item,index,array)=>array.findIndex(other=>other.sequence===item.sequence)===index):items;
     view.hasNext=after!==null ? view.hasNext || data.hasNext || merged.length>data.limit : data.hasNext;
     resultsPerPage=data.limit;view.items=merged.slice(0,resultsPerPage);
-    results=view.items.toReversed().map(item=>{resultCursors.set(item.result,item.sequence);return item.result;});
+    results=view.items.toReversed().map(item=>{resultCursors.set(item.result,item.sequence);item.result.resultNumber ??= item.sequence;return item.result;});
     completionOrder=results.map((_,index)=>index);view.sequence=data.sequence;
     if(page===0)view.through=data.sequence;
     if(page===0)view.snapshotTotal=completed;
@@ -2673,6 +2670,10 @@ function handlePageDelay(signal) {
 async function handleApplyRunRoute(path) {
   if(!pagedView)return;
   const params=new URLSearchParams(path.split('?')[1] || '');
+  if(params.get('detail')==='decisions'){
+    for(const key of ['result','detail','cursors','through'])params.delete(key);
+    const query=params.toString();handleWriteRoute(`/runs/${pagedView.id}${query?`?${query}`:''}`,true);
+  }
   for(const [key,id] of Object.entries(routeFilters))$(id).value=params.get(key) || (key==='search'?'':'all');
   const cursors=(params.get('cursors') || '').split(',').filter(Boolean).map(Number);
   if(cursors.some(value=>!Number.isSafeInteger(value) || value<=0))throw new Error('Invalid result page link.');

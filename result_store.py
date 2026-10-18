@@ -173,6 +173,8 @@ class SQLiteResultStore:
             );
             CREATE INDEX IF NOT EXISTS result_page
                 ON events(run_id, kind, sequence);
+            CREATE INDEX IF NOT EXISTS non_result_sequence
+                ON events(run_id, sequence) WHERE kind<>'result';
             CREATE INDEX IF NOT EXISTS result_category
                 ON events(run_id, category, sequence);
             CREATE INDEX IF NOT EXISTS result_host
@@ -662,7 +664,10 @@ class SQLiteResultStore:
             params.append(search.lower())
         with self.reader() as connection:
             rows = connection.execute(
-                "SELECT e.run_id,e.sequence,e.payload,e.reviewer,e.reviews FROM events e WHERE "
+                "SELECT e.run_id,e.sequence,e.payload,e.reviewer,e.reviews, "
+                "e.sequence-(SELECT COUNT(*) FROM events n "
+                "WHERE n.run_id=e.run_id AND n.kind<>'result' "
+                "AND n.sequence<=e.sequence) AS result_number FROM events e WHERE "
                 + " AND ".join(where)
                 + " ORDER BY e.sequence DESC LIMIT ?",
                 (*params, limit + 1),
@@ -678,6 +683,7 @@ class SQLiteResultStore:
 
     def _result(self, row: sqlite3.Row) -> Result:
         result = self._expand(row["run_id"], json.loads(row["payload"])["result"])
+        result["resultNumber"] = row["result_number"]
         if row["reviewer"] is not None:
             result["reviewerCategory"] = row["reviewer"]
         if row["reviews"]:
