@@ -147,17 +147,21 @@ def test_startup_ensures_consultation_without_overwriting_saved_profiles(
     """Old installations receive the sample once and retain all user edits."""
     original = deepcopy(PROFILES)
     saved = deepcopy(DEFAULT_PROFILES)
-    sample = saved.pop("consultation")
-    saved["general"]["instructions"] = "Keep the user's instructions."
+    sample = saved.pop("41bbe1dc-85cb-4ab0-ab79-cd7c4e6f8e72")
+    saved["4e6d5417-611e-49e0-8e23-2444a0f49ee4"]["instructions"] = (
+        "Keep the user's instructions."
+    )
     if existing_sample == "edited":
         sample["instructions"] = "Keep the user's consultation instructions."
-        saved["consultation"] = sample
+        saved["41bbe1dc-85cb-4ab0-ab79-cd7c4e6f8e72"] = sample
     elif existing_sample == "renamed_id":
-        saved["custom_consultation"] = sample
+        saved["a9b5cb3b-1e1e-4559-8f71-365c651d176d"] = sample
     save_records("criteria", saved)
     expected = deepcopy(saved)
     if existing_sample == "missing":
-        expected["consultation"] = DEFAULT_PROFILES["consultation"]
+        expected["41bbe1dc-85cb-4ab0-ab79-cd7c4e6f8e72"] = DEFAULT_PROFILES[
+            "41bbe1dc-85cb-4ab0-ab79-cd7c4e6f8e72"
+        ]
     try:
         load_profiles()
         assert PROFILES == expected
@@ -172,7 +176,11 @@ def test_startup_ensures_consultation_without_overwriting_saved_profiles(
 
 def test_consultation_sample_is_korean_only() -> None:
     """Only Korean consultation templates are shipped, without language suffixes."""
-    for identity in ("consultation", "central_gov", "local_gov"):
+    for identity in (
+        "41bbe1dc-85cb-4ab0-ab79-cd7c4e6f8e72",
+        "1dd02d79-f43e-49ef-a1f1-7a2ddfab1e8d",
+        "efb7c8ca-61c1-4785-b38d-0a86764ca758",
+    ):
         profile = DEFAULT_PROFILES[identity]
         assert not profile["label"].endswith(" (KOR)")
         assert f"{identity}_eng" not in DEFAULT_PROFILES
@@ -234,13 +242,13 @@ def test_voc_task_is_manual_disabled_and_preserves_edits() -> None:
         assert task["sources"] == [
             {
                 "sourceId": VOC_SOURCE["id"],
-                "profile": "consultation",
+                "profile": "41bbe1dc-85cb-4ab0-ab79-cd7c4e6f8e72",
                 "chunkEvents": 1,
                 "actionId": "",
             }
         ]
         task["name"] = "My VOC Task"
-        task["sources"][0]["profile"] = "general"
+        task["sources"][0]["profile"] = "4e6d5417-611e-49e0-8e23-2444a0f49ee4"
         save_record("tasks", VOC_TASK_ID, task)
         ensure_voc_task()
         assert load_tasks() == [task]
@@ -270,7 +278,7 @@ def test_system_message_task_reuses_source_and_preserves_edits(
     assert task["mode"] == "realtime"
     assert task["enabled"] is False
     assert task["resumeOnRestart"] is False
-    assert task["sources"][0]["profile"] == "general"
+    assert task["sources"][0]["profile"] == "4e6d5417-611e-49e0-8e23-2444a0f49ee4"
     assert task["sources"][0]["chunkEvents"] == 1
     assert task["sources"][0]["actionId"] == ""
     source = next(
@@ -287,22 +295,33 @@ def test_system_message_task_reuses_source_and_preserves_edits(
 
 
 @pytest.mark.parametrize("existing", ["missing", "edited", "renamed_id"])
-@pytest.mark.parametrize("identity", ["central_gov", "local_gov"])
+@pytest.mark.parametrize(
+    "identity",
+    ["1dd02d79-f43e-49ef-a1f1-7a2ddfab1e8d", "efb7c8ca-61c1-4785-b38d-0a86764ca758"],
+)
 def test_government_bootstrap_preserves_saved_settings(
     existing: str, identity: str
 ) -> None:
     """Seed both profiles and a disabled Batch once, preserving user records."""
     source_default = (
-        CENTRAL_GOV_SOURCE if identity == "central_gov" else LOCAL_GOV_SOURCE
+        CENTRAL_GOV_SOURCE
+        if identity == "1dd02d79-f43e-49ef-a1f1-7a2ddfab1e8d"
+        else LOCAL_GOV_SOURCE
     )
-    task_id = CENTRAL_GOV_TASK_ID if identity == "central_gov" else LOCAL_GOV_TASK_ID
+    task_id = (
+        CENTRAL_GOV_TASK_ID
+        if identity == "1dd02d79-f43e-49ef-a1f1-7a2ddfab1e8d"
+        else LOCAL_GOV_TASK_ID
+    )
     ensure_source = (
         ensure_central_gov_source
-        if identity == "central_gov"
+        if identity == "1dd02d79-f43e-49ef-a1f1-7a2ddfab1e8d"
         else ensure_local_gov_source
     )
     ensure_task = (
-        ensure_central_gov_task if identity == "central_gov" else ensure_local_gov_task
+        ensure_central_gov_task
+        if identity == "1dd02d79-f43e-49ef-a1f1-7a2ddfab1e8d"
+        else ensure_local_gov_task
     )
     original = deepcopy(PROFILES)
     profiles = deepcopy(DEFAULT_PROFILES)
@@ -311,7 +330,7 @@ def test_government_bootstrap_preserves_saved_settings(
         sample["instructions"] = "Keep my government criteria."
         profiles[identity] = sample
     elif existing == "renamed_id":
-        profiles[f"custom_{identity}"] = sample
+        profiles["a9b5cb3b-1e1e-4559-8f71-365c651d176d"] = sample
     save_records("criteria", profiles)
     source = {**source_default, "name": "My Government Source"}
     if existing == "renamed_id":
@@ -333,7 +352,11 @@ def test_government_bootstrap_preserves_saved_settings(
         assert task["enabled"] is False
         assert task["resumeOnRestart"] is False
         assert task["cron"] == ""
-        profile_id = f"custom_{identity}" if existing == "renamed_id" else identity
+        profile_id = (
+            "a9b5cb3b-1e1e-4559-8f71-365c651d176d"
+            if existing == "renamed_id"
+            else identity
+        )
         assert task["sources"] == [
             {
                 "sourceId": selected["id"],
@@ -367,7 +390,7 @@ def test_central_gov_sample_and_localized_profiles() -> None:
     assert all(
         isinstance(row[CENTRAL_GOV_SOURCE["contentField"]], str) for row in records
     )
-    korean = DEFAULT_PROFILES["central_gov"]
+    korean = DEFAULT_PROFILES["1dd02d79-f43e-49ef-a1f1-7a2ddfab1e8d"]
     assert korean["label"] == "Sample VOC Central Gov Consulting QnA"
     assert korean["defaultDecision"] == "policy_area"
     assert set(korean["questions"]) == {

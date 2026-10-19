@@ -96,7 +96,7 @@ async def ssh_source(
                 [{"sourceId": saved["id"], "hostIds": [connection["id"]]}]
             )[0],
             "sourceId": saved["id"],
-            "profile": "general",
+            "profile": "4e6d5417-611e-49e0-8e23-2444a0f49ee4",
             "chunkEvents": 1,
             "root": root,
             "connections": connections,
@@ -131,14 +131,14 @@ def test_registry_roundtrip_and_no_secret_contents(
                 "sourceId": saved[0]["id"],
                 "path": "/tampered",
                 "host": "attacker",
-                "profile": "application",
+                "profile": "617706a3-c4ee-426f-81cf-7f5d80ecf67a",
                 "chunkEvents": 3,
             }
         ]
     )[0]
     assert spec["path"] == "/var/log/*.log"
     assert "host" not in spec and "action" not in spec
-    assert spec["profile"] == "application"
+    assert spec["profile"] == "617706a3-c4ee-426f-81cf-7f5d80ecf67a"
     save_sources([])
     assert load_sources() == []
     with pytest.raises(ValueError, match="registered source"):
@@ -251,7 +251,10 @@ async def test_mixed_registered_sources_share_provider_and_run_settings(
     calls = []
 
     async def handle_classify(
-        log: str, selected: Any, client: httpx.AsyncClient, profile: str = "general"
+        log: str,
+        selected: Any,
+        client: httpx.AsyncClient,
+        profile: str = "4e6d5417-611e-49e0-8e23-2444a0f49ee4",
     ) -> Result:
         calls.append((log, selected.name, profile))
         return {"category": "normal", "review": False}
@@ -270,7 +273,7 @@ async def test_mixed_registered_sources_share_provider_and_run_settings(
                 "sources": [
                     {
                         "sourceId": source["id"],
-                        "profile": "application",
+                        "profile": "617706a3-c4ee-426f-81cf-7f5d80ecf67a",
                         **(
                             {"hostIds": [ssh_source["hostId"]]}
                             if source["type"] == "ssh"
@@ -286,8 +289,8 @@ async def test_mixed_registered_sources_share_provider_and_run_settings(
     rows = [event["result"] for event in events if event["type"] == "result"]
     assert {row["sourceName"] for row in rows} == {"Local test", "Remote test"}
     assert sorted(calls) == [
-        ("local event", engine, "application"),
-        ("remote event", engine, "application"),
+        ("local event", engine, "617706a3-c4ee-426f-81cf-7f5d80ecf67a"),
+        ("remote event", engine, "617706a3-c4ee-426f-81cf-7f5d80ecf67a"),
     ]
 
 

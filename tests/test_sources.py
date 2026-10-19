@@ -396,7 +396,10 @@ async def test_batch_files_reach_engine_concurrently(
     arrived = {"a": asyncio.Event(), "b": asyncio.Event()}
 
     async def handle_classify(
-        log: str, engine: Engine, client: httpx.AsyncClient, profile: str = "general"
+        log: str,
+        engine: Engine,
+        client: httpx.AsyncClient,
+        profile: str = "4e6d5417-611e-49e0-8e23-2444a0f49ee4",
     ) -> Result:
         arrived[log].set()
         await arrived["b" if log == "a" else "a"].wait()
@@ -413,8 +416,14 @@ async def test_batch_files_reach_engine_concurrently(
                 json={
                     "mode": "batch",
                     "sources": [
-                        {"path": str(first), "profile": "http_access"},
-                        {"path": str(second), "profile": "general"},
+                        {
+                            "path": str(first),
+                            "profile": "2e44ae00-7a3a-492d-8806-9177a8973582",
+                        },
+                        {
+                            "path": str(second),
+                            "profile": "4e6d5417-611e-49e0-8e23-2444a0f49ee4",
+                        },
                     ],
                 },
             )
@@ -427,7 +436,7 @@ async def test_batch_files_reach_engine_concurrently(
     assert {row["source"] for row in results[:2]} == {str(first), str(second)}
 
     assert all(
-        row["profile"] == "http_access"
+        row["profile"] == "2e44ae00-7a3a-492d-8806-9177a8973582"
         for row in results
         if row["source"] == str(first)
     )

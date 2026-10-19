@@ -151,7 +151,7 @@ ID로 `POST /api/tasks/<id>/run`을 호출해 실행합니다.
   "sources": [
     {
       "sourceId": "<remote-source-id>",
-      "profile": "general",
+      "profile": "4e6d5417-611e-49e0-8e23-2444a0f49ee4",
       "chunkEvents": 1,
       "actionId": "",
       "hostIds": ["<first-host-id>", "<second-host-id>"]

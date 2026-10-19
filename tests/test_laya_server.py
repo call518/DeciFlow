@@ -90,7 +90,9 @@ def test_all_question_types_checked_before_inference(
     questions = {
         "category": {"type": "choice", "instructions": "Classify.", "criteria": {}},
         **{
-            key: DEFAULT_PROFILES["general"]["questions"][key]
+            key: DEFAULT_PROFILES["4e6d5417-611e-49e0-8e23-2444a0f49ee4"]["questions"][
+                key
+            ]
             for key in ("urgency", "ticket")
         },
     }

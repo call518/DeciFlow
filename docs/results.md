@@ -162,8 +162,8 @@ There is no standalone `question` field.
     }
   },
   "defaultDecision": "category",
-  "profileId": "http_access",
-  "criteriaGroup": "5ad9bb240a2974c4",
+  "profileId": "2e44ae00-7a3a-492d-8806-9177a8973582",
+  "criteriaGroup": "58f22a24349f86cf",
   "profileLabel": "Sample HTTP access",
   "inputBudget": {
     "max_len": 8192,
@@ -287,7 +287,7 @@ There is no standalone `question` field.
   "lineCount": 1,
   "eventCount": 1,
   "chunkEvents": 1,
-  "profile": "http_access",
+  "profile": "2e44ae00-7a3a-492d-8806-9177a8973582",
   "incomplete": false,
   "elapsedMs": 120
 }
@@ -331,7 +331,7 @@ and per-host collection status are stored separately in run history; see [Tasks]
 | `lineCount` | Number of lines included, not the span between line and lineEnd. |
 | `eventCount` | Actual events in this chunk; currently one nonempty line per event. |
 | `chunkEvents` | Configured maximum events per chunk; a partial chunk may contain fewer. |
-| `profile` | Selected criteria profile ID, such as general. |
+| `profile` | Criteria UUID selected for this input. |
 | `incomplete` | Whether the chunk includes an unfinished line retained during rotation. |
 | `engine` | Selected provider: laya or jev. |
 | `engineConnection` | Actual request status: connected, disconnected, timeout, or api_error; absent for local input rejection. |

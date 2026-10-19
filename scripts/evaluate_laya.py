@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 from classifier import DecisionError, Result, classify_log
 from config import Engine, get_engine
-from profiles import PROFILES
+from profiles import GENERAL_PROFILE_ID, PROFILES
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -28,7 +28,10 @@ async def evaluate(engine: Engine, cases: list[dict[str, str]]) -> list[Result]:
             async with semaphore:
                 try:
                     result = await classify_log(
-                        case["log"], engine, client, case.get("profile", "general")
+                        case["log"],
+                        engine,
+                        client,
+                        case.get("profile", GENERAL_PROFILE_ID),
                     )
                 except DecisionError as error:
                     result = {**error.metadata, "error": str(error)}
@@ -44,7 +47,7 @@ async def evaluate(engine: Engine, cases: list[dict[str, str]]) -> list[Result]:
 
 def summarize(rows: list[Result]) -> Result:
     """Count mismatches and failures without treating confidence as accuracy."""
-    categories = list(PROFILES["general"]["questions"]["category"]["criteria"])
+    categories = list(PROFILES[GENERAL_PROFILE_ID]["questions"]["category"]["criteria"])
     matrix = {key: dict.fromkeys([*categories, "failed"], 0) for key in categories}
     uncertain = failures = correct = certain = certain_correct = 0
     for row in rows:
@@ -95,8 +98,8 @@ def main() -> None:
         not isinstance(case, dict)
         or not isinstance(case.get("log"), str)
         or case.get("expected")
-        not in PROFILES["general"]["questions"]["category"]["criteria"]
-        or case.get("profile", "general") not in PROFILES
+        not in PROFILES[GENERAL_PROFILE_ID]["questions"]["category"]["criteria"]
+        or case.get("profile", GENERAL_PROFILE_ID) not in PROFILES
         for case in cases
     ):
         parser.error("Cases require log text, a valid expected category and profile.")

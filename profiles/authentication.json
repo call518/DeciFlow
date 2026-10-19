@@ -1,4 +1,5 @@
 {
+  "id": "702ecfa5-01fb-4321-9692-996134a10802",
   "label": "Sample Authentication",
   "instructions": "Classify the observed authentication or session outcome and failure scope, not severity words alone. Distinguish an unsuccessful individual attempt from failure of the authentication service or its supporting mechanisms. Require behavioral or policy evidence for abuse; repetition alone is not proof of an attack. Missing root cause does not make an identifiable outcome other. Do not infer missing events or identities.",
   "normalization": "single_line_syslog_header",

@@ -258,7 +258,7 @@ async def test_three_questions_share_one_request(
 
     from profiles import DEFAULT_PROFILES
 
-    definitions = DEFAULT_PROFILES["general"]["questions"]
+    definitions = DEFAULT_PROFILES["4e6d5417-611e-49e0-8e23-2444a0f49ee4"]["questions"]
 
     monkeypatch.setenv("DECISION_ENGINE", engine_name)
     calls = []
@@ -281,7 +281,10 @@ async def test_three_questions_share_one_request(
             sent = body["questions"][name]
             assert sent["type"] == question["type"]
             assert sent.get("criteria") == question.get("criteria")
-            assert DEFAULT_PROFILES["general"]["instructions"] in sent["instructions"]
+            assert (
+                DEFAULT_PROFILES["4e6d5417-611e-49e0-8e23-2444a0f49ee4"]["instructions"]
+                in sent["instructions"]
+            )
             assert question["instructions"] in sent["instructions"]
         return httpx.Response(
             200,

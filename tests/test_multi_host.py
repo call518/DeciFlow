@@ -51,7 +51,7 @@ async def multi(
     )[0]
     selection = {
         "sourceId": source["id"],
-        "profile": "general",
+        "profile": "4e6d5417-611e-49e0-8e23-2444a0f49ee4",
         "chunkEvents": 1,
         "hostIds": [host["id"] for host in hosts],
     }

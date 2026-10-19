@@ -157,8 +157,8 @@ Uncertain이 아닙니다. 이는 DeciFlow의 고정 검토 기준이며 정답 
     }
   },
   "defaultDecision": "category",
-  "profileId": "http_access",
-  "criteriaGroup": "5ad9bb240a2974c4",
+  "profileId": "2e44ae00-7a3a-492d-8806-9177a8973582",
+  "criteriaGroup": "58f22a24349f86cf",
   "profileLabel": "Sample HTTP access",
   "inputBudget": {
     "max_len": 8192,
@@ -282,7 +282,7 @@ Uncertain이 아닙니다. 이는 DeciFlow의 고정 검토 기준이며 정답 
   "lineCount": 1,
   "eventCount": 1,
   "chunkEvents": 1,
-  "profile": "http_access",
+  "profile": "2e44ae00-7a3a-492d-8806-9177a8973582",
   "incomplete": false,
   "elapsedMs": 120
 }
@@ -325,7 +325,7 @@ Task 실행 정보와 호스트별 수집 상태는 실행 이력에 별도로 �
 | `lineCount` | 실제 포함된 줄 수. 시작·끝 줄 번호 차이와 다를 수 있음. |
 | `eventCount` | 청크에 포함된 실제 이벤트 수. 현재 비어 있지 않은 한 줄이 한 이벤트. |
 | `chunkEvents` | 청크당 최대 이벤트 설정값. 잔여 청크는 이보다 적을 수 있음. |
-| `profile` | 선택한 판정 기준 프로필 ID. 예: general. |
+| `profile` | 입력 분석에 사용한 Criteria UUID. |
 | `incomplete` | 로테이션 시 보존한 미완성 줄이 청크에 포함됐는지 여부. |
 | `engine` | 선택한 제공자: laya 또는 jev. |
 | `engineConnection` | 마지막 실제 요청 상태: connected, disconnected, timeout, api_error. 로컬 입력 거절에는 없음. |

@@ -7,6 +7,7 @@ import random
 from contextlib import aclosing
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import httpx
 
@@ -128,7 +129,8 @@ def convert_generated_profile(value: object) -> dict[str, Any]:
         questions[identity] = question
     profile = {key: draft[key] for key in ("label", "instructions", "defaultDecision")}
     profile["questions"] = questions
-    return validate_profiles({"generated": profile})["generated"]
+    identity = str(uuid4())
+    return validate_profiles({identity: profile})[identity]
 
 
 async def preview_samples(selection: dict[str, Any]) -> list[str]:

@@ -1,4 +1,5 @@
 {
+  "id": "2e44ae00-7a3a-492d-8806-9177a8973582",
   "label": "Sample HTTP access",
   "instructions": "A 404 alone is not an outage or attack. A bot user-agent or encoded URL alone is not malicious. Use only requests in this chunk.",
   "questions": {

@@ -33,7 +33,9 @@ def event(number: int) -> Result:
             "log": f"record {number} % literal",
             "criteriaGroup": "system",
             "defaultDecision": "category",
-            "decisionDefinitions": DEFAULT_PROFILES["general"]["questions"],
+            "decisionDefinitions": DEFAULT_PROFILES[
+                "4e6d5417-611e-49e0-8e23-2444a0f49ee4"
+            ]["questions"],
             "decisions": {
                 "category": {
                     "type": "choice",

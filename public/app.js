@@ -306,9 +306,9 @@ function rememberJob(id) {
 }
 let sourceMode = 'batch';
 const defaultSourceProfiles = Object.freeze({
-  '/host-logs/var/log/messages': 'general',
-  '/host-logs/sample-logs/access-1k.log': 'http_access',
-  '/host-logs/sample-logs/SSH_2k.log': 'authentication',
+  '/host-logs/var/log/messages': '4e6d5417-611e-49e0-8e23-2444a0f49ee4',
+  '/host-logs/sample-logs/access-1k.log': '2e44ae00-7a3a-492d-8806-9177a8973582',
+  '/host-logs/sample-logs/SSH_2k.log': '702ecfa5-01fb-4321-9692-996134a10802',
 });
 const sampleSources = [
   { id: '1'.padStart(32, '0'), name: 'Sample System Messages', type: 'local', path: '/host-logs/var/log/messages' },
@@ -485,6 +485,19 @@ function handlePythonEditor(input,label) {
   input.oninput();
 }
 
+function criteriaIdentityValue(id) {
+  const value=element('span','','criteria-identity');
+  const text=element('code',id);text.setAttribute('aria-label','Criteria ID');
+  const copy=element('button','Copy','json-copy');copy.type='button';copy.setAttribute('aria-label','Copy Criteria ID');
+  const status=element('span','','caption');status.setAttribute('role','status');
+  copy.onclick=async()=>{
+    copy.disabled=true;
+    try{await copyText(id);status.textContent='Copied';}
+    catch{status.textContent='Copy failed. Select and copy the ID.';}
+    finally{copy.disabled=false;}
+  };
+  value.append(text,copy,status);return value;
+}
 function detailFields(fields) {
   const list=element('dl','','view-details');
   for(const [caption,value] of fields){
@@ -494,6 +507,7 @@ function detailFields(fields) {
     const field=element('div','',block || text.length>120 || text.includes('\n')?'view-field-wide':'');
     const valueClass=caption==='Python Code'?'view-value-code':caption==='Public Key'?'view-value-key':'';
     const valueNode=element('dd',text,valueClass);
+    if(caption==='Criteria ID')valueNode.replaceChildren(criteriaIdentityValue(text));
     if(caption==='Python Code')highlightPython(valueNode,text);
     field.append(element('dt',caption),valueNode);list.append(field);
   }
@@ -1212,7 +1226,7 @@ result = json.load(sys.stdin)
 # Use result["category"], result["log"], and result["source"] here.
 # Replace this handler with your notification, storage, or other integration.
 `;
-const profileLabels = { general: 'Sample General System', authentication: 'Sample Authentication', http_access: 'Sample HTTP access', application: 'Sample Application', network: 'Sample Network / tcpdump text' };
+const profileLabels = { '4e6d5417-611e-49e0-8e23-2444a0f49ee4': 'Sample General System', '702ecfa5-01fb-4321-9692-996134a10802': 'Sample Authentication', '2e44ae00-7a3a-492d-8806-9177a8973582': 'Sample HTTP access', '617706a3-c4ee-426f-81cf-7f5d80ecf67a': 'Sample Application', '0181af82-c1ed-41c8-8cd3-22a385746b32': 'Sample Network / tcpdump text' };
 let registeredActions = [];
 let actionRows = [];
 let preparingActions = false;
@@ -1429,7 +1443,7 @@ function handleViewCriteria(id) {
   const profile = criteriaProfiles[id];
   const definitions = profileQuestions(profile);
   handleViewConfiguration('criteria-view', profile.label, [
-    ['Name',profile.label], ['Decision Instructions',profile.instructions],
+    ['Name',profile.label], ['Criteria ID',id], ['Decision Instructions',profile.instructions],
     ['Default Chart Decision',definitions[profile.defaultDecision]?.label],
     ...Object.entries(definitions).map(([id,q]) => [
       `${q.label} (${titleLabel(q.type)})`,
@@ -1577,6 +1591,7 @@ function handleEditCriteria(id, template = null, generatedPurpose = null) {
   };
   const profilePanel=element('fieldset','','criteria-section profile-settings');
   profilePanel.append(element('legend','Profile Settings'));
+  profilePanel.append(detailFields([['Criteria ID',criteriaDraftId]]));
   const form = element('div','','action-registration');profilePanel.append(form); criteriaFields = {}; decisionRows = [];
   for (const [key,caption] of [['label','Name'],['instructions','Decision Instructions']]) {
     const label=element('label',caption);const input=element(key==='label'?'input':'textarea','');
@@ -1904,7 +1919,7 @@ function updateSourceSettings(paths = $('file-path').value.split('\n').map(s => 
   sourceRows = [];
   for (const path of paths) {
     const definitionForDefaults = registeredSources.find(source => source.id === path);
-    const preference = sourcePreferences.get(path) || sourcePreferences.get(definitionForDefaults?.path) || { profile: defaultSourceProfiles[sampleSources.find(source => source.id === path)?.path || definitionForDefaults?.path || path] || 'general', chunkEvents: 1 };
+    const preference = sourcePreferences.get(path) || sourcePreferences.get(definitionForDefaults?.path) || { profile: defaultSourceProfiles[sampleSources.find(source => source.id === path)?.path || definitionForDefaults?.path || path] || '4e6d5417-611e-49e0-8e23-2444a0f49ee4', chunkEvents: 1 };
     const row = element('div', '', 'source-setting');
     const definition = [...registeredSources, ...sourceSnapshots].find(source => source.id === path || (source.type === 'local' && source.path === path));
     const name = selectionInput(registeredSources.map(source => ({ id: source.id, name: source.name, label: sourceDescription(source) })), definition?.id || '', 'Registered source', 'None');
@@ -1966,7 +1981,7 @@ $('add-source').onclick = () => {
 $('reset-sources').onclick = () => {
   const available = sampleSources.filter(sample => registeredSources.some(source => source.id === sample.id));
   const defaults = (available.length ? available : registeredSources.slice(0, 1)).map(source => source.id).join('\n');
-  for (const path of defaults.split('\n')) sourcePreferences.set(path, { profile: defaultSourceProfiles[sampleSources.find(source => source.id === path)?.path || registeredSources.find(source => source.id === path)?.path] || 'general', chunkEvents: 1, actionId: '' });
+  for (const path of defaults.split('\n')) sourcePreferences.set(path, { profile: defaultSourceProfiles[sampleSources.find(source => source.id === path)?.path || registeredSources.find(source => source.id === path)?.path] || '4e6d5417-611e-49e0-8e23-2444a0f49ee4', chunkEvents: 1, actionId: '' });
   try { localStorage.setItem('deciflow-source-preferences', JSON.stringify([...sourcePreferences].map(([path, { profile, chunkEvents }]) => [path, { profile, chunkEvents }]))); } catch { /* The current page still uses the reset defaults. */ }
   filePaths[sourceMode] = defaults; $('file-path').value = defaults;
   updateSourceSettings();

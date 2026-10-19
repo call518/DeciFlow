@@ -34,7 +34,10 @@ async def test_job_reconnect_replays_without_duplicate_decisions_or_actions(
     actions: list[str] = []
 
     async def handle_classify(
-        log: str, provider: object, client: object, profile: str = "general"
+        log: str,
+        provider: object,
+        client: object,
+        profile: str = "4e6d5417-611e-49e0-8e23-2444a0f49ee4",
     ) -> Result:
         calls.append(log)
         entered.set()

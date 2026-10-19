@@ -15,7 +15,9 @@ from profiles import DEFAULT_PROFILES
 )
 def test_score_tolerance_is_inclusive(score: float, accepted: bool) -> None:
     """Allow exactly ±0.02 without admitting a materially larger deviation."""
-    question = DEFAULT_PROFILES["local_gov"]["questions"]["urgency"]
+    question = DEFAULT_PROFILES["efb7c8ca-61c1-4785-b38d-0a86764ca758"]["questions"][
+        "urgency"
+    ]
     answer = {
         "type": "score",
         "score": score,
@@ -59,7 +61,9 @@ async def test_reported_urgency_boundary_is_accepted_for_both_providers(
     monkeypatch.setenv("DECISION_ENGINE", engine)
     monkeypatch.setenv("LAYA_MODEL", "multilingual")
     answers = {}
-    for identity, question in DEFAULT_PROFILES["local_gov"]["questions"].items():
+    for identity, question in DEFAULT_PROFILES["efb7c8ca-61c1-4785-b38d-0a86764ca758"][
+        "questions"
+    ].items():
         kind = question["type"]
         if kind == "choice":
             choice = next(iter(question["criteria"]))
@@ -89,7 +93,10 @@ async def test_reported_urgency_boundary_is_accepted_for_both_providers(
         )
     ) as client:
         result = await classify_log(
-            "Example consultation", get_engine(), client, "local_gov"
+            "Example consultation",
+            get_engine(),
+            client,
+            "efb7c8ca-61c1-4785-b38d-0a86764ca758",
         )
     assert result["decisions"] == answers
     assert result["decisions"]["urgency"]["score"] == 2.46

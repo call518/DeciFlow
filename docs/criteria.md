@@ -7,6 +7,12 @@ and response validation. A profile contains a name, shared instructions, ordered
 named decisions, and one **Default Chart Decision** of any type for the initial chart.
 There is no fixed three-decision limit; provider input and runtime limits still apply.
 
+Every Criteria profile, including bundled samples, has a UUID. View and Edit show
+the read-only **Criteria ID** with a **Copy** button. Use it to match Task assignments
+and result `profile`/`profileId` values. Renaming preserves the ID; Add and Clone
+create a new UUID. This identifies the whole profile; each **Decision ID** below
+identifies one question within it. Sample UUIDs are fixed in the bundled JSON files.
+
 Default Chart Decision selects exactly one existing decision of any type. It is only a
 display preference and does not change AI answers, uncertainty, or filters. Every
 decision is available in Overview. Use **Set as Default** in
@@ -104,6 +110,7 @@ Source and Task.
 | Field | Purpose | What to enter |
 | --- | --- | --- |
 | Start From Template | Starting definition for a new draft | Use a VOC consultation template for full conversations. Custom Decisions starts a custom configuration. Choosing another template replaces the current draft. |
+| Criteria ID | UUID identifying this profile | Read-only; use Copy to reference the profile in results or integrations. |
 | Name | Profile name selected by a Task | `VOC Follow-up Test`. Use a name different from existing profiles. |
 | Default Chart Decision | Default decision for the Overview chart | Exactly one Choice, Score or Noul. All decisions still run; filters and AI answers are unchanged. |
 | Decision Instructions | Rules shared by every decision | Judgment time, evidence to use, prohibited assumptions, and missing-evidence policy. Define individual options within each Decision. |
@@ -262,7 +269,7 @@ Changes and is blocked while Tasks reference the profile.
 ## Existing System Profiles
 
 All profiles appear in one searchable **Criteria** list with View, Edit, Clone, and
-Delete. **Sample General System** (`general`) is an ordinary optional profile: edit
+Delete. **Sample General System** is an ordinary optional profile: edit
 it directly, or update its Task assignments before deleting it. Deletion survives
 restart; a template remains available through **Start From Template**. A new profile
 can be written manually or generated with AI even when no profiles are saved.

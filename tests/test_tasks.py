@@ -43,7 +43,11 @@ async def task_setup(
             "name": "Logs",
             "mode": "batch",
             "sources": [
-                {"sourceId": source["id"], "profile": "general", "chunkEvents": 1}
+                {
+                    "sourceId": source["id"],
+                    "profile": "4e6d5417-611e-49e0-8e23-2444a0f49ee4",
+                    "chunkEvents": 1,
+                }
             ],
         }
     )
@@ -389,7 +393,7 @@ async def test_default_task_restores_after_database_reset(
         assert task["sources"] == [
             {
                 "sourceId": source["id"],
-                "profile": "general",
+                "profile": "4e6d5417-611e-49e0-8e23-2444a0f49ee4",
                 "chunkEvents": 1,
                 "actionId": "",
             }
@@ -654,7 +658,7 @@ async def test_paused_task_does_not_block_other_tasks_or_inflight_action(
 
     async def handle_live(specs: list[Result]) -> AsyncGenerator[Result, None]:
         for log in ("one", "two"):
-            yield {"log": log, "profile": "general"}
+            yield {"log": log, "profile": "4e6d5417-611e-49e0-8e23-2444a0f49ee4"}
         await asyncio.Event().wait()
 
     monkeypatch.setattr(server, "classify_log", handle_classify)

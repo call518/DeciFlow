@@ -40,31 +40,39 @@ def criteria_storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterato
 
 def test_persistence_and_invalid_save(criteria_storage: Path) -> None:
     values = deepcopy(PROFILES)
-    values["custom"] = deepcopy(values["general"])
-    values["custom"]["label"] = "Custom criteria"
-    values.pop("network")
+    values["a9b5cb3b-1e1e-4559-8f71-365c651d176d"] = deepcopy(
+        values["4e6d5417-611e-49e0-8e23-2444a0f49ee4"]
+    )
+    values["a9b5cb3b-1e1e-4559-8f71-365c651d176d"]["label"] = "Custom criteria"
+    values.pop("0181af82-c1ed-41c8-8cd3-22a385746b32")
     save_profiles(values)
-    PROFILES.pop("custom")
+    PROFILES.pop("a9b5cb3b-1e1e-4559-8f71-365c651d176d")
     load_profiles()
     assert PROFILES == values
-    assert "network" not in PROFILES
+    assert "0181af82-c1ed-41c8-8cd3-22a385746b32" not in PROFILES
     saved = load_records("criteria")
-    values["custom"]["questions"]["category"]["criteria"]["normal"] = ""
+    values["a9b5cb3b-1e1e-4559-8f71-365c651d176d"]["questions"]["category"]["criteria"][
+        "normal"
+    ] = ""
     with pytest.raises(ValueError, match="nonempty"):
         save_profiles(values)
     assert load_records("criteria") == saved
-    assert PROFILES["custom"]["questions"]["category"]["criteria"]["normal"]
+    assert PROFILES["a9b5cb3b-1e1e-4559-8f71-365c651d176d"]["questions"]["category"][
+        "criteria"
+    ]["normal"]
 
 
 @pytest.mark.parametrize("invalid", ["categories", "id", "instructions"])
 def test_invalid_options_and_required_fields(invalid: str) -> None:
     values = deepcopy(PROFILES)
     if invalid == "categories":
-        values["general"]["questions"]["category"]["criteria"]["all"] = "reserved"
+        values["4e6d5417-611e-49e0-8e23-2444a0f49ee4"]["questions"]["category"][
+            "criteria"
+        ]["all"] = "reserved"
     elif invalid == "id":
-        values["../outside"] = values["general"]
+        values["../outside"] = values["4e6d5417-611e-49e0-8e23-2444a0f49ee4"]
     else:
-        values["general"]["instructions"] = " "
+        values["4e6d5417-611e-49e0-8e23-2444a0f49ee4"]["instructions"] = " "
     with pytest.raises(ValueError):
         validate_profiles(values)
 
@@ -81,19 +89,24 @@ async def test_criteria_api_trust_and_crud(criteria_storage: Path) -> None:
         headers = {"Origin": "http://localhost"}
         response = await client.post("/api/criteria", headers=headers)
         values = response.json()["profiles"]
-        values["custom"] = deepcopy(values["general"])
-        values["custom"]["label"] = "Custom"
+        values["a9b5cb3b-1e1e-4559-8f71-365c651d176d"] = deepcopy(
+            values["4e6d5417-611e-49e0-8e23-2444a0f49ee4"]
+        )
+        values["a9b5cb3b-1e1e-4559-8f71-365c651d176d"]["label"] = "Custom"
         response = await client.put("/api/criteria", headers=headers, json=values)
         assert response.status_code == 200
-        assert response.json()["profiles"]["custom"]["label"] == "Custom"
+        assert (
+            response.json()["profiles"]["a9b5cb3b-1e1e-4559-8f71-365c651d176d"]["label"]
+            == "Custom"
+        )
         assert (await client.get("/api/status")).json()["profiles"][
-            "custom"
+            "a9b5cb3b-1e1e-4559-8f71-365c651d176d"
         ] == "Custom"
-        values.pop("custom")
+        values.pop("a9b5cb3b-1e1e-4559-8f71-365c651d176d")
         assert (
             await client.put("/api/criteria", headers=headers, json=values)
         ).status_code == 200
-        assert "custom" not in PROFILES
+        assert "a9b5cb3b-1e1e-4559-8f71-365c651d176d" not in PROFILES
         assert (
             await client.put("/api/criteria", headers=headers, content="bad JSON")
         ).status_code == 400
@@ -106,12 +119,16 @@ async def test_custom_criteria_snapshot_reaches_both_engines(
 ) -> None:
     monkeypatch.setenv("DECISION_ENGINE", engine)
     values = deepcopy(PROFILES)
-    values["custom"] = deepcopy(values["general"])
-    values["custom"]["label"] = "Custom"
-    values["custom"]["instructions"] = "Original custom instructions"
+    values["a9b5cb3b-1e1e-4559-8f71-365c651d176d"] = deepcopy(
+        values["4e6d5417-611e-49e0-8e23-2444a0f49ee4"]
+    )
+    values["a9b5cb3b-1e1e-4559-8f71-365c651d176d"]["label"] = "Custom"
+    values["a9b5cb3b-1e1e-4559-8f71-365c651d176d"]["instructions"] = (
+        "Original custom instructions"
+    )
     save_profiles(values)
     snapshot = deepcopy(PROFILES)
-    values.pop("custom")
+    values.pop("a9b5cb3b-1e1e-4559-8f71-365c651d176d")
     save_profiles(values)
 
     def handle_request(request: httpx.Request) -> httpx.Response:
@@ -119,7 +136,9 @@ async def test_custom_criteria_snapshot_reaches_both_engines(
         assert "Original custom instructions" in question["instructions"]
         assert (
             question["criteria"]
-            == snapshot["custom"]["questions"]["category"]["criteria"]
+            == snapshot["a9b5cb3b-1e1e-4559-8f71-365c651d176d"]["questions"][
+                "category"
+            ]["criteria"]
         )
         return httpx.Response(
             200,
@@ -142,9 +161,11 @@ async def test_custom_criteria_snapshot_reaches_both_engines(
         transport=httpx.MockTransport(handle_request)
     ) as client:
         with use_profile_snapshot(snapshot):
-            result = await classify_log("event", get_engine(), client, "custom")
+            result = await classify_log(
+                "event", get_engine(), client, "a9b5cb3b-1e1e-4559-8f71-365c651d176d"
+            )
     assert result["decisions"]["category"]["choice"] == "normal"
-    assert "custom" not in PROFILES
+    assert "a9b5cb3b-1e1e-4559-8f71-365c651d176d" not in PROFILES
 
 
 @pytest.mark.parametrize("mode", ["paste", "batch", "configured_batch"])
@@ -153,17 +174,22 @@ async def test_started_runs_keep_original_criteria(
     criteria_storage: Path, monkeypatch: pytest.MonkeyPatch, mode: str
 ) -> None:
     observed: list[str] = []
-    profile = "general"
+    profile = "4e6d5417-611e-49e0-8e23-2444a0f49ee4"
     if mode == "configured_batch":
         values = deepcopy(PROFILES)
-        values["custom"] = deepcopy(values["general"])
-        values["custom"]["label"] = "Custom"
+        values["a9b5cb3b-1e1e-4559-8f71-365c651d176d"] = deepcopy(
+            values["4e6d5417-611e-49e0-8e23-2444a0f49ee4"]
+        )
+        values["a9b5cb3b-1e1e-4559-8f71-365c651d176d"]["label"] = "Custom"
         save_profiles(values)
-        profile = "custom"
+        profile = "a9b5cb3b-1e1e-4559-8f71-365c651d176d"
     original = PROFILES[profile]["instructions"]
 
     async def handle_classify(
-        log: str, engine: object, client: object, profile: str = "general"
+        log: str,
+        engine: object,
+        client: object,
+        profile: str = "4e6d5417-611e-49e0-8e23-2444a0f49ee4",
     ) -> Result:
         observed.append(get_profile(profile)["instructions"])
         return {"category": "normal", "log": log, "elapsedMs": 1}
@@ -175,21 +201,31 @@ async def test_started_runs_keep_original_criteria(
         path = criteria_storage / "events.log"
         path.write_text("first\nsecond\n")
         paths = (
-            {path: {"profile": "custom", "chunkEvents": 1}}
+            {
+                path: {
+                    "profile": "a9b5cb3b-1e1e-4559-8f71-365c651d176d",
+                    "chunkEvents": 1,
+                }
+            }
             if mode == "configured_batch"
             else [path]
         )
         events = server.handle_file_events([str(path)], paths, "batch", get_engine())
     await anext(events)
     values = deepcopy(PROFILES)
-    values["general"]["instructions"] = "Changed instructions"
+    values["4e6d5417-611e-49e0-8e23-2444a0f49ee4"]["instructions"] = (
+        "Changed instructions"
+    )
     if mode == "configured_batch":
-        values.pop("custom")
+        values.pop("a9b5cb3b-1e1e-4559-8f71-365c651d176d")
     save_profiles(values)
     async for _ in events:
         pass
     assert observed == [original, original]
-    assert get_profile("general")["instructions"] == "Changed instructions"
+    assert (
+        get_profile("4e6d5417-611e-49e0-8e23-2444a0f49ee4")["instructions"]
+        == "Changed instructions"
+    )
 
 
 @pytest.mark.parametrize("directory", [None, "", "   "])
@@ -218,8 +254,8 @@ def test_startup_creates_criteria_and_preserves_existing_records(
     assert not get_database_path().exists()
     load_profiles()
     assert load_records("criteria") == expected
-    expected["general"]["label"] = "Saved custom name"
-    expected.pop("network")
+    expected["4e6d5417-611e-49e0-8e23-2444a0f49ee4"]["label"] = "Saved custom name"
+    expected.pop("0181af82-c1ed-41c8-8cd3-22a385746b32")
     save_records("criteria", expected)
     load_profiles()
     assert PROFILES == expected
@@ -229,24 +265,39 @@ def test_startup_creates_criteria_and_preserves_existing_records(
 def test_startup_does_not_replace_invalid_existing_criteria(
     criteria_storage: Path,
 ) -> None:
-    save_records("criteria", {"general": {"label": "Invalid"}})
+    save_records(
+        "criteria", {"4e6d5417-611e-49e0-8e23-2444a0f49ee4": {"label": "Invalid"}}
+    )
     with pytest.raises(ValueError):
         load_profiles()
-    assert load_records("criteria") == {"general": {"label": "Invalid"}}
+    assert load_records("criteria") == {
+        "4e6d5417-611e-49e0-8e23-2444a0f49ee4": {"label": "Invalid"}
+    }
 
 
-def test_uuid_and_builtin_profile_ids_are_supported(criteria_storage: Path) -> None:
-    """Persist UUID criteria alongside built-in sample IDs."""
+def test_all_criteria_keep_uuid_identity_after_rename_and_reload(
+    criteria_storage: Path,
+) -> None:
+    """Names are editable metadata; saved and sample UUIDs stay unchanged."""
     values = deepcopy(PROFILES)
     identity = str(uuid4())
     assert UUID(identity).version == 4
-    values[identity] = deepcopy(values["general"])
+    values[identity] = deepcopy(values["4e6d5417-611e-49e0-8e23-2444a0f49ee4"])
     values[identity]["label"] = "한글 Criteria"
     save_profiles(values)
     load_profiles()
     assert PROFILES == values
     assert get_profile(identity)["label"] == "한글 Criteria"
-    assert get_profile("general") == values["general"]
+    values[identity]["label"] = "Renamed Criteria"
+    save_profiles(values)
+    load_profiles()
+    assert get_profile(identity)["label"] == "Renamed Criteria"
+    assert set(PROFILES) == set(values)
+    assert all(UUID(key).version == 4 for key in PROFILES)
+    assert (
+        get_profile("4e6d5417-611e-49e0-8e23-2444a0f49ee4")
+        == values["4e6d5417-611e-49e0-8e23-2444a0f49ee4"]
+    )
 
 
 @pytest.mark.anyio
@@ -255,11 +306,17 @@ async def test_general_is_optional_but_task_assignments_still_block_deletion(
 ) -> None:
     """General follows the same editing, deletion, and persistence rules as any profile."""
     values = deepcopy(PROFILES)
-    values["general"]["instructions"] = "Custom system rules."
+    values["4e6d5417-611e-49e0-8e23-2444a0f49ee4"]["instructions"] = (
+        "Custom system rules."
+    )
     save_profiles(values)
-    task = {"id": "task", "name": "System Task", "sources": [{"profile": "general"}]}
+    task = {
+        "id": "task",
+        "name": "System Task",
+        "sources": [{"profile": "4e6d5417-611e-49e0-8e23-2444a0f49ee4"}],
+    }
     save_records("tasks", {"task": task})
-    del values["general"]
+    del values["4e6d5417-611e-49e0-8e23-2444a0f49ee4"]
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=server.app), base_url="http://localhost"
     ) as client:
@@ -267,15 +324,18 @@ async def test_general_is_optional_but_task_assignments_still_block_deletion(
         blocked = await client.put("/api/criteria", headers=headers, json=values)
         assert blocked.status_code == 400
         assert "System Task" in blocked.json()["error"]
-        assert PROFILES["general"]["instructions"] == "Custom system rules."
-        task["sources"][0]["profile"] = "http_access"
+        assert (
+            PROFILES["4e6d5417-611e-49e0-8e23-2444a0f49ee4"]["instructions"]
+            == "Custom system rules."
+        )
+        task["sources"][0]["profile"] = "2e44ae00-7a3a-492d-8806-9177a8973582"
         save_records("tasks", {"task": task})
         saved = await client.put("/api/criteria", headers=headers, json=values)
         assert saved.status_code == 200
-        assert "general" not in saved.json()["profiles"]
+        assert "4e6d5417-611e-49e0-8e23-2444a0f49ee4" not in saved.json()["profiles"]
         load_profiles()
         assert PROFILES == values
-        assert "general" not in load_records("criteria")
+        assert "4e6d5417-611e-49e0-8e23-2444a0f49ee4" not in load_records("criteria")
         save_records("tasks", {})
         empty = await client.put("/api/criteria", headers=headers, json={})
         assert empty.status_code == 200

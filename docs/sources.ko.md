@@ -201,7 +201,7 @@ Tasks에 소스 ID·hostIds·실행 설정을 저장합니다. 직접 파일 API
 {
   "mode": "batch",
   "sources": [
-    {"sourceId": "<registered-source-id>", "profile": "general", "chunkEvents": 1, "actionId": "", "hostIds": ["<ssh-host-id>"]}
+    {"sourceId": "<registered-source-id>", "profile": "4e6d5417-611e-49e0-8e23-2444a0f49ee4", "chunkEvents": 1, "actionId": "", "hostIds": ["<ssh-host-id>"]}
   ],
   "persist": true
 }

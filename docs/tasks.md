@@ -159,7 +159,7 @@ with `POST /api/tasks/<id>/run` using the returned Task ID.
   "sources": [
     {
       "sourceId": "<remote-source-id>",
-      "profile": "general",
+      "profile": "4e6d5417-611e-49e0-8e23-2444a0f49ee4",
       "chunkEvents": 1,
       "actionId": "",
       "hostIds": ["<first-host-id>", "<second-host-id>"]

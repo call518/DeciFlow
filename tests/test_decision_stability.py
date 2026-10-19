@@ -36,7 +36,9 @@ async def test_auth_messages_share_input_but_preserve_original_logs(
         question = payload["questions"]["category"]
         assert (
             question["criteria"]
-            == PROFILES["authentication"]["questions"]["category"]["criteria"]
+            == PROFILES["702ecfa5-01fb-4321-9692-996134a10802"]["questions"][
+                "category"
+            ]["criteria"]
         )
         assert message not in json.dumps(question)
 
@@ -51,9 +53,9 @@ async def test_auth_messages_share_input_but_preserve_original_logs(
                         "confidence": 0.9,
                         "probabilities": {
                             key: float(key == "warning")
-                            for key in PROFILES["general"]["questions"]["category"][
-                                "criteria"
-                            ]
+                            for key in PROFILES["4e6d5417-611e-49e0-8e23-2444a0f49ee4"][
+                                "questions"
+                            ]["category"]["criteria"]
                         },
                     },
                 },
@@ -65,7 +67,9 @@ async def test_auth_messages_share_input_but_preserve_original_logs(
     ) as client:
 
         async def handle_classify(log: str) -> Result:
-            return await classify_log(log, get_engine(), client, "authentication")
+            return await classify_log(
+                log, get_engine(), client, "702ecfa5-01fb-4321-9692-996134a10802"
+            )
 
         results = dict([row async for row in classify_batch(logs, handle_classify)])
     assert states == [f"{service}: {message}"] * 2
@@ -78,16 +82,18 @@ def test_normalization_keeps_multiline_and_semantic_fields() -> None:
     first = "Oct 10 20:47:21 node sshd[123]: Failed password for root from 10.1.2.3 port 5000"
     second = "Oct 10 20:47:41 node sshd[124]: Accepted password for root from 10.1.2.3 port 5001"
     assert (
-        _decision_input(first, "authentication")
+        _decision_input(first, "702ecfa5-01fb-4321-9692-996134a10802")
         == "sshd: Failed password for root from 10.1.2.3 port 5000"
     )
     assert (
-        _decision_input(first + "\n" + second, "authentication")
+        _decision_input(first + "\n" + second, "702ecfa5-01fb-4321-9692-996134a10802")
         == first + "\n" + second
     )
-    assert _decision_input(first, "general") == first
+    assert _decision_input(first, "4e6d5417-611e-49e0-8e23-2444a0f49ee4") == first
     assert (
-        _decision_input("unrecognized format 123", "authentication")
+        _decision_input(
+            "unrecognized format 123", "702ecfa5-01fb-4321-9692-996134a10802"
+        )
         == "unrecognized format 123"
     )
 
@@ -123,7 +129,9 @@ async def test_uncertainty_preserves_model_choice(
     monkeypatch.setenv("DECISION_ENGINE", engine)
     distribution = dict(
         zip(
-            PROFILES["general"]["questions"]["category"]["criteria"],
+            PROFILES["4e6d5417-611e-49e0-8e23-2444a0f49ee4"]["questions"]["category"][
+                "criteria"
+            ],
             probabilities,
             strict=True,
         )

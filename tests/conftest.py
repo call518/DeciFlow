@@ -5,7 +5,9 @@ import pytest
 
 from profiles import DEFAULT_PROFILES
 
-URGENCY_CRITERIA = DEFAULT_PROFILES["general"]["questions"]["urgency"]["criteria"]
+URGENCY_CRITERIA = DEFAULT_PROFILES["4e6d5417-611e-49e0-8e23-2444a0f49ee4"][
+    "questions"
+]["urgency"]["criteria"]
 
 DECISION_ANSWERS: dict[str, Any] = {
     "urgency": {

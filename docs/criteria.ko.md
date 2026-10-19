@@ -7,6 +7,12 @@
 **Default Chart Decision**을 모든 유형 중 하나 지정합니다. 항목 수는 3개로 고정하지 않으며
 제공자의 입력·실행 제한은 적용됩니다.
 
+기본 샘플을 포함한 모든 Criteria 프로필은 UUID를 사용합니다. View·Edit의 읽기 전용
+**Criteria ID**와 **Copy** 버튼으로 확인·복사하고 Task 할당 및 결과의 `profile`·`profileId`와
+대조할 수 있습니다. 이름 변경 시 ID는 유지하고 Add·Clone은 새 UUID를 발급합니다.
+프로필 전체의 식별자이며 개별 질문을 식별하는 **Decision ID**와는 별개입니다.
+샘플 UUID는 번들 JSON 파일에 고정값으로 저장합니다.
+
 Default Chart Decision은 존재하는 판단 항목 중 정확히 하나를 지정하는 표시 설정입니다.
 AI 답변·불확실성·필터는 바꾸지 않습니다. 모든 항목을 Overview에서
 선택할 수 있습니다. Overview의 **Set as Default**나 Criteria 편집에서 변경합니다.
@@ -101,6 +107,7 @@ OpenAI는 Criteria 작성에만 사용하며 실제 분류는 자동 대체 없�
 | 화면 입력란 | 목적 | 무엇을 입력하나 |
 | --- | --- | --- |
 | Start From Template | 신규 초안의 출발점 | VOC 전체 대화는 상담용 템플릿을 선택합니다. Custom Decisions는 빈 사용자 구성에서 시작합니다. 템플릿을 다시 고르면 현재 초안 내용을 대체합니다. |
+| Criteria ID | 프로필을 식별하는 UUID | 읽기 전용이며 Copy로 복사해 결과나 외부 연동에서 참조합니다. |
 | Name | Task에서 고를 프로필 이름 | `VOC 상담 후속 조치 테스트`. 기존 프로필과 다른 이름을 사용합니다. |
 | Default Chart Decision | Overview의 기본 차트 항목 | Choice·Score·Noul 중 정확히 하나. 모든 항목은 계속 실행하며 필터·AI 답변은 바꾸지 않습니다. |
 | Decision Instructions | 모든 Decision에 적용할 공통 원칙 | 판단 시점, 사용할 근거, 추측 금지, 정보 부족 시 대응. 특정 항목의 선택지는 아래 Decision에서 정의합니다. |
@@ -255,7 +262,7 @@ Task가 참조 중이면 차단합니다.
 ## 기존 시스템 프로필
 
 모든 프로필은 검색 가능한 **Criteria** 목록 하나에서 View·Edit·Clone·Delete로 관리합니다.
-**Sample General System**(`general`)도 선택적인 일반 프로필입니다. 직접 편집하거나
+**Sample General System**도 선택적인 일반 프로필입니다. 직접 편집하거나
 Task 할당을 변경한 후 삭제할 수 있으며 재시작해도 복구하지 않습니다. 템플릿은
 **Start From Template**에서 계속 사용할 수 있습니다. 저장된 프로필이 없어도 직접
 작성하거나 AI로 새 프로필을 생성할 수 있습니다. 모든 템플릿·수동 작성·AI 생성

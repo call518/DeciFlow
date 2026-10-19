@@ -109,9 +109,16 @@ async def test_default_changes_do_not_change_inference_or_group_identity(
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         for default in ("area", "urgency", "followup"):
             profile["defaultDecision"] = default
-            with use_profile_snapshot({"custom": profile}):
+            with use_profile_snapshot(
+                {"a9b5cb3b-1e1e-4559-8f71-365c651d176d": profile}
+            ):
                 results.append(
-                    await classify_log("Synthetic record", engine, client, "custom")
+                    await classify_log(
+                        "Synthetic record",
+                        engine,
+                        client,
+                        "a9b5cb3b-1e1e-4559-8f71-365c651d176d",
+                    )
                 )
     assert requests[0] == requests[1] == requests[2]
     assert len({result["criteriaGroup"] for result in results}) == 1
@@ -177,8 +184,13 @@ def test_any_single_existing_decision_can_be_the_default(
 ) -> None:
     profile["defaultDecision"] = default
     saved = validate_profiles(
-        {"general": DEFAULT_PROFILES["general"], "custom": profile}
-    )["custom"]
+        {
+            "4e6d5417-611e-49e0-8e23-2444a0f49ee4": DEFAULT_PROFILES[
+                "4e6d5417-611e-49e0-8e23-2444a0f49ee4"
+            ],
+            "a9b5cb3b-1e1e-4559-8f71-365c651d176d": profile,
+        }
+    )["a9b5cb3b-1e1e-4559-8f71-365c651d176d"]
     assert saved["defaultDecision"] == default
     assert "primaryQuestion" not in saved
 
@@ -187,14 +199,28 @@ def test_any_single_existing_decision_can_be_the_default(
 def test_invalid_default_is_rejected(profile: dict[str, Any], default: Any) -> None:
     profile["defaultDecision"] = default
     with pytest.raises(ValueError, match="default chart"):
-        validate_profiles({"general": DEFAULT_PROFILES["general"], "custom": profile})
+        validate_profiles(
+            {
+                "4e6d5417-611e-49e0-8e23-2444a0f49ee4": DEFAULT_PROFILES[
+                    "4e6d5417-611e-49e0-8e23-2444a0f49ee4"
+                ],
+                "a9b5cb3b-1e1e-4559-8f71-365c651d176d": profile,
+            }
+        )
 
 
 @pytest.mark.parametrize("options", [["missing"], ["a", "a"], "a", [False]])
 def test_review_options_are_validated(profile: dict[str, Any], options: Any) -> None:
     profile["questions"]["area"]["reviewOptions"] = options
     with pytest.raises(ValueError, match="Review options"):
-        validate_profiles({"general": DEFAULT_PROFILES["general"], "custom": profile})
+        validate_profiles(
+            {
+                "4e6d5417-611e-49e0-8e23-2444a0f49ee4": DEFAULT_PROFILES[
+                    "4e6d5417-611e-49e0-8e23-2444a0f49ee4"
+                ],
+                "a9b5cb3b-1e1e-4559-8f71-365c651d176d": profile,
+            }
+        )
 
 
 def test_indexed_filters_and_reopening_preserve_original_payload(
@@ -284,8 +310,13 @@ async def test_profiles_without_choice_are_supported(
     }
     profile["defaultDecision"] = "followup"
     saved = validate_profiles(
-        {"general": DEFAULT_PROFILES["general"], "custom": profile}
-    )["custom"]
+        {
+            "4e6d5417-611e-49e0-8e23-2444a0f49ee4": DEFAULT_PROFILES[
+                "4e6d5417-611e-49e0-8e23-2444a0f49ee4"
+            ],
+            "a9b5cb3b-1e1e-4559-8f71-365c651d176d": profile,
+        }
+    )["a9b5cb3b-1e1e-4559-8f71-365c651d176d"]
     assert "primaryQuestion" not in saved
     sample = record(profile)
     answers = {
@@ -300,7 +331,7 @@ async def test_profiles_without_choice_are_supported(
         "english" if engine_name == "laya" else "jev-1.13.0",
         10,
     )
-    with use_profile_snapshot({"custom": saved}):
+    with use_profile_snapshot({"a9b5cb3b-1e1e-4559-8f71-365c651d176d": saved}):
         async with httpx.AsyncClient(
             transport=httpx.MockTransport(
                 lambda request: httpx.Response(
@@ -308,7 +339,12 @@ async def test_profiles_without_choice_are_supported(
                 )
             )
         ) as client:
-            result = await classify_log("Synthetic record", engine, client, "custom")
+            result = await classify_log(
+                "Synthetic record",
+                engine,
+                client,
+                "a9b5cb3b-1e1e-4559-8f71-365c651d176d",
+            )
     assert "primaryQuestion" not in result and "category" not in result
     assert result["review"] is False and result["anyUncertain"] is False
     assert result["defaultDecision"] == "followup"
@@ -348,13 +384,18 @@ async def test_nonprimary_option_integrity_is_engine_specific(
             "options": {"response": {"total": 2, "distinct": 1}},
         },
     }
-    with use_profile_snapshot({"custom": profile}):
+    with use_profile_snapshot({"a9b5cb3b-1e1e-4559-8f71-365c651d176d": profile}):
         async with httpx.AsyncClient(
             transport=httpx.MockTransport(
                 lambda request: httpx.Response(200, json=payload)
             )
         ) as client:
-            result = await classify_log("Synthetic input", engine, client, "custom")
+            result = await classify_log(
+                "Synthetic input",
+                engine,
+                client,
+                "a9b5cb3b-1e1e-4559-8f71-365c651d176d",
+            )
     assert result["decisionAssessments"]["area"]["uncertain"] is False
     assert result["decisionAssessments"]["response"]["uncertain"] is (
         engine_name == "laya"
@@ -380,8 +421,15 @@ async def test_implicit_and_explicit_review_defaults_share_the_same_chart_identi
         for explicit in [False, True]:
             if explicit:
                 profile["questions"]["area"]["reviewOptions"] = []
-            with use_profile_snapshot({"custom": profile}):
+            with use_profile_snapshot(
+                {"a9b5cb3b-1e1e-4559-8f71-365c651d176d": profile}
+            ):
                 results.append(
-                    await classify_log("Synthetic input", engine, client, "custom")
+                    await classify_log(
+                        "Synthetic input",
+                        engine,
+                        client,
+                        "a9b5cb3b-1e1e-4559-8f71-365c651d176d",
+                    )
                 )
     assert results[0]["criteriaGroup"] == results[1]["criteriaGroup"]

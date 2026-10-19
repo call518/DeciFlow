@@ -19,9 +19,9 @@ from decisions import (
     review_options,
     validate_answer,
 )
-from profiles import DEFAULT_PROFILES, get_profile
+from profiles import DEFAULT_PROFILES, GENERAL_PROFILE_ID, get_profile
 
-CRITERIA = DEFAULT_PROFILES["general"]["questions"]["category"]["criteria"]
+CRITERIA = DEFAULT_PROFILES[GENERAL_PROFILE_ID]["questions"]["category"]["criteria"]
 Result = dict[str, Any]
 Classifier = Callable[[str], Awaitable[Result]]
 
@@ -92,7 +92,10 @@ def _reject_json_constant(value: str) -> NoReturn:
 
 
 async def classify_log(
-    log: str, engine: Engine, client: httpx.AsyncClient, profile: str = "general"
+    log: str,
+    engine: Engine,
+    client: httpx.AsyncClient,
+    profile: str = GENERAL_PROFILE_ID,
 ) -> Result:
     """Apply the same question and validation to either provider's typed answer."""
     selected = get_profile(profile)

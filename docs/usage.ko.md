@@ -50,7 +50,7 @@ Criteria는 Choice·Score·Noul 판단 항목의 개수·선택지·단계를 �
 
 프로필은 사이드바의 **Criteria**에서 추가·수정·삭제합니다.
 시스템 프로필은 Normal·Warning·Error·Security·Other를 유지하고 사용자 프로필은
-선택지를 지정합니다. `general`도 다른 프로필과 동일한 편집·삭제 규칙을 따릅니다.
+선택지를 지정합니다. **Sample General System**도 다른 프로필과 동일한 편집·삭제 규칙을 따릅니다.
 **Save Changes** 후 다음 분석부터 적용하고, 실행 중인 작업은 기존 기준을 유지합니다.
 저장 위치와 Task 참조에 따른 삭제 제한은 [Criteria 관리](criteria.ko.md)를 참고하세요.
 기준에는 사건의 결과와 증거를 설명하고 특정 로그 문자열은 검증 샘플에서 다룹니다.

@@ -1,4 +1,5 @@
 {
+  "id": "4e6d5417-611e-49e0-8e23-2444a0f49ee4",
   "label": "Sample General System",
   "instructions": "Judge operational outcomes, not service names or topics. Routine changes are normal; recoverable problems are warning; explicit failures are error. Security requires abuse or policy-violation evidence, not addresses or security terminology. Unknown cause alone is not other.",
   "questions": {

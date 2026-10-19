@@ -193,18 +193,24 @@ async def test_generate_then_save_and_reload(
         assert response.json()["analysisPurpose"] == "Evaluate follow-up"
         assert len(calls) == 1
         assert "private-test-key" not in response.text
-        assert "generated" not in PROFILES
+        assert "a9b5cb3b-1e1e-4559-8f71-365c651d176d" not in PROFILES
         values = deepcopy(PROFILES)
-        values["generated"] = response.json()["profile"]
+        values["a9b5cb3b-1e1e-4559-8f71-365c651d176d"] = response.json()["profile"]
         saved = await client.put(
             "/api/criteria", headers={"Origin": "http://localhost"}, json=values
         )
         assert saved.status_code == 200
-        assert load_records("criteria")["generated"] == response.json()["profile"]
+        assert (
+            load_records("criteria")["a9b5cb3b-1e1e-4559-8f71-365c651d176d"]
+            == response.json()["profile"]
+        )
         loaded = await client.post(
             "/api/criteria", headers={"Origin": "http://localhost"}
         )
-        assert loaded.json()["profiles"]["generated"] == response.json()["profile"]
+        assert (
+            loaded.json()["profiles"]["a9b5cb3b-1e1e-4559-8f71-365c651d176d"]
+            == response.json()["profile"]
+        )
 
 
 @pytest.mark.anyio
@@ -438,7 +444,7 @@ def test_generated_decisions_are_all_available_for_overview(
         stats,
         {
             "profileLabel": profile["label"],
-            "criteriaGroup": "generated",
+            "criteriaGroup": "a9b5cb3b-1e1e-4559-8f71-365c651d176d",
             "defaultDecision": profile["defaultDecision"],
             "decisionDefinitions": profile["questions"],
             "decisions": {
@@ -450,10 +456,20 @@ def test_generated_decisions_are_all_available_for_overview(
     )
     groups = stats["decisionGroups"]
     assert len(groups) == 3
-    assert groups["generated:status"]["default"]
-    assert not groups["generated:urgency"]["default"]
-    assert groups["generated:urgency"]["counts"]["all"]["1 · Immediate harm"] == 1
-    assert groups["generated:follow_up"]["counts"]["all"]["75–100%"] == 1
+    assert groups["a9b5cb3b-1e1e-4559-8f71-365c651d176d:status"]["default"]
+    assert not groups["a9b5cb3b-1e1e-4559-8f71-365c651d176d:urgency"]["default"]
+    assert (
+        groups["a9b5cb3b-1e1e-4559-8f71-365c651d176d:urgency"]["counts"]["all"][
+            "1 · Immediate harm"
+        ]
+        == 1
+    )
+    assert (
+        groups["a9b5cb3b-1e1e-4559-8f71-365c651d176d:follow_up"]["counts"]["all"][
+            "75–100%"
+        ]
+        == 1
+    )
 
 
 @pytest.mark.parametrize("default", ["status", "urgency", "follow_up"])

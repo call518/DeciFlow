@@ -137,6 +137,8 @@ Choice·Score·Noul 중 하나라도 사람이 정정한 결과만 내려받을 
    차트의 **Criteria**에서 별도로 선택합니다.
 
 Overview의 **Decision**에서 모든 판단 항목을 집계할 수 있습니다.
+모든 Criteria 프로필은 UUID를 사용하며 View·Edit의 **Criteria ID**에서 확인·복사합니다.
+이름을 바꿔도 ID는 유지되고 복제하면 새 ID를 발급합니다.
 Default Chart Decision은 모든 유형 중 하나를 지정하며 AI 답변·필터를 바꾸지 않고 변경합니다. Choice는 선택지별,
 Score는 가중 점수를 가장 가까운 수준으로 반올림하여, Noul은 Yes 확률을 25% 구간으로
 집계합니다. 확실성 그룹은 선택한 Choice 기준이며 Score·Noul에는 적용하지 않습니다.

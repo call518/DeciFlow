@@ -12,10 +12,22 @@ from typing import Any
 from config_store import load_records, save_record, save_records
 from decisions import review_options
 
-DEFAULT_PROFILES = {
-    path.stem: json.loads(path.read_text())
-    for path in sorted(Path(__file__).parent.glob("*.json"))
-}
+
+def _load_templates() -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
+    profiles = {}
+    identities = {}
+    for path in sorted(Path(__file__).parent.glob("*.json")):
+        definition = json.loads(path.read_text())
+        identity = definition.pop("id")
+        if identity in profiles:
+            raise ValueError("Sample Criteria IDs must be unique.")
+        profiles[identity] = definition
+        identities[path.stem] = identity
+    return profiles, identities
+
+
+DEFAULT_PROFILES, SAMPLE_PROFILE_IDS = _load_templates()
+GENERAL_PROFILE_ID = SAMPLE_PROFILE_IDS["general"]
 PROFILES = deepcopy(DEFAULT_PROFILES)
 
 
@@ -48,10 +60,10 @@ def validate_profiles(values: object) -> ProfileMap:
     names: set[str] = set()
     for identity, value in values.items():
         if not isinstance(identity, str) or not re.fullmatch(
-            r"(?:[a-z][a-z0-9_-]{0,63}|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})",
+            r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}",
             identity,
         ):
-            raise ValueError("Profile IDs must be UUIDs or lowercase identifiers.")
+            raise ValueError("Criteria IDs must be canonical lowercase UUIDs.")
         if not isinstance(value, dict):
             raise TypeError(
                 "Each profile must contain a name, instructions and criteria."
@@ -141,7 +153,8 @@ def load_profiles() -> None:
     """Load saved criteria and ensure the required consultation samples exist."""
     stored = load_records("criteria", DEFAULT_PROFILES)
     values = validate_profiles(stored)
-    for identity in ("consultation", "central_gov", "local_gov"):
+    for name in ("consultation", "central_gov", "local_gov"):
+        identity = SAMPLE_PROFILE_IDS[name]
         sample = DEFAULT_PROFILES[identity]
         if identity not in values and not any(
             profile["label"].casefold() == sample["label"].casefold()

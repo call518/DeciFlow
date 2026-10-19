@@ -53,7 +53,7 @@ No ticket is created automatically. Missing or invalid answers fail the whole re
 
 Use **Criteria** in the sidebar to add, edit, or delete profiles.
 System profiles retain Normal, Warning, Error, Security, and Other; custom
-profiles choose their own options. `general` follows the same editing and deletion
+profiles choose their own options. **Sample General System** follows the same editing and deletion
 rules as every other profile. **Save Changes** applies to new runs; running jobs keep their original
 criteria. See [Criteria management](criteria.md) for storage and deletion restrictions on Task references.
 Describe outcomes and evidence; keep specific log strings in evaluation samples.

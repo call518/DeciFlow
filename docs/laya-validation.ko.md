@@ -52,13 +52,13 @@ UI에서 편집한 기준은 정답 로그를 UTF-8 파일로 만들고 Local Fi
   {
     "log": "application: database connection failed",
     "expected": "error",
-    "profile": "application"
+    "profile": "617706a3-c4ee-426f-81cf-7f5d80ecf67a"
   }
 ]
 ```
 
 각 사례에는 로그 문자열과 기대 범주(`normal`·`warning`·`error`·`security`·`other` 중 하나)가
-필요합니다. `profile` 기본값은 `general`이며 번들 프로필 이름이어야 합니다.
+필요합니다. `profile`은 번들 Criteria UUID이며 기본값은 Sample General System입니다.
 사례 파일 경로는 평가 스크립트를 실행하는 환경에서 읽을 수 있어야 합니다.
 
 ## 보고서 확인

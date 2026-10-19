@@ -7,12 +7,14 @@ import { test } from 'node:test';
 const prismRuntime=vm.createContext({});
 vm.runInContext(readFileSync(new URL('../public/vendor/prism/prism-python-1.30.0.min.js',import.meta.url),'utf8'),prismRuntime);
 const workspaceContexts = new WeakMap();
-const systemProfile=JSON.parse(readFileSync(new URL('../profiles/general.json',import.meta.url),'utf8'));
+const sampleProfileIds={"central_gov": "1dd02d79-f43e-49ef-a1f1-7a2ddfab1e8d", "consultation": "41bbe1dc-85cb-4ab0-ab79-cd7c4e6f8e72", "application": "617706a3-c4ee-426f-81cf-7f5d80ecf67a", "general": "4e6d5417-611e-49e0-8e23-2444a0f49ee4", "local_gov": "efb7c8ca-61c1-4785-b38d-0a86764ca758", "authentication": "702ecfa5-01fb-4321-9692-996134a10802", "network": "0181af82-c1ed-41c8-8cd3-22a385746b32", "http_access": "2e44ae00-7a3a-492d-8806-9177a8973582"};
+function readProfileTemplate(name) {const {id,...profile}=JSON.parse(readFileSync(new URL(`../profiles/${name}.json`,import.meta.url),'utf8'));return profile;}
+const systemProfile=readProfileTemplate('general');
 function profileFixture(label,instructions,criteria=systemProfile.questions.category.criteria) {
   return {...structuredClone(systemProfile),label,instructions,questions:{...structuredClone(systemProfile.questions),category:{...structuredClone(systemProfile.questions.category),criteria}}};
 }
 function systemResult(log,overrides={}) {
-  return {log,elapsedMs:1,criteriaGroup:'system',profileId:'general',defaultDecision:'category',decisionDefinitions:structuredClone(systemProfile.questions),decisions:{category:{type:'choice',choice:'normal',confidence:.9,probabilities:{normal:1,warning:0,error:0,security:0,other:0}},urgency:{type:'score',score:undefined,probabilities:{},legend:Object.fromEntries(systemProfile.questions.urgency.criteria.map((text,i)=>[i,text]))},ticket:{type:'noul',noul:undefined}},...overrides};
+  return {log,elapsedMs:1,criteriaGroup:'system',profileId:'4e6d5417-611e-49e0-8e23-2444a0f49ee4',defaultDecision:'category',decisionDefinitions:structuredClone(systemProfile.questions),decisions:{category:{type:'choice',choice:'normal',confidence:.9,probabilities:{normal:1,warning:0,error:0,security:0,other:0}},urgency:{type:'score',score:undefined,probabilities:{},legend:Object.fromEntries(systemProfile.questions.urgency.criteria.map((text,i)=>[i,text]))},ticket:{type:'noul',noul:undefined}},...overrides};
 }
 function setDecisions(item,{choice,confidence,probabilities,score,scoreProbabilities,legend,noul,uncertain,reasons,candidates,...metadata}) {
   Object.assign(item,metadata);
@@ -56,7 +58,7 @@ function workspace(events, status, storage = { getItem: () => null, setItem() {}
     setAttribute(name, value) { this.attributes[name] = value; },
   });
   const context = vm.createContext({
-    Prism:prismRuntime.Prism, crypto: webcrypto, structuredClone, systemProfile, profileFixture, systemResult,
+    Prism:prismRuntime.Prism, crypto: webcrypto, structuredClone, systemProfile, profileFixture, systemResult, sampleProfileIds,
     ...(navigation ? { location: navigation, addEventListener: (name, handler) => listeners.set(name, handler) } : {}),
     document: {
       getElementById(id) {
@@ -268,9 +270,9 @@ test('New Tasks default to one-time Batch and do not auto-resume', async () => {
 
 test('Changing Task modes retains the Source configuration draft', async () => {
   const {nodes,context}=workspace([]);await vm.runInContext('handleEditTask()',context);
-  vm.runInContext("sourceRows[0].profile.value='http_access';sourceRows[0].size.value='5';sourceRows[0].action.value='Notify'",context);
+  vm.runInContext("sourceRows[0].profile.value='2e44ae00-7a3a-492d-8806-9177a8973582';sourceRows[0].size.value='5';sourceRows[0].action.value='Notify'",context);
   nodes.get('source-mode').value='realtime';nodes.get('source-mode').onchange();nodes.get('source-mode').value='batch';nodes.get('source-mode').onchange();
-  assert.equal(vm.runInContext('sourceRows[0].profile.value',context),'http_access');assert.equal(vm.runInContext('sourceRows[0].size.value',context),'5');
+  assert.equal(vm.runInContext('sourceRows[0].profile.value',context),'2e44ae00-7a3a-492d-8806-9177a8973582');assert.equal(vm.runInContext('sourceRows[0].size.value',context),'5');
 });
 
 test('Main monitors Tasks and Source configuration lives only in Tasks', () => {
@@ -293,15 +295,15 @@ test('Main monitors Tasks and Source configuration lives only in Tasks', () => {
 });
 
 test('Editing an existing Task restores saved per-Source criteria, chunk size and Action', async () => {
-  const {context}=workspace([]);await vm.runInContext("handleEditTask({id:'saved',name:'Logs',mode:'batch',timezone:'UTC',cron:'',sources:[{sourceId:sampleSources[0].id,profile:'http_access',chunkEvents:3,actionId:'notify'}]})",context);
-  assert.equal(vm.runInContext('sourceRows[0].profile.value',context),'http_access');assert.equal(vm.runInContext('sourceRows[0].size.value',context),'3');assert.equal(vm.runInContext('sourceRows[0].action.value',context),'notify');
+  const {context}=workspace([]);await vm.runInContext("handleEditTask({id:'saved',name:'Logs',mode:'batch',timezone:'UTC',cron:'',sources:[{sourceId:sampleSources[0].id,profile:'2e44ae00-7a3a-492d-8806-9177a8973582',chunkEvents:3,actionId:'notify'}]})",context);
+  assert.equal(vm.runInContext('sourceRows[0].profile.value',context),'2e44ae00-7a3a-492d-8806-9177a8973582');assert.equal(vm.runInContext('sourceRows[0].size.value',context),'3');assert.equal(vm.runInContext('sourceRows[0].action.value',context),'notify');
 });
 
 test('individual JSON reflects review changes and stays open after rendering', async () => {
   const event = result(0);
-  Object.assign(event.result, { profile: 'http_access', chunkEvents: 3, eventCount: 2, source: '/logs/access.log', line: 10, lineEnd: 11, log: '<script>example</script>' });
+  Object.assign(event.result, { profile: '2e44ae00-7a3a-492d-8806-9177a8973582', chunkEvents: 3, eventCount: 2, source: '/logs/access.log', line: 10, lineEnd: 11, log: '<script>example</script>' });
   const failed = result(1);
-  failed.result = { log: 'bad input', error: 'request failed', review: true, elapsedMs: 1, profile: 'network' };
+  failed.result = { log: 'bad input', error: 'request failed', review: true, elapsedMs: 1, profile: '0181af82-c1ed-41c8-8cd3-22a385746b32' };
   const { nodes, context } = workspace([{ type: 'start', total: 2, engine: 'laya' }, event, failed]);
   await runTask(nodes);
   const row = nodes.get('results').children[1];
@@ -389,9 +391,9 @@ test('pause excludes received results that have not yet been displayed', async (
 test('file line labels distinguish batch from observed realtime sequences', async () => {
   for (const mode of ['batch', 'realtime']) {
     const first = result(0);
-    Object.assign(first.result, { source: '/var/log/secure', line: 1, lineEnd: 1, profile: 'general', eventCount: 1, chunkEvents: 1 });
+    Object.assign(first.result, { source: '/var/log/secure', line: 1, lineEnd: 1, profile: '4e6d5417-611e-49e0-8e23-2444a0f49ee4', eventCount: 1, chunkEvents: 1 });
     const second = result(1);
-    Object.assign(second.result, { source: '/var/log/secure', line: 10, lineEnd: 12, lineCount: 3, profile: 'authentication', eventCount: 1, chunkEvents: 5 });
+    Object.assign(second.result, { source: '/var/log/secure', line: 10, lineEnd: 12, lineCount: 3, profile: '702ecfa5-01fb-4321-9692-996134a10802', eventCount: 1, chunkEvents: 5 });
     const { nodes, context } = workspace([{ type: 'start', engine: 'laya', total: null, mode }, first, second]);
     await runTask(nodes);
     const rows = nodes.get('results').children;
@@ -925,7 +927,7 @@ test('source rows select registered sources, reject unknown text, and retain set
   assert.equal(path.value, '1'.padStart(32,'0'));
   path.value = '/custom/access*.log'; path.onchange();
   const profile = first.children[1].children[0];
-  profile.value = 'http_access'; profile.onchange();
+  profile.value = '2e44ae00-7a3a-492d-8806-9177a8973582'; profile.onchange();
   first.children.at(-1).onclick();
   assert.equal(nodes.get('source-settings').children.length, 2);
   nodes.get('add-source').onclick();
@@ -935,12 +937,12 @@ test('source rows select registered sources, reject unknown text, and retain set
   assert.equal(requests.length, 0);
   assert.match(nodes.get('message').textContent, /Select a registered source/);
   added.value = '1'.padStart(32,'0'); added.onchange();
-  vm.runInContext("sourceRows[2].profile.value = 'http_access'; sourceRows[2].profile.onchange();", context);
+  vm.runInContext("sourceRows[2].profile.value = '2e44ae00-7a3a-492d-8806-9177a8973582'; sourceRows[2].profile.onchange();", context);
   assert.equal(vm.runInContext('sourceRows[2].path', context), '1'.padStart(32,'0'));
   nodes.get('source-mode').value = 'realtime'; nodes.get('source-mode').onchange();
   nodes.get('source-mode').value = 'batch'; nodes.get('source-mode').onchange();
   assert.equal(nodes.get('source-settings').children[2].children[0].children[0].value, '1'.padStart(32,'0'));
-  assert.equal(vm.runInContext('sourceRows[2].profile.value', context), 'http_access');
+  assert.equal(vm.runInContext('sourceRows[2].profile.value', context), '2e44ae00-7a3a-492d-8806-9177a8973582');
   await runTask(nodes);
   assert.equal(requests[0].sources.length, 3);
   assert.equal(requests[0].sources[2].sourceId, '1'.padStart(32,'0'));
@@ -963,7 +965,7 @@ test('result JSON puts metadata first and preserves UTC ISO 8601 timestamps and 
 test('stored Action assignments never run by default; explicit selections last only for this page', async () => {
   let saved;
   const storage = {
-    getItem: () => JSON.stringify([['/host-logs/var/log/messages', {profile:'http_access', chunkEvents:3, actionId:'notify'}]]),
+    getItem: () => JSON.stringify([['/host-logs/var/log/messages', {profile:'2e44ae00-7a3a-492d-8806-9177a8973582', chunkEvents:3, actionId:'notify'}]]),
     setItem: (_, value) => { saved = JSON.parse(value); },
   };
   const {nodes, context, requests} = workspace([], undefined, storage);
@@ -971,7 +973,7 @@ test('stored Action assignments never run by default; explicit selections last o
   vm.runInContext("registeredActions = [{id:'notify',name:'notify'}]; updateSourceSettings();", context);
   const selector = () => nodes.get('source-settings').children[0].children[3].children[0];
   assert.equal(selector().value, '');
-  assert.equal(vm.runInContext('sourceRows[0].profile.value', context), 'http_access');
+  assert.equal(vm.runInContext('sourceRows[0].profile.value', context), '2e44ae00-7a3a-492d-8806-9177a8973582');
   assert.equal(vm.runInContext('sourceRows[0].size.value', context), '3');
   await runTask(nodes);
   assert.ok(requests[0].sources.every(source => source.actionId === ''));
@@ -994,7 +996,7 @@ test('new jobs persist their ID and reload replays results without submitting an
   const first = workspace(events, undefined, storage);
   await new Promise(resolve => setImmediate(resolve));
   let submissions = 0;
-  const settings = {mode:'batch', sources:[{path:'/custom/log', profile:'http_access', chunkEvents:2, actionId:'notify'}]};
+  const settings = {mode:'batch', sources:[{path:'/custom/log', profile:'2e44ae00-7a3a-492d-8806-9177a8973582', chunkEvents:2, actionId:'notify'}]};
   first.context.fetch = async (path, options) => {
     if (path === '/api/tasks/test-task/run') {
       submissions++;
@@ -1018,7 +1020,7 @@ test('new jobs persist their ID and reload replays results without submitting an
   assert.equal(submissions, 1);
   assert.equal(vm.runInContext('completed', reloaded.context), 1);
   assert.equal(vm.runInContext('sourceRows[0].path', reloaded.context), '1'.padStart(32,'0'));
-  assert.equal(vm.runInContext('sourceRows[0].profile.value', reloaded.context), 'general');
+  assert.equal(vm.runInContext('sourceRows[0].profile.value', reloaded.context), '4e6d5417-611e-49e0-8e23-2444a0f49ee4');
   assert.equal(vm.runInContext('sourceRows[0].action.value', reloaded.context), '');
   reloaded.context.fetch = async () => ({ok:false,status:404});
   await vm.runInContext('handleRestoreJob()', reloaded.context);
@@ -1099,7 +1101,7 @@ test('Export stays visibly disabled during processing and enables only with down
 test('Criteria management resets drafts on menu entry, saves edits, and clears deleted source selections', async () => {
   const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, `${key} evidence`]));
   const profiles = {
-    general: profileFixture('Sample General System','General instructions',definitions),
+    [sampleProfileIds.general]: profileFixture('Sample General System','General instructions',definitions),
     custom: profileFixture('Custom','Custom instructions',definitions),
   };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
@@ -1133,7 +1135,7 @@ test('Criteria management resets drafts on menu entry, saves edits, and clears d
 
 test('Criteria search, cancel, and duplicate IDs leave saved profiles unchanged', async () => {
   const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
-  const profiles = { general: profileFixture('Sample General System','Original',definitions), custom: profileFixture('Custom','Original',definitions) };
+  const profiles = { [sampleProfileIds.general]: profileFixture('Sample General System','Original',definitions), custom: profileFixture('Custom','Original',definitions) };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await nodes.get('nav-criteria').onclick();
   nodes.get('criteria-search').value = 'missing';
@@ -1185,7 +1187,7 @@ test('View shows read-only Action configuration without editing or losing drafts
 
 test('View shows all Criteria definitions and preserves the edit draft', async () => {
   const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, `${key} evidence`]));
-  const profiles = { general: profileFixture('Sample General System','Saved instructions',definitions), custom: profileFixture('Custom','Saved instructions',definitions) };
+  const profiles = { [sampleProfileIds.general]: profileFixture('Sample General System','Saved instructions',definitions), custom: profileFixture('Custom','Saved instructions',definitions) };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await nodes.get('nav-criteria').onclick();
   const controls = () => nodes.get('criteria-registry').children[0].children[1].children[1].children;
@@ -1193,7 +1195,7 @@ test('View shows all Criteria definitions and preserves the edit draft', async (
   controls()[0].onclick();
   const values = () => nodes.get('criteria-view').children[1].children.map(field => field.children[1]);
   assert.ok(values().every(value => value.className !== 'action-code'));
-  assert.equal(values()[2].textContent,'Category');assert.ok(values()[3].textContent.includes('normal: normal evidence'));
+  assert.equal(values()[3].textContent,'Category');assert.ok(values()[4].textContent.includes('normal: normal evidence'));
   assert.equal(vm.runInContext('editingCriteria', context), null);
   controls()[1].onclick();
   assert.equal(nodes.get('criteria-view').hidden, true);
@@ -1201,7 +1203,7 @@ test('View shows all Criteria definitions and preserves the edit draft', async (
   assert.equal(nodes.get('criteria-editor').hidden, false);
   vm.runInContext("criteriaFields.instructions.value='Draft instructions';", context);
   controls()[0].onclick();
-  assert.equal(values()[1].textContent, 'Saved instructions');
+  assert.equal(values()[2].textContent, 'Saved instructions');
   assert.equal(nodes.get('criteria-editor').hidden, true);
   assert.equal(nodes.get('save-criteria').disabled, true);
   assert.equal(nodes.get('criteria-view').children[0].children.length, 1);
@@ -1215,7 +1217,7 @@ test('View shows all Criteria definitions and preserves the edit draft', async (
 
 test('Add closes View in both managers and enables the new editor', async () => {
   const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
-  const profiles = { general: profileFixture('General','Instructions',definitions) };
+  const profiles = { [sampleProfileIds.general]: profileFixture('General','Instructions',definitions) };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await new Promise(resolve => setImmediate(resolve));
   vm.runInContext("registeredActions=[{id:'Notify',name:'Notify', code:'pass'}]; renderActions();", context);
@@ -1235,7 +1237,7 @@ test('Add closes View in both managers and enables the new editor', async () => 
 
 test('URL routes restore Actions and Criteria on reload and support browser history', async () => {
   const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
-  const profiles = { general: profileFixture('General','Instructions',definitions) };
+  const profiles = { [sampleProfileIds.general]: profileFixture('General','Instructions',definitions) };
   for (const view of ['actions', 'criteria']) {
     const navigation = { hash: `#${view}` };
     const { nodes, context, listeners } = workspace([], undefined, undefined, profiles, navigation);
@@ -1296,7 +1298,7 @@ test('engine connection follows actual requests for both providers without local
 
 test('All Criteria share one searchable editable list without a required default', async () => {
   const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
-  const profiles = { general: profileFixture('Sample General System','Default instructions',definitions), custom: profileFixture('Custom','Custom instructions',definitions) };
+  const profiles = { [sampleProfileIds.general]: profileFixture('Sample General System','Default instructions',definitions), custom: profileFixture('Custom','Custom instructions',definitions) };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await nodes.get('nav-criteria').onclick();
   assert.equal(nodes.get('criteria-registry').children[0].children.length, 3);
@@ -1309,7 +1311,7 @@ test('All Criteria share one searchable editable list without a required default
   nodes.get('criteria-search').value = 'general'; nodes.get('criteria-search').oninput();
   assert.equal(criteriaRow(nodes, 'Sample General System').children[0].textContent, 'Sample General System');
   criteriaRow(nodes, 'Sample General System').children[1].children[1].onclick();
-  assert.equal(vm.runInContext('editingCriteria', context), 'general');
+  assert.equal(vm.runInContext('editingCriteria', context), '4e6d5417-611e-49e0-8e23-2444a0f49ee4');
   nodes.get('cancel-criteria').onclick();
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   assert.ok(!html.includes('criteria-default'));
@@ -1324,7 +1326,7 @@ function criteriaRow(nodes, name) {
 
 test('Add and Edit show only the form and restore each manager list on cancel or save', async () => {
   const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
-  const profiles = { general: profileFixture('General','Default',definitions), custom: profileFixture('Custom','Custom',definitions) };
+  const profiles = { [sampleProfileIds.general]: profileFixture('General','Default',definitions), custom: profileFixture('Custom','Custom',definitions) };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await new Promise(resolve => setImmediate(resolve));
   vm.runInContext("registeredActions=[{id:'Notify',name:'Notify', code:'pass'}]; renderActions();", context);
@@ -1448,7 +1450,7 @@ test('Reset Selections restores registered samples and clears Action assignments
   const values = new Map();
   const storage = { getItem: key => values.get(key) || null, setItem: (key, value) => values.set(key, value) };
   const { nodes, context } = workspace([], undefined, storage);
-  vm.runInContext("sourcePreferences.set('/host-logs/var/log/messages', {profile:'network', chunkEvents:9, actionId:'Notify'}); filePaths.realtime='/my/live.log';", context);
+  vm.runInContext("sourcePreferences.set('/host-logs/var/log/messages', {profile:'0181af82-c1ed-41c8-8cd3-22a385746b32', chunkEvents:9, actionId:'Notify'}); filePaths.realtime='/my/live.log';", context);
   nodes.get('file-path').value = '/custom.log'; nodes.get('file-path').oninput();
   nodes.get('reset-sources').onclick();
   assert.equal(nodes.get('file-path').value, vm.runInContext('defaultFilePaths.batch', context));
@@ -1456,7 +1458,7 @@ test('Reset Selections restores registered samples and clears Action assignments
   assert.equal(vm.runInContext('filePaths.realtime', context), '/my/live.log');
   assert.equal(vm.runInContext("sourceRows.every(row => row.profile.value===defaultSourceProfiles[registeredSources.find(source=>source.id===row.path)?.path] && row.size.value==='1' && row.action.value==='')", context), true);
   const stored = new Map(JSON.parse(values.get('deciflow-source-preferences')));
-  assert.deepEqual(stored.get('1'.padStart(32,'0')), { profile:'general', chunkEvents:1 });
+  assert.deepEqual(stored.get('1'.padStart(32,'0')), { profile:'4e6d5417-611e-49e0-8e23-2444a0f49ee4', chunkEvents:1 });
   nodes.get('source-mode').value = 'realtime'; nodes.get('source-mode').onchange();
   assert.equal(nodes.get('file-path').value, vm.runInContext('defaultFilePaths.batch',context));
   nodes.get('reset-sources').onclick();
@@ -1589,7 +1591,7 @@ test('Saved source edits keep identity, and source search filters host and path'
   assert.equal(vm.runInContext('registeredSources[1].name',context),'Renamed HTTP');
   assert.equal(vm.runInContext('registeredSources[1].id',context),'2'.padStart(32,'0'));
   assert.equal(vm.runInContext('sourceRows[1].name.value',context),'2'.padStart(32,'0'));
-  assert.equal(vm.runInContext('sourceRows[1].profile.value',context),'http_access');
+  assert.equal(vm.runInContext('sourceRows[1].profile.value',context),'2e44ae00-7a3a-492d-8806-9177a8973582');
 });
 
 test('Running jobs can show deleted source snapshots but new runs require a saved source', async () => {
@@ -1888,7 +1890,7 @@ test('Source and Action dropdowns retain every sorted option with an existing se
     selectedTaskId='0'; renderTaskMonitor();
     registeredSources=['Zulu','가나다','Alpha','나다라'].map((name,index)=>({id:String(index),name,type:'local',path:'/logs/'+index}));
     registeredActions=[{id:'Zulu',name:'Zulu'},{id:'Alpha',name:'Alpha'}];
-    sourcePreferences.set('0',{profile:'general',chunkEvents:1,actionId:'Zulu'});
+    sourcePreferences.set('0',{profile:'4e6d5417-611e-49e0-8e23-2444a0f49ee4',chunkEvents:1,actionId:'Zulu'});
     updateSourceSettings(['0']);
   `,context);
   const row=nodes.get('source-settings').children[0];
@@ -2099,7 +2101,7 @@ test('Nested Settings navigation opens individual sections and restores deep lin
 
 test('Source Action and Criteria menu entries close both editor and View without changing saved data', async () => {
   const definitions=Object.fromEntries(['normal','warning','error','security','other'].map(key=>[key,key]));
-  const profiles={general:profileFixture('General','Instructions',definitions),custom:profileFixture('Custom','Instructions',definitions)};
+  const profiles={[sampleProfileIds.general]:profileFixture('General','Instructions',definitions),custom:profileFixture('Custom','Instructions',definitions)};
   const {nodes,context}=workspace([],undefined,undefined,profiles);
   await new Promise(resolve=>setImmediate(resolve));await nodes.get('nav-criteria').onclick();
   const original=vm.runInContext('JSON.stringify([registeredSources,registeredActions,criteriaProfiles])',context);
@@ -2148,7 +2150,7 @@ test('Task assigns multiple Hosts per remote Source and submits only selected ID
     if(path==='/api/tasks' && options.method==='PUT')submitted=JSON.parse(options.body);
     return {ok:true,json:async()=>({tasks:[]})};
   };
-  await vm.runInContext("handleEditTask({id:'test-task',name:'Fleet',mode:'batch',sources:[{sourceId:'remote',profile:'general',chunkEvents:1,hostIds:['a']}]})",context);
+  await vm.runInContext("handleEditTask({id:'test-task',name:'Fleet',mode:'batch',sources:[{sourceId:'remote',profile:'4e6d5417-611e-49e0-8e23-2444a0f49ee4',chunkEvents:1,hostIds:['a']}]})",context);
   const row=nodes.get('source-settings').children[0];const picker=row.children[4];
   assert.equal(picker.hidden,false);assert.equal(picker.children[0].textContent,'Source Hosts · 1 selected');
   picker.children[1].value='Beta';picker.children[1].oninput();
@@ -2398,8 +2400,8 @@ test('Task View groups source fields and host names in structured cards',()=>{
     sshHosts=[{id:'host-a',name:'Oracle'},{id:'host-b',name:'Raspberry Pi'}];
     registeredActions=[{id:'Notify',name:'Notify'}];
     handleViewTask({name:'Monitor',mode:'realtime',resumeOnRestart:true,sources:[
-      {sourceId:'remote',profile:'general',chunkEvents:5,actionId:'Notify',hostIds:['host-a','host-b']},
-      {sourceId:'local',profile:'general',chunkEvents:1,actionId:''}
+      {sourceId:'remote',profile:'4e6d5417-611e-49e0-8e23-2444a0f49ee4',chunkEvents:5,actionId:'Notify',hostIds:['host-a','host-b']},
+      {sourceId:'local',profile:'4e6d5417-611e-49e0-8e23-2444a0f49ee4',chunkEvents:1,actionId:''}
     ]});
   `,context);
   const container=nodes.get('task-view').children[0];
@@ -2482,7 +2484,7 @@ test('Host View and redraw do not repeat automatic checks within one visit',asyn
 
 test('Source Action Criteria Task and SSH Key View buttons insert a detail row immediately after selection',async()=>{
   const {context,nodes}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
-  vm.runInContext(`registeredSources=[{id:'source',name:'Input',type:'local',path:'/input'}];renderSources();registeredActions=[{id:'action',name:'Notify',code:'pass'}];renderActions();registeredTasks=[{id:'task',name:'Analysis',mode:'batch',sources:[]}];renderTasks();sshKeys=[{id:'key-Key',name:'Key',privatePath:'/key',publicPath:'/pub',publicKey:'public'}];renderSSHKeys();criteriaProfiles={general:profileFixture('General','Default',{normal:'Normal'})};renderCriteria();`,context);
+  vm.runInContext(`registeredSources=[{id:'source',name:'Input',type:'local',path:'/input'}];renderSources();registeredActions=[{id:'action',name:'Notify',code:'pass'}];renderActions();registeredTasks=[{id:'task',name:'Analysis',mode:'batch',sources:[]}];renderTasks();sshKeys=[{id:'key-Key',name:'Key',privatePath:'/key',publicPath:'/pub',publicKey:'public'}];renderSSHKeys();criteriaProfiles={[sampleProfileIds.general]:profileFixture('General','Default',{normal:'Normal'})};renderCriteria();`,context);
   for(const [list,id,body] of [['source-registry','source-view',false],['action-registry','action-view',false],['task-list','task-view',false],['ssh-key-list','ssh-key-view',true],['criteria-registry','criteria-view',false]]){
     const table=nodes.get(list).children[0];const parent=body?table.children[1]:table;
     const row=parent.children[body?0:1];const button=row.children.at(-1).children.find(item=>item.textContent==='View');
@@ -2513,7 +2515,7 @@ test('Source Criteria Action SSH Key SSH Host and Task Views share compact detai
     handleViewKey({id:'key-Key',name:'Key',privatePath:'/private',publicPath:'/public',publicKey:'ssh-ed25519 PUBLIC'});
     handleViewHost({name:'Host',host:'example',port:22,username:'reader',keyPath:'/private'});
     registeredSources=[{id:'input',name:'Input',type:'local',path:'/input'}];
-    handleViewTask({name:'Task',mode:'batch',sources:[{sourceId:'input',profile:'general',chunkEvents:1}]});
+    handleViewTask({name:'Task',mode:'batch',sources:[{sourceId:'input',profile:'4e6d5417-611e-49e0-8e23-2444a0f49ee4',chunkEvents:1}]});
   `,context);
   for(const id of ['source-view','criteria-view','action-view','ssh-key-view','ssh-host-view']){
     const fields=nodes.get(id).children[1];assert.ok(fields.className.includes('view-details'),id);
@@ -2574,10 +2576,10 @@ test('Code View and editor use the same programming font stack',()=>{
 
 test('Criteria View uses compact full-width rows for instructions and category descriptions',()=>{
   const {context,nodes}=workspace([]);
-  vm.runInContext("criteriaProfiles={application:profileFixture('Application','Distinguish retries from final failures.',{normal:'Successful operation.',warning:'Recoverable issue.',error:'Final failure.',security:'Unauthorized action.',other:'Insufficient context.'})};handleViewCriteria('application')",context);
+  vm.runInContext("criteriaProfiles={[sampleProfileIds.application]:profileFixture('Application','Distinguish retries from final failures.',{normal:'Successful operation.',warning:'Recoverable issue.',error:'Final failure.',security:'Unauthorized action.',other:'Insufficient context.'})};handleViewCriteria('617706a3-c4ee-426f-81cf-7f5d80ecf67a')",context);
   const fields=nodes.get('criteria-view').children[1];
   assert.ok(fields.className.includes('criteria-details'));
-  assert.deepEqual(fields.children.map(field=>field.children[0].textContent),['Name','Decision Instructions','Default Chart Decision','Category (Choice)','Urgency (Score)','Work Ticket (Noul)']);
+  assert.deepEqual(fields.children.map(field=>field.children[0].textContent),['Name','Criteria ID','Decision Instructions','Default Chart Decision','Category (Choice)','Urgency (Score)','Work Ticket (Noul)']);
   const css=readFileSync(new URL('../public/style.css',import.meta.url),'utf8');
   assert.match(css,/\.criteria-details > div:nth-child\(n\+3\) \{ grid-column: 1 \/ -1;/);
 });
@@ -2691,7 +2693,7 @@ test('Source editor accepts multiple paths in one multiline field',async()=>{
 
 test('Monitor counts distinct Source Hosts while tooltip includes all assignments',()=>{
   const {nodes,context}=workspace([]);
-  vm.runInContext(`registeredSources=[{id:'one',name:'Application',type:'ssh',path:'/var/log/app.log'},{id:'two',name:'System',type:'ssh',path:'/var/log/messages'}];sshHosts=[{id:'a',name:'Alpha',host:'alpha.example',username:'reader',port:22},{id:'b',name:'Beta',host:'beta.example',username:'logs',port:2222}];registeredActions=[{id:'ElasticSearch',name:'ElasticSearch'},{id:'Notify',name:'Notify'}];registeredTasks=[{id:'monitor',name:'Fleet',mode:'batch',enabled:true,sources:[{sourceId:'one',hostIds:['a','b'],actionId:'Notify',profile:'general',chunkEvents:2},{sourceId:'two',hostIds:['a'],actionId:''}]}];renderTaskMonitor()`,context);
+  vm.runInContext(`registeredSources=[{id:'one',name:'Application',type:'ssh',path:'/var/log/app.log'},{id:'two',name:'System',type:'ssh',path:'/var/log/messages'}];sshHosts=[{id:'a',name:'Alpha',host:'alpha.example',username:'reader',port:22},{id:'b',name:'Beta',host:'beta.example',username:'logs',port:2222}];registeredActions=[{id:'ElasticSearch',name:'ElasticSearch'},{id:'Notify',name:'Notify'}];registeredTasks=[{id:'monitor',name:'Fleet',mode:'batch',enabled:true,sources:[{sourceId:'one',hostIds:['a','b'],actionId:'Notify',profile:'4e6d5417-611e-49e0-8e23-2444a0f49ee4',chunkEvents:2},{sourceId:'two',hostIds:['a'],actionId:''}]}];renderTaskMonitor()`,context);
   const card=nodes.get('running-tasks').children[0];
   assert.equal(card.children[2].textContent,'Source: Application, System · Source Hosts: 2');
   assert.doesNotMatch(card.children[2].textContent,/Alpha|Beta/);
@@ -2789,7 +2791,7 @@ test('Confirmed reset submits once and reloads only after a new server instance 
 
 test('Clone Criteria opens an unsaved Add Profile draft and preserves source metadata', async () => {
   const criteria = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, `${key} definition`]));
-  const profiles = { general: profileFixture('General','Default',criteria), custom: { ...profileFixture('Authentication','Inspect authentication',criteria), normalization: 'single_line_syslog_header' } };
+  const profiles = { [sampleProfileIds.general]: profileFixture('General','Default',criteria), custom: { ...profileFixture('Authentication','Inspect authentication',criteria), normalization: 'single_line_syslog_header' } };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await new Promise(resolve => setImmediate(resolve));
   await nodes.get('nav-criteria').onclick();
@@ -2820,7 +2822,7 @@ test('Clone Criteria opens an unsaved Add Profile draft and preserves source met
 
 test('Criteria UUIDs stay internal, independent of Name and stable across edits', async () => {
   const criteria = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
-  const { nodes, context } = workspace([], undefined, undefined, { general: profileFixture('General','Default',criteria) });
+  const { nodes, context } = workspace([], undefined, undefined, { [sampleProfileIds.general]: profileFixture('General','Default',criteria) });
   await nodes.get('nav-criteria').onclick();
   nodes.get('add-criteria').onclick();
   const first = vm.runInContext('criteriaDraftId', context);
@@ -2832,16 +2834,16 @@ test('Criteria UUIDs stay internal, independent of Name and stable across edits'
   nodes.get('cancel-criteria').onclick(); nodes.get('add-criteria').onclick();
   assert.notEqual(vm.runInContext('criteriaDraftId', context), first);
   nodes.get('cancel-criteria').onclick();
-  vm.runInContext("handleEditCriteria('general'); criteriaFields.label.value='Renamed'; criteriaFields.label.oninput();", context);
-  assert.equal(vm.runInContext('criteriaDraftId', context), 'general');
+  vm.runInContext("handleEditCriteria('4e6d5417-611e-49e0-8e23-2444a0f49ee4'); criteriaFields.label.value='Renamed'; criteriaFields.label.oninput();", context);
+  assert.equal(vm.runInContext('criteriaDraftId', context), '4e6d5417-611e-49e0-8e23-2444a0f49ee4');
 });
 
 test('Repeated Criteria clones report duplicate names immediately without losing the draft', async () => {
   const criteria = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
-  const profiles = { general: profileFixture('General','Default',criteria), general_clone: profileFixture('General (Clone)','Copy',criteria) };
+  const profiles = { [sampleProfileIds.general]: profileFixture('General','Default',criteria), general_clone: profileFixture('General (Clone)','Copy',criteria) };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await nodes.get('nav-criteria').onclick();
-  vm.runInContext("handleCloneCriteria('general'); criteriaFields.instructions.value='Important draft';", context);
+  vm.runInContext("handleCloneCriteria('4e6d5417-611e-49e0-8e23-2444a0f49ee4'); criteriaFields.instructions.value='Important draft';", context);
   assert.match(nodes.get('criteria-message').textContent, /Name already exists/);
   assert.match(nodes.get('criteria-message').className, /error-message/);
   assert.equal(nodes.get('save-criteria').disabled, true);
@@ -2964,7 +2966,7 @@ test('All ten mixed decisions appear equally and can be filtered and reviewed',a
 });
 
 test('Criteria editor adds, reorders and saves typed decisions without editing templates',async()=>{
-  const criteria={general:profileFixture('General','Default',{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'})};
+  const criteria={[sampleProfileIds.general]:profileFixture('General','Default',{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'})};
   const {context,nodes}=workspace([],undefined,undefined,criteria);await nodes.get('nav-criteria').onclick();
   nodes.get('add-criteria').onclick();
   vm.runInContext("criteriaFields.label.value='Customer Review';criteriaFields.label.oninput()",context);
@@ -2973,7 +2975,7 @@ test('Criteria editor adds, reorders and saves typed decisions without editing t
   assert.equal(vm.runInContext('decisionRows[0].type.value',context),'noul');
   await nodes.get('save-criteria').onclick();
   assert.equal(vm.runInContext("Object.values(criteriaProfiles).find(p=>p.label==='Customer Review').questions.decision_2.type",context),'noul');
-  assert.deepEqual(JSON.parse(vm.runInContext('JSON.stringify(criteriaProfiles.general.questions)',context)),criteria.general.questions);
+  assert.deepEqual(JSON.parse(vm.runInContext('JSON.stringify(criteriaProfiles[sampleProfileIds.general].questions)',context)),criteria[sampleProfileIds.general].questions);
 });
 
 for(const engine of ['laya','jev']) {
@@ -3063,10 +3065,10 @@ test('Source Hosts Detail builds many hosts only on demand and refreshes whole-r
 
 test('Score levels use a dedicated layout and keep added level IDs hidden',()=>{
   const {context}=workspace([]);
-  context.consultationFixture=JSON.parse(readFileSync(new URL('../profiles/consultation.json',import.meta.url),'utf8'));
+  context.consultationFixture=readProfileTemplate('consultation');
   vm.runInContext(`
-    criteriaProfiles={general:consultationFixture,consultation:consultationFixture};
-    handleEditCriteria('consultation');
+    criteriaProfiles={[sampleProfileIds.general]:consultationFixture,[sampleProfileIds.consultation]:consultationFixture};
+    handleEditCriteria('41bbe1dc-85cb-4ab0-ab79-cd7c4e6f8e72');
     const scoreRow=decisionRows.find(row=>row.type.value==='score');
     if(scoreRow.options.some(option=>!option.key.hidden))throw Error('Visible score ID');
     const scoreOptions=scoreRow.options[0].entry.parentElement;
@@ -3081,9 +3083,9 @@ test('Score levels use a dedicated layout and keep added level IDs hidden',()=>{
 
 test('Decision headers track names, types and positions through editor changes',()=>{
   const {context}=workspace([]);
-  context.consultationFixture=JSON.parse(readFileSync(new URL('../profiles/consultation.json',import.meta.url),'utf8'));
+  context.consultationFixture=readProfileTemplate('consultation');
   const headers=()=>JSON.parse(vm.runInContext('JSON.stringify(decisionRows.map(row=>row.legend.textContent))',context));
-  vm.runInContext("criteriaProfiles={general:consultationFixture,consultation:consultationFixture};handleEditCriteria('consultation')",context);
+  vm.runInContext("criteriaProfiles={[sampleProfileIds.general]:consultationFixture,[sampleProfileIds.consultation]:consultationFixture};handleEditCriteria('41bbe1dc-85cb-4ab0-ab79-cd7c4e6f8e72')",context);
   assert.equal(headers()[0],'Decision 1 · 문의 유형 · Choice');
   assert.equal(headers()[3],'Decision 4 · 긴급도 · Score');
   vm.runInContext("decisionRows[0].label.value='Renamed';decisionRows[0].label.oninput();decisionRows[0].type.value='noul';decisionRows[0].type.onchange()",context);
@@ -3099,18 +3101,19 @@ test('Decision headers track names, types and positions through editor changes',
 
 test('Profile settings and Decisions share the same section design',()=>{
   const {context,nodes}=workspace([]);
-  vm.runInContext("criteriaProfiles={general:profileFixture('General','Use evidence.',{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'})};handleEditCriteria('general')",context);
+  vm.runInContext("criteriaProfiles={[sampleProfileIds.general]:profileFixture('General','Use evidence.',{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'})};handleEditCriteria('4e6d5417-611e-49e0-8e23-2444a0f49ee4')",context);
   const profile=nodes.get('criteria-editor').children[2];
   assert.equal(profile.className,'criteria-section profile-settings');
   assert.equal(profile.children[0].textContent,'Profile Settings');
-  assert.equal(profile.children[1].className,'action-registration');
+  assert.equal(profile.children[1].className,'view-details');
+  assert.equal(profile.children[2].className,'action-registration');
   assert.equal(vm.runInContext("decisionRows.every(row=>row.panel.className.includes('criteria-section'))",context),true);
 });
 
 
 test('Custom classification colors differ by option and match result badges',()=>{
   const {context,nodes}=workspace([]);
-  context.vocFixture=JSON.parse(readFileSync(new URL('../profiles/consultation.json',import.meta.url),'utf8'));
+  context.vocFixture=readProfileTemplate('consultation');
   vm.runInContext(`
     const definition=vocFixture.questions.inquiry_type;
     results=Object.keys(definition.criteria).map(choice=>({log:choice,category:choice,
@@ -3134,9 +3137,9 @@ test('Custom classification colors differ by option and match result badges',()=
 
 test('Criteria field help explains scope, IDs and answer types',()=>{
   const {context,nodes}=workspace([]);
-  context.vocHelpFixture=JSON.parse(readFileSync(new URL('../profiles/consultation.json',import.meta.url),'utf8'));
-  vm.runInContext("criteriaProfiles={general:vocHelpFixture,consultation:vocHelpFixture};handleEditCriteria('consultation')",context);
-  const profile=nodes.get('criteria-editor').children[2].children[1];
+  context.vocHelpFixture=readProfileTemplate('consultation');
+  vm.runInContext("criteriaProfiles={[sampleProfileIds.general]:vocHelpFixture,[sampleProfileIds.consultation]:vocHelpFixture};handleEditCriteria('41bbe1dc-85cb-4ab0-ab79-cd7c4e6f8e72')",context);
+  const profile=nodes.get('criteria-editor').children[2].children[2];
   assert.match(profile.children[0].children.at(-1).textContent,/Profile name/);
   assert.match(profile.children[1].children.at(-1).textContent,/Changing it does not change AI answers, uncertainty or filters/);
   assert.match(profile.children[2].children.at(-1).textContent,/Rules shared by every decision/);
@@ -3182,8 +3185,8 @@ test('Sources used by Tasks lock Type and explain which Tasks reference them',as
 
 test('Criteria token estimates update for shared rules, options and structural changes without saving',()=>{
   const {context,nodes,requests}=workspace([]);
-  context.tokenFixture=JSON.parse(readFileSync(new URL('../profiles/consultation.json',import.meta.url),'utf8'));
-  vm.runInContext("criteriaProfiles={general:tokenFixture,consultation:tokenFixture};criteriaTokenLimits={head_tokens:256,context_tokens:8192};handleEditCriteria('consultation')",context);
+  context.tokenFixture=readProfileTemplate('consultation');
+  vm.runInContext("criteriaProfiles={[sampleProfileIds.general]:tokenFixture,[sampleProfileIds.consultation]:tokenFixture};criteriaTokenLimits={head_tokens:256,context_tokens:8192};handleEditCriteria('41bbe1dc-85cb-4ab0-ab79-cd7c4e6f8e72')",context);
   const total=()=>vm.runInContext('criteriaTokenEstimates().reduce((sum,q)=>sum+q.tokens,0)',context);
   const panel=()=>nodes.get('criteria-editor').children[1];
   assert.equal(panel().attributes.role,'status');
@@ -3210,7 +3213,7 @@ test('Criteria token estimates update for shared rules, options and structural c
 
 test('Criteria estimates distinguish Laya head and Jev request limits and retain expanded details',()=>{
   const {context,nodes}=workspace([]);
-  vm.runInContext("criteriaProfiles={general:profileFixture('General','Use evidence.',{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'})};criteriaTokenLimits={head_tokens:1,context_tokens:8192};handleEditCriteria('general')",context);
+  vm.runInContext("criteriaProfiles={[sampleProfileIds.general]:profileFixture('General','Use evidence.',{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'})};criteriaTokenLimits={head_tokens:1,context_tokens:8192};handleEditCriteria('4e6d5417-611e-49e0-8e23-2444a0f49ee4')",context);
   const panel=()=>nodes.get('criteria-editor').children[1];
   assert.match(panel().className,/estimate-warning/);
   assert.ok(panel().children.some(node=>/question head budget/.test(node.textContent || '')));
@@ -3418,7 +3421,7 @@ test('Resource links share stable IDs across Sources Actions Criteria and SSH li
   vm.runInContext(`
     registeredSources=[{id:'source-id',name:'Source',type:'local',path:'/synthetic'}];
     registeredActions=[{id:'action-id',name:'Action',code:'print(1)',modules:[]}];
-    criteriaProfiles={general:profileFixture('Sample General System','Test',{normal:'Normal'}),'criteria-id':profileFixture('Criteria','Test',{normal:'Normal'})};
+    criteriaProfiles={[sampleProfileIds.general]:profileFixture('Sample General System','Test',{normal:'Normal'}),'criteria-id':profileFixture('Criteria','Test',{normal:'Normal'})};
     sshKeys=[{id:'key-id',name:'Key',privatePath:'/synthetic/key',publicKey:'synthetic'}];
     sshHosts=[{id:'host-id',name:'Host',host:'synthetic',port:22,username:'reader',keyId:'key-id'}];
     renderSources();renderActions();renderCriteria();renderSSHKeys();renderSSHHosts();
@@ -3491,7 +3494,7 @@ test('Criteria None survives profile refresh and blocks Task execution', async (
   vm.runInContext(`
     updateSourceSettings(['1'.padStart(32,'0')]);
     sourceRows[0].profile.value='';sourceRows[0].profile.onchange();
-    handleCriteriaLabels({general:{label:'Sample General System'}});
+    handleCriteriaLabels({[sampleProfileIds.general]:{label:'Sample General System'}});
   `,context);
   assert.equal(vm.runInContext('sourceRows[0].profile.value',context),'');
   assert.equal(vm.runInContext('sourceRows[0].profile.children[0].text',context),'None');
@@ -3636,7 +3639,7 @@ test('Manager lists sort English and Korean names naturally without changing edi
     const setup={
       source:`registeredSources=${JSON.stringify(records)};renderSources()`,
       action:`registeredActions=${JSON.stringify(records)};renderActions()`,
-      criteria:`criteriaProfiles={general:${JSON.stringify(general)}};criteriaProfiles={...criteriaProfiles,...Object.fromEntries(${JSON.stringify(records)}.map(item=>[item.id,{...criteriaProfiles.general,label:item.name}]))};renderCriteria()`,
+      criteria:`criteriaProfiles={[sampleProfileIds.general]:${JSON.stringify(general)}};criteriaProfiles={...criteriaProfiles,...Object.fromEntries(${JSON.stringify(records)}.map(item=>[item.id,{...criteriaProfiles[sampleProfileIds.general],label:item.name}]))};renderCriteria()`,
       task:`registeredTasks=${JSON.stringify(records)};renderTasks()`,
     };
     vm.runInContext(setup[manager],context);
@@ -3711,10 +3714,10 @@ test('Result filter type switches controls without changing filters or making re
 });
 
 test('AI Criteria preserves generated decisions through save without legacy visibility flags', async()=>{
-  const general=JSON.parse(readFileSync(new URL('../profiles/general.json',import.meta.url),'utf8'));
-  const generated=JSON.parse(readFileSync(new URL('../profiles/consultation.json',import.meta.url),'utf8'));
+  const general=readProfileTemplate('general');
+  const generated=readProfileTemplate('consultation');
   generated.label='AI Generated Test';
-  const {nodes,context}=workspace([],undefined,undefined,{general});
+  const {nodes,context}=workspace([],undefined,undefined,{[sampleProfileIds.general]:general});
   await new Promise(resolve=>setImmediate(resolve));
   await nodes.get('nav-criteria').onclick();
   vm.runInContext("handleEditCriteria('')",context);
@@ -3767,8 +3770,8 @@ test('AI Criteria preserves generated decisions through save without legacy visi
 });
 
 test('Failed AI generation preserves the draft and edited samples',async()=>{
-  const general=JSON.parse(readFileSync(new URL('../profiles/general.json',import.meta.url),'utf8'));
-  const {nodes,context}=workspace([],undefined,undefined,{general});await new Promise(resolve=>setImmediate(resolve));
+  const general=readProfileTemplate('general');
+  const {nodes,context}=workspace([],undefined,undefined,{[sampleProfileIds.general]:general});await new Promise(resolve=>setImmediate(resolve));
   await nodes.get('nav-criteria').onclick();
   vm.runInContext("handleEditCriteria('');criteriaFields.label.value='Keep This Draft'",context);
   const walk=node=>[node,...(node.children || []).flatMap(child=>typeof child==='object'?walk(child):[])];
@@ -3815,9 +3818,9 @@ test('AI sample guidance explains TEXT grouping, fixed JSONL records, SSH select
 });
 
 test('Analysis purpose defaults to automatic and preserves manual input when switching',async()=>{
-  const general=JSON.parse(readFileSync(new URL('../profiles/general.json',import.meta.url),'utf8'));
-  const generated=JSON.parse(readFileSync(new URL('../profiles/consultation.json',import.meta.url),'utf8'));
-  const {nodes,context}=workspace([],undefined,undefined,{general});await new Promise(resolve=>setImmediate(resolve));
+  const general=readProfileTemplate('general');
+  const generated=readProfileTemplate('consultation');
+  const {nodes,context}=workspace([],undefined,undefined,{[sampleProfileIds.general]:general});await new Promise(resolve=>setImmediate(resolve));
   await nodes.get('nav-criteria').onclick();vm.runInContext("handleEditCriteria('')",context);
   const walk=node=>[node,...(node.children || []).flatMap(child=>typeof child==='object'?walk(child):[])];
   const details=walk(nodes.get('criteria-editor')).find(node=>node.className?.includes('criteria-generator'));
@@ -3841,10 +3844,10 @@ test('Analysis purpose defaults to automatic and preserves manual input when swi
 });
 
 test('New Criteria separates optional AI generation from template and manual authoring',async()=>{
-  const general=JSON.parse(readFileSync(new URL('../profiles/general.json',import.meta.url),'utf8'));
-  const {nodes,context}=workspace([],undefined,undefined,{general});await new Promise(resolve=>setImmediate(resolve));
+  const general=readProfileTemplate('general');
+  const {nodes,context}=workspace([],undefined,undefined,{[sampleProfileIds.general]:general});await new Promise(resolve=>setImmediate(resolve));
   await nodes.get('nav-criteria').onclick();
-  vm.runInContext("criteriaTemplates={general:criteriaProfiles.general};handleEditCriteria('')",context);
+  vm.runInContext("criteriaTemplates={[sampleProfileIds.general]:criteriaProfiles[sampleProfileIds.general]};handleEditCriteria('')",context);
   const children=nodes.get('criteria-editor').children;
   const generator=children.findIndex(node=>node.className==='criteria-section criteria-generator');
   const divider=children.findIndex(node=>node.className==='criteria-authoring-divider');
@@ -4102,7 +4105,7 @@ test('Missing Choice evidence is Not Assessed and never inherited from another d
 test('Default chart save preserves all AI results and does not run inference',async()=>{
   const profile={label:'Review Fixture',instructions:'Use evidence.',defaultDecision:'area',questions:assessmentFixture().result.decisionDefinitions};
   const event=assessmentFixture();delete event.result.profileId;
-  const {nodes,context}=workspace([event],undefined,undefined,{general:profileFixture('General','General',{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'}),custom:profile});
+  const {nodes,context}=workspace([event],undefined,undefined,{[sampleProfileIds.general]:profileFixture('General','General',{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'}),custom:profile});
   await runTask(nodes);
   const before=vm.runInContext('JSON.stringify(results)',context);
   const calls=[],originalFetch=context.fetch;context.fetch=(path,options)=>{calls.push({path,method:options?.method});return originalFetch(path,options);};
@@ -4119,7 +4122,7 @@ test('Default chart save preserves all AI results and does not run inference',as
 test('Criteria editor saves any default type and explicit review options without a primary projection',()=>{
   const {nodes,context}=workspace([]);
   context.defaultFixture={label:'Review Fixture',instructions:'Use evidence.',defaultDecision:'followup',questions:assessmentFixture().result.decisionDefinitions};
-  vm.runInContext("criteriaProfiles={general:defaultFixture,custom:defaultFixture};handleEditCriteria('custom')",context);
+  vm.runInContext("criteriaProfiles={[sampleProfileIds.general]:defaultFixture,custom:defaultFixture};handleEditCriteria('custom')",context);
   assert.equal(vm.runInContext('criteriaFields.primary.options.length',context),4);
   assert.equal(vm.runInContext('criteriaFields.primary.value',context),'followup');
   vm.runInContext("decisionRows[1].options[1].review.checked=true",context);
@@ -4144,7 +4147,7 @@ test('Removing the Decision filter clears dependent value and certainty conditio
 
 test('Failed default save preserves the previous default and all AI results',async()=>{
   const profile={label:'Review Fixture',instructions:'Use evidence.',defaultDecision:'area',questions:assessmentFixture().result.decisionDefinitions};
-  const {nodes,context}=workspace([assessmentFixture()],undefined,undefined,{general:profile,custom:profile});
+  const {nodes,context}=workspace([assessmentFixture()],undefined,undefined,{[sampleProfileIds.general]:profile,custom:profile});
   await runTask(nodes);const before=vm.runInContext('JSON.stringify(results)',context);
   const originalFetch=context.fetch;
   context.fetch=(path,options)=>path==='/api/criteria' && options.method==='PUT'?Promise.resolve({ok:false,json:async()=>({error:'Save failed'})}):originalFetch(path,options);
@@ -4157,13 +4160,13 @@ test('Failed default save preserves the previous default and all AI results',asy
 
 test('Changing only the default keeps canonical definitions and drops obsolete visibility metadata',()=>{
   const {context}=workspace([]);
-  context.systemDefaultFixture=JSON.parse(readFileSync(new URL('../profiles/http_access.json',import.meta.url),'utf8'));
-  const saved=vm.runInContext("criteriaProfiles={general:systemDefaultFixture,custom:systemDefaultFixture};handleEditCriteria('custom');criteriaFields.primary.value='ticket';readDecisionProfile()",context);
+  context.systemDefaultFixture=readProfileTemplate('http_access');
+  const saved=vm.runInContext("criteriaProfiles={[sampleProfileIds.general]:systemDefaultFixture,custom:systemDefaultFixture};handleEditCriteria('custom');criteriaFields.primary.value='ticket';readDecisionProfile()",context);
   assert.equal(saved.defaultDecision,'ticket');
 
   assert.deepEqual(JSON.parse(JSON.stringify(saved.questions)),context.systemDefaultFixture.questions);
   context.typedDefaultFixture={label:'Typed',instructions:'Evidence.',defaultDecision:'area',questions:{area:{label:'Area',type:'choice',instructions:'Choose.',criteria:{a:'A',other:'Other'}}}};
-  const typed=vm.runInContext("criteriaProfiles={general:systemDefaultFixture,custom:typedDefaultFixture};handleEditCriteria('custom');readDecisionProfile()",context);
+  const typed=vm.runInContext("criteriaProfiles={[sampleProfileIds.general]:systemDefaultFixture,custom:typedDefaultFixture};handleEditCriteria('custom');readDecisionProfile()",context);
   assert.equal(Object.hasOwn(typed.questions.area,'summary'),false);
   assert.deepEqual(Array.from(typed.questions.area.reviewOptions),[]);
   const expected=structuredClone(context.typedDefaultFixture.questions);expected.area.reviewOptions=[];
@@ -4192,7 +4195,7 @@ test('Criteria can be empty and created with AI without a General profile', asyn
   assert.equal(nodes.get('criteria-editor').hidden, false);
   assert.ok(nodes.get('criteria-editor').children.some(child=>child.className.includes('criteria-generator')));
   nodes.get('cancel-criteria').onclick();
-  vm.runInContext("criteriaProfiles={general:profileFixture('General','Evidence.',{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'})};renderCriteria();", context);
+  vm.runInContext("criteriaProfiles={[sampleProfileIds.general]:profileFixture('General','Evidence.',{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'})};renderCriteria();", context);
   await criteriaRow(nodes, 'General').children[1].children.find(button=>button.textContent==='Delete').onclick();
   assert.equal(vm.runInContext('Object.keys(criteriaProfiles).length', context), 0);
   let saved;
@@ -4317,7 +4320,7 @@ test('Response stays expanded across persisted page navigation without inference
 
 test('Result metadata is collapsed under Details while Action failures stay visible', async () => {
   const success=result(0,false),failure=result(1,false),plain=result(2,false);
-  Object.assign(success.result,{source:'/host-logs/sample-logs/voc-local-gov-consulting-qna.jsonl',line:60,recordNumber:60,profile:'local_gov',profileLabel:'Sample VOC Local Gov Consulting QnA',chunkEvents:1,eventCount:1,actionExecution:{name:'Sample Elasticsearch',status:'success',elapsedMs:254,exitCode:0}});
+  Object.assign(success.result,{source:'/host-logs/sample-logs/voc-local-gov-consulting-qna.jsonl',line:60,recordNumber:60,profile:'efb7c8ca-61c1-4785-b38d-0a86764ca758',profileLabel:'Sample VOC Local Gov Consulting QnA',chunkEvents:1,eventCount:1,actionExecution:{name:'Sample Elasticsearch',status:'success',elapsedMs:254,exitCode:0}});
   Object.assign(failure.result,{source:'ssh://host/logs',line:7,hostName:'Remote Host',hostAddress:'host',hostPort:22,actionExecution:{name:'Notify',status:'failed',elapsedMs:12,exitCode:7,error:'Connection refused'}});
   const {nodes,context}=workspace([{type:'start',engine:'laya',total:3},success,failure,plain]);
   await runTask(nodes);
@@ -4354,7 +4357,7 @@ test('Details expansion survives persisted pagination without new engine checks 
     const response=await original(path,options);
     if(!path.endsWith('/results'))return response;
     const data=await response.json();
-    for(const item of data.items || [])Object.assign(item.result,{source:'/logs/input.log',line:item.sequence,profile:'general',chunkEvents:1});
+    for(const item of data.items || [])Object.assign(item.result,{source:'/logs/input.log',line:item.sequence,profile:'4e6d5417-611e-49e0-8e23-2444a0f49ee4',chunkEvents:1});
     return {...response,json:async()=>data};
   };
   await vm.runInContext("handlePagedProcessing({jobId:'metadata',state:'completed',settings:{mode:'batch'},pagedResults:true})",context);
@@ -4429,4 +4432,42 @@ test('Restart confirmation defaults to cancel and does not request restart on ca
   assert.equal(nodes.get('maintenance-approve').className,'warning');
   dialog.onclose();await pending;
   assert.ok(calls.every(path=>path==='/api/reset/status'));
+});
+
+test('Criteria ID is read-only and copyable in View and Edit; rename keeps it and Clone creates a fresh UUID',async()=>{
+  const id=sampleProfileIds.general;
+  const {context,nodes}=workspace([],undefined,undefined,{[id]:systemProfile});
+  await nodes.get('nav-criteria').onclick();
+  const copied=[];context.navigator={clipboard:{writeText:async value=>copied.push(value)}};
+  vm.runInContext('handleViewCriteria(sampleProfileIds.general)',context);
+  const identity=nodes.get('criteria-view').children[1].children.find(field=>field.children[0].textContent==='Criteria ID').children[1].children[0];
+  assert.equal(identity.children[0].textContent,id);
+  assert.equal(identity.children[0].attributes['aria-label'],'Criteria ID');
+  await identity.children[1].onclick();
+  assert.deepEqual(copied,[id]);assert.equal(identity.children[2].textContent,'Copied');
+  vm.runInContext('handleEditCriteria(sampleProfileIds.general)',context);
+  const panel=nodes.get('criteria-editor').children.find(node=>node.className==='criteria-section profile-settings');
+  const editIdentity=panel.children[1].children[0].children[1].children[0];
+  assert.equal(editIdentity.children[0].textContent,id);
+  assert.equal(vm.runInContext('criteriaFields.id',context),undefined);
+  await editIdentity.children[1].onclick();assert.deepEqual(copied,[id,id]);
+  vm.runInContext("criteriaFields.label.value='Renamed';",context);
+  await nodes.get('save-criteria').onclick();
+  assert.equal(vm.runInContext('criteriaProfiles[sampleProfileIds.general].label',context),'Renamed');
+  vm.runInContext('handleEditCriteria(sampleProfileIds.general)',context);
+  assert.equal(vm.runInContext('criteriaDraftId',context),id);
+  vm.runInContext('handleCloneCriteria(sampleProfileIds.general)',context);
+  const clone=vm.runInContext('criteriaDraftId',context);
+  assert.notEqual(clone,id);assert.match(clone,/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  assert.equal(vm.runInContext('criteriaProfiles[sampleProfileIds.general].label',context),'Renamed');
+});
+
+test('Criteria ID copy failure keeps the ID selectable and allows retry',async()=>{
+  const {context}=workspace([]);
+  context.navigator={clipboard:{writeText:async()=>{throw Error('Clipboard unavailable');}}};
+  const value=vm.runInContext('criteriaIdentityValue(sampleProfileIds.local_gov)',context);
+  await value.children[1].onclick();
+  assert.equal(value.children[0].textContent,sampleProfileIds.local_gov);
+  assert.equal(value.children[2].textContent,'Copy failed. Select and copy the ID.');
+  assert.equal(value.children[1].disabled,false);
 });

@@ -66,7 +66,7 @@ async def test_profiles_reach_both_engines(
 @pytest.mark.parametrize("size", [0, -1, True, "2", 1.5])
 def test_invalid_chunk_size(size: object) -> None:
     with pytest.raises(ValueError, match="positive integer"):
-        validate_settings("general", size)
+        validate_settings("4e6d5417-611e-49e0-8e23-2444a0f49ee4", size)
 
 
 def test_unknown_profile() -> None:
@@ -97,7 +97,12 @@ async def test_chunks_count_multiline_events_separately_from_lines() -> None:
             "lineCount": 2,
         }
 
-    rows = [row async for row in chunk_records(records(), "application", 2)]
+    rows = [
+        row
+        async for row in chunk_records(
+            records(), "617706a3-c4ee-426f-81cf-7f5d80ecf67a", 2
+        )
+    ]
     assert len(rows) == 1
     assert rows[0]["eventCount"] == 2
     assert rows[0]["chunkEvents"] == 2
@@ -111,10 +116,14 @@ def test_overlap_settings(tmp_path: Path) -> None:
     path.write_text("log\n")
     specs = parse_source_settings(
         [
-            {"path": str(path), "profile": "http_access", "chunkEvents": 2},
+            {
+                "path": str(path),
+                "profile": "2e44ae00-7a3a-492d-8806-9177a8973582",
+                "chunkEvents": 2,
+            },
             {
                 "path": str(tmp_path / "*.log"),
-                "profile": "http_access",
+                "profile": "2e44ae00-7a3a-492d-8806-9177a8973582",
                 "chunkEvents": 2,
             },
         ]
@@ -130,7 +139,13 @@ async def test_batch_chunks_do_not_mix_files_and_flush_eof(tmp_path: Path) -> No
     for name in ("a.log", "b.log"):
         (tmp_path / name).write_text("one\n\ntwo\nthree\n")
     specs = parse_source_settings(
-        [{"path": str(tmp_path / "*.log"), "profile": "application", "chunkEvents": 2}]
+        [
+            {
+                "path": str(tmp_path / "*.log"),
+                "profile": "617706a3-c4ee-426f-81cf-7f5d80ecf67a",
+                "chunkEvents": 2,
+            }
+        ]
     )
     rows = [row async for row in read_configured(resolve_configured_sources(specs))]
     for name in ("a.log", "b.log"):
@@ -138,7 +153,7 @@ async def test_batch_chunks_do_not_mix_files_and_flush_eof(tmp_path: Path) -> No
         assert [row["log"] for row in source_rows] == ["one\ntwo", "three"]
         assert [row["lineCount"] for row in source_rows] == [2, 1]
         assert source_rows[0]["line"] == 1 and source_rows[0]["lineEnd"] == 3
-    assert all(row["profile"] == "application" for row in rows)
+    assert all(row["profile"] == "617706a3-c4ee-426f-81cf-7f5d80ecf67a" for row in rows)
 
 
 @pytest.mark.anyio
@@ -152,7 +167,9 @@ async def test_realtime_idle_flush_and_cancel() -> None:
         finally:
             closed.set()
 
-    async with aclosing(chunk_records(records(), "general", 3, live=True)) as chunks:
+    async with aclosing(
+        chunk_records(records(), "4e6d5417-611e-49e0-8e23-2444a0f49ee4", 3, live=True)
+    ) as chunks:
         async with asyncio.timeout(2):
             row = await anext(chunks)
         assert row["log"] == "one" and row["lineCount"] == 1
@@ -165,7 +182,12 @@ async def test_rotation_boundary_flushes_separate_chunks() -> None:
         for line, text in [(1, "old"), (1, "new"), (2, "next")]:
             yield {"line": line, "log": text, "source": "rotating.log"}
 
-    rows = [row async for row in chunk_records(records(), "general", 3)]
+    rows = [
+        row
+        async for row in chunk_records(
+            records(), "4e6d5417-611e-49e0-8e23-2444a0f49ee4", 3
+        )
+    ]
     assert [row["log"] for row in rows] == ["old", "new\nnext"]
 
 
@@ -178,7 +200,10 @@ async def test_paste_chunk_metadata_including_failures(
     seen = []
 
     async def handle_classify(
-        log: str, selected: object, client: object, profile: str = "general"
+        log: str,
+        selected: object,
+        client: object,
+        profile: str = "4e6d5417-611e-49e0-8e23-2444a0f49ee4",
     ) -> Result:
         seen.append((log, profile))
         raise ValueError("test failure")
@@ -187,14 +212,22 @@ async def test_paste_chunk_metadata_including_failures(
     events = [
         json.loads(row)
         async for row in server.handle_events(
-            ["one", "two", "three"], get_engine(), "authentication", 2
+            ["one", "two", "three"],
+            get_engine(),
+            "702ecfa5-01fb-4321-9692-996134a10802",
+            2,
         )
     ]
     assert events[0]["total"] == 2
     results = [event["result"] for event in events if event["type"] == "result"]
-    assert sorted(seen) == [("one\ntwo", "authentication"), ("three", "authentication")]
+    assert sorted(seen) == [
+        ("one\ntwo", "702ecfa5-01fb-4321-9692-996134a10802"),
+        ("three", "702ecfa5-01fb-4321-9692-996134a10802"),
+    ]
     assert all(
-        row["profile"] == "authentication" and row["review"] is False for row in results
+        row["profile"] == "702ecfa5-01fb-4321-9692-996134a10802"
+        and row["review"] is False
+        for row in results
     )
     assert sorted(row["lineCount"] for row in results) == [1, 2]
     assert sorted(row["eventCount"] for row in results) == [1, 2]
@@ -212,7 +245,10 @@ async def test_file_api_applies_each_source_settings(
     second.write_text("GET / 200\n")
 
     async def handle_classify(
-        log: str, selected: object, client: object, profile: str = "general"
+        log: str,
+        selected: object,
+        client: object,
+        profile: str = "4e6d5417-611e-49e0-8e23-2444a0f49ee4",
     ) -> Result:
         return {"category": "normal", "usedProfile": profile}
 
@@ -226,8 +262,16 @@ async def test_file_api_applies_each_source_settings(
             json={
                 "mode": "batch",
                 "sources": [
-                    {"path": str(first), "profile": "authentication", "chunkEvents": 2},
-                    {"path": str(second), "profile": "http_access", "chunkEvents": 1},
+                    {
+                        "path": str(first),
+                        "profile": "702ecfa5-01fb-4321-9692-996134a10802",
+                        "chunkEvents": 2,
+                    },
+                    {
+                        "path": str(second),
+                        "profile": "2e44ae00-7a3a-492d-8806-9177a8973582",
+                        "chunkEvents": 1,
+                    },
                 ],
             },
         )
@@ -247,7 +291,13 @@ async def test_realtime_discovers_globs_with_per_file_chunks(tmp_path: Path) -> 
     from configured_sources import follow_configured
 
     specs = parse_source_settings(
-        [{"path": str(tmp_path / "*.log"), "profile": "network", "chunkEvents": 2}]
+        [
+            {
+                "path": str(tmp_path / "*.log"),
+                "profile": "0181af82-c1ed-41c8-8cd3-22a385746b32",
+                "chunkEvents": 2,
+            }
+        ]
     )
     async with aclosing(follow_configured(specs)) as records:
         pending = asyncio.create_task(anext(records))
@@ -260,7 +310,11 @@ async def test_realtime_discovers_globs_with_per_file_chunks(tmp_path: Path) -> 
                 second = await anext(records)
             assert {first["log"], second["log"]} == {"one-a\none-b", "two-a\ntwo-b"}
             assert first["source"] != second["source"]
-            assert first["profile"] == second["profile"] == "network"
+            assert (
+                first["profile"]
+                == second["profile"]
+                == "0181af82-c1ed-41c8-8cd3-22a385746b32"
+            )
         finally:
             pending.cancel()
             await asyncio.gather(pending, return_exceptions=True)
@@ -273,7 +327,9 @@ async def test_live_rotation_does_not_mix_generations(tmp_path: Path) -> None:
     path = tmp_path / "rotate.log"
     path.write_text("")
     async with aclosing(
-        chunk_records(follow_file(path), "general", 4, live=True)
+        chunk_records(
+            follow_file(path), "4e6d5417-611e-49e0-8e23-2444a0f49ee4", 4, live=True
+        )
     ) as records:
         pending = asyncio.create_task(anext(records))
         try:
@@ -302,8 +358,8 @@ async def test_batch_files_keep_independent_profiles_and_chunk_sizes(
     first.write_text("a\n" * 30)
     second.write_text("b\n" * 7)
     paths = {
-        first: {"profile": "general", "chunkEvents": 2},
-        second: {"profile": "authentication", "chunkEvents": 3},
+        first: {"profile": "4e6d5417-611e-49e0-8e23-2444a0f49ee4", "chunkEvents": 2},
+        second: {"profile": "702ecfa5-01fb-4321-9692-996134a10802", "chunkEvents": 3},
     }
     rows = [row async for row in read_configured(paths)]
     assert next(i for i, row in enumerate(rows) if row["source"] == str(second)) < 15
@@ -337,6 +393,8 @@ def test_criteria_name_uniqueness_matches_ui() -> None:
     from profiles import DEFAULT_PROFILES, validate_profiles
 
     profiles = deepcopy(DEFAULT_PROFILES)
-    profiles["application"]["label"] = f"  {profiles['general']['label'].upper()}  "
+    profiles["617706a3-c4ee-426f-81cf-7f5d80ecf67a"]["label"] = (
+        f"  {profiles['4e6d5417-611e-49e0-8e23-2444a0f49ee4']['label'].upper()}  "
+    )
     with pytest.raises(ValueError, match="names must be unique"):
         validate_profiles(profiles)

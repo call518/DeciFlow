@@ -139,6 +139,8 @@ Use this workflow as an alternative to the log example; both remain supported.
    classification schemes have separate choices under **Criteria** in the chart.
 
 The Overview **Decision** selector includes every decision.
+Every Criteria profile has a UUID, shown with a copy button as **Criteria ID** in
+View and Edit. Names can change without changing IDs; cloning creates a new ID.
 Default Chart Decision selects one item of any type and can be changed without changing
 AI answers or filters. Choice charts count selected options; Score charts round weighted scores to the
 nearest level; Noul charts group Yes probabilities into 25% intervals. Certainty groups

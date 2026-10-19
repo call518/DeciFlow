@@ -44,8 +44,11 @@ async def test_documented_request_and_result(
         return httpx.Response(200, json=response)
 
     profiles: dict[str, Result] = {
-        path.stem: json.loads(path.read_text())
+        definition["id"]: {
+            key: value for key, value in definition.items() if key != "id"
+        }
         for path in (ROOT / "profiles").glob("*.json")
+        for definition in [json.loads(path.read_text())]
     }
     with use_profile_snapshot(profiles):
         async with httpx.AsyncClient(

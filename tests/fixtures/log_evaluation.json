@@ -52,117 +52,117 @@
     "expected": "other"
   },
   {
-    "profile": "general",
+    "profile": "4e6d5417-611e-49e0-8e23-2444a0f49ee4",
     "log": "Nov 12 07:01:55 other-node systemd[812]: Starting system activity accounting tool...",
     "expected": "normal"
   },
   {
-    "profile": "general",
+    "profile": "4e6d5417-611e-49e0-8e23-2444a0f49ee4",
     "log": "Nov 12 07:01:55 other-node systemd[812]: sysstat-collect.service: Succeeded.",
     "expected": "normal"
   },
   {
-    "profile": "general",
+    "profile": "4e6d5417-611e-49e0-8e23-2444a0f49ee4",
     "log": "Nov 12 07:01:55 other-node systemd[812]: Started system activity accounting tool.",
     "expected": "normal"
   },
   {
-    "profile": "authentication",
+    "profile": "702ecfa5-01fb-4321-9692-996134a10802",
     "log": "sshd[12]: Accepted publickey for alice from 192.0.2.10 port 42100 ssh2",
     "expected": "normal"
   },
   {
-    "profile": "authentication",
+    "profile": "702ecfa5-01fb-4321-9692-996134a10802",
     "log": "sshd[12]: Failed password for alice from 192.0.2.10 port 42100 ssh2",
     "expected": "warning"
   },
   {
-    "profile": "authentication",
+    "profile": "702ecfa5-01fb-4321-9692-996134a10802",
     "log": "sshd[12]: Authentication service unavailable: identity backend failed",
     "expected": "error"
   },
   {
-    "profile": "authentication",
+    "profile": "702ecfa5-01fb-4321-9692-996134a10802",
     "log": "audit: Unauthorized access to protected credentials violates access policy",
     "expected": "security"
   },
   {
-    "profile": "authentication",
+    "profile": "702ecfa5-01fb-4321-9692-996134a10802",
     "log": "worker: opaque unrelated payload",
     "expected": "other"
   },
   {
-    "profile": "http_access",
+    "profile": "2e44ae00-7a3a-492d-8806-9177a8973582",
     "log": "192.0.2.10 - - [10/Oct/2026:12:00:00 +0000] \"GET /health HTTP/1.1\" 200 12",
     "expected": "normal"
   },
   {
-    "profile": "http_access",
+    "profile": "2e44ae00-7a3a-492d-8806-9177a8973582",
     "log": "192.0.2.10 - - [10/Oct/2026:12:00:00 +0000] \"GET /missing HTTP/1.1\" 404 12",
     "expected": "warning"
   },
   {
-    "profile": "http_access",
+    "profile": "2e44ae00-7a3a-492d-8806-9177a8973582",
     "log": "192.0.2.10 - - [10/Oct/2026:12:00:00 +0000] \"GET /api HTTP/1.1\" 503 12",
     "expected": "error"
   },
   {
-    "profile": "http_access",
+    "profile": "2e44ae00-7a3a-492d-8806-9177a8973582",
     "log": "WAF blocked request: confirmed SQL injection payload UNION SELECT password FROM users",
     "expected": "security"
   },
   {
-    "profile": "http_access",
+    "profile": "2e44ae00-7a3a-492d-8806-9177a8973582",
     "log": "opaque record without HTTP request or status",
     "expected": "other"
   },
   {
-    "profile": "application",
+    "profile": "617706a3-c4ee-426f-81cf-7f5d80ecf67a",
     "log": "INFO job completed successfully: 12 records saved",
     "expected": "normal"
   },
   {
-    "profile": "application",
+    "profile": "617706a3-c4ee-426f-81cf-7f5d80ecf67a",
     "log": "WARN dependency timeout; retry succeeded, operation completed",
     "expected": "warning"
   },
   {
-    "profile": "application",
+    "profile": "617706a3-c4ee-426f-81cf-7f5d80ecf67a",
     "log": "ERROR backup failed: destination unavailable; operation aborted",
     "expected": "error"
   },
   {
-    "profile": "application",
+    "profile": "617706a3-c4ee-426f-81cf-7f5d80ecf67a",
     "log": "SECURITY unauthorized user accessed protected admin action in violation of policy",
     "expected": "security"
   },
   {
-    "profile": "application",
+    "profile": "617706a3-c4ee-426f-81cf-7f5d80ecf67a",
     "log": "opaque event without application context",
     "expected": "other"
   },
   {
-    "profile": "network",
+    "profile": "0181af82-c1ed-41c8-8cd3-22a385746b32",
     "log": "TCP connection established: SYN, SYN-ACK, ACK; data acknowledged; orderly FIN close",
     "expected": "normal"
   },
   {
-    "profile": "network",
+    "profile": "0181af82-c1ed-41c8-8cd3-22a385746b32",
     "log": "TCP retransmission after packet loss; retransmitted data acknowledged",
     "expected": "warning"
   },
   {
-    "profile": "network",
+    "profile": "0181af82-c1ed-41c8-8cd3-22a385746b32",
     "log": "ICMP destination unreachable: host unreachable; connection failed",
     "expected": "error"
   },
   {
-    "profile": "network",
+    "profile": "0181af82-c1ed-41c8-8cd3-22a385746b32",
     "log": "Firewall: confirmed unauthorized traffic violates network access policy",
     "expected": "security"
   },
   {
-    "profile": "network",
+    "profile": "0181af82-c1ed-41c8-8cd3-22a385746b32",
     "log": "12:00:00 IP 192.0.2.10.42000 > 192.0.2.20.443: Flags [S], seq 1, length 0",
     "expected": "other"
   }

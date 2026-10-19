@@ -63,6 +63,7 @@ from host_sources import host_metadata, read_host_sources
 from jobs import JOBS, Job, read_archived_run, replay_archived_run
 from profiles import (
     DEFAULT_PROFILES,
+    GENERAL_PROFILE_ID,
     PROFILES,
     load_profiles,
     save_profiles,
@@ -321,7 +322,7 @@ async def _timed_results(
 async def handle_events(
     logs: list[str],
     engine: Engine,
-    profile: str = "general",
+    profile: str = GENERAL_PROFILE_ID,
     chunk_events: int = 1,
     profile_snapshot: dict[str, Result] | None = None,
 ) -> AsyncGenerator[str, None]:
@@ -351,7 +352,7 @@ async def handle_events(
                 with use_profile_snapshot(snapshot):
                     decision = (
                         await classify_log(log, engine, client)
-                        if profile == "general"
+                        if profile == GENERAL_PROFILE_ID
                         else await classify_log(log, engine, client, profile)
                     )
                     return decision
@@ -425,7 +426,7 @@ async def handle_classify(request: Request) -> Response:
     try:
         logs = parse_logs(body.get("text") if isinstance(body, dict) else None)
         profile, chunk_events = validate_settings(
-            body.get("profile", "general"),
+            body.get("profile", GENERAL_PROFILE_ID),
             body.get("chunkEvents", 1),
         )
     except (ValueError, TypeError) as error:
@@ -539,8 +540,8 @@ async def handle_file_events(
                     clock.begin()
                     try:
                         with use_profile_snapshot(snapshot):
-                            profile = record.get("profile", "general")
-                            if profile == "general":
+                            profile = record.get("profile", GENERAL_PROFILE_ID)
+                            if profile == GENERAL_PROFILE_ID:
                                 return await classify_log(record["log"], engine, client)
                             return await classify_log(
                                 record["log"], engine, client, profile

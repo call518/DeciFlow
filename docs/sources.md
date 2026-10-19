@@ -211,7 +211,7 @@ for `POST /api/file-source` (Local File omits hostIds):
 {
   "mode": "batch",
   "sources": [
-    {"sourceId": "<registered-source-id>", "profile": "general", "chunkEvents": 1, "actionId": "", "hostIds": ["<ssh-host-id>"]}
+    {"sourceId": "<registered-source-id>", "profile": "4e6d5417-611e-49e0-8e23-2444a0f49ee4", "chunkEvents": 1, "actionId": "", "hostIds": ["<ssh-host-id>"]}
   ],
   "persist": true
 }

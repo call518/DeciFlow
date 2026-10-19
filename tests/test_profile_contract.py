@@ -1,17 +1,24 @@
 """Use typed profiles and result metadata without compatibility projections."""
 
 from copy import deepcopy
+from uuid import UUID
 
 import httpx
 import pytest
 
 from classifier import classify_log
 from config import get_engine
-from profiles import DEFAULT_PROFILES, validate_profiles
+from profiles import DEFAULT_PROFILES, SAMPLE_PROFILE_IDS, validate_profiles
 from result_payload import compact_result
 
 
 def test_all_templates_use_one_profile_format() -> None:
+    assert len(SAMPLE_PROFILE_IDS) == len(set(SAMPLE_PROFILE_IDS.values())) == 8
+    assert set(DEFAULT_PROFILES) == set(SAMPLE_PROFILE_IDS.values())
+    assert all(
+        str(UUID(identity)) == identity and UUID(identity).version == 4
+        for identity in DEFAULT_PROFILES
+    )
     assert validate_profiles(DEFAULT_PROFILES) == DEFAULT_PROFILES
     for profile in DEFAULT_PROFILES.values():
         assert "criteria" not in profile and "primaryQuestion" not in profile
@@ -22,11 +29,25 @@ def test_all_templates_use_one_profile_format() -> None:
                 assert isinstance(definition["reviewOptions"], list)
 
 
+@pytest.mark.parametrize(
+    "identity",
+    [
+        "general",
+        "local_gov",
+        "4E6D5417-611E-49E0-8E23-2444A0F49EE4",
+        "4e6d5417611e49e08e232444a0f49ee4",
+    ],
+)
+def test_criteria_ids_require_canonical_uuids(identity: str) -> None:
+    with pytest.raises(ValueError, match="Criteria IDs"):
+        validate_profiles({identity: next(iter(DEFAULT_PROFILES.values()))})
+
+
 def test_flat_profiles_are_not_supported() -> None:
     with pytest.raises(ValueError, match="at least one decision"):
         validate_profiles(
             {
-                "custom": {
+                "a9b5cb3b-1e1e-4559-8f71-365c651d176d": {
                     "label": "Custom",
                     "instructions": "Use evidence.",
                     "criteria": {"a": "A", "b": "B"},
@@ -55,7 +76,7 @@ async def test_every_decision_receives_shared_instructions(
     from conftest import DECISION_ANSWERS
 
     monkeypatch.setenv("DECISION_ENGINE", engine)
-    profile = DEFAULT_PROFILES["general"]
+    profile = DEFAULT_PROFILES["4e6d5417-611e-49e0-8e23-2444a0f49ee4"]
     body = {
         "usage": {"truncated": False},
         "answers": {

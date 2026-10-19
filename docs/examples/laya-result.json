@@ -64,8 +64,8 @@
     }
   },
   "defaultDecision": "category",
-  "profileId": "http_access",
-  "criteriaGroup": "5ad9bb240a2974c4",
+  "profileId": "2e44ae00-7a3a-492d-8806-9177a8973582",
+  "criteriaGroup": "58f22a24349f86cf",
   "profileLabel": "Sample HTTP access",
   "inputBudget": {
     "max_len": 8192,
@@ -189,7 +189,7 @@
   "lineCount": 1,
   "eventCount": 1,
   "chunkEvents": 1,
-  "profile": "http_access",
+  "profile": "2e44ae00-7a3a-492d-8806-9177a8973582",
   "incomplete": false,
   "elapsedMs": 120
 }

@@ -1,4 +1,5 @@
 {
+  "id": "0181af82-c1ed-41c8-8cd3-22a385746b32",
   "label": "Sample Network / tcpdump text",
   "instructions": "Input is tcpdump text, not PCAP. A SYN, RST, unusual port, or single packet is not proof of an attack. Do not infer retransmission or connection outcome without supporting sequence context.",
   "questions": {

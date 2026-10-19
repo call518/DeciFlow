@@ -20,7 +20,7 @@ from config_store import (
     save_record,
     save_records,
 )
-from profiles import DEFAULT_PROFILES, PROFILES
+from profiles import DEFAULT_PROFILES, GENERAL_PROFILE_ID, PROFILES, SAMPLE_PROFILE_IDS
 from result_store import open_result_store
 from source_registry import (
     CENTRAL_GOV_SOURCE,
@@ -112,7 +112,7 @@ def ensure_default_task() -> None:
                 "sources": [
                     {
                         "sourceId": source["id"],
-                        "profile": "general",
+                        "profile": GENERAL_PROFILE_ID,
                         "chunkEvents": 1,
                         "actionId": "",
                     }
@@ -124,7 +124,9 @@ def ensure_default_task() -> None:
 
 def ensure_voc_task() -> None:
     """Provide a disabled manual VOC Batch without changing existing Tasks."""
-    _ensure_consultation_task(VOC_TASK_ID, VOC_TASK_NAME, VOC_SOURCE, "consultation")
+    _ensure_consultation_task(
+        VOC_TASK_ID, VOC_TASK_NAME, VOC_SOURCE, SAMPLE_PROFILE_IDS["consultation"]
+    )
 
 
 def ensure_central_gov_task() -> None:
@@ -133,7 +135,7 @@ def ensure_central_gov_task() -> None:
         CENTRAL_GOV_TASK_ID,
         CENTRAL_GOV_TASK_NAME,
         CENTRAL_GOV_SOURCE,
-        "central_gov",
+        SAMPLE_PROFILE_IDS["central_gov"],
     )
 
 
@@ -143,7 +145,7 @@ def ensure_local_gov_task() -> None:
         LOCAL_GOV_TASK_ID,
         LOCAL_GOV_TASK_NAME,
         LOCAL_GOV_SOURCE,
-        "local_gov",
+        SAMPLE_PROFILE_IDS["local_gov"],
     )
 
 
@@ -239,7 +241,7 @@ def ensure_system_message_task() -> None:
             "sources": [
                 {
                     "sourceId": source["id"],
-                    "profile": "general",
+                    "profile": GENERAL_PROFILE_ID,
                     "chunkEvents": 1,
                     "actionId": "",
                 }

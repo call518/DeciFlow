@@ -52,14 +52,13 @@ Use `--cases PATH` for a UTF-8 JSON list of labeled cases:
   {
     "log": "application: database connection failed",
     "expected": "error",
-    "profile": "application"
+    "profile": "617706a3-c4ee-426f-81cf-7f5d80ecf67a"
   }
 ]
 ```
 
 Each case requires log text and one expected category: `normal`, `warning`,
-`error`, `security`, or `other`. `profile` defaults to `general` and must name a
-bundled profile. The cases path must be readable in the environment running the evaluator.
+`error`, `security`, or `other`. `profile` is the bundled Criteria UUID and defaults to Sample General System. The cases path must be readable in the environment running the evaluator.
 
 ## Read the report
 

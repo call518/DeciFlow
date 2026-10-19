@@ -96,7 +96,7 @@ async def test_all_voc_rows_are_independent() -> None:
     async for row in read_configured(
         {
             path: {
-                "profile": "consultation",
+                "profile": "41bbe1dc-85cb-4ab0-ab79-cd7c4e6f8e72",
                 "chunkEvents": 1,
                 "format": "jsonl",
                 "contentField": "consulting_content",
@@ -124,7 +124,14 @@ def test_jsonl_requires_content_field(field: object) -> None:
         )
 
 
-@pytest.mark.parametrize("profile_id", ["consultation", "central_gov", "local_gov"])
+@pytest.mark.parametrize(
+    "profile_id",
+    [
+        "41bbe1dc-85cb-4ab0-ab79-cd7c4e6f8e72",
+        "1dd02d79-f43e-49ef-a1f1-7a2ddfab1e8d",
+        "efb7c8ca-61c1-4785-b38d-0a86764ca758",
+    ],
+)
 @pytest.mark.parametrize("engine_name", ["laya", "jev"])
 @pytest.mark.parametrize("invalid", [None, "missing", "score", "noul", "choice"])
 @pytest.mark.anyio
@@ -184,7 +191,7 @@ def test_custom_aggregates_filters_and_typed_review_export(tmp_path: Path) -> No
     store = SQLiteResultStore(tmp_path / "results.db")
     snapshot = {"state": "completed", "settings": {}}
     store.create("run", snapshot)
-    definition = DEFAULT_PROFILES["consultation"]
+    definition = DEFAULT_PROFILES["41bbe1dc-85cb-4ab0-ab79-cd7c4e6f8e72"]
     questions = definition["questions"]
     answers = decision_answers(questions)
     result = {
@@ -261,7 +268,10 @@ async def test_secondary_choice_needs_review_without_changing_primary_certainty(
             transport=httpx.MockTransport(handle_request)
         ) as client:
             result = await classify_log(
-                "Conversation", get_engine(), client, "consultation"
+                "Conversation",
+                get_engine(),
+                client,
+                "41bbe1dc-85cb-4ab0-ab79-cd7c4e6f8e72",
             )
     assert result["review"] is True
     assert result["decisionAssessments"]["inquiry_type"]["uncertain"] is False
@@ -290,7 +300,7 @@ async def test_local_gov_sample_preserves_metadata() -> None:
                 "path": str(path),
                 "format": "jsonl",
                 "contentField": "상담내용",
-                "profile": "local_gov",
+                "profile": "efb7c8ca-61c1-4785-b38d-0a86764ca758",
                 "chunkEvents": 10,
             }
         ]

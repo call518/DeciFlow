@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Any
 
-from profiles import validate_settings
+from profiles import GENERAL_PROFILE_ID, validate_settings
 from source_registry import input_settings, load_sources, source_paths
 from sources import resolve_sources
 from ssh_hosts import load_hosts
@@ -38,7 +38,7 @@ def parse_source_settings(
         path = definition.get("path", value.get("path"))
         if not isinstance(path, str) or not path.strip():
             raise ValueError("Enter a source path or pattern.")
-        profile = value.get("profile", "general")
+        profile = value.get("profile", GENERAL_PROFILE_ID)
         events = value.get("chunkEvents", 1)
         if allow_unassigned_profile and profile == "":
             if type(events) is not int or events < 1:
