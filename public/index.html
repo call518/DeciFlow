@@ -35,23 +35,24 @@
         <div id="running-tasks" class="running-tasks" role="group" aria-label="Tasks"></div>
       </section>
       </div>
-      <section id="classification-results" class="card output"><div class="card-title"><h2>Classification Results</h2><div class="result-actions"><button id="pause-updates" class="quiet" aria-pressed="false" title="Pause list updates while analysis continues" disabled>Pause Display Updates</button><button id="export" class="quiet" title="Export all results in this run, including results hidden by filters" disabled>Export All JSON ↓</button><button id="export-reviewed" class="quiet" title="Export only results with a human correction to an AI decision in this run" disabled>Export Reviewed JSON ↓</button></div></div><p id="result-context" class="caption" aria-live="polite">Select a Task to view its results.</p><div id="message" role="status" aria-live="polite"></div><div id="summary" class="summary"></div><div class="result-toolbar"><div class="result-filters" role="group" aria-label="Result Filters">
+      <section id="classification-results" class="card output"><div class="card-title"><h2>Classification Results</h2><div class="result-actions"><button id="pause-updates" class="quiet" aria-pressed="false" title="Pause list updates while analysis continues" disabled>Pause Display Updates</button><button id="export" class="quiet" title="Export all results in this run, including results hidden by filters" disabled>Export All JSON ↓</button><button id="export-reviewed" class="quiet" title="Export only results with a human correction to an AI decision in this run" disabled>Export Reviewed JSON ↓</button></div></div><p id="result-context" class="caption" aria-live="polite">Select a Task to view its results.</p><div id="message" role="status" aria-live="polite"></div><div id="summary" class="summary"></div>
+      <div class="result-display-settings"><details id="decision-display-menu" class="decision-display-menu"><summary id="decision-display-summary">Show Decisions · All</summary><div class="decision-display-panel"><button id="show-all-decisions" type="button" class="quiet">Show All</button><div id="decision-display-options"></div></div></details><div id="host-status" class="host-status"><span id="needs-review-count" class="quiet needs-review-count" title="Successful classifications needing review; failed requests are excluded.">Needs Review: 0</span><button id="source-hosts-detail" type="button" class="quiet" aria-haspopup="dialog" disabled>Source Hosts Detail</button></div></div>
+      <div class="result-toolbar"><div class="result-filters" role="group" aria-label="Result Filters">
         <select id="result-filter-type" aria-label="Filter Type">
-          <option value="category-filter">Category</option>
+          <option value="log-search">Search Text</option>
+          <option value="processing-filter">Processing Status</option>
           <option value="source-filter">Source</option>
           <option value="host-filter">Host</option>
-          <option value="log-search">Search Text</option>
-          <option value="review-filter">Review Status</option><option value="decision-filter">Decision</option><option value="certainty-filter">Decision Certainty</option>
+          <option value="review-filter">Review Status</option>
         </select>
         <div class="result-filter-value">
-          <select id="decision-filter" aria-label="Decision Filter" hidden><option value="all">All Decisions</option></select><select id="certainty-filter" aria-label="Decision Certainty" hidden disabled><option value="all">All Certainty Levels</option><option value="certain">Certain</option><option value="uncertain">Uncertain</option><option value="unassessed">Not Assessed</option></select><select id="review-filter" aria-label="Review Status" hidden><option value="all">All Results</option><option value="needs-review">Needs Review</option><option value="no-review">No Review Needed</option></select>
-          <select id="category-filter" aria-label="Category"><option value="all">All Categories</option><option value="normal">Normal</option><option value="warning">Warning</option><option value="error">Error</option><option value="security">Security</option><option value="other">Other</option><option value="failed">Request Failed</option></select>
-          <input id="log-search" type="search" aria-label="Search Text" placeholder="Contains text…" title="Case-insensitive literal search in original input text" hidden>
+          <select id="processing-filter" aria-label="Processing Status" hidden><option value="all">All Statuses</option><option value="successful">Successful</option><option value="failed">Failed</option></select>
+          <select id="review-filter" aria-label="Review Status" hidden><option value="all">All Results</option><option value="needs-review">Needs Review</option><option value="no-review">No Review Needed</option></select>
+          <input id="log-search" type="search" aria-label="Search Text" placeholder="Contains text…" title="Case-insensitive literal search in original input text">
           <select id="host-filter" aria-label="Host" hidden><option value="all">All Hosts</option></select>
           <select id="source-filter" aria-label="Source" hidden><option value="all">All Sources</option></select>
         </div>
-      </div>
-      <div id="host-status" class="host-status"><span id="needs-review-count" class="quiet needs-review-count" title="Successful classifications needing review; failed requests are excluded.">Needs Review: 0</span><button id="source-hosts-detail" type="button" class="quiet" aria-haspopup="dialog" disabled>Source Hosts Detail</button></div></div>
+      </div></div>
       <div id="active-result-filters" class="active-result-filters" role="group" aria-label="Applied Filters" hidden></div>
       <div id="results"><div class="empty"><h3>Ready for Your Next Decision</h3><p>Select a Task to view its latest execution.</p></div></div><div class="card-title"><button id="previous" class="quiet" disabled>← Previous</button><span id="page-info" class="caption">30 results per page</span><button id="next" class="quiet" disabled>Next →</button></div>
       <div id="result-scroll-controls" class="result-scroll-controls" hidden>

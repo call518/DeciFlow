@@ -79,7 +79,7 @@ file test. Selecting Jev uses the paid API.
 - **Source Hosts Detail**: whole-run success/failure/total counts by host.
 
 After full completion, Success + Failed should equal 841. Stopping early counts
-only completed records. Inspect failures with Request Failed. For conversations
+only completed records. Inspect failures with Processing Status → Failed. For conversations
 that exceed input limits, inspect engine outcomes, failure reasons, and Truncated
 status. A JSONL consultation is not automatically split into multiple requests.
 Probabilities and Certain are not measured accuracy.

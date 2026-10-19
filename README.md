@@ -46,7 +46,7 @@ selected engine and receives predictions.
   including wildcard patterns; select saved Sources without retyping paths.
 - **Switch from investigation to monitoring.** Read existing files in batches or
   monitor new lines and file rotation. Newest completed predictions appear first.
-- **Keep people in control.** Filter uncertain predictions, record reviewer
+- **Keep people in control.** Inspect uncertain predictions, record reviewer
   corrections, and export results as JSON. Rejected events retain their original
   text for review.
 - **Share inference across nodes.** Run DeciFlow on each log node and connect
@@ -144,8 +144,10 @@ View and Edit. Names can change without changing IDs; cloning creates a new ID.
 Default Chart Decision selects one item of any type and can be changed without changing
 AI answers or filters. Choice charts count selected options; Score charts round weighted scores to the
 nearest level; Noul charts group Yes probabilities into 25% intervals. Certainty groups
-refer to the selected Choice. Score and Noul have no certainty groups. Decision filters
-search the whole run; Needs Review includes issues in any decision. Switching charts does not run inference.
+refer to the selected Choice. Score and Noul have no certainty groups. Show Decisions
+selects which judgments appear in each card without filtering results or fetching data.
+Processing Status, Source, Host, Review Status, and Search Text filter the whole run.
+Needs Review includes issues in any decision. Switching charts does not run inference.
 
 Content Field is a literal top-level key containing nonempty text. Malformed JSONL
 records are retained as failures while later records continue. Files must be

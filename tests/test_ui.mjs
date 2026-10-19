@@ -29,6 +29,14 @@ function setDecisions(item,{choice,confidence,probabilities,score,scoreProbabili
   if(uncertain!==undefined || reasons || candidates)item.decisionAssessments={category:{uncertain:uncertain ?? false,reviewReasons:reasons || [],candidates:candidates || [],answerProbability:answer.probabilities[answer.choice]}};
 }
 
+function showDecisions(context,keys) {
+  const inputs=vm.runInContext('[...decisionDisplayInputs]',context);
+  for(const [key,input] of inputs){
+    const checked=keys.includes(key);
+    if(input.checked!==checked){input.checked=checked;input.onchange();}
+  }
+}
+
 function runTask(nodes) {
   return vm.runInContext('handleRunTask(selectedTaskId)', workspaceContexts.get(nodes));
 }
@@ -43,7 +51,7 @@ function workspace(events, status, storage = { getItem: () => null, setItem() {}
     append(...children) { for(const child of children){if(child?.parentNode)child.parentNode.removeChild(child);this.children.push(child);if(child && typeof child==='object')child.parentNode=this;} },
     remove() { this.parentNode?.removeChild(this); },
     get parentElement() { return this.parentNode; },
-    get options() { return this.children; },
+    get options() { return this.children.flatMap(child=>child.tagName==='optgroup'?child.children:[child]); },
     prepend(...children) { for(const child of children.toReversed())this.insertBefore(child,this.children[0] || null); },
     get nextSibling() { return this.parentNode?.children[this.parentNode.children.indexOf(this)+1] || null; },
     replaceChildren(...children) { this.children = []; this.append(...children); },
@@ -65,7 +73,7 @@ function workspace(events, status, storage = { getItem: () => null, setItem() {}
         if (!nodes.has(id)) nodes.set(id, node());
         return nodes.get(id);
       },
-      createElement: node,
+      createElement: tagName => Object.assign(node(),{tagName}),
     },
     Option: function(text, value) { return { text, value }; },
     localStorage: storage,
@@ -101,7 +109,7 @@ function workspace(events, status, storage = { getItem: () => null, setItem() {}
     readEvents: async (_, receive) => events.forEach(receive),
   });
   context.document.getElementById('review-filter').value = 'all';
-  context.document.getElementById('category-filter').value = 'all';
+  context.document.getElementById('processing-filter').value = 'all';
   const source = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
   vm.runInContext(source.replace(/^import .*;\n/, ''), context);
   vm.runInContext("sourcesLoaded = true; registeredTasks=[{id:'test-task',name:'Test Task',mode:'batch',sources:[],timezone:'UTC',cron:'',enabled:true}];selectedTaskId='test-task';renderTaskMonitor()", context);
@@ -355,10 +363,9 @@ test('pause freezes rows while analysis continues; resume includes pending resul
   assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
   nodes.get('review-filter').value = 'all'; nodes.get('review-filter').onchange();
   assert.deepEqual(logs(nodes), ['log-0']);
-  nodes.get('decision-filter').value='system:category';nodes.get('decision-filter').onchange();
-  nodes.get('category-filter').value = 'warning'; nodes.get('category-filter').onchange();
+  nodes.get('processing-filter').value='failed';nodes.get('processing-filter').onchange();
   assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
-  nodes.get('category-filter').value = 'all'; nodes.get('category-filter').onchange();
+  nodes.get('processing-filter').value = 'all'; nodes.get('processing-filter').onchange();
   nodes.get('log-search').value = 'LOG-1'; nodes.get('log-search').oninput();
   assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
   nodes.get('log-search').value = ''; nodes.get('log-search').oninput();
@@ -520,22 +527,22 @@ test('category, review and literal log search combine and retain full aggregates
   await runTask(nodes);
   nodes.get('log-search').value = 'SERVICE'; nodes.get('log-search').oninput();
   assert.equal(logs(nodes).length, 3);
-  nodes.get('decision-filter').value='system:category';nodes.get('decision-filter').onchange();nodes.get('category-filter').value = 'normal'; nodes.get('category-filter').onchange();
-  assert.deepEqual(logs(nodes), ['Service Started [OK]']);
+  nodes.get('processing-filter').value='successful';nodes.get('processing-filter').onchange();
+  assert.deepEqual(logs(nodes), ['Service retry [pending]','Service Started [OK]']);
   nodes.get('review-filter').value = 'needs-review'; nodes.get('review-filter').onchange();
-  assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
-  nodes.get('category-filter').value = 'warning'; nodes.get('category-filter').onchange();
+  assert.deepEqual(logs(nodes), ['Service retry [pending]']);
+  nodes.get('processing-filter').value = 'successful'; nodes.get('processing-filter').onchange();
   nodes.get('log-search').value = '[PENDING]'; nodes.get('log-search').oninput();
   assert.deepEqual(logs(nodes), ['Service retry [pending]']);
   nodes.get('log-search').value = '.*'; nodes.get('log-search').oninput();
   assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
   nodes.get('log-search').value = ''; nodes.get('log-search').oninput();
-  nodes.get('decision-filter').value='all';nodes.get('decision-filter').onchange();nodes.get('category-filter').value = 'failed'; nodes.get('category-filter').onchange();
+  nodes.get('processing-filter').value='failed';nodes.get('processing-filter').onchange();
   assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
   nodes.get('review-filter').value = 'all'; nodes.get('review-filter').onchange();
   assert.deepEqual(logs(nodes), ['Service request failed']);
   assert.equal(nodes.get('summary').children[0].children[0].children.map(node => node.textContent).join(''), '2 / 1 / 3');
-  nodes.get('category-filter').value = 'all'; nodes.get('category-filter').onchange();
+  nodes.get('processing-filter').value = 'all'; nodes.get('processing-filter').onchange();
   nodes.get('review-filter').value = 'all'; nodes.get('review-filter').onchange();
   assert.equal(logs(nodes).length, 3);
 });
@@ -772,9 +779,9 @@ test('source filtering uses input patterns with counts and combines with other f
   assert.ok(select.children.some(option => option.text === '/logs/empty.log (0)'));
   select.value = '/logs/messages'; select.onchange();
   assert.deepEqual(logs(nodes), ['service failed']);
-  nodes.get('decision-filter').value='system:category';nodes.get('decision-filter').onchange();nodes.get('category-filter').value = 'normal'; nodes.get('category-filter').onchange();
+  nodes.get('processing-filter').value='failed';nodes.get('processing-filter').onchange();
   assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
-  nodes.get('category-filter').value = 'all';
+  nodes.get('processing-filter').value = 'all';
   nodes.get('log-search').value = 'failed'; nodes.get('log-search').oninput();
   assert.deepEqual(logs(nodes), ['service failed']);
   assert.equal(nodes.get('summary').children[0].children[0].children.map(node => node.textContent).join(''), '2 / 0 / 2');
@@ -1811,7 +1818,7 @@ test('Missing legacy scores remain unavailable and failed requests show no predi
   vm.runInContext("results[0].error='request failed';render(false)",context);
   const header=nodes.get('results').children[0].children[0];
   assert.equal(header.className,'result-top');
-  assert.equal(header.children[0].textContent,'Request failed');
+  assert.equal(header.children[0].textContent,'Processing Failed');
 });
 
 
@@ -2221,7 +2228,7 @@ for (const engine of ['laya','jev']) test(`${engine} incremental results preserv
   assert.equal(details.open,true);assert.equal(details.children[1].children[1].textContent,json);
   assert.equal(vm.runInContext('resultStatistics.failed',context),1);
   assert.equal(vm.runInContext('resultStatistics.total',context),151);
-  nodes.get('category-filter').value='failed';nodes.get('category-filter').onchange();
+  nodes.get('processing-filter').value='failed';nodes.get('processing-filter').onchange();
   assert.deepEqual(logs(nodes),['new']);
   vm.runInContext(`
     results[151]={log:'another',error:'timeout',elapsedMs:5};completionOrder.push(151);completed++;
@@ -2955,8 +2962,8 @@ test('All ten mixed decisions appear equally and can be filtered and reviewed',a
   assert.deepEqual(decisionCards(row).map(card=>card.children[0].textContent),Array.from({length:10},(_,i)=>`Decision ${i} (${i<2?'Choice':i<5?'Score':'Noul'})`));
   assert.equal(row.children[1].className,'original-input');
   assert.equal(row.children[1].children[0].textContent,'Input');
-  nodes.get('decision-filter').value='voc:q0';nodes.get('decision-filter').onchange();
-  assert.ok(nodes.get('category-filter').children.some(option=>option.value==='pending'));
+  showDecisions(context,['voc:q0']);
+  assert.equal(decisionCards(nodes.get('results').children[0]).length,1);
   const reviews=row.children.at(-2).children[1];assert.equal(reviews.children.length,10);
   const input=reviews.children[5].children[0];input.value='0.2';await input.onchange();
   assert.equal(vm.runInContext('results[0].reviewerDecisions.q5',context),.2);
@@ -3403,11 +3410,14 @@ test('Run filter URLs preserve pages while background polls replace history',asy
   const writes=enableCleanRoutes(context,navigation);
   vm.runInContext("currentView='main';activeJobId='linked-run';pagedView={id:'linked-run',cursors:[null,100,70],through:130};page=2",context);
   nodes.get('review-filter').value='needs-review';nodes.get('log-search').value='synthetic query';
+  nodes.get('processing-filter').value='successful';
   vm.runInContext('handleSyncRunRoute()',context);
   const params=new URLSearchParams(navigation.search);
   assert.equal(navigation.pathname,'/runs/linked-run');
   assert.equal(params.get('cursors'),'100,70');assert.equal(params.get('through'),'130');
   assert.equal(params.get('review'),'needs-review');assert.equal(params.get('search'),'synthetic query');
+  assert.equal(params.get('processing'),'successful');
+  assert.equal(params.has('decision'),false);assert.equal(params.has('certainty'),false);
   nodes.get('host-filter').value='host-two';
   vm.runInContext('handleSyncRunRoute(true)',context);
   assert.equal(writes.at(-1).replace,true);
@@ -3575,7 +3585,7 @@ test('Elapsed times use separate metrics and review count appears beside host de
   assert.deepEqual(elapsedValues(nodes),['1 min 5 sec','28.9 sec (44.5%)']);
   assert.equal(nodes.get('needs-review-count').textContent,'Needs Review: 0');
   const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
-  assert.match(html,/class="result-toolbar"[^]*?id="result-filter-type"[^]*?id="host-status"[^]*?id="needs-review-count"[^]*?id="source-hosts-detail"/);
+  assert.match(html,/class="result-display-settings"[^]*?id="decision-display-menu"[^]*?id="host-status"[^]*?id="needs-review-count"[^]*?id="source-hosts-detail"[^]*?class="result-toolbar"[^]*?id="result-filter-type"/);
 });
 
 
@@ -4075,19 +4085,17 @@ test('Every Choice shows its own uncertainty and chart counts; Score and Noul ha
   }
 });
 
-test('Decision filters use the selected answer and certainty independently of the chart',async()=>{
-  const {nodes,requests}=workspace([assessmentFixture(),assessmentFixture(1,true)]);await runTask(nodes);
-  const count=requests.length;
-  nodes.get('decision-filter').value='stable:response';nodes.get('decision-filter').onchange();
-  nodes.get('category-filter').value='done';nodes.get('category-filter').onchange();
-  nodes.get('certainty-filter').value='uncertain';nodes.get('certainty-filter').onchange();
-  assert.deepEqual(logs(nodes),['log-0']);
+test('Show Decisions supports multiple selections without filtering results or requesting data',async()=>{
+  const failed=result(2,false);failed.result.error='timeout';
+  const {context,nodes,requests}=workspace([assessmentFixture(),assessmentFixture(1,true),failed]);await runTask(nodes);
+  const count=requests.length;const before=logs(nodes);
+  showDecisions(context,['stable:response','stable:urgency']);
+  assert.deepEqual(logs(nodes),before);
   assert.equal(nodes.get('classification-group').value,'stable:area');
-  nodes.get('certainty-filter').value='certain';nodes.get('certainty-filter').onchange();
-  assert.deepEqual(logs(nodes),['log-1']);
-  nodes.get('decision-filter').value='stable:followup';nodes.get('decision-filter').onchange();
-  assert.equal(nodes.get('certainty-filter').disabled,true);
-  assert.equal(nodes.get('certainty-filter').value,'all');
+  for(const row of nodes.get('results').children.slice(1))assert.deepEqual(decisionCards(row).map(card=>card.children[0].textContent),['Response (Choice)','Urgency (Score)']);
+  assert.equal(nodes.get('decision-display-summary').textContent,'Show Decisions · 2');
+  nodes.get('show-all-decisions').onclick();
+  assert.equal(decisionCards(nodes.get('results').children[1]).length,4);
   assert.equal(requests.length,count);
 });
 
@@ -4132,17 +4140,14 @@ test('Criteria editor saves any default type and explicit review options without
   assert.equal(nodes.get('criteria-editor').hidden,false);
 });
 
-test('Removing the Decision filter clears dependent value and certainty conditions',async()=>{
-  const {nodes}=workspace([assessmentFixture(),assessmentFixture(1,true)]);await runTask(nodes);
-  nodes.get('decision-filter').value='stable:response';nodes.get('decision-filter').onchange();
-  nodes.get('category-filter').value='done';nodes.get('category-filter').onchange();
-  nodes.get('certainty-filter').value='uncertain';nodes.get('certainty-filter').onchange();
-  const chip=nodes.get('active-result-filters').children.find(node=>node.textContent.startsWith('Decision:'));
-  chip.onclick();
-  assert.equal(nodes.get('decision-filter').value,'all');
-  assert.equal(nodes.get('category-filter').value,'all');
-  assert.equal(nodes.get('certainty-filter').value,'all');
+test('Clear All removes result filters without changing Show Decisions',async()=>{
+  const {context,nodes}=workspace([assessmentFixture(),assessmentFixture(1,true)]);await runTask(nodes);
+  showDecisions(context,['stable:response']);
+  nodes.get('processing-filter').value='successful';nodes.get('processing-filter').onchange();
+  nodes.get('active-result-filters').children.find(node=>node.textContent==='Clear All').onclick();
+  assert.equal(nodes.get('processing-filter').value,'all');
   assert.equal(logs(nodes).length,2);
+  assert.equal(decisionCards(nodes.get('results').children[0]).length,1);
 });
 
 test('Failed default save preserves the previous default and all AI results',async()=>{
@@ -4470,4 +4475,86 @@ test('Criteria ID copy failure keeps the ID selectable and allows retry',async()
   assert.equal(value.children[0].textContent,sampleProfileIds.local_gov);
   assert.equal(value.children[2].textContent,'Copy failed. Select and copy the ID.');
   assert.equal(value.children[1].disabled,false);
+});
+
+
+test('Show Decisions groups multiple Criteria and preserves distinct checkbox keys',()=>{
+  const {context,nodes}=workspace([]);
+  vm.runInContext(`renderDecisionDisplay({
+    'one:area':{identity:'one',criteria:'First Criteria',label:'Area'},
+    'two:area':{identity:'two',criteria:'Second Criteria',label:'Area'}
+  })`,context);
+  const groups=nodes.get('decision-display-options').children;
+  assert.deepEqual(groups.map(group=>group.children[0].textContent),['First Criteria','Second Criteria']);
+  assert.equal(groups[0].children[1].children[0].checked,true);
+  assert.equal(groups[1].children[1].children[0].attributes['aria-label'],'Second Criteria · Area');
+});
+
+test('Processing Status filters result cards independently of displayed decisions',async()=>{
+  const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
+  assert.doesNotMatch(html,/id="(?:decision-filter|certainty-filter|category-filter|category-selection)"/);
+  const failed=result(2,false);failed.result.error='Invalid response';
+  const {context,nodes}=workspace([assessmentFixture(),assessmentFixture(1,true),failed]);await runTask(nodes);
+  showDecisions(context,['stable:response']);
+  const select=nodes.get('processing-filter');
+  select.value='successful';select.onchange();assert.deepEqual(logs(nodes),['log-1','log-0']);
+  select.value='failed';select.onchange();assert.deepEqual(logs(nodes),['log-2']);
+  select.value='all';select.onchange();assert.equal(logs(nodes).length,3);
+  assert.equal(decisionCards(nodes.get('results').children[1]).length,1);
+});
+
+test('Archived display changes preserve paging and avoid server requests while processing filters use the API',async()=>{
+  const {context,nodes}=workspace([assessmentFixture(),assessmentFixture(1,true)]);await runTask(nodes);
+  const summary=vm.runInContext('updateResultStatistics()',context);
+  const items=vm.runInContext('results.map((result,index)=>({sequence:index+1,result}))',context);
+  const queries=[];
+  context.fetch=async(path,options)=>{
+    assert.equal(path,'/api/jobs/scope/results');queries.push(JSON.parse(options.body));
+    return {ok:true,json:async()=>({snapshot:{jobId:'scope',state:'completed',settings:{mode:'batch'}},summary:{...summary,hosts:Object.fromEntries(summary.hosts),sources:Object.fromEntries(summary.sources)},items,sequence:2,limit:30,hasNext:false})};
+  };
+  context.scopeItems=items;context.scopeSummary=summary;context.URLSearchParams=URLSearchParams;
+  vm.runInContext("pagedView={id:'scope',items:scopeItems,summary:scopeSummary,revision:0,cursors:[null,3]};page=1;render(false,true)",context);
+  const pageInfo=nodes.get('page-info').textContent;
+  showDecisions(context,['stable:response','stable:urgency']);
+  assert.equal(queries.length,0);assert.equal(vm.runInContext('page',context),1);
+  assert.equal(nodes.get('page-info').textContent,pageInfo);
+  assert.equal(decisionCards(nodes.get('results').children[0]).length,2);
+  const select=nodes.get('processing-filter');select.value='successful';await select.onchange();
+  assert.equal(queries.at(-1).processing,'successful');
+  assert.equal(Object.hasOwn(queries.at(-1),'decision'),false);
+  await vm.runInContext("handleApplyRunRoute('/runs/scope?processing=successful')",context);
+  assert.equal(select.value,'successful');
+  assert.equal(decisionCards(nodes.get('results').children[0]).length,2);
+});
+
+test('Show Decisions keeps cards from other Criteria and resets for another run',async()=>{
+  const other=assessmentFixture(1);other.result.criteriaGroup='other';other.result.profileLabel='Other Criteria';
+  const {context,nodes}=workspace([assessmentFixture(),other]);await runTask(nodes);
+  showDecisions(context,['stable:response']);
+  assert.deepEqual(logs(nodes),['log-1','log-0']);
+  const unrelated=nodes.get('results').children[0];
+  assert.equal(decisionCards(unrelated)[0].textContent,'No decisions selected for this result.');
+  assert.equal(decisionCards(nodes.get('results').children[1])[0].children[0].textContent,'Response (Choice)');
+  vm.runInContext('handleResetChart();render()',context);
+  assert.equal(nodes.get('decision-display-summary').textContent,'Show Decisions · All');
+  assert.equal(decisionCards(nodes.get('results').children[0]).length,4);
+});
+
+
+test('Show Decisions closes outside and on Escape while inside clicks preserve the menu',()=>{
+  const {context,nodes}=workspace([]);
+  context.inside={};context.outside={};context.focused=false;
+  const menu=context.document.getElementById('decision-display-menu');menu.contains=target=>target===context.inside;
+  context.document.getElementById('decision-display-summary').focus=()=>{context.focused=true;};
+  context.fetch=()=>{throw Error('Dismissal must not fetch');};
+  menu.open=true;vm.runInContext('handleDecisionDisplayOutsideClick({target:inside})',context);
+  assert.equal(menu.open,true);
+  vm.runInContext('handleDecisionDisplayOutsideClick({target:outside})',context);assert.equal(menu.open,false);
+  menu.open=true;vm.runInContext("handleDecisionDisplayKeydown({key:'Tab'})",context);assert.equal(menu.open,true);
+  vm.runInContext("handleDecisionDisplayKeydown({key:'Escape',preventDefault(){}})",context);
+  assert.equal(menu.open,false);assert.equal(context.focused,true);
+  const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
+  const types=html.match(/<select id="result-filter-type"[^]*?<\/select>/)[0];
+  assert.match(types,/<select[^>]*>\s*<option value="log-search">Search Text/);
+  assert.equal(nodes.get('result-filter-type').value,'log-search');
 });

@@ -2,7 +2,7 @@ import { readEvents } from './stream.js';
 
 const $ = id => document.getElementById(id);
 const routeOpeners = new Map();
-const resultFilterLabels={'category-filter':'Category','source-filter':'Source','host-filter':'Host','log-search':'Search Text','review-filter':'Review Status','decision-filter':'Decision','certainty-filter':'Decision Certainty'};
+const resultFilterLabels={'processing-filter':'Processing Status','source-filter':'Source','host-filter':'Host','log-search':'Search Text','review-filter':'Review Status'};
 let resultFilterSignature='';
 let applyingRoute = false;
 let routeGeneration = 0;
@@ -2053,40 +2053,59 @@ let chartCertainty = 'all';
 let chartClassification='system';
 function handleResetChart() {
   chartClassification='system';chartCertainty='all';$('chart-default-message').hidden=true;
+  shownDecisionKeys=null;$('decision-display-menu').open=false;
 }
 let savingChartDefault=false;
-function renderDecisionFilters(entries) {
-  const decision=$('decision-filter'),oldDecision=decision.value || 'all';
-  decision.replaceChildren(new Option('All Decisions','all'));
-  for(const [key,entry] of Object.entries(entries))decision.append(new Option(`${entry.criteria} · ${entry.label}`,key));
-  decision.value=Object.hasOwn(entries,oldDecision)?oldDecision:'all';
-  const entry=entries[decision.value];
-  const value=$('category-filter'),oldValue=value.value || 'all';
-  value.replaceChildren(new Option(entry?'All Values':'All Categories','all'));
-  if(entry)for(const option of entry.options)value.append(new Option(entry.type==='noul'?(noulRangeLabels[option] || option):option,option));
-  else {
-    value.append(new Option('Request Failed','failed'));
-
+let shownDecisionKeys=null;
+let decisionDisplaySignature='';
+const decisionDisplayInputs=new Map();
+function renderDecisionDisplay(entries) {
+  const signature=JSON.stringify(Object.entries(entries).map(([key,entry])=>[key,entry.identity,entry.criteria,entry.label]));
+  if(signature!==decisionDisplaySignature){
+    decisionDisplaySignature=signature;decisionDisplayInputs.clear();
+    const list=$('decision-display-options');list.replaceChildren();
+    const grouped=new Set(Object.values(entries).map(entry=>entry.identity)).size>1;
+    const groups=new Map();
+    for(const [key,entry] of Object.entries(entries)){
+      if(grouped && !groups.has(entry.identity)){
+        const group=element('fieldset','');group.append(element('legend',entry.criteria));
+        groups.set(entry.identity,group);list.append(group);
+      }
+      const label=element('label','');const input=element('input','');input.type='checkbox';
+      input.setAttribute('aria-label',grouped?`${entry.criteria} · ${entry.label}`:entry.label);
+      input.onchange=()=>{
+        const selected=new Set(shownDecisionKeys ?? Object.keys(entries));
+        if(input.checked)selected.add(key);else selected.delete(key);
+        shownDecisionKeys=Object.keys(entries).every(id=>selected.has(id))?null:selected;
+        handleDecisionDisplayChange();
+      };
+      label.append(input,element('span',entry.label));(grouped?groups.get(entry.identity):list).append(label);
+      decisionDisplayInputs.set(key,input);
+    }
+    if(!Object.keys(entries).length)list.append(element('p','No decisions available.','caption'));
   }
-  value.value=Array.from(value.options).some(option=>option.value===oldValue)?oldValue:'all';
-  const certainty=$('certainty-filter');certainty.disabled=!entry || entry.type!=='choice';
-  certainty.title=certainty.disabled?'Select a Choice decision to filter uncertainty.':'Uncertainty of the selected decision.';
-  if(certainty.disabled || !certainty.value)certainty.value='all';
+  for(const [key,input] of decisionDisplayInputs)input.checked=shownDecisionKeys===null || shownDecisionKeys.has(key);
+  const count=[...decisionDisplayInputs.keys()].filter(key=>shownDecisionKeys===null || shownDecisionKeys.has(key)).length;
+  $('decision-display-summary').textContent=`Show Decisions · ${shownDecisionKeys===null?'All':count}`;
 }
-function decisionFilterMatches(result,key,value,certainty) {
-  if(key==='all')return certainty==='all';
-  if(result.error)return false;
-  const identity=result.criteriaGroup || 'system';
-  const id=key.slice(key.lastIndexOf(':')+1);
-  const q=resultDecisionDefinitions(result)[id],answer=resultDecisionAnswers(result)[id];
-  if(`${identity}:${id}`!==key || !q || !answer)return false;
-  const scalar=answer[q.type];
-  if(scalar===undefined || scalar===null)return false;
-  const bucket=q.type==='choice'?scalar:q.type==='score'?`${Math.min(q.criteria.length-1,Math.max(0,Math.floor(scalar+.5)))} · ${q.criteria[Math.min(q.criteria.length-1,Math.max(0,Math.floor(scalar+.5)))].split(':')[0]}`:['0–<25%','25–<50%','50–<75%','75–100%'][Math.min(3,Math.max(0,Math.floor(scalar*4)))];
-  if(value!=='all' && value!==bucket)return false;
-  if(certainty==='all')return true;
-  const uncertain=resultDecisionAssessments(result)[id]?.uncertain;
-  return q.type==='choice' && certainty===(uncertain===true?'uncertain':uncertain===false?'certain':'unassessed');
+function handleDecisionDisplayChange() {
+  renderedRows.clear();renderedPage=null;
+  render(true);
+}
+$('show-all-decisions').onclick=()=>{shownDecisionKeys=null;handleDecisionDisplayChange();};
+function handleDecisionDisplayOutsideClick(event) {
+  const menu=$('decision-display-menu');
+  if(menu.open && !menu.contains(event.target))menu.open=false;
+}
+function handleDecisionDisplayKeydown(event) {
+  const menu=$('decision-display-menu');
+  if(event.key==='Escape' && menu.open){
+    menu.open=false;event.preventDefault();$('decision-display-summary').focus();
+  }
+}
+if(document.addEventListener){
+  document.addEventListener('click',handleDecisionDisplayOutsideClick);
+  document.addEventListener('keydown',handleDecisionDisplayKeydown);
 }
 function isDefaultChartEntry(entry) {
   const profile=criteriaProfiles[entry.profileId] || Object.values(criteriaProfiles).find(profile=>profile.label===entry.criteria);
@@ -2111,7 +2130,7 @@ function renderCategoryChart() {
   const options=selected?Object.fromEntries(selected.options.map(key=>[key,key])):Object.fromEntries(Object.keys(labels).map(key=>[key,key]));
   const counts=selected?.counts[chartCertainty] || Object.fromEntries(Object.keys(options).map(key=>[key,0]));
   $('chart-decision-note').textContent=selected?.type==='score'?'Probability-weighted scores rounded to the nearest level.':selected?.type==='noul'?'Chunks by Yes probability.':'AI selected choices per chunk.';
-  renderDecisionFilters(entries);
+  renderDecisionDisplay(entries);
   const defaultButton=$('set-chart-default');defaultButton.hidden=!selected || isDefaultChartEntry(selected);defaultButton.disabled=savingChartDefault;
   const {failed, truncated} = stats;
   const groups=Object.fromEntries(['all','certain','uncertain','unassessed'].map(group=>[group,Object.keys(options).reduce((sum,key)=>sum+(selected?.counts[group]?.[key] ?? 0),0)]));
@@ -2312,14 +2331,13 @@ function render(updateList = true, incremental = false) {
   if (updatesPaused && !updateList && !pagedView) return;
   const order = !pagedView && updatesPaused ? pausedOrder : completionOrder;
   const review = $('review-filter').value;
-  const category = $('category-filter').value;
-  const decision = $('decision-filter').value || 'all',certainty=$('certainty-filter').value || 'all';
+  const processing = $('processing-filter').value || 'all';
   const search = $('log-search').value.toLowerCase();
   const source = $('source-filter').value || 'all';
   const host = $('host-filter').value || 'all';
-  const filterKey = JSON.stringify([review, category, search, source, host, decision, certainty]);
+  const filterKey = JSON.stringify([review, processing, search, source, host]);
   let visible = order;
-  if (!pagedView && (review !== 'all' || category !== 'all' || search || source !== 'all' || host !== 'all' || decision !== 'all' || certainty !== 'all')) {
+  if (!pagedView && (review !== 'all' || processing !== 'all' || search || source !== 'all' || host !== 'all')) {
     if (!incremental || filteredResults?.order !== order || filteredResults.key !== filterKey) {
       filteredResults = {order, key: filterKey, cursor: 0, indices: []};
     }
@@ -2327,8 +2345,7 @@ function render(updateList = true, incremental = false) {
       const index = order[filteredResults.cursor];
       const r = results[index];
       if ((review === 'all' || (review === 'needs-review' ? needsReview(r) : !r.error && !needsReview(r)))
-        && decisionFilterMatches(r,decision,decision==='all'?'all':category,certainty)
-        && (decision!=='all' || category === 'all' || (category === 'failed' && Boolean(r.error)))
+        && (processing==='all' || (processing==='failed'?Boolean(r.error):!r.error))
         && r.log.toLowerCase().includes(search)
         && (source === 'all' || r.sourcePatterns?.includes(source) || r.source === source)
         && (host === 'all' || resultHostId(r) === host)) filteredResults.indices.push(index);
@@ -2358,12 +2375,16 @@ function render(updateList = true, incremental = false) {
     const identity=element('strong',`Result #${result.resultNumber}`,'result-number');
     identity.title='Completion number within this run; unchanged by filtering or paging.';
     if (result.error) {
-      top.append(element('span', result.sourceFailure?'Source failed':'Request failed', 'badge error'), element('span', `${result.elapsedMs}ms`),identity);
+      top.append(element('span', result.sourceFailure?'Source failed':'Processing Failed', 'badge error'), element('span', `${result.elapsedMs}ms`),identity);
     } else {
       const decisions = element('div', '', 'decision-grid');
       decisions.setAttribute('role', 'group'); decisions.setAttribute('aria-label', 'Decision results');
       const definitions=resultDecisionDefinitions(result),answers=resultDecisionAnswers(result);
-      for(const [id,q] of Object.entries(definitions))decisions.append(renderDecisionCard(id,q,answers[id],result));
+      for(const [id,q] of Object.entries(definitions)){
+        if(shownDecisionKeys!==null && !shownDecisionKeys.has(`${result.criteriaGroup || 'system'}:${id}`))continue;
+        decisions.append(renderDecisionCard(id,q,answers[id],result));
+      }
+      if(!decisions.children.length)decisions.append(element('p','No decisions selected for this result.','caption'));
       top.append(decisions);
       const metadata = element('div', '', 'result-top result-header');
       metadata.append(identity);
@@ -2592,11 +2613,12 @@ async function handleProcessing(job) {
   }
 }
 function renderResultFilters() {
-  const selected=$('result-filter-type').value || 'category-filter';
+  const selected=$('result-filter-type').value || 'log-search';
   $('result-filter-type').value=selected;
   const items=[];
   for(const [id,label] of Object.entries(resultFilterLabels)){
-    const control=$(id);control.hidden=id!==selected;
+    const control=$(id);
+    control.hidden=id!==selected;
     const value=control.value;
     if(!value || (id!=='log-search' && value==='all'))continue;
     const option=id==='log-search'?value:Array.from(control.options).find(option=>option.value===value)?.text || value;
@@ -2612,7 +2634,7 @@ function renderResultFilters() {
     const text=`${label}: ${description}`;
     const remove=element('button',`${text} ×`);remove.type='button';remove.title=`Remove ${text}`;
     remove.setAttribute('aria-label',`Remove ${text}`);
-    remove.onclick=()=>{control.value=id==='log-search'?'':'all';clearTimeout(resultSearchTimer);return id==='decision-filter'?control.onchange():handleResultFilter();};
+    remove.onclick=()=>{control.value=id==='log-search'?'':'all';clearTimeout(resultSearchTimer);return handleResultFilter();};
     active.append(remove);
   }
   active.hidden=!active.children.length;
@@ -2622,15 +2644,14 @@ function renderResultFilters() {
   active.append(clear);
 }
 function handleResultFilter() {
+  renderedRows.clear();renderedPage=null;
   renderResultFilters();
   page = 0;
   if(pagedView){pagedView.cursors=[null];return handleRefreshResults(true);}
   if (completed) render();
 }
-$('review-filter').onchange = handleResultFilter;
-$('category-filter').onchange = handleResultFilter;
-$('decision-filter').onchange=()=>{$('category-filter').value='all';$('certainty-filter').value='all';renderCategoryChart();return handleResultFilter();};
-$('certainty-filter').onchange=handleResultFilter;
+$('processing-filter').onchange=handleResultFilter;
+$('review-filter').onchange=handleResultFilter;
 let resultSearchTimer;
 $('result-filter-type').onchange=renderResultFilters;
 renderResultFilters();
@@ -2802,7 +2823,7 @@ $('results-settings-form').onsubmit=async event=>{
   }catch(error){handleMessage('results-settings-message',error.message,true);}
   finally{$('save-results-settings').disabled=false;}
 };
-const routeFilters={'decision':'decision-filter','certainty':'certainty-filter','review':'review-filter','category':'category-filter','host':'host-filter','source':'source-filter','search':'log-search'};
+const routeFilters={'review':'review-filter','processing':'processing-filter','host':'host-filter','source':'source-filter','search':'log-search'};
 function handleSyncRunRoute(poll=false) {
   if(poll && routeLocation()==='/')return;
   if(!globalThis.history?.pushState || !pagedView || pagedView.restoringRoute || currentView!=='main')return;
@@ -2834,7 +2855,7 @@ async function handleRefreshResults(reset=false,poll=false) {
   const revision=++view.revision;
   const held=poll && (page>0 || updatesPaused);
   const after=!reset && poll && !held ? view.sequence : null;
-  const body={decision:$('decision-filter').value || 'all',certainty:$('certainty-filter').value || 'all',category:$('category-filter').value,review:$('review-filter').value,
+  const body={processing:$('processing-filter').value || 'all',review:$('review-filter').value,
     host:$('host-filter').value || 'all',source:$('source-filter').value || 'all',
     search:$('log-search').value,onlySummary:held};
   if(after!==null)body.after=after;
@@ -2882,7 +2903,7 @@ async function handleApplyRunRoute(path) {
     for(const key of ['result','detail','cursors','through'])params.delete(key);
     const query=params.toString();handleWriteRoute(`/runs/${pagedView.id}${query?`?${query}`:''}`,true);
   }
-  $('decision-filter').value=params.get('decision') || 'all';renderCategoryChart();
+  renderCategoryChart();
   for(const [key,id] of Object.entries(routeFilters))$(id).value=params.get(key) || (key==='search'?'':'all');
   const cursors=(params.get('cursors') || '').split(',').filter(Boolean).map(Number);
   if(cursors.some(value=>!Number.isSafeInteger(value) || value<=0))throw new Error('Invalid result page link.');
@@ -2912,7 +2933,7 @@ async function handlePagedProcessing(job) {
   pagedView={id:job.jobId,items:[],cursors:[null],sequence:0,through:null,hasNext:false,snapshotTotal:0,revision:0,restoringRoute:true};
   page=0;updatesPaused=false;results=[];completionOrder=[];pausedOrder=[];displayedOrder=[];
   statisticsResults=undefined;filteredResults=undefined;renderedRows.clear();renderedPage=null;
-  $('decision-filter').value='all';$('certainty-filter').value='all';$('category-filter').value='all';$('review-filter').value='all';$('source-filter').value='all';$('host-filter').value='all';$('log-search').value='';
+  $('processing-filter').value='all';$('review-filter').value='all';$('source-filter').value='all';$('host-filter').value='all';$('log-search').value='';
   try{
     await handleLoadResultSettings();await handleRefreshResults(true);
     if(globalThis.history?.pushState && requestedRoute.includes('?'))await handleApplyRunRoute(requestedRoute);

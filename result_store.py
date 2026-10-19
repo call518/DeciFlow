@@ -684,11 +684,18 @@ class SQLiteResultStore:
             params.extend(decision_params)
         elif certainty != "all":
             raise ValueError("Select a Choice decision before filtering certainty.")
-        category = filters.get("category", "all")
-        if decision == "all" and category == "failed":
-            where.append("e.failed=1")
-        elif decision == "all" and category != "all":
+        if decision == "all" and filters.get("category", "all") != "all":
             raise ValueError("Select a decision before filtering its value.")
+        processing = filters.get("processing", "all")
+        if not isinstance(processing, str) or processing not in {
+            "all",
+            "successful",
+            "failed",
+        }:
+            raise ValueError("Invalid processing status filter.")
+        if processing != "all":
+            where.append("e.failed=?")
+            params.append(int(processing == "failed"))
         review = filters.get("review", "all")
         if review != "all":
             if review not in {"needs-review", "no-review"}:

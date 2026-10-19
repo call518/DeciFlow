@@ -86,21 +86,28 @@ reduces input variation; it does not guarantee identical predictions or accuracy
 
 ### Results and controls
 
-Filter types appear in this order: Category, Source, Host, Search Text, Review Status. Category is selected initially.
+Show Decisions and review/host controls sit above the full-width result filters.
+Filter types appear in this order: Search Text, Processing Status, Source, Host, Review Status.
+Search Text is selected initially.
 
 Choose **Filter Type** on the left and set its value on the right. Review Status,
-Category, Host, and Source use a dropdown; Search Text uses a text field. Switching
+Processing Status, Host, and Source use a dropdown; Search Text uses a text field. Switching
 types preserves applied conditions and does not refresh results. Conditions combine
 with AND and appear as removable buttons below the toolbar. Use **Clear All** to reset
 them. Long Source values are shortened on the button; its tooltip keeps the full path.
 
-Choose **Decision** in Filter Type to scope the list to a particular decision, then
-use **Category** for its selected value or chart bucket and **Decision Certainty** for
-Choice uncertainty. Certainty filtering requires a Choice; Score/Noul do not inherit
-another decision's status. Filters search the entire stored run using decision indexes.
-Chart selections do not change list filters. Clear the Decision chip to clear its
-value and certainty scope. With All Decisions, Category can select Request Failed;
-select a Decision before filtering its values.
+Processing Status offers **All Statuses**, **Successful**, and **Failed**. Failed includes source, input, engine request, and
+response-validation failures; Action execution has a separate status. Filters apply
+to the entire stored run; Clear All leaves display settings unchanged.
+
+**Show Decisions** is a separate display setting. Open it and select one or more
+checkboxes to choose the decisions shown in each card; **Show All** restores every
+decision. Click outside the menu or press Escape to close it. Multiple Criteria have
+separate group headings. Display changes do not
+filter cards, change counts or pages, fetch results, or run inference. Failed cards
+remain visible; cards with no selected decisions show a short message. Review,
+Response, Result JSON, and exports retain the complete result. Chart selections
+remain independent. A newly opened run starts with all decisions shown.
 
 Each result displays the original input data in bold; JSON and Action code keep
 their own formatting.
@@ -157,8 +164,7 @@ misclassifications and review workload before treating the thresholds as an
 operating policy.
 
 Filter **All Results / Needs Review / No Review Needed**. Both review groups include
-only successful classifications. To inspect failures, choose All Results and the
-Request Failed category. Category filtering
+only successful classifications. To inspect failures, choose All Results and **Processing Status → Failed**. Processing status
 and case-insensitive literal search of original log text combine with the review
 filter. **Source**, after Search data, filters by an entered path/pattern and shows
 completed counts, including failures. Overlapping patterns retain all matches in
@@ -166,7 +172,7 @@ completed counts, including failures. Overlapping patterns retain all matches in
 not metrics, chart, or JSON export.
 
 **Host** filters the selected run by its saved host identity and combines with Source,
-category, review, and log-text filters. It does not change metrics, charts, or export.
+processing status, review, and log-text filters. It does not change metrics, charts, or export.
 **Source Hosts Detail** opens a scrollable dialog with each host’s collection status
 and Success / Failed / Total counts for the entire selected run, including hosts
 with no completed records. Opening it does not reconnect to hosts.
@@ -174,7 +180,7 @@ with no completed records. Opening it does not reconnect to hosts.
 Host collection states (Pending, Reading, Completed, Failed, Stopped) are separate
 from decision counts: collection can finish while inference is still running.
 SSH connect/read failures appear as **Source failed** records, with host details
-and no AI probabilities; use All Results / Request Failed to find them. Other
+and no AI probabilities; use Processing Status → Failed to find them. Other
 remote readers continue. See [multi-host execution](tasks.md#multiple-source-hosts).
 
 Main polls only new results for the current Task page approximately once per second
@@ -363,7 +369,7 @@ Existing `/#tasks` and `/#settings/...` links are converted automatically.
 | A specific execution | `/runs/{run-id}` |
 
 Execution URLs retain result filters, cursor pages, and an expanded result section
-using query parameters (`review`, `category`, `host`, `source`, `search`, `cursors`,
+using query parameters (`review`, `processing`, `host`, `source`, `search`, `cursors`,
 `through`, `result`, `detail`). Source Hosts Detail uses `dialog=hosts`.
 Automatic polling replaces the current URL rather than creating a history entry
 for every update. Run, Stop, Pause/Resume, Delete, Save, and Export remain explicit

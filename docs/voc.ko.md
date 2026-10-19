@@ -78,7 +78,7 @@ Batch를 사용하세요. Jev를 선택했다면 유료 API를 사용합니다.
 - **Source Hosts Detail**: 전체 실행의 호스트별 성공·실패·합계.
 
 전체 완료 후 Success + Failed = 841인지 확인합니다. 일부를 Stop했다면 그때까지
-완료한 건수만 집계됩니다. 실패는 Request Failed로 조회하고, 긴 대화가 입력 제한을
+완료한 건수만 집계됩니다. 실패는 Processing Status → Failed로 조회하고, 긴 대화가 입력 제한을
 넘으면 엔진의 처리 결과·실패 사유·Truncated 표시를 확인하세요. JSONL 한 상담을
 자동으로 여러 요청으로 분할하지 않습니다. 확률과 Certain은 실측 정확도가 아닙니다.
 

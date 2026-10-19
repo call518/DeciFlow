@@ -81,10 +81,11 @@ Authentication은 개별 시도 실패·중단(Warning), 서비스·지원 기�
 
 ### 결과와 조작
 
-필터 종류는 Category, Source, Host, Search Text, Review Status 순서이며 처음에는 Category를 선택합니다.
+Show Decisions와 검토·호스트 컨트롤은 위에, 가로 공간을 활용하는 결과 필터는 아래에 배치합니다.
+필터 종류는 Search Text, Processing Status, Source, Host, Review Status 순서이며 처음에는 Search Text를 선택합니다.
 
 왼쪽 **Filter Type**에서 종류를 선택하고 오른쪽에서 값을 지정합니다. Review Status,
-Category, Host, Source는 풀다운이며 Search Text는 검색창입니다. 종류만 바꾸면 결과를
+Processing Status, Host, Source는 풀다운이며 Search Text는 검색창입니다. 종류만 바꾸면 결과를
 새로 조회하지 않으며 기존 조건도 유지합니다. 여러 조건은 AND로 적용하며 도구 아래의
 작은 버튼으로 표시합니다. 버튼을 누르면 해당 조건을 해제하고 **Clear All**로 전체를
 초기화합니다. 긴 Source 값은 버튼에서 줄여 표시하며 툴팁에 전체 경로를 제공합니다.
@@ -100,12 +101,19 @@ JSON의 `chunkEvents`는 설정값, `eventCount`는 실제 이벤트 수입니�
 `line`·`lineEnd`·`lineCount`는 줄 위치·수를 유지합니다.
 요청·결과에는 `chunkEvents`를 사용합니다.
 
-Filter Type의 **Decision**에서 판단 항목을 고르고 **Category**로 선택값·차트 구간을,
-**Decision Certainty**로 Choice의 불확실성을 필터링합니다. Score·Noul은 다른 항목의
-확실성을 상속하지 않습니다. 검색은 항목별 인덱스로 저장된 전체 실행에 적용합니다.
-차트 전환은 목록 필터를 바꾸지 않습니다. Decision 필터를 지우면 그 값·확실성 조건도
-해제합니다. All Decisions에서는 Category로 Request Failed를 선택할 수 있습니다.
-항목별 값을 필터링하려면 먼저 Decision을 선택하세요.
+결과 필터는 어떤 카드를 볼지 정합니다. **Processing Status**, **Source**,
+**Host**, **Review Status**, **Search Text**를 제공하며, Processing Status는
+**All Statuses**, **Successful**, **Failed**를 선택합니다. Failed는 Source·입력 처리·
+엔진 요청·응답 검증 실패를 포함하고 Action 실행 상태는 별도입니다.
+조건은 저장된 전체 실행에 AND로 적용합니다. Clear All은 결과 필터만 지웁니다.
+
+**Show Decisions**는 별도의 표시 설정입니다. 메뉴의 체크박스로 여러 판단 항목을
+고르면 카드에 해당 판단만 표시하고 **Show All**은 모든 판단을 복원합니다.
+메뉴 바깥을 클릭하거나 Escape를 누르면 닫힙니다. 여러 Criteria는 그룹 제목으로
+구분합니다. 표시 변경은 카드를 걸러내거나 건수·페이지를
+바꾸지 않으며 결과 조회·재분석도 하지 않습니다. 실패 카드는 유지하고 선택한 판단이
+없는 카드에는 안내 문구를 표시합니다. Review·Response·Result JSON과 내보내기는
+전체 결과를 유지하며 차트 선택도 독립적입니다. 실행을 새로 열면 모든 판단을 표시합니다.
 
 #### 불확실성과 사람의 검토
 
@@ -149,8 +157,8 @@ DeciFlow는 예측을 유지하면서 검토 표시를 붙입니다. 정식 reje
 
 **All Results / Needs Review / No Review Needed**로 필터링합니다.
 Needs Review와 No Review Needed는 성공 판정만 표시합니다. 실패는 All Results와
-범주 필터 Request Failed를 함께 선택해 확인하세요.
-범주 필터와 원본 로그의 대소문자 구분 없는 문자열 검색을 함께 적용할 수 있습니다.
+Processing Status → Failed를 함께 선택해 확인하세요.
+처리 상태 필터와 원본 로그의 대소문자 구분 없는 문자열 검색을 함께 적용할 수 있습니다.
 목록에만 적용하며 지표·차트·JSON 내보내기는 전체 결과 기준입니다.
 
 **Source**는 Search data 다음에서 입력한 경로·패턴별 결과를 필터링하고 실패를 포함한
@@ -164,7 +172,7 @@ Needs Review와 No Review Needed는 성공 판정만 표시합니다. 실패는 
 모달을 열 때 호스트에 다시 접속하지 않습니다. 호스트 수집 상태
 (Pending·Reading·Completed·Failed·Stopped)는 판정 건수와 별개입니다. 수집 완료
 후에도 판정이 진행 중일 수 있습니다. SSH 접속·읽기 실패는 호스트 정보와 함께
-**Source failed**로 표시하고 AI 확률을 만들지 않습니다. All Results / Request Failed로
+**Source failed**로 표시하고 AI 확률을 만들지 않습니다. Processing Status → Failed로
 확인하며 다른 원격 수집은 계속합니다. [다중 호스트 실행](tasks.ko.md#여러-source-hosts)을 참고하세요.
 
 Main의 Task 결과는 약 1초마다 현재 페이지의 새 결과만 조회하며 기존 카드를 재사용합니다.
@@ -341,7 +349,7 @@ Settings의 **Configurations**은 유지보수 항목을 제공합니다. **Rese
 | 특정 실행 | `/runs/{run-id}` |
 
 실행 URL에는 결과 필터·커서 페이지·특정 결과의 펼친 영역을 쿼리 매개변수
-(`review`, `category`, `host`, `source`, `search`, `cursors`, `through`, `result`,
+(`review`, `processing`, `host`, `source`, `search`, `cursors`, `through`, `result`,
 `detail`)로 유지합니다. Source Hosts Detail은 `dialog=hosts`를 사용합니다.
 자동 갱신은 현재 주소를 교체하며 갱신마다 방문 기록을 쌓지 않습니다.
 Run·Stop·Pause/Resume·Delete·Save·Export는 명시적 명령으로 유지하여 링크를 여는

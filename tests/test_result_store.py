@@ -474,3 +474,43 @@ def test_all_decisions_remain_counted_after_reopen(tmp_path: Path) -> None:
     assert reopened.state(run["jobId"])["summary"]["decisionGroups"] == expected
     reopened.close()
     store.close()
+
+
+def test_processing_status_filters_combine_with_source_host_and_paging(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteResultStore(tmp_path / "results.db")
+    run = snapshot()
+    store.create(run["jobId"], run)
+    for number in range(8):
+        item = event(number)
+        if number % 2:
+            item["result"]["error"] = "Invalid response"
+        else:
+            item["result"]["actionExecution"] = {"status": "failed"}
+        store.append(run["jobId"], item, run)
+    for status, parity in [("successful", 0), ("failed", 1)]:
+        page = store.page(run["jobId"], {"processing": status}, 10)
+        assert len(page["items"]) == 4
+        assert all(item["result"]["review"] == (parity == 0) for item in page["items"])
+        assert store.state(run["jobId"])["summary"]["total"] == 8
+    filtered = store.page(
+        run["jobId"],
+        {
+            "processing": "failed",
+            "host": "host-1",
+            "source": "/input*.txt",
+            "search": "record",
+            "before": 8,
+        },
+        10,
+    )
+    assert [item["result"]["log"] for item in filtered["items"]] == [
+        "record 1 % literal"
+    ]
+    assert not store.page(
+        run["jobId"], {"processing": "failed", "review": "needs-review"}, 10
+    )["items"]
+    for invalid in ["unknown", 1, {}, None]:
+        with pytest.raises(ValueError, match="processing status"):
+            store.page(run["jobId"], {"processing": invalid}, 10)
