@@ -15,7 +15,7 @@ dependencies = [
 
 [project.optional-dependencies]
 laya = [
-    "laya[serve]==0.4.1",
+    "laya[serve]==0.4.8",
 ]
 
 [tool.ruff]
