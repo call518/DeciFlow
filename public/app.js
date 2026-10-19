@@ -1506,15 +1506,18 @@ function renderCriteriaGenerator() {
   const source=element('select','');source.setAttribute('aria-label','Sample Source');
   const host=element('select','');host.setAttribute('aria-label','Sample SSH Host');
   const count=element('input','');count.type='number';count.min='1';count.value='1';count.setAttribute('aria-label','Events Per Sample');
+  const sampleCount=element('select','');sampleCount.setAttribute('aria-label','Sample Count');
+  for(const value of [10,20,30,50,100])sampleCount.append(new Option(String(value),String(value)));sampleCount.value='10';
   const purpose=element('textarea','');purpose.rows=3;purpose.maxLength=4000;purpose.setAttribute('aria-label','Analysis Purpose');purpose.placeholder='Describe what to judge, when to judge it, and any rules or exclusions.';
   const samples=element('div','','criteria-samples');const sampleInputs=[];
   const preview=element('button','Preview Source Samples','quiet');preview.type='button';
-  const generate=element('button','Generate Criteria','quiet');generate.type='button';generate.disabled=true;
+  const generate=element('button','Generate Criteria','primary');generate.type='button';generate.disabled=true;
   const message=element('p','','criteria-help');message.setAttribute('role','status');
   const addField=(caption,input,help='')=>{const label=element('label',caption);label.append(input);if(help){label.append(element('span',help,'criteria-help'));input.setAttribute('aria-description',help);}panel.append(label);return label;};
   addField('Source',source,'Select a registered Local File or Remote File (SSH) Source. Its input format determines how samples are grouped.');
   const hostLabel=addField('SSH Host',host,'Select one registered SSH Host to read this remote Source. The existing SSH key and host verification settings are used.');
   const countLabel=addField('Events Per Sample',count);const countHelp=element('span','','criteria-help');countLabel.append(countHelp);
+  addField('Sample Count',sampleCount,'Choose 10, 20, 30, 50, or 100 samples (default: 10). More samples consume more tokens and may increase API charges. Events Per Sample controls the grouping within each sample.');
   const sampleHelp=element('p','','criteria-help');sampleHelp.setAttribute('role','status');panel.append(sampleHelp);
   const purposeMode=element('select','');purposeMode.setAttribute('aria-label','Analysis Purpose Mode');
   purposeMode.append(new Option('Automatic (ChatGPT)','automatic'),new Option('Manual','manual'));purposeMode.value='automatic';
@@ -1532,9 +1535,9 @@ function renderCriteriaGenerator() {
     count.disabled=jsonl;countLabel.hidden=!selected || jsonl;if(jsonl)count.value='1';
     countHelp.textContent='Number of TEXT events in each sample, not the number of samples. For example, 5 groups five events into one sample. Match the grouping planned for the Task; this does not change any Task.';
     count.setAttribute('aria-description',countHelp.textContent);
-    sampleHelp.textContent=(jsonl?'One JSONL record is one sample; only the configured content field is read. ':'')+'Preview reads up to 8 samples, totaling at most 24,000 UTF-8 bytes. Review the samples before sending them to OpenAI.';
+    sampleHelp.textContent=(jsonl?'One JSONL record is one sample; only the configured content field is read. ':'')+'Preview scans the entire Source (up to 20 seconds) and randomly selects up to the selected Sample Count, totaling at most 150,000 UTF-8 bytes. Empty or oversized inputs are excluded. Fewer samples may be available due to Source size or the byte limit. A scan timeout returns no preview. Review the samples before sending them to OpenAI.';
   };
-  source.onchange=updateSource;host.onchange=count.oninput=resetSamples;
+  source.onchange=updateSource;host.onchange=count.oninput=sampleCount.onchange=resetSamples;
   details.ontoggle=async()=>{
     if(!details.open || initialized)return;initialized=true;panel.disabled=true;
     try {
@@ -1551,16 +1554,19 @@ function renderCriteriaGenerator() {
     finally{panel.disabled=false;}
   };
   preview.onclick=async()=>{
-    resetSamples();panel.disabled=true;message.textContent='Reading up to 8 complete samples (24,000 bytes total)…';
+    resetSamples();
+    const requestedCount=Number(sampleCount.value);
+    if(![10,20,30,50,100].includes(requestedCount)){message.textContent='Sample Count must be 10, 20, 30, 50, or 100.';return;}
+    panel.disabled=true;message.textContent=`Scanning the entire Source to randomly select up to ${requestedCount} complete samples (150,000 bytes total)…`;
     try {
-      const response=await fetch('/api/criteria/samples',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceId:source.value,hostIds:hostLabel.hidden?[]:[host.value],chunkEvents:Number(count.value)})});
+      const response=await fetch('/api/criteria/samples',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceId:source.value,hostIds:hostLabel.hidden?[]:[host.value],chunkEvents:Number(count.value),sampleCount:requestedCount})});
       const data=await readApiJsonResponse(response);if(!response.ok)throw new Error(data.error);
       for(const [index,text] of data.samples.entries()){
         const label=element('label',`Sample ${index+1}`);const input=element('textarea','');input.rows=4;input.value=text;input.setAttribute('aria-label',`Sample ${index+1}`);
         const remove=element('button','Remove Sample','quiet');remove.type='button';remove.onclick=()=>{sampleInputs.splice(sampleInputs.indexOf(input),1);label.remove();generate.disabled=!sampleInputs.length;};
         label.append(input,remove);samples.append(label);sampleInputs.push(input);
       }
-      generate.disabled=false;message.textContent='Only the samples shown here and your analysis purpose will be sent to OpenAI. Remove or redact sensitive content before generating.';
+      generate.disabled=false;message.textContent=`Loaded ${data.samples.length} of up to ${requestedCount} requested samples. Only the samples shown here and your analysis purpose will be sent to OpenAI. Remove or redact sensitive content before generating.`;
     } catch(error){message.textContent=error.message;}
     finally{panel.disabled=false;}
   };
@@ -2368,6 +2374,7 @@ function render(updateList = true, incremental = false) {
   $('next').disabled = page >= pages - 1;
   const pageResults = (pagedView ? visible : visible.slice(Math.max(0, visible.length-(page+1)*pageSize),visible.length-page*pageSize)).toReversed().map(index=>results[index]);
   if (!updatesPaused) { displayedOrder = completionOrder; displayedCount = completionOrder.length; }
+  $('result-scroll-controls').hidden=completed===0;
   if (incremental && renderedPage && pageResults.length === renderedPage.length && pageResults.every((result, index) => result === renderedPage[index])) return;
   const previousRows = incremental ? renderedRows : new Map();
   renderedRows = new Map();
@@ -2462,6 +2469,14 @@ function render(updateList = true, incremental = false) {
   }
   $('export-reviewed').disabled = $('export').disabled = pagedView ? !completed : !completed || busy || activeJobState === 'running';
 }
+function handleScrollResults(bottom) {
+  const panel=$('classification-results');
+  const behavior=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'auto':'smooth';
+  if(['auto','scroll'].includes(getComputedStyle(panel).overflowY))panel.scrollTo({top:bottom?panel.scrollHeight:0,behavior});
+  else panel.scrollIntoView({block:bottom?'end':'start',behavior});
+}
+$('results-scroll-top').onclick=()=>handleScrollResults(false);
+$('results-scroll-bottom').onclick=()=>handleScrollResults(true);
 function scheduleRender() {
   if (renderTimer) return;
   renderTimer = setTimeout(() => {

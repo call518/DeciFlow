@@ -476,7 +476,7 @@ test('workspace places input and overview in the 40% column beside 60% results',
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8').replace(/\s*([{}:;])\s*/g, '$1');
   const leftStart = html.indexOf('<div class="input-column">');
-  const leftEnd = html.indexOf('</div>\n      <section class="card output">', leftStart);
+  const leftEnd = html.indexOf('</div>\n      <section id="classification-results" class="card output">', leftStart);
   assert.ok(leftStart >= 0 && leftEnd > leftStart);
   const left = html.slice(leftStart, leftEnd);
   assert.ok(left.includes('Task Monitor'));
@@ -3710,7 +3710,27 @@ test('AI Criteria preserves generated decisions through save without legacy visi
   findLabel('Sample Source').value=vm.runInContext('sampleSources[0].id',context);
   findLabel('Sample Source').onchange();
   const button=caption=>walk(details).find(node=>node.textContent===caption && node.onclick);
+  const sampleCount=findLabel('Sample Count');
+  assert.equal(sampleCount.value,'10');
+  assert.deepEqual(sampleCount.children.map(option=>option.value),['10','20','30','50','100']);
+  let previewBody;const previewFetch=context.fetch;
+  context.fetch=async(path,options)=>{
+    if(path==='/api/criteria/samples')previewBody=JSON.parse(options.body);
+    return previewFetch(path,options);
+  };
+  sampleCount.value='51';await button('Preview Source Samples').onclick();
+  assert.equal(previewBody,undefined);
+  for(const value of ['30','50','100']){
+    sampleCount.value=value;sampleCount.onchange();
+    await button('Preview Source Samples').onclick();
+    assert.equal(previewBody.sampleCount,Number(value));
+  }
+  assert.equal(button('Generate Criteria').disabled,false);
+  sampleCount.value='10';sampleCount.onchange();
+  assert.equal(button('Generate Criteria').disabled,true);
+  assert.equal(findLabel('Sample 1'),undefined);
   await button('Preview Source Samples').onclick();
+  assert.equal(previewBody.sampleCount,10);
   findLabel('Sample 1').value='Redacted sample';
   findLabel('Analysis Purpose Mode').value='manual';findLabel('Analysis Purpose Mode').onchange();
   findLabel('Analysis Purpose').value='Evaluate status and urgency';
@@ -3767,7 +3787,7 @@ test('AI sample guidance explains TEXT grouping, fixed JSONL records, SSH select
     assert.equal(count.disabled,true);assert.equal(count.value,'1');
     assert.equal(count.parentElement.hidden,true);
     assert.ok(walk(details).some(node=>node.textContent?.includes('One JSONL record is one sample')));
-    assert.ok(walk(details).some(node=>node.textContent?.includes('up to 8 samples')));
+    assert.ok(walk(details).some(node=>node.textContent?.includes('randomly selects up to the selected Sample Count')));
   }
   assert.match(field('Analysis Purpose').attributes['aria-description'],/priority rules, exclusions/);
   assert.ok(walk(details).some(node=>node.textContent?.includes('Count promised callbacks as outstanding work')));
@@ -4324,4 +4344,28 @@ test('Details expansion survives persisted pagination without new engine checks 
   await nodes.get('next').onclick();assert.equal(details().open,false);
   await nodes.get('previous').onclick();assert.equal(details().open,true);
   assert.ok(paths.every(path=>path==='/api/settings'||path==='/api/tasks'||path.endsWith('/results')));
+});
+
+
+test('Result scroll buttons use the results pane on desktop and section alignment on mobile', async () => {
+  const {nodes,context}=workspace([{type:'start',engine:'laya',total:1},result(0,false)]);
+  vm.runInContext('render()',context);
+  assert.equal(nodes.get('result-scroll-controls').hidden,true);
+  await runTask(nodes);
+  assert.equal(nodes.get('result-scroll-controls').hidden,false);
+  const panel=context.document.getElementById('classification-results'),scrolls=[],alignments=[];
+  panel.scrollHeight=900;panel.scrollTo=options=>scrolls.push(options);panel.scrollIntoView=options=>alignments.push(options);
+  context.getComputedStyle=()=>({overflowY:'auto'});
+  context.matchMedia=()=>({matches:false});
+  context.fetch=()=>{throw Error('Scrolling must not make API requests');};
+  nodes.get('results-scroll-top').onclick();nodes.get('results-scroll-bottom').onclick();
+  assert.deepEqual(JSON.parse(JSON.stringify(scrolls)),[{top:0,behavior:'smooth'},{top:900,behavior:'smooth'}]);
+  assert.equal(alignments.length,0);
+  context.getComputedStyle=()=>({overflowY:'visible'});
+  context.matchMedia=()=>({matches:true});
+  nodes.get('results-scroll-top').onclick();nodes.get('results-scroll-bottom').onclick();
+  assert.deepEqual(JSON.parse(JSON.stringify(alignments)),[{block:'start',behavior:'auto'},{block:'end',behavior:'auto'}]);
+  assert.equal(scrolls.length,2);
+  vm.runInContext('completed=0;results=[];completionOrder=[];render()',context);
+  assert.equal(nodes.get('result-scroll-controls').hidden,true);
 });

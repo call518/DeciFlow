@@ -1,5 +1,6 @@
 """Verify generation boundaries, lossless mapping, and normal Criteria persistence."""
 
+import asyncio
 import json
 from collections.abc import Iterator
 from copy import deepcopy
@@ -115,12 +116,14 @@ def test_invalid_generation_is_rejected(
 @pytest.mark.parametrize("engine", ["laya", "jev"])
 @pytest.mark.parametrize("mode", ["automatic", "manual"])
 @pytest.mark.parametrize("model", [None, "gpt-5.4"])
+@pytest.mark.parametrize("sample_count", [1, 10, 20, 30, 50, 100])
 async def test_generate_then_save_and_reload(
     monkeypatch: pytest.MonkeyPatch,
     generated: dict[str, Any],
     engine: str,
     mode: str,
     model: str | None,
+    sample_count: int,
 ) -> None:
     monkeypatch.setenv("DECISION_ENGINE", engine)
     PROFILES.clear()
@@ -142,7 +145,7 @@ async def test_generate_then_save_and_reload(
         assert json.loads(body["input"]) == {
             "purposeMode": mode,
             "purpose": "Evaluate follow-up" if mode == "manual" else "",
-            "samples": ["A callback is owed."],
+            "samples": ["A callback is owed." * 60] * sample_count,
         }
         assert engine.capitalize() in body["instructions"]
         assert (
@@ -187,7 +190,7 @@ async def test_generate_then_save_and_reload(
             json={
                 "purposeMode": mode,
                 "purpose": "Evaluate follow-up",
-                "samples": ["A callback is owed."],
+                "samples": ["A callback is owed." * 60] * sample_count,
             },
         )
         assert response.status_code == 200, response.text
@@ -209,12 +212,21 @@ async def test_generate_then_save_and_reload(
 
 
 @pytest.mark.anyio
-async def test_source_preview_respects_content_field(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("sample_count", "record_count"),
+    [(None, 12), (10, 12), (20, 60), (30, 60), (30, 12), (50, 120), (100, 150)],
+)
+async def test_source_preview_respects_content_field(
+    tmp_path: Path,
+    sample_count: int | None,
+    record_count: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     path = tmp_path / "source.jsonl"
     path.write_text(
         "\n".join(
             json.dumps({"body": f"sample {i}", "private": "excluded"})
-            for i in range(12)
+            for i in range(record_count)
         )
     )
     source = save_sources(
@@ -229,8 +241,15 @@ async def test_source_preview_respects_content_field(tmp_path: Path) -> None:
             }
         ]
     )[0]
-    samples = await generation.preview_samples({"sourceId": source["id"]})
-    assert samples == [f"sample {i}" for i in range(8)]
+    selection: dict[str, Any] = {"sourceId": source["id"]}
+    if sample_count is not None:
+        selection["sampleCount"] = sample_count
+    monkeypatch.setattr(generation.random, "randrange", lambda seen: 0)
+    samples = await generation.preview_samples(selection)
+    assert len(samples) == min(sample_count or 10, record_count)
+    assert len(set(samples)) == len(samples)
+    assert set(samples) <= {f"sample {i}" for i in range(record_count)}
+    assert f"sample {record_count - 1}" in samples
 
 
 @pytest.mark.anyio
@@ -245,7 +264,7 @@ async def test_generation_trust_and_validation(monkeypatch: pytest.MonkeyPatch) 
         for body in (
             {},
             [],
-            {"purpose": "x", "samples": ["x" * 24001]},
+            {"purpose": "x", "samples": ["x" * (generation.MAX_SAMPLE_BYTES + 1)]},
             {"purpose": "x", "samples": ["sample"]},
         ):
             response = await client.post(
@@ -308,23 +327,38 @@ async def test_bad_provider_response_never_changes_profiles(
 
 
 @pytest.mark.anyio
-async def test_ssh_preview_closes_reader(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("sample_count", [10, 20, 30, 50, 100])
+async def test_ssh_preview_closes_reader(
+    monkeypatch: pytest.MonkeyPatch, sample_count: int
+) -> None:
     closed = []
+    choices = []
+
+    def choose(seen: int) -> int:
+        choices.append(seen)
+        return 0
+
+    monkeypatch.setattr(generation.random, "randrange", choose)
     monkeypatch.setattr(
         generation, "parse_source_settings", lambda values: [{"type": "ssh"}]
     )
 
     async def read_remote(spec: dict[str, Any]) -> Any:
         try:
-            for i in range(20):
+            for i in range(150):
                 yield {"log": f"remote {i}"}
         finally:
             closed.append(True)
 
     monkeypatch.setattr(generation, "read_remote", read_remote)
-    assert await generation.preview_samples({"sourceId": "registered"}) == [
-        f"remote {i}" for i in range(8)
-    ]
+    samples = await generation.preview_samples(
+        {"sourceId": "registered", "sampleCount": sample_count}
+    )
+    assert len(samples) == sample_count
+    assert set(samples) == {"remote 149"} | {
+        f"remote {i}" for i in range(1, sample_count)
+    }
+    assert choices == list(range(sample_count + 1, 151))
     assert closed == [True]
 
 
@@ -458,3 +492,118 @@ def test_generated_review_options_must_reference_real_options(
     generated["decisions"][0]["reviewOptions"] = ["missing"]
     with pytest.raises(ValueError, match="Review options"):
         generation.convert_generated_profile(generated)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("sample_count", [0, 1, 15, 31, 101, -1, 1.5, "10", True, None])
+async def test_preview_rejects_invalid_sample_count(sample_count: object) -> None:
+    with pytest.raises(ValueError, match="Sample Count"):
+        await generation.preview_samples(
+            {"sourceId": "registered", "sampleCount": sample_count}
+        )
+
+
+@pytest.mark.anyio
+async def test_preview_byte_limit_preserves_complete_samples(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        generation, "parse_source_settings", lambda values: [{"type": "ssh"}]
+    )
+    text = "가" * 20_000
+
+    async def read_remote(spec: dict[str, Any]) -> Any:
+        for _ in range(50):
+            yield {"log": text}
+
+    monkeypatch.setattr(generation, "read_remote", read_remote)
+    assert await generation.preview_samples(
+        {"sourceId": "registered", "sampleCount": 30}
+    ) == [text, text]
+
+    monkeypatch.setattr(generation, "MAX_SAMPLE_BYTES", 10)
+    with pytest.raises(ValueError, match="No nonempty Source samples fit"):
+        await generation.preview_samples({"sourceId": "registered"})
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("samples", [["sample"] * 101, ["가" * 50_001]])
+async def test_generation_rejects_excess_samples_or_utf8_bytes(
+    samples: list[str],
+) -> None:
+    with pytest.raises(ValueError, match="1–100"):
+        await generation.generate_criteria({"samples": samples})
+
+
+@pytest.mark.anyio
+async def test_generation_request_allows_json_escaping_overhead(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = []
+
+    async def generate(body: dict[str, Any]) -> dict[str, Any]:
+        captured.append(body)
+        return {"profile": {}}
+
+    monkeypatch.setattr(server, "generate_criteria", generate)
+    body = {"samples": ["가" * 1666] * 30}
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=server.app), base_url="http://localhost"
+    ) as client:
+        response = await client.post(
+            "/api/criteria/generate",
+            headers={"Origin": "http://localhost"},
+            content=json.dumps(body),
+        )
+        assert response.status_code == 200
+        assert captured == [body]
+        response = await client.post(
+            "/api/criteria/generate",
+            headers={"Origin": "http://localhost"},
+            content=" " * 1_000_001,
+        )
+        assert response.status_code == 400
+        assert len(captured) == 1
+
+
+@pytest.mark.anyio
+async def test_random_preview_excludes_empty_and_oversized_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        generation, "parse_source_settings", lambda values: [{"type": "ssh"}]
+    )
+
+    async def read_remote(spec: dict[str, Any]) -> Any:
+        for text in [" ", "가" * 50_001, "usable input"]:
+            yield {"log": text}
+
+    monkeypatch.setattr(generation, "read_remote", read_remote)
+    assert await generation.preview_samples({"sourceId": "registered"}) == [
+        "usable input"
+    ]
+
+
+@pytest.mark.anyio
+async def test_random_preview_timeout_never_returns_a_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed = []
+    monkeypatch.setattr(
+        generation, "parse_source_settings", lambda values: [{"type": "ssh"}]
+    )
+    timeout = asyncio.timeout
+    monkeypatch.setattr(generation.asyncio, "timeout", lambda seconds: timeout(0.02))
+
+    async def read_remote(spec: dict[str, Any]) -> Any:
+        try:
+            for i in range(10):
+                yield {"log": f"sample {i}"}
+            await asyncio.sleep(1)
+        finally:
+            closed.append(True)
+
+    monkeypatch.setattr(generation, "read_remote", read_remote)
+    with pytest.raises(TimeoutError):
+        await generation.preview_samples({"sourceId": "registered"})
+    assert closed == [True]

@@ -32,10 +32,18 @@ OpenAI 키 없이도 이 가이드를 따라 Criteria를 직접 작성·수정·
 검토하세요. `.env.example`의 모델명 예시와 공식 목록에서 사용 가능 여부를 확인하세요.
 
 1. 등록된 Source를 선택합니다. Remote File Source는 SSH Host 하나도 선택합니다.
-2. TEXT 입력은 Events Per Sample를 지정하고 **Preview Source Samples**를 누릅니다.
+2. **Sample Count**(10개 기본값, 20개·30개·50개·100개)를 지정하고, TEXT 입력은 Events Per Sample도
+   지정한 뒤 **Preview Source Samples**를 누릅니다. Sample Count는 입력 샘플 개수,
+   Events Per Sample는 각 샘플에 묶는 TEXT 이벤트 개수입니다. 샘플이 많을수록
+   토큰 소비와 API 비용이 늘어날 수 있습니다.
    JSONL은 입력칸 대신 레코드 하나가 샘플 하나이며 설정된 본문 필드를 사용한다는 안내를 표시합니다.
-3. 샘플을 확인·수정·제거합니다. 미리보기는 완전한 입력 최대 8개, 총
-   24,000 UTF-8 바이트까지 읽으며 OpenAI에 전송하지 않습니다.
+3. 샘플을 확인·수정·제거합니다. 전체 Source를 훑어 지정한 개수만큼 무작위로
+   추출하며, 빈 입력과 개별 150,000 UTF-8 바이트 초과 입력은 제외합니다. 선택된
+   샘플은 총 150,000 UTF-8 바이트까지 허용하므로 Source 크기나 용량 제한에 따라
+   실제 개수는 적을 수 있습니다. 전체 읽기가 20초를 넘으면 일부 샘플을 반환하지
+   않고 실패합니다. 다시 미리보기 하면 새로 추출합니다. 미리보기는 OpenAI에
+   전송하지 않으며, 생성할 때는 다시 추출하지 않고 화면에서 수정한 샘플을 보냅니다. Sample Count를
+   변경하면 미리보기가 초기화되므로 생성 전에 다시 미리보기 하세요.
 4. **Analysis Purpose Mode**의 기본값 **Automatic (ChatGPT)**를 유지하면 샘플에서
    목적을 추론합니다. 직접 지정하려면 **Manual**을 선택해 **Analysis Purpose**를
    입력하세요. **Generate Criteria**를 누르면 화면의 샘플, 모드, 수동 목적(입력한 경우),

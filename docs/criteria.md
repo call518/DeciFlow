@@ -33,10 +33,17 @@ review generated rules against representative samples. `.env.example` lists
 representative model names and links to the official catalog for availability.
 
 1. Select a registered Source; select one SSH Host for a Remote File Source.
-2. Set Events Per Sample for TEXT input, then select **Preview Source Samples**.
+2. Set **Sample Count** (10 by default, or 20, 30, 50, or 100) and Events Per Sample for TEXT input,
+   then select **Preview Source Samples**. Sample Count counts inputs; Events Per Sample
+   groups TEXT events within each input. More samples consume more tokens and may increase API charges.
    JSONL shows a read-only explanation: one record is one sample, using the configured content field.
-3. Review, edit, or remove the samples. Preview reads up to 8 complete inputs,
-   totaling at most 24,000 UTF-8 bytes; it does not send them to OpenAI.
+3. Review, edit, or remove the samples. Preview scans the entire Source and randomly
+   selects up to the chosen count, excluding empty inputs and inputs over 150,000
+   UTF-8 bytes. Selected samples total at most 150,000 UTF-8 bytes; Source size or
+   this limit may reduce the count. Scans exceeding 20 seconds fail without returning
+   a partial preview. Preview again to draw a new sample. Preview does not send data
+   to OpenAI; generation sends the displayed, edited samples without resampling.
+   Changing Sample Count clears the preview; preview again before generating.
 4. Leave **Analysis Purpose Mode** on **Automatic (ChatGPT)** (the default) to
    infer a purpose from the samples, or choose **Manual** and enter your purpose.
    Select **Generate Criteria**. The shown samples, mode, manual purpose (if any),

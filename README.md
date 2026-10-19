@@ -157,7 +157,12 @@ See the [VOC walkthrough and complete sample form values](docs/voc.md) and
 Criteria can also be drafted with **Generate With AI** in Add Profile. Set
 `OPENAI_API_KEY` and `OPENAI_CRITERIA_MODEL` (default `gpt-5.6-terra`) in DeciFlow's `.env`
 and restart DeciFlow. Select a Source (and one SSH Host for remote files), preview
-and redact up to 8 samples (24,000 bytes total). Analysis Purpose Mode defaults to
+and redact samples. Sample Count offers 10 (default), 20, 30, 50, or 100. Preview scans the
+entire Source and randomly selects complete samples, totaling at most 150,000 UTF-8
+bytes; empty and oversized inputs are excluded. Source size or the byte limit may
+yield fewer samples. Scans time out after 20 seconds without returning a partial
+preview; preview again to draw a new random sample. More samples consume more tokens and may increase API charges.
+Only the remaining edited samples are sent on generation. Analysis Purpose Mode defaults to
 Automatic (ChatGPT); choose Manual to supply your own objective. Review the
 suggested purpose and generated Criteria before saving.
 Events Per Sample groups TEXT events for preview only; JSONL shows an explanation
@@ -208,6 +213,9 @@ and settings are preserved. Reset recreates the same sample names.
 Task History and reopened results show the engine and requested model saved when
 the run started. Missing historical metadata is **Not Recorded**; current server
 settings are never substituted.
+
+Floating **▲ / ▼** buttons scroll to the top or bottom of Classification Results
+without changing result pages or starting analysis.
 
 Per-result Action, Source/Host, and Criteria/chunk metadata is collapsed under **Details**;
 Action failures remain visible. Full metadata is retained in **View Result JSON**.

@@ -223,6 +223,13 @@ textarea: focus {
   container-type: inline-size
 }
 
+.output > .card-title:has(#next) { padding-right: 28px; }
+.result-scroll-controls { position: sticky; bottom: 12px; height: 0; z-index: 2; pointer-events: none; }
+.result-scroll-buttons { position: absolute; right: -10px; bottom: 0; display: grid; gap: 4px; pointer-events: auto; }
+.result-scroll-buttons button { width: 30px; height: 30px; margin: 0; padding: 0; border: 1px solid #c4d5cd; border-radius: 50%; background: #f3f7f5eb; color: #567366; font-size: 11px; line-height: 1; box-shadow: 0 1px 3px #15392a14; }
+.result-scroll-buttons button:hover { background: #e1ece6; color: #24634a; }
+.result-scroll-buttons button:focus-visible { outline: 2px solid #79ad90; outline-offset: 3px; }
+
 .summary {
   display: grid;
   grid-template-columns: repeat(auto-fit,minmax(min(100%,220px),1fr));

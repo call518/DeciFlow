@@ -154,7 +154,12 @@ Content Field는 비어 있지 않은 문자열을 담은 최상위 필드의 �
 Add Profile의 **Generate With AI**로 Criteria 전체 초안을 작성할 수도 있습니다.
 DeciFlow의 `.env`에 `OPENAI_API_KEY`와 `OPENAI_CRITERIA_MODEL`(기본 `gpt-5.6-terra`)을
 설정하고 DeciFlow를 재시작하세요. Source(원격 파일은 SSH Host 하나 포함)를 선택하고
-최대 8개 샘플(총 24,000바이트)을 확인·수정하세요. Analysis Purpose Mode의 기본값은
+샘플을 확인·수정하세요. Sample Count는 10개(기본값)·20개·30개·50개·100개 중 선택합니다.
+전체 Source를 훑어 완전한 샘플을 무작위로 추출하며, 빈 입력과 개별 용량 초과 입력은
+제외합니다. 총 150,000 UTF-8 바이트 제한과 Source 크기에 따라 실제 개수는 적을 수
+있습니다. 전체 읽기가 20초를 넘으면 일부 샘플을 반환하지 않고 시간 초과로 처리합니다.
+다시 미리보기 하면 새로 무작위 추출합니다. 샘플이 많을수록 토큰 소비와 API 비용이 늘어날 수 있으며,
+생성할 때 남아 있는 수정된 샘플만 전달합니다. Analysis Purpose Mode의 기본값은
 Automatic (ChatGPT)이며 목적을 직접 지정하려면 Manual을 선택합니다.
 저장 전에 제안한 목적과 생성된 Criteria를 확인하세요.
 Events Per Sample은 미리보기 샘플 하나에 묶을 TEXT 이벤트 수입니다.
@@ -203,6 +208,9 @@ Reset 후에도 같은 샘플 이름으로 다시 생성됩니다.
 
 Task History와 다시 연 결과에는 실행 시작 당시 저장된 엔진과 요청 모델을 표시합니다.
 과거 정보가 없으면 **Not Recorded**로 표시하며 현재 서버 설정으로 대체하지 않습니다.
+
+Classification Results 우측 아래의 **▲ / ▼** 플로팅 버튼으로 결과 영역의
+최상단·최하단으로 이동합니다. 결과 페이지를 바꾸거나 분석을 실행하지 않습니다.
 
 결과별 Action·Source/Host·Criteria/Chunk 정보는 **Details**에 접어 표시하고,
 Action 실패는 카드에 바로 표시합니다. 전체 정보는 **View Result JSON**에도 보존합니다.

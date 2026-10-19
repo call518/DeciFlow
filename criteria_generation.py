@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import random
 from contextlib import aclosing
 from pathlib import Path
 from typing import Any
@@ -15,8 +16,10 @@ from profiles import validate_profiles
 from remote_sources import read_remote
 from source_settings import parse_source_settings, resolve_configured_sources
 
-MAX_SAMPLE_BYTES = 24_000
-MAX_SAMPLES = 8
+MAX_SAMPLE_BYTES = 150_000
+DEFAULT_SAMPLES = 10
+SAMPLE_COUNTS = (10, 20, 30, 50, 100)
+MAX_SAMPLES = max(SAMPLE_COUNTS)
 
 
 def _object_schema(properties: dict[str, Any]) -> dict[str, Any]:
@@ -137,7 +140,10 @@ def convert_generated_profile(value: object) -> dict[str, Any]:
 
 
 async def preview_samples(selection: dict[str, Any]) -> list[str]:
-    """Read at most eight complete Source inputs locally or through verified SSH."""
+    """Randomly sample complete inputs across the Source in one bounded pass."""
+    sample_count = selection.get("sampleCount", DEFAULT_SAMPLES)
+    if type(sample_count) is not int or sample_count not in SAMPLE_COUNTS:
+        raise ValueError("Sample Count must be 10, 20, 30, 50, or 100.")
     if not isinstance(selection.get("sourceId"), str):
         raise TypeError("Select a registered Source.")
     specs = parse_source_settings(
@@ -153,7 +159,7 @@ async def preview_samples(selection: dict[str, Any]) -> list[str]:
         raise ValueError("Select one SSH Host for the sample preview.")
     spec = specs[0]
     samples: list[str] = []
-    size = 0
+    seen = 0
     async with asyncio.timeout(20):
         stream = (
             read_remote(spec)
@@ -165,17 +171,29 @@ async def preview_samples(selection: dict[str, Any]) -> list[str]:
                 if record.get("error"):
                     raise ValueError("Could not read a valid Source sample.")
                 text = record["log"]
-                if size + len(text.encode()) > MAX_SAMPLE_BYTES:
-                    if not samples:
-                        raise ValueError("The first sample exceeds 24,000 bytes.")
-                    break
-                samples.append(text)
-                size += len(text.encode())
-                if len(samples) == MAX_SAMPLES:
-                    break
+                if not text.strip() or len(text.encode()) > MAX_SAMPLE_BYTES:
+                    continue
+                seen += 1
+                if len(samples) < sample_count:
+                    samples.append(text)
+                else:
+                    # Reservoir sampling gives every eligible input equal opportunity.
+                    index = random.randrange(seen)
+                    if index < sample_count:
+                        samples[index] = text
     if not samples:
-        raise ValueError("No Source samples were found.")
-    return samples
+        raise ValueError(
+            f"No nonempty Source samples fit within {MAX_SAMPLE_BYTES:,} bytes."
+        )
+    random.shuffle(samples)
+    selected: list[str] = []
+    size = 0
+    for text in samples:
+        sample_size = len(text.encode())
+        if size + sample_size <= MAX_SAMPLE_BYTES:
+            selected.append(text)
+            size += sample_size
+    return selected
 
 
 def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -213,7 +231,10 @@ async def generate_criteria(body: dict[str, Any]) -> dict[str, Any]:
         or any(not isinstance(text, str) or not text.strip() for text in samples)
         or sum(len(text.encode()) for text in samples) > MAX_SAMPLE_BYTES
     ):
-        raise ValueError("Provide 1–8 nonempty samples totaling at most 24,000 bytes.")
+        raise ValueError(
+            f"Provide 1–{MAX_SAMPLES} nonempty samples totaling at most "
+            f"{MAX_SAMPLE_BYTES:,} bytes."
+        )
     key = os.getenv("OPENAI_API_KEY", "").strip()
     model = os.getenv("OPENAI_CRITERIA_MODEL", "gpt-5.6-terra").strip()
     if not key or not model:

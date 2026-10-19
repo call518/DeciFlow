@@ -1131,7 +1131,8 @@ async def handle_criteria_generation(request: Request) -> Response:
         raw = bytearray()
         async for chunk in request.stream():
             raw.extend(chunk)
-            if len(raw) > 160_000:
+            # Allow JSON escaping overhead for up to 150,000 UTF-8 sample bytes.
+            if len(raw) > 1_000_000:
                 raise ValueError("Criteria generation request is too large.")
         body = json.loads(raw)
         if not isinstance(body, dict):
