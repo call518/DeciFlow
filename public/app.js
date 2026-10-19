@@ -1,6 +1,7 @@
 import { readEvents } from './stream.js';
 
 const $ = id => document.getElementById(id);
+const runStateBadge=$('run-state');
 const routeOpeners = new Map();
 const resultFilterLabels={'processing-filter':'Processing Status','source-filter':'Source','host-filter':'Host','log-search':'Search Text','review-filter':'Review Status'};
 let resultFilterSignature='';
@@ -20,11 +21,13 @@ function handleWriteRoute(path,replace=false) {
   }
 }
 function handleRunProgress(state, mode) {
-  const label=['running','pausing','paused','stopped','skipped'].includes(state)
-    ? state==='running'?(mode==='realtime'?'Realtime':'Batch'):titleLabel(state)
-    : '';
+  const badge=runStateBadge;
+  badge.hidden=!['running','starting','pausing','paused','stopped','skipped','completed','failed'].includes(state);
+  badge.textContent=badge.hidden?'':titleLabel(state);
+  badge.className=`task-state monitor-state ${state}`;
+  badge.title=mode==='realtime'?'Realtime':'Batch';
   $('message').className='';
-  handleMessage('message',label);
+  handleMessage('message','');
 }
 function handleClearRouteLinks(base) {
   for(const path of routeOpeners.keys())if(path.startsWith(`${base}/`))routeOpeners.delete(path);
@@ -2517,7 +2520,9 @@ function runEngineMetadata(settings = {}) {
 function renderResultContext(name,startedAt,id,settings = {}) {
   const title=element('strong',name,'result-task-name');
   const metadata=runEngineMetadata(settings);
-  $('result-context').replaceChildren(title,element('span',` · Started: ${taskTime(startedAt)} (UTC) · Run: ${id}`),element('span',`Run Engine: ${metadata.engine} · Requested Model: ${metadata.model}`,'run-engine-context'));
+  const details=element('span','', 'run-engine-context');
+  details.append(runStateBadge,element('span',`Run Engine: ${metadata.engine} · Requested Model: ${metadata.model}`,'run-engine-details'));
+  $('result-context').replaceChildren(title,element('span',` · Started: ${taskTime(startedAt)} (UTC) · Run: ${id}`),details);
 }
 async function readApiJsonResponse(response,path=response.url || 'API request') {
   try { return await response.json(); }

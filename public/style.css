@@ -248,7 +248,7 @@ textarea: focus {
   height: 72px;
   box-sizing: border-box;
   overflow: hidden;
-  background: #f5f8f5;
+  background: #e2eae3;
   padding: 10px 12px;
   border-radius: 9px;
   font-size: 11px;
@@ -1590,7 +1590,8 @@ button.danger:hover:not(:disabled) { background: #9c3028; border-color: #9c3028;
 .estimate-warning-message { color: #865b12; }
 
 .result-task-name { color: #245b9e; font-size: 14px; font-weight: 700; }
-.run-engine-context { display: block; margin-top: 4px; overflow-wrap: anywhere; }
+.run-engine-context { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-top: 4px; }
+.run-engine-details { min-width: 0; overflow-wrap: anywhere; }
 .run-model { max-width: 20rem; overflow-wrap: anywhere; }
 .run-history td:nth-child(3), .run-history td:nth-child(4) { white-space: nowrap; }
 

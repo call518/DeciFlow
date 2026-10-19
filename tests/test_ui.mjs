@@ -1058,7 +1058,7 @@ test('Tasks Stop calls the server endpoint instead of aborting the browser strea
   await new Promise(resolve => setImmediate(resolve));
   await vm.runInContext("handleStopTask('test-task')",context);
   await running;
-  assert.match(nodes.get('message').textContent, /Stopped/);
+  assert.equal(nodes.get('run-state').textContent,'Stopped');
 });
 
 
@@ -3523,7 +3523,9 @@ test('Run progress shows state without repeating summary counts', async () => {
     assert.equal(nodes.get('message').textContent,'');
   }
   vm.runInContext("handleRunProgress('paused','batch')",context);
-  assert.equal(nodes.get('message').textContent,'Paused');
+  assert.equal(nodes.get('run-state').textContent,'Paused');
+  assert.match(nodes.get('run-state').className,/task-state monitor-state paused/);
+  assert.equal(nodes.get('message').textContent,'');
 });
 
 
@@ -4247,7 +4249,7 @@ test('Reopened paged results retain their original engine and model through refr
     return {...response,json:async()=>data};
   };
   await vm.runInContext("handlePagedProcessing({jobId:'old',state:'completed',settings:{mode:'batch'},pagedResults:true})",context);
-  const caption=()=>nodes.get('result-context').children[2].textContent;
+  const caption=()=>nodes.get('result-context').children[2].children[1].textContent;
   assert.equal(caption(),'Run Engine: Jev · Requested Model: archived-model');
   assert.equal(vm.runInContext('resultEngine',context),'jev');
   vm.runInContext("engine='laya';criteriaTokenModel='current-model'",context);
@@ -4557,4 +4559,21 @@ test('Show Decisions closes outside and on Escape while inside clicks preserve t
   const types=html.match(/<select id="result-filter-type"[^]*?<\/select>/)[0];
   assert.match(types,/<select[^>]*>\s*<option value="log-search">Search Text/);
   assert.equal(nodes.get('result-filter-type').value,'log-search');
+});
+
+
+test('Run status uses Task badge styles beside original engine metadata for every state',()=>{
+  const {context,nodes}=workspace([]);
+  const badge=nodes.get('run-state');
+  for(const state of ['running','starting','pausing','paused','stopped','skipped','completed','failed']){
+    vm.runInContext(`renderResultContext('Run','2026-10-20T00:00:00Z','example',{engine:'jev',model:'archived-model'});handleRunProgress('${state}','batch')`,context);
+    const row=nodes.get('result-context').children[2];
+    assert.equal(row.className,'run-engine-context');
+    assert.equal(row.children[0],badge);assert.equal(badge.hidden,false);
+    assert.equal(badge.className,`task-state monitor-state ${state}`);
+    assert.equal(badge.textContent,state[0].toUpperCase()+state.slice(1));
+    assert.match(row.children[1].textContent,/Jev.*archived-model/);
+    assert.equal(nodes.get('message').textContent,'');
+  }
+  vm.runInContext("handleRunProgress('unknown','batch')",context);assert.equal(badge.hidden,true);
 });
