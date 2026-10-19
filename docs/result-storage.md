@@ -50,17 +50,14 @@ under every query or input workload.
 read cursor per physical source. Queue insertion and cursor advancement share a
 transaction, as do result insertion and queue removal. Action intent/outcome are
 journaled separately to avoid automatically repeating uncertain external effects.
-Frozen Criteria/Action definitions are part of the run snapshot. Existing SQLite
-histories gain these tables automatically; no Reset is needed. See [Tasks](tasks.md#recovery-after-a-server-restart)
-for restart states, file validation, and the boundary for older executions.
+Frozen Criteria/Action definitions are part of the run snapshot.
+See [Tasks](tasks.md#recovery-after-a-server-restart) for restart states and file validation.
 
 ## Initialization and Backups
 
 On a fresh data directory, bundled Sources, Criteria, the Elasticsearch sample Action and disabled default
 Task are created in SQLite. Empty saved lists remain empty. No configuration JSON,
-run.json, or events.ndjson is generated or imported. Previous JSON registries and
-older result databases are not imported or automatically migrated. Reset development
-data before applying a changed schema to an existing installation.
+run.json, or events.ndjson is generated.
 Bundled Criteria JSON files under `profiles/` remain read-only seed definitions.
 
 Use one DeciFlow process per data directory on a local filesystem. SQLite uses WAL,
@@ -98,4 +95,3 @@ those definitions transparently; the cache is bounded. Standalone Action/export
 results retain their definitions so they do not depend on a private SQLite DB.
 `log_folded` remains a deliberate case-insensitive search copy. Task deletion also
 removes its shared contexts. Reads do not rewrite stored payloads or ES documents.
-Only the current schema is supported; there is no automatic history migration.

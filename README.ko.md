@@ -193,17 +193,16 @@ JSONL (Line), Content Field `상담내용`으로 읽습니다. 이 필드만 분
 한국어 Criteria는 지방행정 분야, 답변 유형, 후속 조치 담당, 긴급도, 후속 조치 필요성을
 판단합니다. 일반적인 사업 일정이나 개선 계획만으로 개별 민원의 미완료 약속으로
 판단하지 않습니다. Task는 Batch / Manual, Events/Chunk 1, Action None이며
-Enabled와 Resume on Restart는 꺼져 있습니다. Reset 없이 DeciFlow-UI를 재시작하고
+Enabled와 Resume on Restart는 꺼져 있습니다. DeciFlow-UI를 시작하고
 Task를 활성화한 뒤 Run으로 실행하세요. 네이티브 실행 시 Source 경로를 실제 로컬
 샘플 파일 경로로 변경하세요.
 
 모든 기본 VOC Criteria는 한국어만 제공하며 이름에 언어 접미사를 붙이지 않습니다.
-시작 시 이전 기본 영문 Criteria를 제거하고 해당 Task 할당을 한국어 버전으로 연결합니다.
-사용자가 복제한 영문 Criteria와 과거 결과는 유지합니다. 기존 Source 경로와 사용자 수정도
-보존하므로 이전 샘플 경로는 Sources에서 직접 변경하세요.
+저장된 Source 경로와 사용자 수정은 유지하며 필요한 경로 변경은
+Sources에서 직접 수행하세요.
 
 기본 Source·Criteria·Task·Action 이름은 **Sample**로 시작합니다.
-기존 기본 이름도 ID와 할당을 유지한 채 변경하며 사용자 지정 이름과 설정은 보존합니다.
+저장된 이름과 설정은 보존합니다.
 Reset 후에도 같은 샘플 이름으로 다시 생성됩니다.
 
 Task History와 다시 연 결과에는 실행 시작 당시 저장된 엔진과 요청 모델을 표시합니다.

@@ -300,6 +300,5 @@ Laya는 본문 한도와 별도로 질문 지시문·선택지의 head 예산을
 
 모든 템플릿·수동 작성·AI 생성 프로필은 `questions`와 `defaultDecision`을 사용하며
 Choice 정의는 `reviewOptions`를 명시적으로 저장합니다. 공통 지침은 모든 Decision에 적용합니다.
-`summary`와 평면 프로필 형식은 사용하지 않습니다. 결과와 Action은 대표 분류를 중복
-저장하지 않고 `decisions`·`decisionAssessments`를 사용합니다. 이전 데이터 형식은 지원하지
-않으므로 기존 설치에 이 구조를 적용할 때는 개발 데이터를 Reset하세요.
+결과와 Action은 AI 답변에 `decisions`, 항목별 불확실성과 검토 사유에
+`decisionAssessments`를 사용합니다.

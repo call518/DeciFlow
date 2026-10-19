@@ -63,8 +63,7 @@ edits affect new runs. Changing the data directory does not migrate existing dat
 automatically.
 
 The shared SQLite database stores current Action configurations.
-Each UI-managed Action uses `<Action UUID>/`. Older versioned or name-prefixed
-layouts are not migrated. Edit can change Name when it remains unique
+Each UI-managed Action uses `<Action UUID>/`. Edit can change Name when it remains unique
 (case-insensitive). Task assignments, execution selection and deletion checks use
 `actionId`, never the display name. Renaming keeps the UUID, original directory,
 script and environment unchanged; running jobs retain their original snapshots. Code and the environment live directly in that directory:

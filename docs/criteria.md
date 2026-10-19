@@ -310,7 +310,6 @@ Batch Task at startup. See [Sample VOC Central Gov Consulting QnA](voc.md#govern
 ## Profile metadata
 
 All profiles use `questions` and `defaultDecision`; Choice definitions explicitly
-store `reviewOptions`. The obsolete `summary` flag and flat profile format are
-not used. Results and Actions use `decisions` and `decisionAssessments` without
-duplicating a primary classification. Earlier data formats are not supported;
-reset development data before using this schema with an existing installation.
+store `reviewOptions`. Shared instructions apply to every decision.
+Results and Actions use `decisions` for AI answers and `decisionAssessments`
+for per-decision uncertainty and review reasons.

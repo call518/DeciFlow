@@ -30,13 +30,13 @@ JSONL (Line), with Content Field `상담내용`. Only this field is sent for cla
 The Korean Criteria cover local policy area, response type, follow-up owner, urgency,
 and follow-up required. General project schedules and improvement plans alone do not
 count as outstanding commitments for an individual inquiry. The Task uses Batch / Manual,
-Events/Chunk 1, and Action None, with Enabled and Resume on Restart off. Restart
-DeciFlow-UI without Reset, enable the Task, and click Run. For native execution,
+Events/Chunk 1, and Action None, with Enabled and Resume on Restart off. Start
+DeciFlow-UI, enable the Task, and click Run. For native execution,
 change the Source path to the sample file's actual local path.
 
 ## 1. Run the Bundled Sample
 
-1. Apply the new code and restart DeciFlow-UI. No Reset is required.
+1. Start DeciFlow-UI.
 2. Find **Sample VOC Asia Culture Center Consulting QnA** under Source.
 3. Find **Sample VOC Asia Culture Center Consulting QnA** under Criteria.
 4. View the provided **Sample VOC Asia Culture Center Consulting QnA** Task and check its assignments below.

@@ -30,13 +30,13 @@ JSONL (Line), Content Field `상담내용`으로 읽습니다. 이 필드만 분
 한국어 Criteria는 지방행정 분야, 답변 유형, 후속 조치 담당, 긴급도, 후속 조치 필요성을
 판단합니다. 일반적인 사업 일정이나 개선 계획만으로 개별 민원의 미완료 약속으로
 판단하지 않습니다. Task는 Batch / Manual, Events/Chunk 1, Action None이며
-Enabled와 Resume on Restart는 꺼져 있습니다. Reset 없이 DeciFlow-UI를 재시작하고
+Enabled와 Resume on Restart는 꺼져 있습니다. DeciFlow-UI를 시작하고
 Task를 활성화한 뒤 Run으로 실행하세요. 네이티브 실행 시 Source 경로를 실제 로컬
 샘플 파일 경로로 변경하세요.
 
 ## 1. 기본 샘플 실행
 
-1. 새 코드를 적용하고 DeciFlow-UI를 재시작합니다. Reset은 필요 없습니다.
+1. DeciFlow-UI를 시작합니다.
 2. Source에서 **Sample VOC Asia Culture Center Consulting QnA**를 확인합니다.
 3. Criteria에서 **Sample VOC Asia Culture Center Consulting QnA**를 확인합니다.
 4. Tasks에서 기본 **Sample VOC Asia Culture Center Consulting QnA**를 View하여 아래 할당을 확인합니다.

@@ -1,3 +1,22 @@
+# Development stage and compatibility policy
+
+- This project is in early development. Prioritize clean, clear, and efficient
+  implementations of current requirements. Compatibility with previous logic,
+  features, APIs, configuration formats, or stored data is not a requirement.
+- Within the requested scope, remove obsolete compatibility code rather than
+  preserving it. Do not add aliases, adapters, fallbacks, migrations, or data
+  converters solely to support previous versions.
+- Preserve the correctness of current features, validation, and safety mechanisms.
+  Better logic may replace existing implementations; update affected callers,
+  tests, and documentation to the current design instead of retaining old behavior.
+- Document current installation, functionality, and usage. Do not add historical
+  compatibility explanations, version-specific upgrade guides, or data conversion
+  procedures unless explicitly requested.
+- Implement backward compatibility or data conversion only when the user
+  explicitly requests it. This policy remains in effect until the user removes
+  it, including when compatibility becomes necessary for a stable release; do not
+  infer that requirement from version numbers or release status alone.
+
 # Documentation and environment maintenance
 
 - When creating or updating `AGENTS.md`, never include secrets, credentials,

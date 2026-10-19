@@ -197,18 +197,16 @@ JSONL (Line), with Content Field `상담내용`. Only this field is sent for cla
 The Korean Criteria cover local policy area, response type, follow-up owner, urgency,
 and follow-up required. General project schedules and improvement plans alone do not
 count as outstanding commitments for an individual inquiry. The Task uses Batch / Manual,
-Events/Chunk 1, and Action None, with Enabled and Resume on Restart off. Restart
-DeciFlow-UI without Reset, enable the Task, and click Run. For native execution,
+Events/Chunk 1, and Action None, with Enabled and Resume on Restart off. Start
+DeciFlow-UI, enable the Task, and click Run. For native execution,
 change the Source path to the sample file's actual local path.
 
-All bundled VOC Criteria are Korean-only and omit language suffixes. Startup removes
-the retired default English Criteria and redirects their Task assignments to the Korean
-versions; custom English clones and historical results remain unchanged. Existing Source
-paths and saved customizations are preserved: update old sample paths in Sources manually.
+All bundled VOC Criteria are Korean-only and omit language suffixes. Saved Source
+paths and customizations are preserved; edit Source paths manually when needed.
 
 Bundled Source, Criteria, Task, and Action names begin with **Sample**.
-Existing shipped names are renamed without changing IDs or assignments; custom names
-and settings are preserved. Reset recreates the same sample names.
+Saved names and settings are preserved.
+Reset recreates the same sample names.
 
 Task History and reopened results show the engine and requested model saved when
 the run started. Missing historical metadata is **Not Recorded**; current server
