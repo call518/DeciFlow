@@ -155,6 +155,10 @@ Docker Compose는 `deciflow-data` 볼륨을 `DECIFLOW_DATA_DIR`
 구문 색상은 로컬에 포함한 PrismJS 1.30.0의 Core·Python 구성(약 9.4KiB, MIT)으로 처리합니다. 실행 중 외부 CDN을 요청하지 않으며 버전이 고정된 파일은 브라우저에 캐시합니다. 원본·라이선스·SHA-256은 `public/vendor/prism/`에 기록하며 버전 교체 시 해당 기록과 UI 검증을 함께 갱신합니다. 편집 입력·스크롤은 기존 방식을 유지합니다.
 
 
+Action 입력은 기존 `category`·`primaryQuestion`·`uncertain` 의미를 유지합니다.
+항목별 처리는 `decisions`와 `decisionAssessments`를 사용하고 기록 전체 불확실성은
+`anyUncertain`으로 확인합니다. `defaultDecision` 변경은 표시만 바꾸며 Action을 재실행하지 않습니다.
+
 ## 간결한 결과 JSON 계약 (버전 2)
 
 상담 원문은 `log` 한 곳에 저장하고 JSONL의 나머지 필드는 `inputRecord`에 유지합니다.

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from config_store import delete_record, load_records, save_record, save_records
+from decisions import review_options
 
 DEFAULT_PROFILES = {
     path.stem: json.loads(path.read_text())
@@ -80,6 +81,14 @@ def validate_profiles(values: object) -> ProfileMap:
             if any(not isinstance(v, str) or not v.strip() for v in criteria.values()):
                 raise ValueError("Every category needs a nonempty definition.")
             fields["criteria"] = {key: criteria[key].strip() for key in CATEGORIES}
+            if "defaultDecision" in value:
+                if not isinstance(value["defaultDecision"], str) or value[
+                    "defaultDecision"
+                ] not in {"category", "urgency", "ticket"}:
+                    raise ValueError(
+                        "Select exactly one existing default chart decision."
+                    )
+                fields["defaultDecision"] = value["defaultDecision"]
         normalization = value.get("normalization")
         if normalization is not None:
             if normalization != "single_line_syslog_header":
@@ -129,6 +138,17 @@ def _validate_questions(profile: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError(
                     "Choice requires 2–255 named options; all/failed are reserved."
                 )
+            options = review_options(definition)
+            if (
+                not isinstance(options, list)
+                or any(
+                    not isinstance(key, str) or key not in criteria for key in options
+                )
+                or len(set(options)) != len(options)
+            ):
+                raise ValueError("Review options must be unique Choice option IDs.")
+            if "reviewOptions" in definition:
+                item["reviewOptions"] = options
         elif kind == "score" and (
             not isinstance(criteria, list) or not 2 <= len(criteria) <= 10
         ):
@@ -141,14 +161,27 @@ def _validate_questions(profile: dict[str, Any]) -> dict[str, Any]:
             item["criteria"] = deepcopy(criteria)
         cleaned[identity] = item
     primary = profile.get("primaryQuestion")
-    if primary not in cleaned or cleaned[primary]["type"] != "choice":
+    if primary is not None and (
+        primary not in cleaned or cleaned[primary]["type"] != "choice"
+    ):
         raise ValueError("Select a Choice decision for the primary classification.")
-    return {"questions": cleaned, "primaryQuestion": primary}
+    primary = primary or next(
+        (key for key, item in cleaned.items() if item["type"] == "choice"), None
+    )
+    default = profile.get("defaultDecision", profile.get("primaryQuestion"))
+    if not isinstance(default, str) or default not in cleaned:
+        raise ValueError("Select exactly one existing default chart decision.")
+    return {
+        "questions": cleaned,
+        **({"defaultDecision": default} if "defaultDecision" in profile else {}),
+        **({"primaryQuestion": primary} if primary else {}),
+    }
 
 
 def load_profiles() -> None:
     """Load saved criteria and ensure the required consultation samples exist."""
-    values = validate_profiles(load_records("criteria", DEFAULT_PROFILES))
+    stored = load_records("criteria", DEFAULT_PROFILES)
+    values = validate_profiles(stored)
     # Update only untouched samples, preserving saved Task IDs and user edits.
     legacy_hashes = {
         "eaaeb8160dec0b9b1e1ba1406087995f46126008936fbf8753fb926fd1ea2366",
@@ -167,7 +200,9 @@ def load_profiles() -> None:
         untouched = (
             identity == "consultation"
             and saved is not None
-            and hashlib.sha256(json.dumps(saved, sort_keys=True).encode()).hexdigest()
+            and hashlib.sha256(
+                json.dumps(stored.get(identity, saved), sort_keys=True).encode()
+            ).hexdigest()
             in legacy_hashes
         )
         if not name_exists and (saved is None or untouched):

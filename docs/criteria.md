@@ -4,8 +4,20 @@
 
 Manage decision profiles under **Criteria**. Laya and Jev use the same definitions
 and response validation. A profile contains a name, shared instructions, ordered
-named decisions, and one **Primary Classification** (`choice`) for charts and filters.
+named decisions, and one **Default Chart Decision** of any type for the initial chart.
 There is no fixed three-decision limit; provider input and runtime limits still apply.
+
+Default Chart Decision selects exactly one existing decision of any type. It is only a
+display preference and does not change AI answers, uncertainty, or filters. Every
+decision is available in Overview regardless of `summary`. Use **Set as Default** in
+Overview or change it in the Criteria editor. Score charts round weighted scores to
+the nearest level (half up); Noul charts show Yes probability ranges.
+
+For each Choice option, **Needs Review** explicitly marks selections requiring human
+review, such as unknown/other. The saved `reviewOptions` list contains those option
+IDs. An empty list disables selection-based review; it does not disable uncertainty.
+Existing profiles without this field retain known legacy unknown/other option IDs.
+ChatGPT generation uses the same `defaultDecision` and `reviewOptions` validation.
 
 ## Generate Criteria With AI
 
@@ -32,7 +44,7 @@ representative model names and links to the official catalog for availability.
    Remove sensitive content first. Generation incurs OpenAI API charges.
 5. Review **Suggested Analysis Purpose** in automatic mode, or **Analysis Purpose**
    in manual mode, plus the populated Name, shared instructions, Decisions, options or
-   levels, Primary Classification, and token estimates.
+   levels, Default Chart Decision, and token estimates.
 6. Select **Save Changes** to persist the complete profile. Assign it to a Task
    separately and check representative classification results.
 
@@ -87,7 +99,7 @@ Source and Task.
 | --- | --- | --- |
 | Start From Template | Starting definition for a new draft | Use a VOC consultation template for full conversations. Custom Decisions starts a custom configuration. Choosing another template replaces the current draft. |
 | Name | Profile name selected by a Task | `VOC Follow-up Test`. Use a name different from existing profiles. |
-| Primary Classification | Representative decision for the Overview chart and classification filter | One Choice such as Inquiry Type. This does not determine whether other decisions run. |
+| Default Chart Decision | Default decision for the Overview chart | Exactly one Choice, Score or Noul. All decisions still run; filters and AI answers are unchanged. |
 | Decision Instructions | Rules shared by every decision | Judgment time, evidence to use, prohibited assumptions, and missing-evidence policy. Define individual options within each Decision. |
 
 **Shared instructions example**
@@ -213,7 +225,7 @@ Warnings do not prevent saving.
 2. Enter Name and shared Decision Instructions.
 3. Give each Decision a unique ID, display name, type, and instructions.
 4. Write Choice options or Score levels.
-5. Select one Choice as Primary Classification.
+5. Select one decision of any type as Default Chart Decision.
 6. Save Changes. Cancel Edit discards the unsaved draft.
 7. Edit the Task, choose the new Criteria for its Source row, and save.
 8. Compare source conversations with answers in a new run. Saving Criteria does not automatically assign it to a Task.
@@ -231,7 +243,7 @@ Decision deletes the entire question. Move Up / Down changes decision display or
 | Option IDs must be unique. | Distinguish the left-hand IDs within one Choice. Changing only the right-hand definition does not resolve duplicate IDs. |
 | Choice requires 2–255… | Check option count, empty IDs, and reserved IDs all/failed. |
 | Score requires 2–10… | Provide 2–10 level definitions. |
-| No Primary Classification is available | Add at least one Choice decision. |
+| No Default Chart Decision is available | Add a decision and select it as the default. |
 | Empty name/instructions/definition errors | Fill required profile and decision fields and every option/level definition. |
 
 Do not confuse Decision ID with Display Name. Two different display names cannot
@@ -266,13 +278,16 @@ remain unchanged. Export Reviewed JSON includes results with any changed decisio
 
 Every Choice answer is checked for selected probability below 70%, top-two gap
 below 10 percentage points, and Laya option collapse when reported. Other/Unknown
-selections also require review. Chart certainty refers to the primary decision;
-Needs Review can also originate from another Choice decision. These heuristics
+selections require review when listed in `reviewOptions`. Chart certainty refers to
+the selected Choice; any decision or record-level issue can require review. These heuristics
 are not measured accuracy and do not evaluate Score or Noul confidence.
 
 Running jobs keep frozen profiles. Results retain `decisionDefinitions`,
 `primaryQuestion`, `decisions`, and `questions`, so subsequent edits do not relabel
-past results. Different custom primary definitions are charted separately.
+past answers. The current saved default only changes the initial chart selection.
+`primaryQuestion` remains a frozen compatibility projection for Actions and old JSON.
+New chart identities exclude the default selection; different decision definitions
+remain separate. Profiles containing only Score/Noul are supported without a Choice.
 
 Profiles are stored in `DECIFLOW_DATA_DIR/deciflow.sqlite3`; bundled JSON files are
 initial defaults and templates. Criteria management requires a trusted UI origin.

@@ -107,7 +107,7 @@ DeciFlow의 Jev 입력 바이트 검사는 정확한 토큰 계측이 아닙니�
 | Field | Value |
 | --- | --- |
 | Name | VOC Asia Culture Center Consulting QnA |
-| Primary Classification | 문의 유형 |
+| Default Chart Decision | 문의 유형 |
 
 **Decision Instructions**
 

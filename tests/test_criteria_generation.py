@@ -144,6 +144,9 @@ async def test_generate_then_save_and_reload(
             "samples": ["A callback is owed."],
         }
         assert engine.capitalize() in body["instructions"]
+        assert (
+            "all decisions can be charted regardless of summary" in body["instructions"]
+        )
         return httpx.Response(
             200,
             json={
@@ -390,3 +393,67 @@ async def test_generated_purpose_is_required(
     )
     with pytest.raises(ValueError, match="analysis purpose"):
         await generation.generate_criteria({"samples": ["sample"]})
+
+
+def test_generated_decisions_are_all_available_for_overview(
+    generated: dict[str, Any],
+) -> None:
+    """Chart generated decisions without changing their schema or summary flags."""
+    from result_store import _aggregate_decisions
+
+    generated["decisions"][1]["summary"] = False
+    profile = generation.convert_generated_profile(generated)
+    stats: dict[str, Any] = {}
+    _aggregate_decisions(
+        stats,
+        {
+            "profileLabel": profile["label"],
+            "classificationGroup": "generated",
+            "primaryQuestion": profile["primaryQuestion"],
+            "decisionDefinitions": profile["questions"],
+            "decisions": {
+                "status": {"choice": "complete"},
+                "urgency": {"score": 0.5},
+                "follow_up": {"noul": 1},
+            },
+        },
+    )
+    groups = stats["decisionGroups"]
+    assert len(groups) == 3
+    assert groups["generated:status"]["primary"]
+    assert not groups["generated:urgency"]["primary"]
+    assert groups["generated:urgency"]["counts"]["all"]["1 · Immediate harm"] == 1
+    assert groups["generated:follow_up"]["counts"]["all"]["75–100%"] == 1
+
+
+@pytest.mark.parametrize("default", ["status", "urgency", "follow_up"])
+def test_new_generation_schema_supports_any_default_and_explicit_review_options(
+    generated: dict[str, Any],
+    default: str,
+) -> None:
+    generated.pop("primaryQuestion")
+    generated["defaultDecision"] = default
+    generated["decisions"][0]["reviewOptions"] = ["unknown"]
+    profile = generation.convert_generated_profile(generated)
+    assert profile["defaultDecision"] == default
+    assert profile["primaryQuestion"] == "status"
+    assert profile["questions"]["status"]["reviewOptions"] == ["unknown"]
+    assert "defaultDecision" in generation.GENERATION_SCHEMA["required"]
+    assert "primaryQuestion" not in generation.GENERATION_SCHEMA["properties"]
+
+
+def test_generated_profiles_do_not_require_a_choice(generated: dict[str, Any]) -> None:
+    generated.pop("primaryQuestion")
+    generated["defaultDecision"] = "follow_up"
+    generated["decisions"] = generated["decisions"][1:]
+    profile = generation.convert_generated_profile(generated)
+    assert profile["defaultDecision"] == "follow_up"
+    assert "primaryQuestion" not in profile
+
+
+def test_generated_review_options_must_reference_real_options(
+    generated: dict[str, Any],
+) -> None:
+    generated["decisions"][0]["reviewOptions"] = ["missing"]
+    with pytest.raises(ValueError, match="Review options"):
+        generation.convert_generated_profile(generated)

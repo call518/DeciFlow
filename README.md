@@ -136,7 +136,14 @@ Use this workflow as an alternative to the log example; both remain supported.
    JSONL always processes one object per line, preserving repeated conversations
    as separate records. The supplied consultation file has 841 input records.
 4. In **Main**, select the Task, inspect results, and record corrections. Mixed
-   classification schemes have separate choices under **Classification** in the chart.
+   classification schemes have separate choices under **Criteria** in the chart.
+
+The Overview **Decision** selector includes every decision, regardless of `summary`
+flags. Default Chart Decision selects one item of any type and can be changed without changing
+AI answers or filters. Choice charts count selected options; Score charts round weighted scores to the
+nearest level; Noul charts group Yes probabilities into 25% intervals. Certainty groups
+refer to the selected Choice. Score and Noul have no certainty groups. Decision filters
+search the whole run; Needs Review includes issues in any decision. Switching charts does not run inference.
 
 Content Field is a literal top-level key containing nonempty text. Malformed JSONL
 records are retained as failures while later records continue. Files must be

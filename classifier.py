@@ -16,7 +16,10 @@ from config import Engine, get_jev_input_bytes
 from decisions import (  # noqa: F401
     OPERATIONAL_QUESTIONS,
     URGENCY_CRITERIA,
+    decision_assessments,
+    needs_review,
     question_definitions,
+    review_options,
     validate_answer,
 )
 from profiles import PROFILES, get_profile
@@ -134,7 +137,45 @@ async def classify_log(
         "requestBytes": len(content),
         "questions": payload["questions"],
         "decisionDefinitions": definitions,
-        "primaryQuestion": selected.get("primaryQuestion", "category"),
+        "primaryQuestion": selected.get(
+            "primaryQuestion",
+            "category"
+            if "questions" not in selected
+            else next(
+                (key for key, q in definitions.items() if q["type"] == "choice"), None
+            ),
+        ),
+        "defaultDecision": selected.get(
+            "defaultDecision",
+            selected.get("primaryQuestion") or next(iter(definitions)),
+        ),
+        "profileId": profile,
+        "criteriaGroup": sha256(
+            json.dumps(
+                [
+                    profile,
+                    selected["instructions"],
+                    selected.get("normalization"),
+                    {
+                        key: {
+                            **{
+                                field: value
+                                for field, value in q.items()
+                                if field not in {"label", "summary"}
+                            },
+                            **(
+                                {"reviewOptions": review_options(q)}
+                                if q["type"] == "choice"
+                                else {}
+                            ),
+                        }
+                        for key, q in definitions.items()
+                    },
+                ],
+                sort_keys=True,
+                ensure_ascii=False,
+            ).encode()
+        ).hexdigest()[:16],
         "profileLabel": selected["label"],
     }
     if engine.name == "laya":
@@ -219,21 +260,10 @@ async def classify_log(
             if truncated:
                 raise ValueError
         answers = data["answers"]
-        decision_reviews = {}
         for identity, definition in definitions.items():
             validate_answer(definition, answers[identity])
             if definition["type"] != "choice":
                 continue
-            current = answers[identity]
-            probabilities = current["probabilities"]
-            ranked = sorted(
-                probabilities, key=lambda key: probabilities[key], reverse=True
-            )
-            reasons = []
-            if probabilities[current["choice"]] < 0.7:
-                reasons.append("low_answer_probability")
-            if round(probabilities[ranked[0]] - probabilities[ranked[1]], 6) < 0.1:
-                reasons.append("close_probabilities")
             if engine.name == "laya":
                 options = data["usage"].get("options", {}).get(identity)
                 if options is not None:
@@ -245,43 +275,51 @@ async def classify_log(
                         or not 0 <= distinct <= total
                     ):
                         raise ValueError
-                    if distinct < total:
-                        reasons.append("collapsed_options")
-            if current["choice"] in {"other", "unknown", "기타", "확인 불가"}:
-                reasons.append("other_category")
-            decision_reviews[identity] = reasons
-        primary = selected.get("primaryQuestion", "category")
-        answer = answers[primary]
-        probabilities = answer["probabilities"]
-        ranked = sorted(probabilities, key=lambda key: probabilities[key], reverse=True)
-        margin = round(probabilities[ranked[0]] - probabilities[ranked[1]], 6)
-        answer_probability = probabilities[answer["choice"]]
-        reasons = decision_reviews[primary]
-        uncertain = any(reason != "other_category" for reason in reasons)
+        assessments = decision_assessments({**metadata, "decisions": answers})
+        decision_reviews = {
+            key: item["reviewReasons"]
+            for key, item in assessments.items()
+            if definitions[key]["type"] == "choice"
+        }
+        primary = metadata["primaryQuestion"]
         result = {
             **metadata,
-            "category": answer["choice"],
             "decisions": answers,
-            "confidence": answer["confidence"],
-            "answerProbability": answer_probability,
-            "uncertaintyBasis": "selected_category_probability",
-            "probabilities": probabilities,
-            "review": any(decision_reviews.values()),
+            "decisionAssessments": assessments,
+            "assessmentVersion": 1,
+            "anyUncertain": any(
+                item["uncertain"] is True for item in assessments.values()
+            ),
             "decisionReviews": decision_reviews,
-            "uncertain": uncertain,
-            "reviewReasons": reasons,
-            "probabilityMargin": margin,
-            "candidates": ranked[:2],
             "model": data.get("model"),
             "engine": engine.name,
         }
+        if primary:
+            answer = answers[primary]
+            assessment = assessments[primary]
+            reasons = assessment["reviewReasons"]
+            result.update(
+                category=answer["choice"],
+                confidence=answer["confidence"],
+                answerProbability=assessment["answerProbability"],
+                uncertaintyBasis="selected_category_probability",
+                probabilities=answer["probabilities"],
+                uncertain=assessment["uncertain"],
+                reviewReasons=reasons,
+                probabilityMargin=assessment["probabilityMargin"],
+                candidates=assessment["candidates"],
+            )
+        result["review"] = needs_review(result)
         criteria_dropped = data.get("usage", {}).get("criteria_tokens_dropped")
         if isinstance(criteria_dropped, dict) and any(
             type(count) is int and count > 0 for count in criteria_dropped.values()
         ):
             result["review"] = True
-            result["reviewReasons"] = [*reasons, "criteria_shortened"]
-        if "questions" in selected:
+            result["reviewReasons"] = list(
+                dict.fromkeys([*result.get("reviewReasons", []), "criteria_shortened"])
+            )
+            result["recordReviewReasons"] = ["criteria_shortened"]
+        if "questions" in selected and primary:
             group = sha256(
                 json.dumps(
                     [profile, primary, definitions[primary]],
@@ -291,7 +329,7 @@ async def classify_log(
             ).hexdigest()[:16]
             result.update(
                 classificationGroup=group,
-                categoryFilter=f"{group}:{answer['choice']}",
+                categoryFilter=f"{group}:{result['category']}",
             )
         if primary == "category" and all(
             definitions.get(identity, {}).get("type") == kind

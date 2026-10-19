@@ -97,7 +97,7 @@ function result(index, review = true) {
   return {
     type: 'result', index, elapsedMs: index,
     result: { log: `log-${index}`, category: 'normal', confidence: .9,
-      elapsedMs: 1, probabilities: { normal: 1 }, review },
+      elapsedMs: 1, probabilities: { normal: 1, warning:0, error:0, security:0, other:0 }, review },
   };
 }
 
@@ -465,7 +465,7 @@ test('uncertain category is explicitly provisional without changing the model ch
   const row = nodes.get('results').children[0];
   assert.equal(decisionCards(row)[0].children[1].textContent, 'Error');
   assert.ok(decisionCards(row)[0].children.at(-1).textContent.includes('Error 41.0% vs Other 40.0%'));
-  assert.ok(decisionCards(row)[0].children.at(-1).textContent.includes('close category probabilities'));
+  assert.ok(decisionCards(row)[0].children.at(-1).textContent.includes('top two probabilities differ'));
   const details = row.children.at(-1); details.open = true; details.ontoggle();
   assert.equal(JSON.parse(details.children[1].children[1].textContent).category, 'error');
   assert.equal(nodes.get('category-chart').children[2].children[2].textContent, '1 (100.0%)');
@@ -2548,7 +2548,7 @@ test('Criteria View uses compact full-width rows for instructions and category d
   vm.runInContext("criteriaProfiles={application:{label:'Application',instructions:'Distinguish retries from final failures.',criteria:{normal:'Successful operation.',warning:'Recoverable issue.',error:'Final failure.',security:'Unauthorized action.',other:'Insufficient context.'}}};handleViewCriteria('application')",context);
   const fields=nodes.get('criteria-view').children[1];
   assert.ok(fields.className.includes('criteria-details'));
-  assert.deepEqual(fields.children.map(field=>field.children[0].textContent),['Name','Decision Instructions','Primary Classification','Category (Choice)','Urgency (Score)','Work Ticket (Noul)']);
+  assert.deepEqual(fields.children.map(field=>field.children[0].textContent),['Name','Decision Instructions','Default Chart Decision','Category (Choice)','Urgency (Score)','Work Ticket (Noul)']);
   const css=readFileSync(new URL('../public/style.css',import.meta.url),'utf8');
   assert.match(css,/\.criteria-details > div:nth-child\(n\+3\) \{ grid-column: 1 \/ -1;/);
 });
@@ -3107,7 +3107,7 @@ test('Criteria field help explains scope, IDs and answer types',()=>{
   vm.runInContext("criteriaProfiles={general:vocHelpFixture,consultation:vocHelpFixture};handleEditCriteria('consultation')",context);
   const profile=nodes.get('criteria-editor').children[2].children[1];
   assert.match(profile.children[0].children.at(-1).textContent,/Profile name/);
-  assert.match(profile.children[1].children.at(-1).textContent,/Other decisions still run/);
+  assert.match(profile.children[1].children.at(-1).textContent,/Changing it does not change AI answers, uncertainty or filters/);
   assert.match(profile.children[2].children.at(-1).textContent,/Rules shared by every decision/);
   assert.match(vm.runInContext("decisionRows[0].id.attributes['aria-description']",context),/Unique result key/);
   assert.equal(vm.runInContext("Object.hasOwn(decisionRows[0],'summary')",context),false);
@@ -3957,4 +3957,175 @@ test('Removed More Decision Results links open the latest results instead of fre
   assert.equal(queries.at(-1).before,undefined);
   assert.equal(logs(nodes)[0],'record-212');
   assert.equal(nodes.get('results').children[0].children[0].children.find(node=>node.className.includes('result-header')).children[0].textContent,'Result #212');
+});
+
+test('Overview selects every decision without inference and restores paged aggregates',async()=>{
+  const item=result(0,false);
+  Object.assign(item.result,{category:'a',classificationGroup:'voc',profileLabel:'VOC',primaryQuestion:'area',
+    decisionDefinitions:{area:{label:'Area',type:'choice',criteria:{a:'A',b:'B'}},response:{label:'Response',type:'choice',summary:false,criteria:{pending:'Pending',done:'Done'}},urgency:{label:'Urgency',type:'score',criteria:['Low','High']},followup:{label:'Follow-up',type:'noul'}},
+    decisions:{area:{choice:'a',probabilities:{a:1,b:0}},response:{choice:'pending',probabilities:{pending:1,done:0}},urgency:{score:.5,probabilities:{0:.5,1:.5}},followup:{noul:.75}}});
+  const {nodes,context,requests}=workspace([item]);await runTask(nodes);
+  assert.equal(nodes.get('chart-criteria').hidden,true);
+  assert.equal(nodes.get('chart-criteria-name').textContent,'VOC');
+  assert.equal(nodes.get('classification-group').children.length,4);
+  assert.equal(nodes.get('classification-group').value,'voc:area');
+  const requestCount=requests.length;
+  const values=()=>nodes.get('category-chart').children.map(row=>row.children[2].textContent);
+  for(const [id,expected] of [['response',['1 (100.0%)','0 (0.0%)']],['urgency',['0 (0.0%)','1 (100.0%)']],['followup',['0 (0.0%)','0 (0.0%)','0 (0.0%)','1 (100.0%)']]]) {
+    nodes.get('classification-group').value=`voc:${id}`;nodes.get('classification-group').onchange();assert.deepEqual(values(),expected);
+  }
+  assert.deepEqual(nodes.get('category-chart').children.map(row=>row.children[0].textContent),['Below 25%','25% to <50%','50% to <75%','75% to 100%']);
+  assert.equal(nodes.get('chart-decision-note').textContent,'Chunks by Yes probability.');
+  assert.equal(requests.length,requestCount);
+  vm.runInContext('pagedView={summary:JSON.parse(JSON.stringify(updateResultStatistics()))};results=[];renderCategoryChart()',context);
+  assert.deepEqual(values(),['0 (0.0%)','0 (0.0%)','0 (0.0%)','1 (100.0%)']);
+});
+
+test('Overview Criteria selector chooses the default decision and single decisions use text',async()=>{
+  const first=result(0,false),second=result(1,false);
+  for(const [item,identity] of [[first,'one'],[second,'two']])Object.assign(item.result,{classificationGroup:identity,profileLabel:identity,primaryQuestion:'category',decisionDefinitions:{category:{label:'Category',type:'choice',criteria:{normal:'Normal'}}},decisions:{category:{choice:'normal',probabilities:{normal:1}}}});
+  const {nodes}=workspace([first,second]);await runTask(nodes);
+  assert.equal(nodes.get('chart-criteria').hidden,false);
+  assert.equal(nodes.get('chart-criteria').children.length,2);
+  nodes.get('chart-criteria').value='two';nodes.get('chart-criteria').onchange();
+  assert.equal(nodes.get('classification-group').value,'two:category');
+  assert.equal(nodes.get('classification-group').hidden,true);
+  assert.equal(nodes.get('chart-decision-name').textContent,'Category');
+  assert.equal(nodes.get('category-chart').children[0].children[2].textContent,'1 (100.0%)');
+});
+
+function assessmentFixture(index=0,reverse=false) {
+  const event=result(index,false);
+  Object.assign(event.result,{criteriaGroup:'stable',classificationGroup:'legacy',profileId:'custom',profileLabel:'Review Fixture',primaryQuestion:'area',defaultDecision:'area',category:'a',
+    decisionDefinitions:{area:{label:'Area',type:'choice',criteria:{a:'A',b:'B'},reviewOptions:[]},response:{label:'Response',type:'choice',criteria:{done:'Done',pending:'Pending'},reviewOptions:[]},urgency:{label:'Urgency',type:'score',criteria:['Low','High']},followup:{label:'Follow-up',type:'noul'}},
+    decisions:{area:{choice:'a',probabilities:reverse?{a:.52,b:.48}:{a:.95,b:.05}},response:{choice:'done',probabilities:reverse?{done:.95,pending:.05}:{done:.52,pending:.48}},urgency:{score:.5,probabilities:{0:.5,1:.5}},followup:{noul:.5}}});
+  return event;
+}
+
+test('Every Choice shows its own uncertainty and chart counts; Score and Noul have no certainty groups',async()=>{
+  const {nodes}=workspace([assessmentFixture()]);await runTask(nodes);
+  const cards=decisionCards(nodes.get('results').children[0]);
+  assert.equal(cards[0].children[2].children.length,0);
+  assert.equal(cards[1].children[2].children[0].textContent,'Uncertain');
+  assert.match(cards[1].children.at(-1).textContent,/Done 52.0% vs Pending 48.0%/);
+  assert.equal(nodes.get('needs-review-count').textContent,'Needs Review: 1');
+  assert.equal(nodes.get('chart-certain').textContent,'Certain · 1 (100.0%)');
+  nodes.get('classification-group').value='stable:response';nodes.get('classification-group').onchange();
+  assert.equal(nodes.get('chart-uncertain').textContent,'Uncertain · 1 (100.0%)');
+  assert.equal(nodes.get('chart-certain').textContent,'Certain · 0 (0.0%)');
+  nodes.get('chart-uncertain').onclick();
+  for(const id of ['urgency','followup']) {
+    nodes.get('classification-group').value=`stable:${id}`;nodes.get('classification-group').onchange();
+    assert.equal(nodes.get('chart-certain').hidden,true);assert.equal(nodes.get('chart-uncertain').hidden,true);
+    assert.match(nodes.get('chart-totals').textContent,/1 classified chunk/);
+  }
+});
+
+test('Decision filters use the selected answer and certainty independently of the chart',async()=>{
+  const {nodes,requests}=workspace([assessmentFixture(),assessmentFixture(1,true)]);await runTask(nodes);
+  const count=requests.length;
+  nodes.get('decision-filter').value='stable:response';nodes.get('decision-filter').onchange();
+  nodes.get('category-filter').value='done';nodes.get('category-filter').onchange();
+  nodes.get('certainty-filter').value='uncertain';nodes.get('certainty-filter').onchange();
+  assert.deepEqual(logs(nodes),['log-0']);
+  assert.equal(nodes.get('classification-group').value,'stable:area');
+  nodes.get('certainty-filter').value='certain';nodes.get('certainty-filter').onchange();
+  assert.deepEqual(logs(nodes),['log-1']);
+  nodes.get('decision-filter').value='stable:followup';nodes.get('decision-filter').onchange();
+  assert.equal(nodes.get('certainty-filter').disabled,true);
+  assert.equal(nodes.get('certainty-filter').value,'all');
+  assert.equal(requests.length,count);
+});
+
+test('Missing Choice evidence is Not Assessed and never inherited from another decision',async()=>{
+  const event=assessmentFixture();delete event.result.decisions.response.probabilities;
+  const {nodes}=workspace([event]);await runTask(nodes);
+  nodes.get('classification-group').value='stable:response';nodes.get('classification-group').onchange();
+  assert.equal(nodes.get('chart-certain').textContent,'Certain · 0 (0.0%)');
+  assert.equal(nodes.get('chart-unassessed').hidden,false);
+  assert.equal(nodes.get('chart-unassessed').textContent,'Not Assessed · 1 (100.0%)');
+  nodes.get('chart-unassessed').onclick();
+  assert.match(nodes.get('chart-totals').textContent,/1 classified chunk/);
+});
+
+test('Default chart save preserves all AI results and does not run inference',async()=>{
+  const profile={label:'Review Fixture',instructions:'Use evidence.',primaryQuestion:'area',defaultDecision:'area',questions:assessmentFixture().result.decisionDefinitions};
+  const event=assessmentFixture();delete event.result.profileId;
+  const {nodes,context}=workspace([event],undefined,undefined,{general:{label:'General',instructions:'General',criteria:{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'}},custom:profile});
+  await runTask(nodes);
+  const before=vm.runInContext('JSON.stringify(results)',context);
+  const calls=[],originalFetch=context.fetch;context.fetch=(path,options)=>{calls.push({path,method:options?.method});return originalFetch(path,options);};
+  nodes.get('classification-group').value='stable:followup';nodes.get('classification-group').onchange();
+  assert.equal(nodes.get('set-chart-default').hidden,false);
+  await nodes.get('set-chart-default').onclick();
+  assert.equal(vm.runInContext('criteriaProfiles.custom.defaultDecision',context),'followup');
+  assert.equal(vm.runInContext('criteriaProfiles.custom.primaryQuestion',context),'area');
+  assert.equal(vm.runInContext('JSON.stringify(results)',context),before);
+  assert.equal(nodes.get('set-chart-default').hidden,true);
+  assert.deepEqual(calls,[{path:'/api/criteria',method:'POST'},{path:'/api/criteria',method:'PUT'}]);
+});
+
+test('Criteria editor saves any default type and explicit review options while retaining legacy projection',()=>{
+  const {nodes,context}=workspace([]);
+  context.defaultFixture={label:'Review Fixture',instructions:'Use evidence.',primaryQuestion:'area',defaultDecision:'followup',questions:assessmentFixture().result.decisionDefinitions};
+  vm.runInContext("criteriaProfiles={general:defaultFixture,custom:defaultFixture};handleEditCriteria('custom')",context);
+  assert.equal(vm.runInContext('criteriaFields.primary.options.length',context),4);
+  assert.equal(vm.runInContext('criteriaFields.primary.value',context),'followup');
+  vm.runInContext("decisionRows[1].options[1].review.checked=true",context);
+  const profile=vm.runInContext('readDecisionProfile()',context);
+  assert.equal(profile.defaultDecision,'followup');assert.equal(profile.primaryQuestion,'area');
+  assert.deepEqual(Array.from(profile.questions.response.reviewOptions),['pending']);
+  assert.equal(nodes.get('criteria-editor').hidden,false);
+});
+
+test('Removing the Decision filter clears dependent value and certainty conditions',async()=>{
+  const {nodes}=workspace([assessmentFixture(),assessmentFixture(1,true)]);await runTask(nodes);
+  nodes.get('decision-filter').value='stable:response';nodes.get('decision-filter').onchange();
+  nodes.get('category-filter').value='done';nodes.get('category-filter').onchange();
+  nodes.get('certainty-filter').value='uncertain';nodes.get('certainty-filter').onchange();
+  const chip=nodes.get('active-result-filters').children.find(node=>node.textContent.startsWith('Decision:'));
+  chip.onclick();
+  assert.equal(nodes.get('decision-filter').value,'all');
+  assert.equal(nodes.get('category-filter').value,'all');
+  assert.equal(nodes.get('certainty-filter').value,'all');
+  assert.equal(logs(nodes).length,2);
+});
+
+test('Failed default save preserves the previous default and all AI results',async()=>{
+  const profile={label:'Review Fixture',instructions:'Use evidence.',primaryQuestion:'area',defaultDecision:'area',questions:assessmentFixture().result.decisionDefinitions};
+  const {nodes,context}=workspace([assessmentFixture()],undefined,undefined,{general:profile,custom:profile});
+  await runTask(nodes);const before=vm.runInContext('JSON.stringify(results)',context);
+  const originalFetch=context.fetch;
+  context.fetch=(path,options)=>path==='/api/criteria' && options.method==='PUT'?Promise.resolve({ok:false,json:async()=>({error:'Save failed'})}):originalFetch(path,options);
+  nodes.get('classification-group').value='stable:followup';nodes.get('classification-group').onchange();
+  await nodes.get('set-chart-default').onclick();
+  assert.equal(nodes.get('set-chart-default').hidden,false);
+  assert.match(nodes.get('chart-default-message').textContent,/Save failed/);
+  assert.equal(vm.runInContext('JSON.stringify(results)',context),before);
+});
+
+test('Changing only the default preserves legacy profile definitions and typed compatibility metadata',()=>{
+  const {context}=workspace([]);
+  context.legacyDefaultFixture=JSON.parse(readFileSync(new URL('../profiles/http_access.json',import.meta.url),'utf8'));
+  const saved=vm.runInContext("criteriaProfiles={general:legacyDefaultFixture,custom:legacyDefaultFixture};handleEditCriteria('custom');criteriaFields.primary.value='ticket';readDecisionProfile()",context);
+  assert.equal(saved.defaultDecision,'ticket');
+  assert.deepEqual(JSON.parse(JSON.stringify(saved.criteria)),context.legacyDefaultFixture.criteria);
+  assert.equal(saved.questions,undefined);
+  context.typedDefaultFixture={label:'Typed',instructions:'Evidence.',primaryQuestion:'area',questions:{area:{label:'Area',type:'choice',instructions:'Choose.',summary:false,criteria:{a:'A',other:'Other'}}}};
+  const typed=vm.runInContext("criteriaProfiles={general:legacyDefaultFixture,custom:typedDefaultFixture};handleEditCriteria('custom');readDecisionProfile()",context);
+  assert.equal(typed.questions.area.summary,false);
+  assert.equal(Object.hasOwn(typed.questions.area,'reviewOptions'),false);
+  assert.deepEqual(JSON.parse(JSON.stringify(typed.questions)),context.typedDefaultFixture.questions);
+});
+
+test('Opening another run starts with its default instead of the previous chart selection',async()=>{
+  const events=[{type:'start',engine:'laya',total:1},assessmentFixture(),{type:'done',state:'completed'}];
+  const {nodes}=workspace(events);await runTask(nodes);
+  nodes.get('classification-group').value='stable:response';nodes.get('classification-group').onchange();
+  nodes.get('chart-uncertain').onclick();
+  const next=assessmentFixture();next.result.defaultDecision='followup';
+  events[1]=next;await runTask(nodes);
+  assert.equal(nodes.get('classification-group').value,'stable:followup');
+  assert.equal(nodes.get('chart-all').attributes['aria-pressed'],'true');
+  assert.equal(nodes.get('chart-uncertain').hidden,true);
 });

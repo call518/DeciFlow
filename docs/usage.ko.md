@@ -36,7 +36,7 @@ Criteria는 Choice·Score·Noul 판단 항목의 개수·선택지·단계를 �
 모든 판단 항목을 설정된 순서대로 작은 카드로 표시합니다.
 **Probabilities and Criteria**에서 항목별 확률과 기준을 펼칩니다. **Review Decisions**로
 타입별 수정값을 기록합니다. Choice 불확실성은 항목별로 표시하며 어느 Choice든 검토가
-필요하면 Needs Review가 됩니다. 차트의 확실성은 대표 Choice 기준입니다. 각 판단은
+필요하면 Needs Review가 됩니다. 차트의 확실성은 선택한 Choice 기준입니다. 각 판단은
 별개이며 확률을 하나로 합치지 않습니다. 티켓을 자동 생성하지 않고 답변 누락·오류는
 전체 요청 실패로 처리합니다.
 
@@ -100,11 +100,18 @@ JSON의 `chunkEvents`는 설정값, `eventCount`는 실제 이벤트 수입니�
 `line`·`lineEnd`·`lineCount`는 줄 위치·수를 유지합니다.
 요청·결과에는 `chunkEvents`를 사용합니다.
 
+Filter Type의 **Decision**에서 판단 항목을 고르고 **Category**로 선택값·차트 구간을,
+**Decision Certainty**로 Choice의 불확실성을 필터링합니다. Score·Noul은 다른 항목의
+확실성을 상속하지 않습니다. 검색은 항목별 인덱스로 저장된 전체 실행에 적용합니다.
+차트 전환은 목록 필터를 바꾸지 않습니다. Decision 필터를 지우면 그 값·확실성 조건도
+해제합니다. All Decisions의 Category는 기존 링크용 대표 범주 필터를 유지합니다.
+
 #### 불확실성과 사람의 검토
 
 **Uncertain은 DeciFlow 자체 기능**입니다. [`classifier.py`](../classifier.py)에서
 엔진 응답을 바탕으로 계산하며, Laya 자체의 불확실성 표시가 아닙니다.
-다음 중 하나라도 충족하면 `uncertain=true`로 설정합니다.
+각 Choice에서 다음 중 하나라도 충족하면 `decisionAssessments[id].uncertain=true`로
+설정합니다. 최상위 `uncertain`은 호환성을 위해 당시 대표 Choice 의미를 보존합니다.
 
 | 조건 | JSON `reviewReasons` 값 | 적용 엔진 |
 | --- | --- | --- |
@@ -133,7 +140,8 @@ DeciFlow는 예측을 유지하면서 검토 표시를 붙입니다. 정식 reje
 원래 범주·확률은 유지하며, 화면에는 잠정 후보를, JSON에는 `candidates`,
 `probabilityMargin`, `reviewReasons`를 기록합니다.
 
-**Needs Review**는 판정에 성공한 청크 중 Uncertain 또는 Other인 결과입니다.
+**Needs Review**는 어느 판단 항목이든 Uncertain이거나 `reviewOptions`로 지정한 선택,
+지시문 축약 등의 검토 사유가 있는 성공 청크를 한 번씩 집계합니다.
 요청 실패·거절은 Failed에만 포함하고 검토 지표·필터에서는 제외합니다. Other라는 이유만으로 Uncertain이 되지는 않습니다.
 **Certain**은 Uncertain 표시가 없다는 뜻이며 검증된 정확도를 뜻하지 않습니다.
 임계값을 운영 정책으로 사용하기 전에 정답이 있는 로그로 오분류와 검토량을 평가하세요.
@@ -171,12 +179,19 @@ Main의 Task 결과는 약 1초마다 현재 페이지의 새 결과만 조회�
 | Export All JSON | 실행 중에도 내보내기 시작 시점까지의 Task 전체 결과를 스트리밍합니다. Pause·필터로 숨겨진 결과도 포함합니다. |
 | Export Reviewed JSON | 어떤 항목이든 AI와 다른 수정값이 있는 성공 결과를 원래 답변·reviewerDecisions와 함께 내보냅니다. 비우거나 원래 값과 같은 수정은 제외하며 화면 필터는 무시합니다. |
 
+여러 분류 체계가 있으면 **Criteria**로 선택한 뒤 **Decision**에서 모든 판단 항목의 집계를 볼 수 있습니다. Criteria나 판단
+항목이 하나면 텍스트로 표시합니다. 기본 선택은 Default Chart Decision이며 **Set as Default**로 재분석 없이 변경합니다. Choice는 선택지별 건수, Score는 가중 점수를 가장 가까운 수준으로 반올림한
+분포(중간값 올림), Noul은 Yes 확률의 [0%, 25%), [25%, 50%), [50%, 75%), [75%, 100%] 구간을 표시합니다. 누락
+답변과 실패는 제외합니다. All / Certain / Uncertain은 선택한 Choice 기준입니다. 근거가 없으면 Certain이 아닌
+**Not Assessed**로 표시합니다. Score·Noul에는 확실성 그룹을 적용하지 않습니다. 항목 전환은 저장된 결과만 사용하며
+재분석하지 않습니다.
+
 **Classification Overview**는 불확실한 선택을 포함해 전체 소스의 AI 분류 개수를
 합산합니다. 개수는 원본 라인이 아닌 **청크** 기준이며, 비율은 판정에 성공한 청크
 기준입니다. 요청 실패는 별도 표시하고 필터·수동 정정은 집계에 영향을 주지 않습니다.
 **All / Certain / Uncertain** 버튼으로 차트의 집계 그룹을 선택하며 비율은 선택 그룹
 기준입니다. Certain은 Uncertain 표시가 없다는 뜻이며 정확도 보장이 아닙니다.
-버튼은 항상 표시됩니다. All은 전체 건수만, Certain·Uncertain은 건수와 전체 판정 성공 청크 대비 비율을
+Choice 버튼은 건수를 표시하고 Not Assessed는 해당 건이 있을 때 표시합니다. All은 전체 건수만, Certain·Uncertain은 건수와 전체 판정 성공 청크 대비 비율을
 표시합니다. 범주 막대의 비율은 선택 그룹 기준을 유지합니다.
 실패 개수는 항상 전체 요청 실패를 표시하며 어느 확실성 그룹에도 포함하지 않습니다.
 **Truncated**는 전체 그룹의 `usage.truncated=true` 응답 수입니다. 거절한 판정이므로
@@ -238,7 +253,7 @@ Task 정의·실행 상태·설정 스냅샷·결과·Action 실행 결과를
 | --- | --- |
 | Success / Failed / Total | 유효한 판정 성공 청크 / 실패 청크 / 처리 완료 전체 청크(성공 + 실패). 연결 오류·시간 초과·입력 거절·응답 검증 실패를 실패에 포함 |
 | Action Success / Failed / Total | 완료된 Action 성공 / 실패 / 전체 실행 수. Action 미할당·의사결정 실패 청크는 제외하며 의사결정 집계와 독립 |
-| Needs Review | 성공 판정 중 Uncertain(낮은 확률·근접한 확률·선택지 구분 소실) 또는 Other. 실패·거절은 제외 |
+| Needs Review | 항목별·기록 전체 검토 사유가 있는 성공 청크를 중복 없이 집계. 실패·거절 제외 |
 | Throughput | 선택한 실행의 전체 성공 결과 수 ÷ 전체 경과 초; 유휴시간·Action 전달 대기 포함, 중지·완료 시 마지막 값 유지 |
 | Total Elapsed Time | 실행 시작 이후 전체 경과시간; 유휴시간 포함 |
 | Active Processing Time | 요청이 하나 이상 진행 중인 구간을 중복 없이 합산; 전체 경과시간 대비 비율 |

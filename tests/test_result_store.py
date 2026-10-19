@@ -426,3 +426,55 @@ async def test_result_page_excludes_completions_after_its_summary(
             assert next_page["items"][0]["result"]["resultNumber"] == 245
     finally:
         store.close()
+
+
+def test_all_decisions_and_legacy_summary_backfill(tmp_path: Path) -> None:
+    """Keep nonprimary counts across persisted pages and old summary upgrades."""
+    store = SQLiteResultStore(tmp_path / "results.db")
+    run = snapshot()
+    store.create(run["jobId"], run)
+    definitions = {
+        "area": {"label": "Area", "type": "choice", "criteria": {"a": "A", "b": "B"}},
+        "response": {
+            "label": "Response",
+            "type": "choice",
+            "summary": False,
+            "criteria": {"done": "Done", "pending": "Pending"},
+        },
+        "urgency": {"label": "Urgency", "type": "score", "criteria": ["Low", "High"]},
+        "followup": {"label": "Follow-up", "type": "noul"},
+    }
+    for index, probability in enumerate([0, 0.25, 0.5, 0.75, 1]):
+        item = event(index)
+        item["result"].update(
+            classificationGroup="voc",
+            profileLabel="VOC",
+            primaryQuestion="area",
+            decisionDefinitions=definitions,
+            category="a",
+            uncertain=index == 2,
+            decisions={
+                "area": {"choice": "a"},
+                "response": {"choice": "pending"},
+                "urgency": {"score": 0.5},
+                "followup": {"noul": probability},
+            },
+        )
+        store.append(run["jobId"], item, run)
+    failure = event(6)
+    failure["result"]["error"] = "failed"
+    store.append(run["jobId"], failure, run)
+    expected = store.state(run["jobId"])["summary"]["decisionGroups"]
+    assert expected["voc:area"]["primary"]
+    assert expected["voc:response"]["counts"]["all"] == {"done": 0, "pending": 5}
+    assert expected["voc:urgency"]["counts"]["all"] == {"0 · Low": 0, "1 · High": 5}
+    assert list(expected["voc:followup"]["counts"]["all"].values()) == [1, 1, 1, 2]
+    assert sum(expected["voc:followup"]["counts"]["uncertain"].values()) == 0
+    assert sum(expected["voc:response"]["counts"]["unassessed"].values()) == 5
+    # Old runs have no decision aggregate; reconstruct from packed event contexts.
+    stats = store.state(run["jobId"])["summary"]
+    del stats["decisionGroups"]
+    with store.transaction() as connection:
+        connection.execute("UPDATE runs SET summary=?", (json.dumps(stats),))
+    assert store.state(run["jobId"])["summary"]["decisionGroups"] == expected
+    store.close()

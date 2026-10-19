@@ -17,7 +17,15 @@ from threading import RLock
 from typing import Protocol
 
 from classifier import Result
-from decisions import answer_value, is_probability
+from decisions import (
+    answer_value,
+    decision_assessments,
+    decision_bucket,
+    is_probability,
+    needs_review,
+    result_answers,
+    result_definitions,
+)
 from result_payload import compact_result
 
 CATEGORIES = ("normal", "warning", "error", "security", "other")
@@ -39,6 +47,8 @@ def empty_summary() -> Result:
             for group in ("all", "certain", "uncertain")
         },
         "classificationGroups": {},
+        "decisionGroups": {},
+        "decisionSummaryVersion": 2,
         "hosts": {},
         "sources": {},
     }
@@ -53,11 +63,95 @@ def _host_id(result: Result) -> str:
     return "local"
 
 
+def _decision_entries(result: Result) -> Iterator[tuple[str, Result, str | None, str]]:
+    if result.get("error"):
+        return
+    identity = result.get("criteriaGroup") or result.get(
+        "classificationGroup", "system"
+    )
+    answers = result_answers(result)
+    assessments = decision_assessments(result)
+    for question, definition in result_definitions(result).items():
+        kind = definition["type"]
+        options = (
+            list(definition["criteria"])
+            if kind == "choice"
+            else [
+                f"{i} · {text.split(':')[0]}"
+                for i, text in enumerate(definition["criteria"])
+            ]
+            if kind == "score"
+            else ["0–<25%", "25–<50%", "50–<75%", "75–100%"]
+        )
+        entry = {
+            "criteria": result.get("profileLabel", "System"),
+            "identity": identity,
+            "profileId": result.get("profileId", result.get("profile")),
+            "question": question,
+            "label": definition.get("label", question),
+            "primary": question == result.get("primaryQuestion", "category"),
+            "default": question
+            == (
+                result.get("defaultDecision")
+                or result.get("primaryQuestion")
+                or "category"
+            ),
+            "type": kind,
+            "options": options,
+            "counts": {
+                name: dict.fromkeys(options, 0)
+                for name in ("all", "certain", "uncertain", "unassessed")
+            },
+        }
+        uncertain = assessments.get(question, {}).get("uncertain")
+        status = (
+            (
+                "uncertain"
+                if uncertain is True
+                else "certain"
+                if uncertain is False
+                else "unassessed"
+            )
+            if kind == "choice"
+            else "not_applicable"
+        )
+        yield (
+            f"{identity}:{question}",
+            entry,
+            decision_bucket(definition, answers.get(question, {})),
+            status,
+        )
+
+
+def _aggregate_decisions(stats: Result, result: Result) -> None:
+    for key, definition, bucket, status in _decision_entries(result):
+        entry = stats.setdefault("decisionGroups", {}).setdefault(key, definition)
+        if bucket is None:
+            continue
+        entry["counts"]["all"][bucket] += 1
+        if status != "not_applicable":
+            entry["counts"][status][bucket] += 1
+
+
+def _assessed_result(result: Result) -> Result:
+    if result.get("error"):
+        return result
+    assessments = decision_assessments(result)
+    return {
+        **result,
+        "decisionAssessments": assessments,
+        "assessmentVersion": 1,
+        "anyUncertain": any(item["uncertain"] is True for item in assessments.values()),
+        "needsReview": needs_review(result),
+    }
+
+
 def _aggregate(stats: Result, result: Result) -> None:
+    _aggregate_decisions(stats, result)
     stats["total"] += 1
     failed = bool(result.get("error"))
     stats["failed"] += failed
-    stats["review"] += not failed and bool(result.get("review"))
+    stats["review"] += needs_review(result)
     stats["truncated"] += (
         result.get("providerResponse", {}).get("usage", {}).get("truncated") is True
     )
@@ -189,6 +283,15 @@ class SQLiteResultStore:
             );
             CREATE INDEX IF NOT EXISTS result_source
                 ON sources(run_id, source, sequence);
+            CREATE TABLE IF NOT EXISTS result_decisions (
+                run_id TEXT NOT NULL, sequence INTEGER NOT NULL,
+                decision TEXT NOT NULL, bucket TEXT NOT NULL, certainty TEXT NOT NULL,
+                PRIMARY KEY (run_id, sequence, decision)
+            );
+            CREATE INDEX IF NOT EXISTS decision_value_page
+                ON result_decisions(run_id, decision, bucket, sequence);
+            CREATE INDEX IF NOT EXISTS decision_certainty_page
+                ON result_decisions(run_id, decision, certainty, sequence);
             CREATE TABLE IF NOT EXISTS result_contexts (
                 run_id TEXT NOT NULL, key TEXT NOT NULL, payload TEXT NOT NULL,
                 PRIMARY KEY (run_id, key)
@@ -356,7 +459,7 @@ class SQLiteResultStore:
                 ),
                 result.get("categoryFilter", result.get("category")),
                 _host_id(result),
-                int(not failed and bool(result.get("review"))),
+                int(needs_review(result)),
                 int(failed),
                 result.get("log", "").lower(),
                 None,
@@ -365,6 +468,7 @@ class SQLiteResultStore:
         if event["type"] != "result":
             return
         _aggregate(stats, result)
+        self._index_decisions(connection, run_id, sequence, result)
         connection.execute(
             "INSERT INTO processing_times VALUES(?,?,1) "
             "ON CONFLICT(run_id,elapsed_ms) DO UPDATE SET samples=samples+1",
@@ -388,6 +492,7 @@ class SQLiteResultStore:
                 "SELECT summary,sequence FROM runs WHERE id=?", (run_id,)
             ).fetchone()
             stats = json.loads(row["summary"])
+            self._ensure_decision_summary(run_id, stats)
             if event["type"] == "result":
                 self._ensure_processing_times(connection, run_id, stats["total"])
             stats.pop("throughputBuckets", None)
@@ -547,6 +652,7 @@ class SQLiteResultStore:
                 "source_checkpoints",
                 "pending_work",
                 "result_contexts",
+                "result_decisions",
             ):
                 connection.execute(
                     f"DELETE FROM {table} WHERE run_id IN "
@@ -575,6 +681,42 @@ class SQLiteResultStore:
             (run_id,),
         )
 
+    @staticmethod
+    def _index_decisions(
+        connection: sqlite3.Connection, run_id: str, sequence: int, result: Result
+    ) -> None:
+        connection.executemany(
+            "INSERT OR REPLACE INTO result_decisions VALUES(?,?,?,?,?)",
+            [
+                (run_id, sequence, key, bucket, status)
+                for key, _, bucket, status in _decision_entries(result)
+                if bucket is not None
+            ],
+        )
+
+    def _ensure_decision_summary(self, run_id: str, stats: Result) -> None:
+        if stats.get("decisionSummaryVersion") == 2 and "decisionGroups" in stats:
+            return
+        stats["decisionGroups"] = {}
+        stats["review"] = 0
+        for row in self.connection.execute(
+            "SELECT sequence,payload FROM events WHERE run_id=? AND kind='result' ORDER BY sequence",
+            (run_id,),
+        ):
+            result = self._expand(run_id, json.loads(row["payload"])["result"])
+            _aggregate_decisions(stats, result)
+            review = needs_review(result)
+            stats["review"] += review
+            self.connection.execute(
+                "UPDATE events SET review=? WHERE run_id=? AND sequence=?",
+                (int(review), run_id, row["sequence"]),
+            )
+            self._index_decisions(self.connection, run_id, row["sequence"], result)
+        stats["decisionSummaryVersion"] = 2
+        self.connection.execute(
+            "UPDATE runs SET summary=? WHERE id=?", (json.dumps(stats), run_id)
+        )
+
     def state(self, run_id: str) -> Result:
         """Read whole-run aggregates and exact percentiles from duration counts."""
         with self.transaction() as connection:
@@ -582,6 +724,7 @@ class SQLiteResultStore:
                 "SELECT * FROM runs WHERE id=?", (run_id,)
             ).fetchone()
             stats = json.loads(row["summary"])
+            self._ensure_decision_summary(run_id, stats)
             total = stats["total"]
             self._ensure_processing_times(connection, run_id, total)
             values = connection.execute(
@@ -613,6 +756,14 @@ class SQLiteResultStore:
         """Read a keyset page; never use an OFFSET proportional to history length."""
         if type(limit) is not int or limit not in {10, 30, 50, 100}:
             raise ValueError("Invalid page size.")
+        with self.transaction() as connection:
+            row = connection.execute(
+                "SELECT summary FROM runs WHERE id=?", (run_id,)
+            ).fetchone()
+            stats = json.loads(row["summary"]) if row is not None else empty_summary()
+            if row is not None:
+                self._ensure_decision_summary(run_id, stats)
+        table = "events e"
         where = ["e.run_id=?", "e.kind='result'"]
         params: list[object] = [run_id]
         for key, operator in (("before", "<"), ("after", ">"), ("through", "<=")):
@@ -622,10 +773,40 @@ class SQLiteResultStore:
                     raise ValueError("Invalid result cursor.")
                 where.append(f"e.sequence {operator} ?")
                 params.append(value)
+        decision = filters.get("decision", "all")
+        certainty = filters.get("certainty", "all")
+        if certainty not in {"all", "certain", "uncertain", "unassessed"}:
+            raise ValueError("Invalid decision certainty filter.")
+        if decision != "all":
+            definition = (
+                stats["decisionGroups"].get(decision)
+                if isinstance(decision, str)
+                else None
+            )
+            if definition is None:
+                raise ValueError("Invalid decision filter.")
+            if certainty != "all" and definition["type"] != "choice":
+                raise ValueError("Certainty filters require a Choice decision.")
+            table += " JOIN result_decisions d ON d.run_id=e.run_id AND d.sequence=e.sequence"
+            conditions = ["d.decision=?"]
+            decision_params = [decision]
+            value = filters.get("category", "all")
+            if value != "all":
+                if value not in definition["options"]:
+                    raise ValueError("Invalid decision value filter.")
+                conditions.append("d.bucket=?")
+                decision_params.append(value)
+            if certainty != "all":
+                conditions.append("d.certainty=?")
+                decision_params.append(certainty)
+            where.extend(conditions)
+            params.extend(decision_params)
+        elif certainty != "all":
+            raise ValueError("Select a Choice decision before filtering certainty.")
         category = filters.get("category", "all")
-        if category == "failed":
+        if decision == "all" and category == "failed":
             where.append("e.failed=1")
-        elif category != "all":
+        elif decision == "all" and category != "all":
             with self.lock:
                 row = self.connection.execute(
                     "SELECT summary FROM runs WHERE id=?", (run_id,)
@@ -667,7 +848,7 @@ class SQLiteResultStore:
                 "SELECT e.run_id,e.sequence,e.payload,e.reviewer,e.reviews, "
                 "e.sequence-(SELECT COUNT(*) FROM events n "
                 "WHERE n.run_id=e.run_id AND n.kind<>'result' "
-                "AND n.sequence<=e.sequence) AS result_number FROM events e WHERE "
+                f"AND n.sequence<=e.sequence) AS result_number FROM {table} WHERE "
                 + " AND ".join(where)
                 + " ORDER BY e.sequence DESC LIMIT ?",
                 (*params, limit + 1),
@@ -682,7 +863,9 @@ class SQLiteResultStore:
         }
 
     def _result(self, row: sqlite3.Row) -> Result:
-        result = self._expand(row["run_id"], json.loads(row["payload"])["result"])
+        result = _assessed_result(
+            self._expand(row["run_id"], json.loads(row["payload"])["result"])
+        )
         result["resultNumber"] = row["result_number"]
         if row["reviewer"] is not None:
             result["reviewerCategory"] = row["reviewer"]
@@ -772,7 +955,9 @@ class SQLiteResultStore:
         for row in rows:
             event = json.loads(row["payload"])
             if event.get("type") == "result":
-                event["result"] = self._expand(run_id, event["result"])
+                event["result"] = _assessed_result(
+                    self._expand(run_id, event["result"])
+                )
             if row["kind"] == "result" and row["reviewer"] is not None:
                 event["result"]["reviewerCategory"] = row["reviewer"]
             if row["kind"] == "result" and row["reviews"]:

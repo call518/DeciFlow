@@ -3,9 +3,20 @@
 [English](criteria.md) | [한국어](criteria.ko.md) | [문서 안내](README.ko.md) | [README](../README.ko.md)
 
 **Criteria**에서 판정 프로필을 관리합니다. Laya와 Jev에 같은 정의와 응답 검증을
-적용합니다. 프로필에는 이름·공통 지시문·순서가 있는 판단 항목과 차트·필터용
-**Primary Classification**(`choice`)을 지정합니다. 항목 수는 3개로 고정하지 않으며
+적용합니다. 프로필에는 이름·공통 지시문·순서가 있는 판단 항목과 기본 차트용
+**Default Chart Decision**을 모든 유형 중 하나 지정합니다. 항목 수는 3개로 고정하지 않으며
 제공자의 입력·실행 제한은 적용됩니다.
+
+Default Chart Decision은 존재하는 판단 항목 중 정확히 하나를 지정하는 표시 설정입니다.
+AI 답변·불확실성·필터는 바꾸지 않습니다. `summary`와 관계없이 모든 항목을 Overview에서
+선택할 수 있습니다. Overview의 **Set as Default**나 Criteria 편집에서 변경합니다.
+Score는 가중 점수를 가장 가까운 수준으로 반올림하며 중간값은 올립니다. Noul은 Yes 확률 구간입니다.
+
+Choice 선택지의 **Needs Review**를 체크하면 Unknown/Other처럼 사람이 검토해야 하는
+선택을 명시적으로 지정합니다. 저장된 `reviewOptions`는 해당 선택지 ID 목록입니다.
+빈 목록은 선택값에 따른 검토만 끄며 불확실성 검사는 유지합니다. 이 필드가 없는 기존
+프로필은 알려진 기존 Unknown/Other ID를 사용합니다. ChatGPT 자동 작성도 같은
+`defaultDecision`과 `reviewOptions` 검증을 사용합니다.
 
 ## AI로 Criteria 생성
 
@@ -32,7 +43,7 @@ OpenAI 키 없이도 이 가이드를 따라 Criteria를 직접 작성·수정·
    민감한 내용은 먼저 제거하세요. OpenAI API 요금이 발생합니다.
 5. 자동 모드의 **Suggested Analysis Purpose** 또는 수동 모드의 **Analysis Purpose**와
    자동 입력된 이름, 공통 지침, 순서대로 구성된 Decisions, 선택지·단계,
-   Primary Classification과 토큰 추정치를 검토합니다.
+   Default Chart Decision과 토큰 추정치를 검토합니다.
 6. **Save Changes**로 전체 프로필을 저장합니다. Task에는 별도로 할당하고
    대표 입력에 대한 실제 분류 결과를 확인하세요.
 
@@ -84,7 +95,7 @@ OpenAI는 Criteria 작성에만 사용하며 실제 분류는 자동 대체 없�
 | --- | --- | --- |
 | Start From Template | 신규 초안의 출발점 | VOC 전체 대화는 상담용 템플릿을 선택합니다. Custom Decisions는 빈 사용자 구성에서 시작합니다. 템플릿을 다시 고르면 현재 초안 내용을 대체합니다. |
 | Name | Task에서 고를 프로필 이름 | `VOC 상담 후속 조치 테스트`. 기존 프로필과 다른 이름을 사용합니다. |
-| Primary Classification | Overview 차트와 분류 필터에 사용할 대표 판단 | `문의 유형` 같은 Choice 항목 하나. 나머지 항목의 실행 여부를 결정하는 설정은 아닙니다. |
+| Default Chart Decision | Overview의 기본 차트 항목 | Choice·Score·Noul 중 정확히 하나. 모든 항목은 계속 실행하며 필터·AI 답변은 바꾸지 않습니다. |
 | Decision Instructions | 모든 Decision에 적용할 공통 원칙 | 판단 시점, 사용할 근거, 추측 금지, 정보 부족 시 대응. 특정 항목의 선택지는 아래 Decision에서 정의합니다. |
 
 **공통 지시문 예시**
@@ -206,7 +217,7 @@ N/A로 표시합니다. 경고만으로 저장을 차단하지는 않습니다.
 2. Name과 공통 Decision Instructions를 입력합니다.
 3. 각 Decision의 고유 ID·표시 이름·타입·지시문을 작성합니다.
 4. Choice 선택지 또는 Score 단계를 작성합니다.
-5. Choice 항목 하나를 Primary Classification으로 선택합니다.
+5. 모든 유형 중 항목 하나를 Default Chart Decision으로 선택합니다.
 6. Save Changes로 저장합니다. Cancel Edit는 미저장 초안을 버립니다.
 7. Task를 Edit하여 해당 Source 행의 Criteria에 새 프로필을 선택하고 저장합니다.
 8. 새 실행에서 원문과 답을 비교합니다. Criteria만 저장해도 Task에 자동 할당되지는 않습니다.
@@ -224,7 +235,7 @@ Add Decision은 질문을 하나 추가합니다. Add Option / Level은 **현재
 | Option IDs must be unique. | 같은 Choice 내부의 왼쪽 ID를 구분합니다. 오른쪽 정의만 바꿔도 ID 중복은 해소되지 않습니다. |
 | Choice requires 2–255… | 선택지 수, 빈 ID, 예약어 all·failed를 확인합니다. |
 | Score requires 2–10… | 단계 정의가 2–10개인지 확인합니다. |
-| Primary Classification을 고를 수 없음 | 적어도 하나의 Choice 항목이 필요합니다. |
+| Default Chart Decision을 고를 수 없음 | 판단 항목을 추가하고 기본 항목으로 지정합니다. |
 | 빈 이름·지시문·정의 관련 오류 | 프로필과 각 Decision의 필수 항목, 선택지·단계 정의를 모두 채웁니다. |
 
 Decision ID와 Display Name을 혼동하지 마세요. 예를 들어 두 항목의 표시 이름이
@@ -256,13 +267,15 @@ Choice 선택지·범위 내 Score 값·Noul 확률을 수정합니다. 수정�
 AI와 다른 수정값이 있는 결과를 내보냅니다.
 
 모든 Choice에서 선택값 확률 70% 미만·상위 두 확률 차이 10%p 미만·Laya가 보고한
-선택지 구분 소실을 검사합니다. Other·Unknown 선택도 검토 대상으로 표시합니다.
-차트의 확실성은 대표 항목 기준이고 다른 Choice 항목 때문에 Needs Review가 될 수도 있습니다.
+선택지 구분 소실을 검사합니다. `reviewOptions`로 지정한 Other·Unknown 선택도 검토 대상으로 표시합니다.
+차트의 확실성은 선택한 Choice 기준이고 어느 판단 항목이나 기록 전체의 문제도 Needs Review가 됩니다.
 이는 실측 정확도가 아닌 휴리스틱이며 Score·Noul의 신뢰도를 평가하지 않습니다.
 
 실행 중인 작업은 고정한 프로필을 사용합니다. 결과에 `decisionDefinitions`·`primaryQuestion`·
 `decisions`·`questions`를 보존하므로 이후 수정으로 과거 결과의 표시가 바뀌지 않습니다.
-서로 다른 사용자 대표 분류 정의는 차트에서 분리합니다.
+현재 저장된 기본 항목은 초기 차트 선택에만 적용합니다. `primaryQuestion`은 Action·기존 JSON을
+위한 고정 호환 필드로 보존합니다. 새 차트 식별자는 기본 항목을 제외하며 서로 다른 판단
+정의는 구분합니다. Choice 없이 Score·Noul만 있는 프로필도 지원합니다.
 
 프로필은 `DECIFLOW_DATA_DIR/deciflow.sqlite3`에 저장합니다. 번들 JSON은 초기값·템플릿이며
 Criteria 관리는 신뢰한 UI Origin에서만 허용합니다.

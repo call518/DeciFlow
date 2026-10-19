@@ -2,7 +2,7 @@ import { readEvents } from './stream.js';
 
 const $ = id => document.getElementById(id);
 const routeOpeners = new Map();
-const resultFilterLabels={'category-filter':'Category','source-filter':'Source','host-filter':'Host','log-search':'Search Text','review-filter':'Review Status'};
+const resultFilterLabels={'category-filter':'Category','source-filter':'Source','host-filter':'Host','log-search':'Search Text','review-filter':'Review Status','decision-filter':'Decision','certainty-filter':'Decision Certainty'};
 let resultFilterSignature='';
 let applyingRoute = false;
 let routeGeneration = 0;
@@ -48,6 +48,7 @@ function handleMessage(id,text,isError=false) {
   node.textContent=text;
 }
 const labels = { normal: 'Normal', warning: 'Warning', error: 'Error', security: 'Security', other: 'Other' };
+const noulRangeLabels = {'0–<25%':'Below 25%','25–<50%':'25% to <50%','50–<75%':'50% to <75%','75–100%':'75% to 100%'};
 
 function titleLabel(value) {
   return Object.hasOwn(labels,value)?labels[value]:String(value).replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
@@ -100,6 +101,37 @@ function resultDecisionAnswers(result) {
     ticket:{noul:result.ticketProbability},
   };
 }
+const uncertaintyReasons=new Set(['low_answer_probability','close_probabilities','collapsed_options','low_confidence']);
+const decisionReasonLabels={low_answer_probability:'selected probability below 70%',low_confidence:'legacy provider confidence below 70%',close_probabilities:'top two probabilities differ by less than 10 percentage points',collapsed_options:'option descriptions lost distinction during token rendering',other_category:'selected option requires review',criteria_shortened:'decision instructions were shortened'};
+function decisionReviewOptions(q) {
+  return q.reviewOptions ?? Object.keys(q.criteria || {}).filter(key=>['other','unknown','기타','확인 불가','기타·확인 불가'].includes(key));
+}
+function resultDecisionAssessments(result) {
+  if(result.decisionAssessments)return result.decisionAssessments;
+  if(result.error)return {};
+  const answers=resultDecisionAnswers(result),assessments={},primary=result.primaryQuestion || 'category';
+  const usage=result.providerResponse?.usage || {};
+  for(const [id,q] of Object.entries(resultDecisionDefinitions(result))) {
+    const reasons=[...(result.decisionReviews?.[id] || (!result.decisionReviews && id===primary?(result.reviewReasons || []).filter(reason=>reason!=='criteria_shortened'):[]))];
+    if(Number.isInteger(usage.criteria_tokens_dropped?.[id]) && usage.criteria_tokens_dropped[id]>0)reasons.push('criteria_shortened');
+    const assessment={uncertain:null,reviewReasons:reasons},answer=answers[id] || {};
+    if(q.type==='choice') {
+      const probabilities=answer.probabilities || {},choice=answer.choice;
+      if(Object.hasOwn(probabilities,choice) && Object.keys(probabilities).length>=2 && Object.values(probabilities).every(value=>Number.isFinite(value) && value>=0 && value<=1)) {
+        const ranked=Object.keys(probabilities).sort((a,b)=>probabilities[b]-probabilities[a]);
+        const margin=Number((probabilities[ranked[0]]-probabilities[ranked[1]]).toFixed(6));
+        if(probabilities[choice]<.7)reasons.push('low_answer_probability');
+        if(margin<.1)reasons.push('close_probabilities');
+        const options=usage.options?.[id];if(result.engine==='laya' && options && options.distinct<options.total)reasons.push('collapsed_options');
+        Object.assign(assessment,{uncertain:reasons.some(reason=>uncertaintyReasons.has(reason)),answerProbability:probabilities[choice],probabilityMargin:margin,candidates:ranked.slice(0,2)});
+      }else if(reasons.length || (id===primary && typeof result.uncertain==='boolean'))assessment.uncertain=reasons.some(reason=>uncertaintyReasons.has(reason)) || (id===primary && Boolean(result.uncertain));
+      if(!result.decisions && id===primary && typeof result.uncertain==='boolean')assessment.uncertain=result.uncertain;
+      if(decisionReviewOptions(q).includes(choice))reasons.push('other_category');
+    }
+    assessment.reviewReasons=[...new Set(reasons)];assessments[id]=assessment;
+  }
+  return assessments;
+}
 function choiceColor(value,options) {
   if(value==='기타' || value==='확인 불가')return '#84938c';
   if(Object.hasOwn(labels,value))return null;
@@ -111,8 +143,7 @@ function renderDecisionCard(id,definition,answer,result) {
   const scalar=decisionScalar(answer);const card=element('section','','decision-card');
   let value='Not available',detail='',distribution=[];
   if(kind==='choice') {
-    const primary=id===(result.primaryQuestion || 'category');
-    value=titleLabel(scalar || 'unknown');const probability=primary?(result.answerProbability ?? answer.probabilities?.[scalar]):answer.probabilities?.[scalar];
+    value=titleLabel(scalar || 'unknown');const probability=!result.decisions && id===(result.primaryQuestion || 'category')?(result.answerProbability ?? answer.probabilities?.[scalar]):answer.probabilities?.[scalar];
     detail=`${((probability || 0)*100).toFixed(1)}% selected probability`;
     distribution=Object.entries(answer.probabilities || {}).map(([key,p])=>[titleLabel(key),p]);
   } else if(kind==='score') {
@@ -129,7 +160,8 @@ function renderDecisionCard(id,definition,answer,result) {
   badge.title=`${title}: ${value}`;
   const heading=element('span',title,'decision-label');
   const detailRow=element('span',detail,'decision-detail');
-  if(kind==='choice' && id===(result.primaryQuestion || 'category') && result.uncertain)detailRow.append(element('span','Uncertain','decision-uncertainty'));
+  const assessment=resultDecisionAssessments(result)[id] || resultDecisionAssessments({...result,decisionDefinitions:{[id]:definition},decisions:{[id]:answer}})[id] || {uncertain:null,reviewReasons:[]};
+  if(kind==='choice' && assessment.uncertain===true)detailRow.append(element('span','Uncertain','decision-uncertainty'));
   card.append(heading,badge,detailRow);
   const details=element('details','','decision-distribution');details.append(element('summary','Probabilities and Criteria'));
   const dl=element('dl','','decision-probabilities');dl.setAttribute('aria-label',`${title} probabilities`);
@@ -138,12 +170,11 @@ function renderDecisionCard(id,definition,answer,result) {
   if(definition.instructions)details.append(element('p',definition.instructions,'caption'));
   if(definition.criteria)for(const [key,text] of Object.entries(definition.criteria))details.append(element('p',`${key}: ${text}`,'caption'));
   card.append(details);
-  if(kind==='choice' && id===(result.primaryQuestion || 'category') && result.uncertain) {
+  if(kind==='choice' && assessment.uncertain===true) {
     badge.className+=' uncertain';
-    const reasons={low_answer_probability:'selected probability below 70%',low_confidence:'legacy provider confidence below 70%',close_probabilities:'close category probabilities',collapsed_options:'option descriptions lost distinction during token rendering',other_category:'insufficient context / Other'};
-    card.append(element('p',`Provisional: ${result.candidates?.map(key=>`${titleLabel(key)} ${(answer.probabilities[key]*100).toFixed(1)}%`).join(' vs ') || 'Needs review'} · ${(result.reviewReasons || []).map(reason=>reasons[reason] || reason).join('; ')}`,'uncertainty-note'));
-  }
-  if(id!==(result.primaryQuestion || 'category') && result.decisionReviews?.[id]?.length)card.append(element('p',`Needs Review · ${result.decisionReviews[id].join(', ')}`,'uncertainty-note'));
+    card.append(element('p',`Provisional: ${(assessment.candidates || []).map(key=>`${titleLabel(key)} ${((answer.probabilities?.[key] || 0)*100).toFixed(1)}%`).join(' vs ') || 'Needs review'} · ${assessment.reviewReasons.map(reason=>decisionReasonLabels[reason] || reason).join('; ')}`,'uncertainty-note'));
+  }else if(assessment.reviewReasons.length)card.append(element('p',`Needs Review · ${assessment.reviewReasons.map(reason=>decisionReasonLabels[reason] || reason).join('; ')}`,'uncertainty-note'));
+  if(kind==='choice' && assessment.uncertain===null)detailRow.append(element('span','Not Assessed','decision-uncertainty'));
   return card;
 }
 function renderDecisionReview(result,jsonView,jsonText) {
@@ -328,7 +359,7 @@ async function handleCheckEngineConnection() {
   } catch { if(!engineRequestObserved)handleEngineConnection('check_error','health'); }
 }
 function needsReview(result) {
-  return !result.error && Boolean(result.review);
+  return !result.error && Boolean(result.needsReview || result.review || result.recordReviewReasons?.length || Object.values(resultDecisionAssessments(result)).some(item=>item.reviewReasons.length));
 }
 function renderTokenWarning(result) {
   const usage=result.providerResponse?.usage;
@@ -1393,10 +1424,10 @@ function handleViewCriteria(id) {
   const definitions = profileQuestions(profile);
   handleViewConfiguration('criteria-view', profile.label, [
     ['Name',profile.label], ['Decision Instructions',profile.instructions],
-    ['Primary Classification',definitions[profile.primaryQuestion || 'category']?.label],
+    ['Default Chart Decision',definitions[profile.defaultDecision || profile.primaryQuestion || 'category']?.label],
     ...Object.entries(definitions).map(([id,q]) => [
       `${q.label} (${titleLabel(q.type)})`,
-      `${q.instructions}\n${q.type === 'noul' ? 'Yes probability' : Object.entries(q.criteria).map(([key,text])=>`${key}: ${text}`).join('\n')}`,
+      `${q.instructions}\n${q.type === 'noul' ? 'Yes probability' : Object.entries(q.criteria).map(([key,text])=>`${key}: ${text}`).join('\n')}${q.type==='choice'?`\nNeeds Review When Selected: ${decisionReviewOptions(q).join(', ') || 'None'}`:''}`,
     ]), ['Normalization',profile.normalization],
   ]);
 
@@ -1557,14 +1588,14 @@ function handleEditCriteria(id, template = null, generatedPurpose = null) {
     addHelp(label,input,key==='label'?'Profile name shown when assigning Criteria to a Task. Example: VOC Asia Culture Center Consulting QnA.':'Rules shared by every decision. State the evidence to use and what must not be inferred.');
     form.append(label);criteriaFields[key]=input;
   }
-  const primaryLabel=element('label','Primary Classification');const primary=element('select','');
-  primary.setAttribute('aria-label','Primary Classification');primaryLabel.append(primary);addHelp(primaryLabel,primary,'One Choice decision used for the Overview chart and classification filter. Other decisions still run.');form.insertBefore(primaryLabel,criteriaFields.instructions.parentElement);criteriaFields.primary=primary;
+  const primaryLabel=element('label','Default Chart Decision');const primary=element('select','');
+  primary.setAttribute('aria-label','Default Chart Decision');primaryLabel.append(primary);addHelp(primaryLabel,primary,'Exactly one decision shown by default in the Overview chart. Any type is allowed. Changing it does not change AI answers, uncertainty or filters.');form.insertBefore(primaryLabel,criteriaFields.instructions.parentElement);criteriaFields.primary=primary;
   const list=element('div','','decision-editors');
   const refreshPrimary=()=>{
     decisionRows.forEach((row,index)=>{row.legend.textContent=`Decision ${index+1} · ${row.label.value.trim() || row.id.value.trim() || 'New Decision'} · ${titleLabel(row.type.value)}`;});
-    const selected=primary.value || profile.primaryQuestion || 'category';primary.replaceChildren();
-    for(const row of decisionRows)if(row.type.value==='choice')primary.append(new Option(row.label.value || row.id.value,row.id.value));
-    primary.value=decisionRows.some(row=>row.type.value==='choice' && row.id.value===selected)?selected:decisionRows.find(row=>row.type.value==='choice')?.id.value || '';
+    const selected=primary.value || profile.defaultDecision || profile.primaryQuestion || 'category';primary.replaceChildren();
+    for(const row of decisionRows)primary.append(new Option(row.label.value || row.id.value,row.id.value));
+    primary.value=decisionRows.some(row=>row.id.value===selected)?selected:decisionRows[0]?.id.value || '';
     handleRenderCriteriaTokens();
   };
   const appendQuestion=(identity,definition)=>{
@@ -1585,14 +1616,15 @@ function handleEditCriteria(id, template = null, generatedPurpose = null) {
       const entry=element('div','','decision-option');const input=element('input','');input.value=key;input.setAttribute('aria-label','Option ID');input.hidden=row.type.value==='score';
       const description=element('textarea','');description.rows=2;description.value=text;description.setAttribute('aria-label','Option Definition');
       const remove=element('button','Remove','quiet');remove.type='button';
-      const option={key:input,text:description,entry};optionRows.push(option);
+      const review=element('input','');review.type='checkbox';review.checked=decisionReviewOptions(definition).includes(key);review.setAttribute('aria-label','Needs Review When Selected');const reviewLabel=element('label','Needs Review','option-review');reviewLabel.append(review);
+      const option={key:input,text:description,entry,review,reviewLabel};optionRows.push(option);
       input.oninput=description.oninput=handleRenderCriteriaTokens;
       remove.onclick=()=>{optionRows.splice(optionRows.indexOf(option),1);entry.remove();handleRenderCriteriaTokens();};
-      entry.append(input,description,remove);options.append(entry);handleRenderCriteriaTokens();
+      entry.append(input,description,remove,reviewLabel);options.append(entry);handleRenderCriteriaTokens();
     };
     for(const [key,text] of Object.entries(definition.criteria || {}))addOption(key,text);
     const add=element('button','Add Option / Level','quiet');add.type='button';add.onclick=()=>addOption(row.type.value==='score'?String(optionRows.length):`option_${optionRows.length+1}`,'');
-    const updateType=()=>{optionHelp.textContent=row.type.value==='choice'?'Options: left is the unique Option ID (for example, booking); right defines when it applies. Add 2–255 options. all and failed are reserved.':row.type.value==='score'?'Levels: write 2–10 definitions from lowest to highest. Positions become scores 0, 1, 2, ...; the result is probability-weighted.':'No options are needed. Write a Yes/No question in Instructions and define what counts as Yes. The result is a Yes probability, not a completed action.';options.setAttribute('data-type',row.type.value);options.hidden=add.hidden=row.type.value==='noul';for(const option of optionRows)option.key.hidden=row.type.value==='score';refreshPrimary();};
+    const updateType=()=>{optionHelp.textContent=row.type.value==='choice'?'Options: left is the unique Option ID (for example, booking); right defines when it applies. Add 2–255 options. all and failed are reserved.':row.type.value==='score'?'Levels: write 2–10 definitions from lowest to highest. Positions become scores 0, 1, 2, ...; the result is probability-weighted.':'No options are needed. Write a Yes/No question in Instructions and define what counts as Yes. The result is a Yes probability, not a completed action.';options.setAttribute('data-type',row.type.value);options.hidden=add.hidden=row.type.value==='noul';for(const option of optionRows){option.key.hidden=row.type.value==='score';option.reviewLabel.hidden=row.type.value!=='choice';}refreshPrimary();};
     row.type.onchange=updateType;row.id.oninput=row.label.oninput=refreshPrimary;
     const tools=element('div','','decision-editor-tools');
     for(const [caption,offset] of [['Move Up',-1],['Move Down',1]]) {
@@ -1606,7 +1638,7 @@ function handleEditCriteria(id, template = null, generatedPurpose = null) {
     row.panel=panel;row.options=optionRows;decisionRows.push(row);panel.append(optionHelp,options,add,tools);list.append(panel);updateType();
   };
   for(const [id,q] of Object.entries(profileQuestions(profile)))appendQuestion(id,q);
-  primary.value=profile.primaryQuestion || 'category';
+  primary.value=profile.defaultDecision || profile.primaryQuestion || 'category';
   const add=element('button','Add Decision','quiet');add.type='button';add.onclick=()=>{if(savingCriteria)return;let index=decisionRows.length+1;while(decisionRows.some(row=>row.id.value===`decision_${index}`))index++;appendQuestion(`decision_${index}`,{label:'',type:'choice',instructions:'',criteria:{first:'',other:''},summary:true});};
   criteriaTokenPanel=element('div','','criteria-token-estimate');
   criteriaTokenPanel.setAttribute('role','status');criteriaTokenPanel.setAttribute('aria-live','polite');
@@ -1622,14 +1654,24 @@ function handleEditCriteria(id, template = null, generatedPurpose = null) {
   $('criteria-editor').hidden=false;$('cancel-criteria').hidden=false;handleValidateCriteria();renderCriteria();
 }
 function readDecisionProfile() {
+  const previous=criteriaProfiles[editingCriteria] || criteriaTemplate;
+  const original=previous?profileQuestions(previous):{};
   const questions={};
   for(const row of decisionRows) {
     const id=row.id.value.trim();if(Object.hasOwn(questions,id))throw new Error('Decision IDs must be unique.');
     const criteria=row.type.value==='score'?row.options.map(option=>option.text.value):Object.fromEntries(row.options.map(option=>[option.key.value.trim(),option.text.value]));
     if(row.type.value==='choice' && Object.keys(criteria).length!==row.options.length)throw new Error('Option IDs must be unique.');
-    questions[id]={label:row.label.value,type:row.type.value,instructions:row.instructions.value,...(row.type.value==='noul'?{}:{criteria})};
+    const reviewOptions=row.options.filter(option=>option.review.checked).map(option=>option.key.value.trim());
+    const writeReviewOptions=!original[id] || Object.hasOwn(original[id],'reviewOptions') || JSON.stringify(reviewOptions)!==JSON.stringify(decisionReviewOptions(original[id]));
+    questions[id]={label:row.label.value,type:row.type.value,instructions:row.instructions.value,...(row.type.value==='noul'?{}:{criteria}),...(editingCriteria && Object.hasOwn(original[id] || {},'summary')?{summary:original[id].summary}:{}),...(row.type.value==='choice' && writeReviewOptions?{reviewOptions}:{})};
   }
-  return {label:criteriaFields.label.value,instructions:criteriaFields.instructions.value,primaryQuestion:criteriaFields.primary.value,questions};
+  if(previous && !previous.questions){
+    const comparable=q=>({label:q.label,type:q.type,instructions:q.instructions,...(q.type==='noul'?{}:{criteria:q.criteria}),...(q.type==='choice'?{reviewOptions:decisionReviewOptions(q)}:{})});
+    if(JSON.stringify(Object.entries(questions).map(([id,q])=>[id,comparable(q)]))===JSON.stringify(Object.entries(original).map(([id,q])=>[id,comparable(q)])))return {...previous,label:criteriaFields.label.value,instructions:criteriaFields.instructions.value,defaultDecision:criteriaFields.primary.value};
+  }
+  const oldPrimary=previous?.primaryQuestion;
+  const primary=questions[oldPrimary]?.type==='choice'?oldPrimary:Object.keys(questions).find(id=>questions[id].type==='choice');
+  return {label:criteriaFields.label.value,instructions:criteriaFields.instructions.value,defaultDecision:criteriaFields.primary.value,...(primary?{primaryQuestion:primary}:{}),questions};
 }
 function handleValidateCriteria(showMessage = true) {
   if (editingCriteria === null) return true;
@@ -1699,7 +1741,7 @@ $('save-criteria').onclick = async () => {
     if (!response.ok) throw new Error(data.error);
     criteriaProfiles = data.profiles; handleCloseConfiguration('criteria-view'); handleCloseCriteria();handleWriteRoute('/criteria');
     const missing = handleCriteriaLabels(criteriaProfiles);
-    handleMessage('criteria-message','Criteria saved. Changes apply to new runs.' + (missing ? ' Select replacements for deleted profiles in Tasks.' : ''));
+    handleMessage('criteria-message','Criteria saved. Analysis changes apply to new runs; the default chart is a display setting.' + (missing ? ' Select replacements for deleted profiles in Tasks.' : ''));
   } catch (error) { handleMessage('criteria-message',error.message,true); }
   finally {
     savingCriteria = false; $('save-criteria').disabled = false; $('cancel-criteria').disabled = false;
@@ -1950,7 +1992,7 @@ function updateResultStatistics(incremental = true) {
       groups: {all: 0, certain: 0, uncertain: 0},
       categories: Object.fromEntries(['all', 'certain', 'uncertain'].map(group =>
         [group, Object.fromEntries(Object.keys(labels).map(key => [key, 0]))])),
-      classificationGroups:{}, hosts: new Map(), sources: new Map(),
+      decisionGroups:{}, classificationGroups:{}, hosts: new Map(), sources: new Map(),
     };
     statisticsCursor = 0;
     statisticsResults = results;
@@ -1966,8 +2008,26 @@ function updateResultStatistics(incremental = true) {
   }
   return resultStatistics;
 }
+function addDecisionStatistics(stats,result) {
+  if(result.error)return;
+  const identity=result.criteriaGroup || result.classificationGroup || 'system';
+  const assessments=resultDecisionAssessments(result);
+  stats.decisionGroups ||= {};
+  for(const [id,q] of Object.entries(resultDecisionDefinitions(result))) {
+    const options=q.type==='choice'?Object.keys(q.criteria):q.type==='score'?q.criteria.map((text,i)=>`${i} · ${text.split(':')[0]}`):['0–<25%','25–<50%','50–<75%','75–100%'];
+    const entry=stats.decisionGroups[`${identity}:${id}`] ||= {criteria:result.profileLabel || 'System',identity,profileId:result.profileId || result.profile,question:id,label:q.label,default:id===(result.defaultDecision || result.primaryQuestion || 'category'),primary:id===(result.primaryQuestion || 'category'),type:q.type,options,counts:Object.fromEntries(['all','certain','uncertain','unassessed'].map(name=>[name,Object.fromEntries(options.map(key=>[key,0]))]))};
+    const answer=resultDecisionAnswers(result)[id] || {};
+    const value=answer[q.type];
+    if(q.type!=='choice' && !Number.isFinite(value))continue;
+    const bucket=q.type==='choice'?value:options[Math.min(options.length-1,Math.max(0,Math.floor(q.type==='score'?value+0.5:value*4)))];
+    if(!Object.hasOwn(entry.counts.all,bucket))continue;
+    entry.counts.all[bucket]++;
+    if(q.type==='choice'){const uncertain=assessments[id]?.uncertain;entry.counts[uncertain===true?'uncertain':uncertain===false?'certain':'unassessed'][bucket]++;}
+  }
+}
 function addResultStatistics(result) {
   const stats = resultStatistics;
+  addDecisionStatistics(stats,result);
   stats.total++;
   delete stats.processingPercentiles;
   const duration=result.elapsedMs || 0;
@@ -2000,28 +2060,79 @@ function addResultStatistics(result) {
 }
 let chartCertainty = 'all';
 let chartClassification='system';
+function handleResetChart() {
+  chartClassification='system';chartCertainty='all';$('chart-default-message').hidden=true;
+}
+let savingChartDefault=false;
+function renderDecisionFilters(entries,definitions) {
+  const decision=$('decision-filter'),oldDecision=decision.value || 'all';
+  decision.replaceChildren(new Option('All Decisions','all'));
+  for(const [key,entry] of Object.entries(entries))decision.append(new Option(`${entry.criteria} · ${entry.label}`,key));
+  decision.value=Object.hasOwn(entries,oldDecision)?oldDecision:'all';
+  const entry=entries[decision.value];
+  const value=$('category-filter'),oldValue=value.value || 'all';
+  value.replaceChildren(new Option(entry?'All Values':'All Categories','all'));
+  if(entry)for(const option of entry.options)value.append(new Option(entry.type==='noul'?(noulRangeLabels[option] || option):option,option));
+  else {
+    value.append(new Option('Request Failed','failed'));
+    for(const group of Object.values(definitions))for(const [key,name] of Object.entries(group.options))value.append(new Option(`${Object.keys(definitions).length>1?`${group.label} · `:''}${titleLabel(name)}`,key));
+    if(!Object.keys(definitions).length && !Object.keys(entries).length)for(const [key,name] of Object.entries(labels))value.append(new Option(name,key));
+  }
+  value.value=Array.from(value.options).some(option=>option.value===oldValue)?oldValue:'all';
+  const certainty=$('certainty-filter');certainty.disabled=!entry || entry.type!=='choice';
+  certainty.title=certainty.disabled?'Select a Choice decision to filter uncertainty.':'Uncertainty of the selected decision.';
+  if(certainty.disabled || !certainty.value)certainty.value='all';
+}
+function decisionFilterMatches(result,key,value,certainty) {
+  if(key==='all')return certainty==='all';
+  if(result.error)return false;
+  const identity=result.criteriaGroup || result.classificationGroup || 'system';
+  const id=key.slice(key.lastIndexOf(':')+1);
+  const q=resultDecisionDefinitions(result)[id],answer=resultDecisionAnswers(result)[id];
+  if(`${identity}:${id}`!==key || !q || !answer)return false;
+  const scalar=answer[q.type];
+  if(scalar===undefined || scalar===null)return false;
+  const bucket=q.type==='choice'?scalar:q.type==='score'?`${Math.min(q.criteria.length-1,Math.max(0,Math.floor(scalar+.5)))} · ${q.criteria[Math.min(q.criteria.length-1,Math.max(0,Math.floor(scalar+.5)))].split(':')[0]}`:['0–<25%','25–<50%','50–<75%','75–100%'][Math.min(3,Math.max(0,Math.floor(scalar*4)))];
+  if(value!=='all' && value!==bucket)return false;
+  if(certainty==='all')return true;
+  const uncertain=resultDecisionAssessments(result)[id]?.uncertain;
+  return q.type==='choice' && certainty===(uncertain===true?'uncertain':uncertain===false?'certain':'unassessed');
+}
+function isDefaultChartEntry(entry) {
+  const profile=criteriaProfiles[entry.profileId] || Object.values(criteriaProfiles).find(profile=>profile.label===entry.criteria);
+  return profile?.defaultDecision?entry.question===profile.defaultDecision:(entry.default ?? entry.primary);
+}
 function renderCategoryChart() {
   const stats = updateResultStatistics();
   const definitions=stats.classificationGroups || {};
-  const select=$('classification-group');select.replaceChildren();
-  for(const [id,group] of Object.entries(definitions))select.append(new Option(group.label,id));
-  if(!definitions[chartClassification])chartClassification=Object.keys(definitions)[0] || 'system';
-  select.value=chartClassification;select.disabled=Object.keys(definitions).length<2;
-  const options=definitions[chartClassification]?.options || Object.fromEntries(Object.keys(labels).map(key=>[key,key]));
-  const counts=Object.fromEntries(Object.keys(options).map(key=>[key,stats.categories[chartCertainty][key] || 0]));
-  const categorySelect=$('category-filter');const previous=categorySelect.value || 'all';
-  categorySelect.replaceChildren(new Option('All Categories','all'),new Option('Request Failed','failed'));
-  for(const group of Object.values(definitions))for(const [key,name] of Object.entries(group.options))categorySelect.append(new Option(`${Object.keys(definitions).length>1?`${group.label} · `:''}${titleLabel(name)}`,key));
-  if(!Object.keys(definitions).length)for(const [key,name] of Object.entries(labels))categorySelect.append(new Option(name,key));
-  categorySelect.value=Array.from(categorySelect.options).some(option=>option.value===previous)?previous:'all';
+  const entries=stats.decisionGroups || {};
+  const select=$('classification-group');const criteria=$('chart-criteria');
+  const identities=[...new Set(Object.values(entries).map(entry=>entry.identity))];
+  criteria.replaceChildren();
+  for(const id of identities)criteria.append(new Option(Object.values(entries).find(entry=>entry.identity===id).criteria,id));
+  if(!entries[chartClassification])chartClassification=Object.keys(entries).find(key=>isDefaultChartEntry(entries[key])) || Object.keys(entries)[0] || 'system';
+  const selected=entries[chartClassification];
+  criteria.value=selected?.identity || '';criteria.hidden=identities.length<2;
+  $('chart-criteria-name').textContent=identities.length<2?(selected?.criteria || 'No Results'):'';
+  select.replaceChildren();
+  for(const [id,entry] of Object.entries(entries))if(entry.identity===selected?.identity)select.append(new Option(`${entry.label}${isDefaultChartEntry(entry)?' (Default)':''}`,id));
+  select.value=chartClassification;select.hidden=select.children.length<2;
+  $('chart-decision-name').textContent=select.children.length<2?(selected?.label || 'Category'):'';
+  if(selected && selected.type!=='choice')chartCertainty='all';
+  const options=selected?Object.fromEntries(selected.options.map(key=>[key,key])):Object.fromEntries(Object.keys(labels).map(key=>[key,key]));
+  const counts=selected?.counts[chartCertainty] || Object.fromEntries(Object.keys(options).map(key=>[key,stats.categories[chartCertainty][key] || 0]));
+  $('chart-decision-note').textContent=selected?.type==='score'?'Probability-weighted scores rounded to the nearest level.':selected?.type==='noul'?'Chunks by Yes probability.':'AI selected choices per chunk.';
+  renderDecisionFilters(entries,definitions);
+  const defaultButton=$('set-chart-default');defaultButton.hidden=!selected || isDefaultChartEntry(selected);defaultButton.disabled=savingChartDefault;
   const {failed, truncated} = stats;
-  const groups=Object.fromEntries(['all','certain','uncertain'].map(group=>[group,Object.keys(options).reduce((sum,key)=>sum+(stats.categories[group][key] || 0),0)]));
+  const groups=Object.fromEntries(['all','certain','uncertain','unassessed'].map(group=>[group,Object.keys(options).reduce((sum,key)=>sum+(selected?.counts[group]?.[key] ?? stats.categories[group]?.[key] ?? 0),0)]));
   const certainty = chartCertainty;
-  for (const [key, label] of Object.entries({ all: 'All', certain: 'Certain', uncertain: 'Uncertain' })) {
-    const count = groups[key];
+  for (const [key, label] of Object.entries({ all: 'All', certain: 'Certain', uncertain: 'Uncertain', unassessed:'Not Assessed' })) {
+    const count = groups[key] || 0;
     const percent = groups.all ? count / groups.all * 100 : 0;
     const caption = `${label} · ${count.toLocaleString('en-US')}`;
     const button = $(`chart-${key}`);
+    button.hidden=key!=='all' && (selected?.type!=='choice' || (key==='unassessed' && !count));
     button.textContent = key === 'all' ? caption : `${caption} (${percent.toFixed(1)}%)`;
     button.setAttribute('aria-pressed', String(certainty === key));
   }
@@ -2029,10 +2140,10 @@ function renderCategoryChart() {
   const maximum = Math.max(1, ...Object.values(counts));
   $('category-chart').replaceChildren();
   for (const [key, name] of Object.entries(options)) {
-    const label=titleLabel(name);
+    const label=selected?.type==='noul'?(noulRangeLabels[name] || name):selected && selected.identity!=='system'?name:titleLabel(name);
     const count = counts[key];
     const percent = classified ? count / classified * 100 : 0;
-    const row = element('div', '', 'category-chart-row');
+    const row = element('div', '', `category-chart-row${selected?.type==='noul'?' noul-range-row':''}`);
     row.setAttribute('role', 'listitem');
     const track = element('div', '', 'category-bar-track');
     track.setAttribute('aria-hidden', 'true');
@@ -2047,8 +2158,25 @@ function renderCategoryChart() {
   $('chart-truncated').textContent = `Truncated: ${truncated.toLocaleString('en-US')}`;
   $('chart-totals').textContent = `${classified.toLocaleString('en-US')} classified ${classified === 1 ? 'chunk' : 'chunks'} · ${failed.toLocaleString('en-US')} failed ${failed === 1 ? 'request' : 'requests'}`;
 }
+$('set-chart-default').onclick=async()=>{
+  if(savingChartDefault)return;
+  const entry=updateResultStatistics().decisionGroups?.[chartClassification];if(!entry)return;
+  savingChartDefault=true;$('set-chart-default').disabled=true;
+  const message=$('chart-default-message');message.hidden=false;handleMessage('chart-default-message','Saving default chart…');
+  try {
+    const response=await fetch('/api/criteria',{method:'POST'});const data=await readApiJsonResponse(response);if(!response.ok)throw new Error(data.error);
+    const id=entry.profileId || Object.keys(data.profiles).find(id=>data.profiles[id].label===entry.criteria);
+    const profile=data.profiles[id];if(!profile || !profileQuestions(profile)[entry.question])throw new Error('This decision no longer exists in the saved Criteria.');
+    const profiles={...data.profiles,[id]:{...profile,defaultDecision:entry.question}};
+    const saved=await fetch('/api/criteria',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(profiles)});
+    const body=await readApiJsonResponse(saved);if(!saved.ok)throw new Error(body.error);
+    criteriaProfiles=body.profiles;criteriaLoaded=true;handleMessage('chart-default-message','Default chart saved. AI answers are unchanged.');
+  }catch(error){handleMessage('chart-default-message',error.message,true);}
+  finally{savingChartDefault=false;renderCategoryChart();}
+};
+$('chart-criteria').onchange=()=>{const identity=$('chart-criteria').value;const entries=updateResultStatistics().decisionGroups || {};chartClassification=Object.keys(entries).find(key=>entries[key].identity===identity && isDefaultChartEntry(entries[key])) || Object.keys(entries).find(key=>entries[key].identity===identity);renderCategoryChart();};
 $('classification-group').onchange=()=>{chartClassification=$('classification-group').value;renderCategoryChart();};
-for (const key of ['all', 'certain', 'uncertain']) {
+for (const key of ['all', 'certain', 'uncertain', 'unassessed']) {
   $(`chart-${key}`).onclick = () => {
     chartCertainty = key;
     renderCategoryChart();
@@ -2196,12 +2324,13 @@ function render(updateList = true, incremental = false) {
   const order = !pagedView && updatesPaused ? pausedOrder : completionOrder;
   const review = $('review-filter').value;
   const category = $('category-filter').value;
+  const decision = $('decision-filter').value || 'all',certainty=$('certainty-filter').value || 'all';
   const search = $('log-search').value.toLowerCase();
   const source = $('source-filter').value || 'all';
   const host = $('host-filter').value || 'all';
-  const filterKey = JSON.stringify([review, category, search, source, host]);
+  const filterKey = JSON.stringify([review, category, search, source, host, decision, certainty]);
   let visible = order;
-  if (!pagedView && (review !== 'all' || category !== 'all' || search || source !== 'all' || host !== 'all')) {
+  if (!pagedView && (review !== 'all' || category !== 'all' || search || source !== 'all' || host !== 'all' || decision !== 'all' || certainty !== 'all')) {
     if (!incremental || filteredResults?.order !== order || filteredResults.key !== filterKey) {
       filteredResults = {order, key: filterKey, cursor: 0, indices: []};
     }
@@ -2209,7 +2338,8 @@ function render(updateList = true, incremental = false) {
       const index = order[filteredResults.cursor];
       const r = results[index];
       if ((review === 'all' || (review === 'needs-review' ? needsReview(r) : !r.error && !needsReview(r)))
-        && (category === 'all' || (category === 'failed' ? Boolean(r.error) : !r.error && (r.categoryFilter || r.category) === category))
+        && decisionFilterMatches(r,decision,decision==='all'?'all':category,certainty)
+        && (decision!=='all' || category === 'all' || (category === 'failed' ? Boolean(r.error) : !r.error && (r.categoryFilter || r.category) === category))
         && r.log.toLowerCase().includes(search)
         && (source === 'all' || r.sourcePatterns?.includes(source) || r.source === source)
         && (host === 'all' || resultHostId(r) === host)) filteredResults.indices.push(index);
@@ -2408,6 +2538,7 @@ async function handleProcessing(job) {
       if (event.activeProcessingMs !== undefined) activeProcessingMs = event.activeProcessingMs;
       if (event.elapsedMs !== undefined) elapsedMs = event.elapsedMs;
       if (event.type === 'start') {
+        handleResetChart();
         started = true;
         resultEngine = event.engine;
         resultSourceMode = event.mode || sourceMode;
@@ -2484,7 +2615,7 @@ function renderResultFilters() {
     const text=`${label}: ${description}`;
     const remove=element('button',`${text} ×`);remove.type='button';remove.title=`Remove ${text}`;
     remove.setAttribute('aria-label',`Remove ${text}`);
-    remove.onclick=()=>{control.value=id==='log-search'?'':'all';clearTimeout(resultSearchTimer);return handleResultFilter();};
+    remove.onclick=()=>{control.value=id==='log-search'?'':'all';clearTimeout(resultSearchTimer);return id==='decision-filter'?control.onchange():handleResultFilter();};
     active.append(remove);
   }
   active.hidden=!active.children.length;
@@ -2501,6 +2632,8 @@ function handleResultFilter() {
 }
 $('review-filter').onchange = handleResultFilter;
 $('category-filter').onchange = handleResultFilter;
+$('decision-filter').onchange=()=>{$('category-filter').value='all';$('certainty-filter').value='all';renderCategoryChart();return handleResultFilter();};
+$('certainty-filter').onchange=handleResultFilter;
 let resultSearchTimer;
 $('result-filter-type').onchange=renderResultFilters;
 renderResultFilters();
@@ -2594,7 +2727,7 @@ $('results-settings-form').onsubmit=async event=>{
   }catch(error){handleMessage('results-settings-message',error.message,true);}
   finally{$('save-results-settings').disabled=false;}
 };
-const routeFilters={'review':'review-filter','category':'category-filter','host':'host-filter','source':'source-filter','search':'log-search'};
+const routeFilters={'decision':'decision-filter','certainty':'certainty-filter','review':'review-filter','category':'category-filter','host':'host-filter','source':'source-filter','search':'log-search'};
 function handleSyncRunRoute(poll=false) {
   if(poll && routeLocation()==='/')return;
   if(!globalThis.history?.pushState || !pagedView || pagedView.restoringRoute || currentView!=='main')return;
@@ -2626,7 +2759,7 @@ async function handleRefreshResults(reset=false,poll=false) {
   const revision=++view.revision;
   const held=poll && (page>0 || updatesPaused);
   const after=!reset && poll && !held ? view.sequence : null;
-  const body={category:$('category-filter').value,review:$('review-filter').value,
+  const body={decision:$('decision-filter').value || 'all',certainty:$('certainty-filter').value || 'all',category:$('category-filter').value,review:$('review-filter').value,
     host:$('host-filter').value || 'all',source:$('source-filter').value || 'all',
     search:$('log-search').value,onlySummary:held};
   if(after!==null)body.after=after;
@@ -2674,6 +2807,7 @@ async function handleApplyRunRoute(path) {
     for(const key of ['result','detail','cursors','through'])params.delete(key);
     const query=params.toString();handleWriteRoute(`/runs/${pagedView.id}${query?`?${query}`:''}`,true);
   }
+  $('decision-filter').value=params.get('decision') || 'all';renderCategoryChart();
   for(const [key,id] of Object.entries(routeFilters))$(id).value=params.get(key) || (key==='search'?'':'all');
   const cursors=(params.get('cursors') || '').split(',').filter(Boolean).map(Number);
   if(cursors.some(value=>!Number.isSafeInteger(value) || value<=0))throw new Error('Invalid result page link.');
@@ -2694,6 +2828,7 @@ async function handleApplyRunRoute(path) {
 }
 async function handlePagedProcessing(job) {
   if(busy)return;
+  handleResetChart();
   if(globalThis.history?.pushState)expandedResultDetails.clear();
   renderResultContext(job.settings.taskName || registeredTasks.find(task=>task.id===job.settings.taskId)?.name || 'Task execution',job.startedAt,job.jobId);
   const requestedRoute=routeLocation();
@@ -2702,7 +2837,7 @@ async function handlePagedProcessing(job) {
   pagedView={id:job.jobId,items:[],cursors:[null],sequence:0,through:null,hasNext:false,snapshotTotal:0,revision:0,restoringRoute:true};
   page=0;updatesPaused=false;results=[];completionOrder=[];pausedOrder=[];displayedOrder=[];
   statisticsResults=undefined;filteredResults=undefined;renderedRows.clear();renderedPage=null;
-  $('category-filter').value='all';$('review-filter').value='all';$('source-filter').value='all';$('host-filter').value='all';$('log-search').value='';
+  $('decision-filter').value='all';$('certainty-filter').value='all';$('category-filter').value='all';$('review-filter').value='all';$('source-filter').value='all';$('host-filter').value='all';$('log-search').value='';
   try{
     await handleLoadResultSettings();await handleRefreshResults(true);
     if(globalThis.history?.pushState && requestedRoute.includes('?'))await handleApplyRunRoute(requestedRoute);

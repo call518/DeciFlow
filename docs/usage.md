@@ -39,8 +39,8 @@ their own options and levels. See [Criteria](criteria.md).
 
 All decisions appear in compact cards in their configured order; **Probabilities and Criteria** expands its distribution and definitions.
 **Review Decisions** records typed corrections. Choice uncertainty is shown per
-item; Needs Review can come from any Choice, while chart certainty refers to the
-primary Choice. These are separate judgments, not one combined probability.
+item; Needs Review can come from any decision, while chart certainty refers to the
+selected Choice. These are separate judgments, not one combined probability.
 No ticket is created automatically. Missing or invalid answers fail the whole request.
 
 | Criteria profile | Focus |
@@ -93,6 +93,14 @@ types preserves applied conditions and does not refresh results. Conditions comb
 with AND and appear as removable buttons below the toolbar. Use **Clear All** to reset
 them. Long Source values are shortened on the button; its tooltip keeps the full path.
 
+Choose **Decision** in Filter Type to scope the list to a particular decision, then
+use **Category** for its selected value or chart bucket and **Decision Certainty** for
+Choice uncertainty. Certainty filtering requires a Choice; Score/Noul do not inherit
+another decision's status. Filters search the entire stored run using decision indexes.
+Chart selections do not change list filters. Clear the Decision chip to clear its
+value and certainty scope. With All Decisions, Category retains the legacy primary
+category filter for older links.
+
 Each result displays the original input data in bold; JSON and Action code keep
 their own formatting.
 
@@ -108,7 +116,9 @@ retain line locations/counts. Requests and results use `chunkEvents`.
 
 **Uncertain is a DeciFlow feature**, computed from the provider response in
 [`classifier.py`](../classifier.py); it is not Laya's own uncertainty flag.
-Any of the following conditions sets `uncertain=true`:
+For each Choice, any of the following conditions sets its
+`decisionAssessments[id].uncertain=true`. Top-level `uncertain` retains the frozen
+primary Choice meaning for compatibility:
 
 | Condition | JSON `reviewReasons` value | Engine |
 | --- | --- | --- |
@@ -139,7 +149,8 @@ choice, not a confirmed normal event. The original choice and probabilities are
 preserved. The UI shows provisional candidates; JSON records `candidates`,
 `probabilityMargin`, and `reviewReasons`.
 
-**Needs Review** includes only successfully classified Uncertain or Other chunks.
+**Needs Review** counts successful chunks once when any decision is Uncertain, a
+selected option is listed in `reviewOptions`, or instructions were shortened.
 Failed/rejected requests count as Failed and are excluded from review metrics/filters. Other alone does not set Uncertain. **Certain**
 means no Uncertain flag, not verified accuracy. Use labeled logs to evaluate
 misclassifications and review workload before treating the thresholds as an
@@ -179,13 +190,21 @@ continue. Older pages stay fixed; Latest Results returns to current results.
 | Export All JSON | Stream all Task results recorded when export starts, including paused or filtered-out rows; available during execution too. |
 | Export Reviewed JSON | Export successful results with any human correction different from its AI value, including original answers and reviewerDecisions. Cleared and unchanged corrections are excluded; display filters are ignored. |
 
-**Classification Overview** separates custom primary definitions; select a
-classification to see its AI counts across sources,
+Use **Criteria** to select a classification scheme when several are present, then
+**Decision** to chart any of its decisions. A single Criteria or decision is shown as
+text. Default Chart Decision is selected initially; **Set as Default** saves a new preference without inference. Choice counts selected options; Score
+rounds weighted scores to the nearest level (half up); Noul groups Yes probabilities in
+[0%, 25%), [25%, 50%), [50%, 75%), and [75%, 100%]. Missing answers and failures are
+excluded. All / Certain / Uncertain refers to the selected Choice. Missing evidence is
+**Not Assessed**, never Certain. Score and Noul have no certainty groups. Switching decisions uses stored results without inference.
+
+**Classification Overview** separates Criteria and decisions; select a
+decision to see its AI counts across sources,
 including uncertain choices. Counts are **chunks**, not raw lines; percentages use
 successfully classified chunks. Failed requests are shown separately. Filters and
 reviewer edits do not change the chart. Use the **All / Certain / Uncertain** buttons to chart all
 classified chunks or just one certainty group; percentages use the selected group.
-The buttons always show their counts. All shows the total count; Certain and Uncertain show their counts and shares of
+Choice buttons show their counts; Not Assessed appears when needed. All shows the total count; Certain and Uncertain show their counts and shares of
 all successfully classified chunks. Category-bar percentages use the selected group.
 Certain means no Uncertain flag, not verified accuracy. The failure count always
 shows all failed requests, which belong to neither certainty group.
@@ -253,7 +272,7 @@ checks still apply; file access requires a local/trusted UI Origin.
 | --- | --- |
 | Success / Failed / Total | Valid classifications / failed chunks / total completed chunks (success + failure); failures include connection errors, timeouts, rejected inputs, and invalid responses |
 | Action Success / Failed / Total | Completed Action successes / failures / total; excludes unassigned sources and failed decisions; independent of decision counts |
-| Needs Review | Successful Uncertain (low probability, close probabilities, or collapsed options) or Other classifications; excludes failed/rejected requests |
+| Needs Review | Successful chunks with any decision/record review reason; counted once per chunk; failures excluded |
 | Throughput | All successful results divided by total elapsed seconds in the selected run, including idle time and Action delivery; freezes when stopped/completed |
 | Total Elapsed Time | Time since the run started, including idle periods |
 | Active Processing Time | Time with at least one request in flight, counting overlap once; percentage of total elapsed time |

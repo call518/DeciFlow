@@ -161,6 +161,11 @@ unnecessary for data-path changes. See [Docker deployment](../README.md#deciflow
 Syntax colors use vendored PrismJS 1.30.0 Core + Python (about 9.4 KiB, MIT). No external CDN is contacted at runtime; the versioned asset is browser-cacheable. Sources, license, and SHA-256 checksums are recorded in `public/vendor/prism/`; update these records and rerun UI checks when upgrading. Existing editor input and scrolling are preserved.
 
 
+Action inputs retain the meaning of legacy `category`, `primaryQuestion` and `uncertain`.
+Use `decisions` and `decisionAssessments` for per-decision processing and
+`anyUncertain` for record-level Choice uncertainty. Changing `defaultDecision`
+only changes display and never reruns Actions.
+
 ## Compact Result JSON Contract (Version 2)
 
 Input text lives once in `log`; other JSONL fields remain in `inputRecord`.

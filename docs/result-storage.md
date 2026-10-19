@@ -8,6 +8,11 @@ Action, SSH Host, SSH Key metadata, and application settings. Configuration coll
 record per item, keyed by its internal identifier; nested fields remain JSON payloads
 inside the DB. No separate DB server or new environment setting is required.
 
+Decision values/buckets and Choice certainty are indexed in `result_decisions`. Old
+runs backfill their aggregates and indexes once on first read or append, preserving
+original event JSON, answers and reviewer corrections. Filters cover the whole run
+without re-evaluating all results on every query.
+
 ## Bounded Result Loading
 
 - Settings → Configurations sets Results per Page: **30** by default, with 10/30/50/100 options.
