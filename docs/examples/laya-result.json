@@ -36,6 +36,7 @@
   },
   "engineConnection": "connected",
   "httpStatus": 200,
+  "responseContentType": "application/json",
   "responseHeaders": {},
   "providerResponse": {
     "model": "laya-rl-agent",

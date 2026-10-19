@@ -8,7 +8,7 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 from hashlib import sha256
 from time import perf_counter
-from typing import Any
+from typing import Any, NoReturn
 
 import httpx
 
@@ -88,6 +88,10 @@ def _decision_input(log: str, profile: str) -> str:
         log,
     )
     return f"{match['service']}: {match['message']}" if match else log
+
+
+def _reject_json_constant(value: str) -> NoReturn:
+    raise ValueError(f"Invalid JSON numeric constant: {value}.")
 
 
 async def classify_log(
@@ -228,43 +232,62 @@ async def classify_log(
         )
         if key in response.headers
     }
+    metadata["responseContentType"] = response.headers.get("content-type", "")
     try:
-        metadata["providerResponse"] = response.json()
+        metadata["providerResponse"] = response.json(
+            parse_constant=_reject_json_constant
+        )
     except ValueError:
-        pass
+        metadata["providerResponseText"] = response.text
     if not 200 <= response.status_code < 300:
         raise DecisionError(
             f"{label} request failed (HTTP {response.status_code})", metadata
         )
     truncated = False
+    validation_path = "response"
     try:
-        data = response.json()
+        data = response.json(parse_constant=_reject_json_constant)
+        if not isinstance(data, dict):
+            raise TypeError("The response must be a JSON object.")
+        validation_path = "usage"
+        if not isinstance(data.get("usage", {}), dict):
+            raise TypeError("Usage must be a JSON object.")
         truncated = data.get("usage", {}).get("truncated") is True
         if truncated:
-            raise ValueError
+            validation_path = "usage.truncated"
+            raise ValueError("The provider marked the response as truncated.")
         if engine.name == "laya":
             if engine.model not in {"english", "multilingual", "typed-decisions"}:
+                validation_path = "routing.model"
                 routed = data.get("routing", {}).get("model")
                 if (
                     not isinstance(routed, str)
                     or routed.casefold() != engine.model.casefold()
                 ):
-                    raise DecisionError(
-                        "Laya did not confirm the requested custom model in routing.",
-                        metadata,
+                    raise ValueError(
+                        "Laya did not confirm the requested custom model in routing."
                     )
+            validation_path = "usage"
             usage = data["usage"]
+            validation_path = "usage.truncated"
             if not isinstance(usage.get("truncated"), bool):
-                raise ValueError
+                raise ValueError("The truncated flag must be a boolean.")
             truncated = usage["truncated"]
             if truncated:
-                raise ValueError
+                raise ValueError("The provider marked the response as truncated.")
+        validation_path = "answers"
         answers = data["answers"]
+        if not isinstance(answers, dict):
+            raise TypeError("Answers must be a JSON object.")
         for identity, definition in definitions.items():
+            validation_path = f"answers.{identity}"
+            if identity in answers and not isinstance(answers[identity], dict):
+                raise TypeError("The answer must be a JSON object.")
             validate_answer(definition, answers[identity])
             if definition["type"] != "choice":
                 continue
             if engine.name == "laya":
+                validation_path = f"usage.options.{identity}"
                 options = data["usage"].get("options", {}).get(identity)
                 if options is not None:
                     total, distinct = options["total"], options["distinct"]
@@ -274,7 +297,11 @@ async def classify_log(
                         or total != len(definition["criteria"])
                         or not 0 <= distinct <= total
                     ):
-                        raise ValueError
+                        raise ValueError(
+                            "Option totals must match the criteria count and distinct "
+                            "must be an integer between zero and total."
+                        )
+        validation_path = "answers"
         assessments = decision_assessments({**metadata, "decisions": answers})
         decision_reviews = {
             key: item["reviewReasons"]
@@ -349,6 +376,15 @@ async def classify_log(
     except DecisionError:
         raise
     except (ValueError, KeyError, TypeError, AttributeError) as error:
+        metadata["responseValidationError"] = {
+            "path": validation_path,
+            "type": type(error).__name__,
+            "message": (
+                f"Missing required field: {error.args[0]}."
+                if isinstance(error, KeyError)
+                else str(error)
+            ),
+        }
         if truncated:
             raise DecisionError(
                 f"This event exceeds {label}'s token budget including the question. "
@@ -356,7 +392,12 @@ async def classify_log(
                 "for review without truncation.",
                 metadata,
             ) from error
-        raise DecisionError(f"Invalid {label} response format.", metadata) from error
+        message = (
+            str(error)
+            if validation_path == "routing.model"
+            else f"Invalid {label} response format."
+        )
+        raise DecisionError(message, metadata) from error
     if decision_input != log:
         result["decisionInput"] = decision_input
         result["inputNormalization"] = "single_line_syslog_header"

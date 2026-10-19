@@ -34,7 +34,7 @@ Criteria는 Choice·Score·Noul 판단 항목의 개수·선택지·단계를 �
 본문 필드를 추출해 한 줄의 객체를 한 건씩 처리합니다. [Criteria](criteria.ko.md)를 참고하세요.
 
 모든 판단 항목을 설정된 순서대로 작은 카드로 표시합니다.
-**Probabilities and Criteria**에서 항목별 확률과 기준을 펼칩니다. **Review Decisions**로
+**Probabilities and Criteria**에서 항목별 확률과 기준을 펼칩니다. **Review**로
 타입별 수정값을 기록합니다. Choice 불확실성은 항목별로 표시하며 어느 Choice든 검토가
 필요하면 Needs Review가 됩니다. 차트의 확실성은 선택한 Choice 기준입니다. 각 판단은
 별개이며 확률을 하나로 합치지 않습니다. 티켓을 자동 생성하지 않고 답변 누락·오류는
@@ -174,8 +174,10 @@ Main의 Task 결과는 약 1초마다 현재 페이지의 새 결과만 조회�
 | --- | --- |
 | Pause Display Updates / Resume Display Updates | 첫 결과 전부터 목록을 고정·재개합니다. 분석·지표·차트는 계속 갱신합니다. 필터·페이지 이동은 고정된 목록에 적용하고 버튼에 새 결과 수를 표시합니다. |
 | Stop (Tasks) | 파일 읽기·진행 중 요청을 취소하고 완료 결과는 보존합니다. 미제출 청크는 버리며 원격지의 추론은 완료될 수 있습니다. |
-| View JSON | 실패 정보, 프로필·청크 정보, 수동 리뷰 값을 포함한 개별 JSON을 펼칩니다. 목록 갱신에도 펼친 상태를 유지합니다. JSON 영역 안의 Copy는 수동 리뷰 값을 포함한 현재 항목을 클립보드에 복사합니다. |
-| Review Decisions | 판단 항목별 타입에 맞는 수정값을 기록합니다. AI 예측·검토 표시·차트·모델 가중치는 바꾸지 않습니다. |
+| Details | Action 실행, Source·Host·레코드 위치, Criteria·Chunk 정보를 펼칩니다. 처음에는 접혀 있으며 Action 실패는 카드에 바로 표시합니다. 목록 갱신·페이지 이동에도 펼침 상태를 유지하고 전체 정보는 View Result JSON에도 남습니다. |
+| Response | Review와 같은 접기·펼치기 형식으로 Laya·Jev 응답, HTTP 상태, 검증 사유를 확인합니다. Copy로 응답 상세 정보를 복사하며 JSON이 아닌 응답과 응답 없음도 구분합니다. |
+| View Result JSON | 실패 정보, 프로필·청크 정보, 수동 리뷰 값을 포함한 개별 JSON을 펼칩니다. 목록 갱신에도 펼친 상태를 유지합니다. JSON 영역 안의 Copy는 수동 리뷰 값을 포함한 현재 항목을 클립보드에 복사합니다. |
+| Review | 판단 항목별 타입에 맞는 수정값을 기록합니다. AI 예측·검토 표시·차트·모델 가중치는 바꾸지 않습니다. |
 | Export All JSON | 실행 중에도 내보내기 시작 시점까지의 Task 전체 결과를 스트리밍합니다. Pause·필터로 숨겨진 결과도 포함합니다. |
 | Export Reviewed JSON | 어떤 항목이든 AI와 다른 수정값이 있는 성공 결과를 원래 답변·reviewerDecisions와 함께 내보냅니다. 비우거나 원래 값과 같은 수정은 제외하며 화면 필터는 무시합니다. |
 

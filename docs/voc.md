@@ -73,9 +73,9 @@ file test. Selecting Jev uses the paid API.
 ## 2. Inspect the Results
 
 - Decision cards: all five decisions, including Follow-up Owner and Urgency, in their configured order.
-- **Input Text**: the full conversation used for the decision.
+- **Input**: the full conversation used for the decision.
 - **Probabilities and Criteria**: probabilities, instructions, and option definitions.
-- **Review Decisions**: human corrections; AI originals and charts remain unchanged.
+- **Review**: human corrections; AI originals and charts remain unchanged.
 - **Source Hosts Detail**: whole-run success/failure/total counts by host.
 
 After full completion, Success + Failed should equal 841. Stopping early counts

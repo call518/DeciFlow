@@ -240,11 +240,40 @@ function handleConfirmDelete(kind, name, description, identity=name) {
 
 const expandedJson = new WeakSet();
 function orderedResult(result) {
-  const metadata = ['requestedAt', 'decidedAt', 'schemaVersion', 'eventId', 'engine', 'engineConnection', 'requestedModel', 'source', 'sourceId', 'sourceName', 'sourceType', 'hostId', 'hostName', 'hostAddress', 'hostPort', 'sourceFailure', 'chunkSequence', 'sourcePatterns', 'line', 'lineEnd', 'lineCount', 'eventCount', 'profile', 'chunkEvents', 'incomplete', 'elapsedMs', 'requestBytes', 'inputBudget', 'httpStatus', 'responseHeaders', 'action', 'actionExecution'];
+  const metadata = ['requestedAt', 'decidedAt', 'schemaVersion', 'eventId', 'engine', 'engineConnection', 'requestedModel', 'source', 'sourceId', 'sourceName', 'sourceType', 'hostId', 'hostName', 'hostAddress', 'hostPort', 'sourceFailure', 'chunkSequence', 'sourcePatterns', 'line', 'lineEnd', 'lineCount', 'eventCount', 'profile', 'chunkEvents', 'incomplete', 'elapsedMs', 'requestBytes', 'inputBudget', 'httpStatus', 'responseContentType', 'responseHeaders', 'responseValidationError', 'action', 'actionExecution'];
   return Object.fromEntries([
     ...metadata.filter(key => Object.hasOwn(result, key)).map(key => [key, result[key]]),
     ...Object.entries(result).filter(([key]) => !metadata.includes(key)),
   ]);
+}
+function responseMessage(result) {
+  const hasJson=Object.hasOwn(result,'providerResponse'),hasText=Object.hasOwn(result,'providerResponseText');
+  let body=hasJson?result.providerResponse:hasText?result.providerResponseText:null;
+  if(body && typeof body==='object' && !Array.isArray(body) && body.answersInDecisions && result.decisions){
+    const {answersInDecisions,...metadata}=body;body={...metadata,answers:result.decisions};
+  }
+  return {
+    ...Object.fromEntries(['engine','requestedModel','httpStatus','responseContentType','responseHeaders','responseValidationError','error'].filter(key=>Object.hasOwn(result,key)).map(key=>[key,result[key]])),
+    ...(!hasJson && !hasText?{message:['timeout','disconnected'].includes(result.engineConnection) || result.inputLimitExceeded || result.sourceFailure?'No provider response was received.':'The provider response was not recorded for this result.'}:{}),
+    body,
+  };
+}
+function renderJsonMessage(title,copyLabel,readText,disclosureClass='result-json') {
+  const view=element('details','',disclosureClass);
+  const text=element('pre','','json-content');
+  const actions=element('div','','json-actions');
+  const copy=element('button','Copy','json-copy');copy.type='button';copy.setAttribute('aria-label',copyLabel);
+  const status=element('span','','caption');status.setAttribute('role','status');
+  copy.onclick=async()=>{
+    copy.disabled=true;
+    try{await copyText(readText());status.textContent='Copied';}
+    catch{status.textContent='Copy failed. Select and copy the JSON below.';}
+    finally{copy.disabled=false;}
+  };
+  actions.append(copy,status);
+  const panel=element('div','','json-panel');panel.append(actions,text);
+  view.append(element('summary',title),panel);
+  return {view,text};
 }
 async function copyText(text) {
   if (globalThis.navigator?.clipboard?.writeText) {
@@ -1080,8 +1109,8 @@ async function handleTaskHistory(task) {
     const header=element('div','','card-title');
     const refresh=element('button','Refresh','quiet');refresh.type='button';refresh.onclick=()=>handleTaskHistory(task);
     header.append(element('h3',`${task.name} · Latest 50 Executions`),refresh);view.append(header);
-    const table=element('table','','action-list');const head=element('tr','');for(const title of ['Started','Finished','Trigger','State','Results','Manage'])head.append(element('th',title));table.append(head);
-    for(const run of data.runs){const row=element('tr','');row.append(element('td',`${taskTime(run.startedAt,task.timezone)} (${task.timezone})`),element('td',taskTime(run.finishedAt,task.timezone)),element('td',run.settings.trigger),element('td',run.state,`task-state ${run.state}`),element('td',`${run.counts?.completed || 0} chunks · ${run.counts?.failed || 0} failed requests · ${run.counts?.actionFailed || 0} failed Actions${run.error?` · ${run.error}`:''}`));const cell=element('td','');const button=element('a','View Results','quiet');button.type='button';button.onclick=()=>{followLatestTask=false;selectedTaskId=task.id;handleNavigation('main');renderTaskMonitor();return handleWatchRun(run);};handleRouteLink(button,`/runs/${encodeURIComponent(run.jobId)}`,button.onclick);cell.append(button);row.append(cell);table.append(row);}
+    const table=element('table','','action-list run-history');const head=element('tr','');for(const title of ['Started','Finished','Trigger','Decision Engine','Requested Model','State','Results','Manage'])head.append(element('th',title));table.append(head);
+    for(const run of data.runs){const row=element('tr','');const metadata=runEngineMetadata(run.settings);row.append(element('td',`${taskTime(run.startedAt,task.timezone)} (${task.timezone})`),element('td',taskTime(run.finishedAt,task.timezone)),element('td',run.settings.trigger),element('td',metadata.engine),element('td',metadata.model,'run-model'),element('td',run.state,`task-state ${run.state}`),element('td',`${run.counts?.completed || 0} chunks · ${run.counts?.failed || 0} failed requests · ${run.counts?.actionFailed || 0} failed Actions${run.error?` · ${run.error}`:''}`));const cell=element('td','');const button=element('a','View Results','quiet');button.type='button';button.onclick=()=>{followLatestTask=false;selectedTaskId=task.id;handleNavigation('main');renderTaskMonitor();return handleWatchRun(run);};handleRouteLink(button,`/runs/${encodeURIComponent(run.jobId)}`,button.onclick);cell.append(button);row.append(cell);table.append(row);}
     view.append(table);if(!data.runs.length)view.append(element('p','No executions yet.','caption'));view.hidden=false;
   }catch(error){handleMessage('task-message',error.message,true);}
 }
@@ -2369,47 +2398,36 @@ function render(updateList = true, incremental = false) {
     const tokenWarning=renderTokenWarning(result);
     if(tokenWarning){row.className+=' token-limited';top.prepend(tokenWarning);}
     row.append(top);
-    if(result.inputFormat==='jsonl'){const original=element('details','','original-input');original.append(element('summary','Input Text'),element('p',result.log,'log'));handleResultDisclosure(original,result,'input');row.append(original);}
+    if(result.inputFormat==='jsonl'){const original=element('details','','original-input');original.append(element('summary','Input'),element('p',result.log,'log'));handleResultDisclosure(original,result,'input');row.append(original);}
     else row.append(element('p',result.log,'log'));
+    const fields=[];
     if (result.actionExecution) {
-      const execution = result.actionExecution;
-      row.append(element('p', `Action execution: ${execution.name} · ${execution.status} · ${execution.elapsedMs}ms${execution.exitCode != null ? ` · exit ${execution.exitCode}` : ''}${execution.error ? ` · ${execution.error}` : ''}`, execution.status === 'failed' ? 'error-message' : 'caption'));
+      const execution=result.actionExecution;
+      const value=`${execution.name} · ${execution.status} · ${execution.elapsedMs}ms${execution.exitCode != null ? ` · exit ${execution.exitCode}` : ''}${execution.error ? ` · ${execution.error}` : ''}`;
+      fields.push(['Action',value]);
+      if(execution.status==='failed')row.append(element('p',`Action execution: ${value}`,'error-message'));
     }
     if (result.source) {
-      const end = result.lineEnd || result.line;
-      const multiple = end !== result.line;
-      const realtime = resultSourceMode === 'realtime';
-      const location = element('p', `${result.hostName ? `Host: ${result.hostName} (${result.hostAddress}:${result.hostPort}) · ` : ''}Source: ${result.source}${result.sourceFailure ? '' : ` · ${realtime ? 'Observed' : 'File'} ${multiple ? 'lines' : 'line'} ${multiple ? `${result.line}–${end}` : result.line}${result.recordNumber?` · JSONL Record ${result.recordNumber}`:''}${result.incomplete ? ' · Incomplete line at rotation' : ''}`}`, 'caption');
-      if (realtime) location.title = 'Sequence since monitoring started or the file rotated; not an absolute file line number.';
-      row.append(location);
+      const end=result.lineEnd || result.line;
+      const multiple=end!==result.line;
+      const realtime=resultSourceMode==='realtime';
+      if(result.hostName)fields.push(['Host',`${result.hostName} (${result.hostAddress}:${result.hostPort})`]);
+      fields.push(['Source',`${result.source}${result.sourceFailure ? '' : ` · ${realtime ? 'Observed' : 'File'} ${multiple ? 'lines' : 'line'} ${multiple ? `${result.line}–${end}` : result.line}${result.recordNumber?` · JSONL Record ${result.recordNumber}`:''}${result.incomplete ? ' · Incomplete line at rotation' : ''}`}`]);
     }
     if (result.profile) {
-      const count = result.eventCount || 1;
-      row.append(element('p', `Criteria: ${result.profileLabel || profileLabels[result.profile] || result.profile} · Chunk: ${count} ${count === 1 ? 'event' : 'events'} (max ${result.chunkEvents || 1})`, 'caption'));
+      const count=result.eventCount || 1;
+      fields.push(['Criteria',`${result.profileLabel || profileLabels[result.profile] || result.profile} · Chunk: ${count} ${count===1?'event':'events'} (max ${result.chunkEvents || 1})`]);
     }
-    const jsonView = element('details', '', 'result-json');
-    const jsonText = element('pre', '', 'json-content');
-    const jsonActions = element('div', '', 'json-actions');
-    const copyButton = element('button', 'Copy', 'json-copy');
-    copyButton.type = 'button';
-    copyButton.setAttribute('aria-label', 'Copy this result JSON to clipboard');
-    const copyStatus = element('span', '', 'caption');
-    copyStatus.setAttribute('role', 'status');
-    copyButton.onclick = async () => {
-      copyButton.disabled = true;
-      try {
-        await copyText(JSON.stringify(orderedResult(result), null, 2));
-        copyStatus.textContent = 'Copied';
-      } catch {
-        copyStatus.textContent = 'Copy failed. Select and copy the JSON below.';
-      } finally {
-        copyButton.disabled = false;
+    if(fields.length){
+      const details=element('details','','result-disclosure result-details');
+      const values=detailFields(fields);
+      if(resultSourceMode==='realtime'){
+        const source=[...values.children].find(field=>field.children[0].textContent==='Source');
+        if(source)source.children[1].title='Sequence since monitoring started or the file rotated; not an absolute file line number.';
       }
-    };
-    jsonActions.append(copyButton, copyStatus);
-    const jsonPanel = element('div', '', 'json-panel');
-    jsonPanel.append(jsonActions, jsonText);
-    jsonView.append(element('summary', 'View JSON'), jsonPanel);
+      details.append(element('summary','Details'),values);handleResultDisclosure(details,result,'metadata');row.append(details);
+    }
+    const {view:jsonView,text:jsonText}=renderJsonMessage('View Result JSON','Copy this result JSON to clipboard',()=>JSON.stringify(orderedResult(result),null,2));
     jsonView.open = expandedJson.has(result) || resultRouteOpen(result,'json');
     if (jsonView.open) jsonText.textContent = JSON.stringify(orderedResult(result), null, 2);
     jsonView.ontoggle = () => {
@@ -2420,8 +2438,14 @@ function render(updateList = true, incremental = false) {
       if(jsonView.isConnected!==false)handleResultRoute(result,'json',jsonView.open);
     };
     if (result.error) row.append(element('p', result.error, 'error-message'));
-    else {
-      const review=element('details','','review-decisions');review.append(element('summary','Review Decisions'),renderDecisionReview(result,jsonView,jsonText));handleResultDisclosure(review,result,'review');row.append(review);
+    const response=renderJsonMessage('Response','Copy this response to clipboard',()=>JSON.stringify(responseMessage(result),null,2),'result-disclosure response-message');
+    handleResultDisclosure(response.view,result,'response');
+    const responseToggle=response.view.ontoggle;
+    if(response.view.open)response.text.textContent=JSON.stringify(responseMessage(result),null,2);
+    response.view.ontoggle=()=>{responseToggle();if(response.view.open)response.text.textContent=JSON.stringify(responseMessage(result),null,2);};
+    row.append(response.view);
+    if (!result.error) {
+      const review=element('details','','result-disclosure review-decisions');review.append(element('summary','Review'),renderDecisionReview(result,jsonView,jsonText));handleResultDisclosure(review,result,'review');row.append(review);
     }
     row.append(jsonView);
     renderedRows.set(result, row); rows.push(row);
@@ -2482,9 +2506,13 @@ async function handleRestoreJob() {
     await handleWatchRun(job);
   } finally { restoringJob = false; }
 }
-function renderResultContext(name,startedAt,id) {
+function runEngineMetadata(settings = {}) {
+  return {engine: {laya: 'Laya', jev: 'Jev'}[settings.engine] || settings.engine || 'Not Recorded', model: settings.model || 'Not Recorded'};
+}
+function renderResultContext(name,startedAt,id,settings = {}) {
   const title=element('strong',name,'result-task-name');
-  $('result-context').replaceChildren(title,element('span',` · Started: ${taskTime(startedAt)} (UTC) · Run: ${id}`));
+  const metadata=runEngineMetadata(settings);
+  $('result-context').replaceChildren(title,element('span',` · Started: ${taskTime(startedAt)} (UTC) · Run: ${id}`),element('span',`Run Engine: ${metadata.engine} · Requested Model: ${metadata.model}`,'run-engine-context'));
 }
 async function readApiJsonResponse(response,path=response.url || 'API request') {
   try { return await response.json(); }
@@ -2504,7 +2532,7 @@ async function handleProcessing(job) {
   pagedView=null;
   if (busy) return;
   const sources = job.settings.sources || [];
-  renderResultContext(job.settings.taskName || registeredTasks.find(task=>task.id===job.settings.taskId)?.name || 'Task execution',job.startedAt,job.jobId);
+  renderResultContext(job.settings.taskName || registeredTasks.find(task=>task.id===job.settings.taskId)?.name || 'Task execution',job.startedAt,job.jobId,job.settings);
   sourceMode = job.settings.mode;
   busy = true;
   renderTaskMonitor();
@@ -2755,7 +2783,7 @@ async function handleRefreshResults(reset=false,poll=false) {
   view.summary={...data.summary,hosts:new Map(Object.entries(data.summary.hosts)),sources:new Map(Object.entries(data.summary.sources))};
   const snapshot=data.snapshot;activeJobState=snapshot.state;completed=data.summary.total;
   elapsedMs=snapshot.elapsedMs || 0;activeProcessingMs=snapshot.activeProcessingMs || 0;
-  resultEngine=data.summary.engine || engine;resultSourceMode=snapshot.settings.mode;
+  resultEngine=snapshot.settings.engine || data.summary.engine || null;resultSourceMode=snapshot.settings.mode;
   runHosts=snapshot.hosts || [];runSourcePatterns=[...view.summary.sources.keys()];
   if(data.items){
     const previous=new Map(view.items.map(item=>[item.sequence,item]));
@@ -2774,7 +2802,7 @@ async function handleRefreshResults(reset=false,poll=false) {
     if(page===0)view.through=data.sequence;
     if(page===0)view.snapshotTotal=completed;
   }
-  renderResultContext(snapshot.settings.taskName || 'Task execution',snapshot.startedAt,view.id);
+  renderResultContext(snapshot.settings.taskName || 'Task execution',snapshot.startedAt,view.id,snapshot.settings);
   handleRunProgress(activeJobState,snapshot.settings.mode);
   render(false,true);handleSyncRunRoute(poll);
 }
@@ -2815,7 +2843,7 @@ async function handlePagedProcessing(job) {
   if(busy)return;
   handleResetChart();
   if(globalThis.history?.pushState)expandedResultDetails.clear();
-  renderResultContext(job.settings.taskName || registeredTasks.find(task=>task.id===job.settings.taskId)?.name || 'Task execution',job.startedAt,job.jobId);
+  renderResultContext(job.settings.taskName || registeredTasks.find(task=>task.id===job.settings.taskId)?.name || 'Task execution',job.startedAt,job.jobId,job.settings);
   const requestedRoute=routeLocation();
   busy=true;total=null;activeJobId=job.jobId;activeJobState=job.state;rememberJob(activeJobId);
   activeRequest=new AbortController();const controller=activeRequest;

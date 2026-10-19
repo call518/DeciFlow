@@ -38,7 +38,7 @@ system profiles retain Category, Urgency, and Work Ticket. New profiles configur
 their own options and levels. See [Criteria](criteria.md).
 
 All decisions appear in compact cards in their configured order; **Probabilities and Criteria** expands its distribution and definitions.
-**Review Decisions** records typed corrections. Choice uncertainty is shown per
+**Review** records typed corrections. Choice uncertainty is shown per
 item; Needs Review can come from any decision, while chart certainty refers to the
 selected Choice. These are separate judgments, not one combined probability.
 No ticket is created automatically. Missing or invalid answers fail the whole request.
@@ -186,8 +186,10 @@ continue. Older pages stay fixed; Latest Results returns to current results.
 | --- | --- |
 | Pause Display Updates / Resume Display Updates | Freeze/unfreeze the list, including before the first result; analysis, metrics, and chart continue. Filters/pages use the frozen list; the button counts pending results. |
 | Stop (Tasks) | Cancel file readers and pending engine requests; retain completed results, discard unsubmitted chunks. Remote inference already running may finish. |
-| View JSON | Expand one result, including failures, profile/chunk metadata, and reviewer edits. Expanded state survives list refreshes. Copy inside the JSON panel copies the current result, including reviewer edits. |
-| Review Decisions | Record typed corrections per decision; AI predictions, review flags, charts, and model weights remain unchanged. |
+| Details | Expand Action execution, source/host/record location, and Criteria/chunk metadata. Collapsed initially; Action failures remain visible on the card. Expanded state survives list refreshes and pagination. Full metadata remains in View Result JSON. |
+| Response | Expand the Laya or Jev response, HTTP status, and validation diagnostics with the same disclosure style as Review. Copy copies the response details; non-JSON and unavailable responses are identified. |
+| View Result JSON | Expand one result, including failures, profile/chunk metadata, and reviewer edits. Expanded state survives list refreshes. Copy inside the JSON panel copies the current result, including reviewer edits. |
+| Review | Record typed corrections per decision; AI predictions, review flags, charts, and model weights remain unchanged. |
 | Export All JSON | Stream all Task results recorded when export starts, including paused or filtered-out rows; available during execution too. |
 | Export Reviewed JSON | Export successful results with any human correction different from its AI value, including original answers and reviewerDecisions. Cleared and unchanged corrections are excluded; display filters are ignored. |
 

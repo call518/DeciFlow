@@ -37,7 +37,10 @@ Skipped로 기록합니다. 서로 다른 Task는 동시 실행하며 각각 엔
 
 상태는 Running·Completed·Failed·Stopped·Skipped이며 실행 전 Task는 Idle입니다.
 판정 요청 또는 Action이 하나라도 실패하면 실행은 Failed입니다. History는 최근 50개
-기록의 시작·종료 시각·시작 원인·처리 수와 View Results를 제공합니다. 결과 재생은
+기록의 시작·종료 시각·시작 원인·저장된 Decision Engine·Requested Model·처리 수와
+View Results를 제공합니다. 결과 화면에도 실행 시작 당시 엔진과 요청 모델을 표시하며
+상단의 현재 서버 설정과 구분합니다. 정보가 없는 과거 기록이나 준비 완료 전
+실패·건너뛴 실행은 **Not Recorded**로 표시합니다. 결과 재생은
 판정·Action을 다시 실행하지 않습니다. Main은 선택한 Task의 새 실행을 따라가며
 이력에서 특정 실행을 열면 해당 실행을 유지합니다.
 

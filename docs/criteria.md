@@ -276,7 +276,7 @@ judgments about resolution or promised follow-up.
 ## Results, Review, and Storage
 
 All decisions appear on each result in their configured order; **Probabilities and Criteria** shows its distribution and definitions.
-**Review Decisions** accepts Choice options, bounded Score values, and Noul
+**Review** accepts Choice options, bounded Score values, and Noul
 probabilities. Clear a correction to return to Not Reviewed. AI answers and charts
 remain unchanged. Export Reviewed JSON includes results with any changed decision.
 

@@ -72,37 +72,59 @@ def is_probability(value: object) -> bool:
 def validate_answer(question: dict[str, Any], answer: dict[str, Any]) -> None:
     """Validate a provider answer against the exact question sent."""
     kind = question["type"]
+    # Keep the ±0.02 boundary inclusive despite binary floating-point rounding.
+    tolerance = 0.02 + 1e-12
     if kind == "noul":
         if answer["type"] != kind or not is_probability(answer["noul"]):
-            raise ValueError("Invalid yes probability.")
+            raise ValueError(
+                "Noul answers must have type noul and a finite yes probability between 0 and 1."
+            )
         return
     probabilities = answer["probabilities"]
     criteria = question["criteria"]
     keys = set(criteria) if kind == "choice" else {str(i) for i in range(len(criteria))}
-    if (
-        not isinstance(probabilities, dict)
-        or set(probabilities) != keys
-        or not all(is_probability(p) for p in probabilities.values())
-        or abs(sum(probabilities.values()) - 1) > 0.02
-    ):
-        raise ValueError("Invalid probability distribution.")
+    if not isinstance(probabilities, dict):
+        raise TypeError("Probabilities must be a JSON object.")
+    if set(probabilities) != keys:
+        missing = sorted(keys - set(probabilities))
+        unexpected = sorted(set(probabilities) - keys)
+        raise ValueError(
+            f"Probability keys must match the criteria; missing: {missing}; "
+            f"unexpected: {unexpected}."
+        )
+    if not all(is_probability(p) for p in probabilities.values()):
+        raise ValueError("Probabilities must be finite numbers between 0 and 1.")
+    total = sum(probabilities.values())
+    if abs(total - 1) > tolerance:
+        raise ValueError(f"Probabilities must sum to 1 (±0.02); received {total:g}.")
     if kind == "choice":
         if answer.get("type", "choice") != "choice":
-            raise ValueError("Invalid choice type.")
-        if answer["choice"] not in criteria or not is_probability(answer["confidence"]):
-            raise ValueError("Invalid choice.")
+            raise ValueError("Choice answers must have type choice.")
+        if answer["choice"] not in criteria:
+            raise ValueError("The selected choice must match a declared criterion.")
+        if not is_probability(answer["confidence"]):
+            raise ValueError("Confidence must be a finite number between 0 and 1.")
         return
     score = answer["score"]
+    if answer["type"] != kind:
+        raise ValueError("Score answers must have type score.")
     if (
-        answer["type"] != kind
-        or not isinstance(score, (int, float))
+        not isinstance(score, (int, float))
         or isinstance(score, bool)
         or not math.isfinite(score)
         or not 0 <= score <= len(criteria) - 1
-        or answer["legend"] != {str(i): text for i, text in enumerate(criteria)}
-        or abs(score - sum(int(k) * p for k, p in probabilities.items())) > 0.02
     ):
-        raise ValueError("Invalid score.")
+        raise ValueError(
+            f"Score must be a finite number between 0 and {len(criteria) - 1}."
+        )
+    if answer["legend"] != {str(i): text for i, text in enumerate(criteria)}:
+        raise ValueError("The score legend must match the declared levels exactly.")
+    expected = sum(int(k) * p for k, p in probabilities.items())
+    if abs(score - expected) > tolerance:
+        raise ValueError(
+            f"Score must match the probability-weighted value (±0.02); "
+            f"expected {expected:g}, received {score:g}."
+        )
 
 
 def answer_value(answer: dict[str, Any]) -> Any:

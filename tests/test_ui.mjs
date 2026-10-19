@@ -287,7 +287,7 @@ test('individual JSON reflects review changes and stays open after rendering', a
   await runTask(nodes);
   const row = nodes.get('results').children[1];
   const details = row.children.at(-1);
-  assert.equal(details.children[0].textContent, 'View JSON');
+  assert.equal(details.children[0].textContent, 'View Result JSON');
   assert.equal(details.children[1].children[1].textContent, '');
   details.open = true; details.ontoggle();
   assert.equal(JSON.parse(details.children[1].children[1].textContent).lineEnd, 11);
@@ -375,16 +375,17 @@ test('file line labels distinguish batch from observed realtime sequences', asyn
     const { nodes, context } = workspace([{ type: 'start', engine: 'laya', total: null, mode }, first, second]);
     await runTask(nodes);
     const rows = nodes.get('results').children;
+    const detailValues=row=>Object.fromEntries(row.children.find(node=>node.children[0]?.textContent==='Details').children[1].children.map(field=>[field.children[0].textContent,field.children[1]]));
     const prefix = mode === 'realtime' ? 'Observed' : 'File';
-    assert.equal(rows[1].children[2].textContent, `Source: /var/log/secure · ${prefix} line 1`);
-    assert.equal(rows[0].children[2].textContent, `Source: /var/log/secure · ${prefix} lines 10–12`);
-    assert.equal(rows[1].children[3].textContent, 'Criteria: Sample General System · Chunk: 1 event (max 1)');
-    assert.equal(rows[0].children[3].textContent, 'Criteria: Sample Authentication · Chunk: 1 event (max 5)');
-    if (mode === 'realtime') assert.ok(rows[1].children[2].title.includes('not an absolute'));
+    assert.equal(detailValues(rows[1]).Source.textContent, `/var/log/secure · ${prefix} line 1`);
+    assert.equal(detailValues(rows[0]).Source.textContent, `/var/log/secure · ${prefix} lines 10–12`);
+    assert.equal(detailValues(rows[1]).Criteria.textContent, 'Sample General System · Chunk: 1 event (max 1)');
+    assert.equal(detailValues(rows[0]).Criteria.textContent, 'Sample Authentication · Chunk: 1 event (max 5)');
+    if (mode === 'realtime') assert.ok(detailValues(rows[1]).Source.title.includes('not an absolute'));
     nodes.get('source-mode').value = mode === 'realtime' ? 'batch' : 'realtime';
     nodes.get('source-mode').onchange();
     vm.runInContext('render()', context);
-    assert.equal(nodes.get('results').children[1].children[2].textContent, `Source: /var/log/secure · ${prefix} line 1`);
+    assert.equal(detailValues(nodes.get('results').children[1]).Source.textContent, `/var/log/secure · ${prefix} line 1`);
   }
 });
 
@@ -2931,6 +2932,7 @@ test('All ten mixed decisions appear equally regardless of legacy summary settin
   assert.equal(row.children[0].children.some(child=>child.className==='all-decisions'),false);
   assert.deepEqual(decisionCards(row).map(card=>card.children[0].textContent),Array.from({length:10},(_,i)=>`Decision ${i} (${i<2?'Choice':i<5?'Score':'Noul'})`));
   assert.equal(row.children[1].className,'original-input');
+  assert.equal(row.children[1].children[0].textContent,'Input');
   assert.ok(nodes.get('category-filter').children.some(option=>option.value==='voc:pending'));
   const reviews=row.children.at(-2).children[1];assert.equal(reviews.children.length,10);
   const input=reviews.children[5].children[0];input.value='0.2';await input.onchange();
@@ -4156,4 +4158,170 @@ test('Criteria can be empty and created with AI without a General profile', asyn
   await nodes.get('save-criteria').onclick();
   assert.deepEqual(saved, {});
   assert.equal(nodes.get('criteria-registry').children[0].textContent, 'No criteria yet. Add a profile or generate one with AI.');
+});
+
+
+test('History shows each saved engine and requested model instead of current server settings', async () => {
+  const {nodes,context}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  const runs=[
+    {jobId:'jev-run',state:'completed',startedAt:'2026-10-17T00:00:00Z',settings:{trigger:'manual',engine:'jev',model:'archived-jev-model'},counts:{completed:2}},
+    {jobId:'laya-run',state:'completed',startedAt:'2026-10-17T01:00:00Z',settings:{trigger:'cron',engine:'laya',model:'archived-laya-model'},counts:{completed:2}},
+    {jobId:'old-run',state:'failed',startedAt:'2026-10-17T02:00:00Z',settings:{trigger:'manual'},counts:{completed:0}},
+  ];
+  const calls=[];
+  context.fetch=async path=>{calls.push(path);return {ok:true,json:async()=>({runs})};};
+  vm.runInContext("engine='laya';criteriaTokenModel='current-model';registeredTasks=[{id:'one',name:'One',mode:'batch',timezone:'UTC',sources:[]}];renderTasks()",context);
+  nodes.get('task-list').children[0].children[1].children.at(-1).children.find(button=>button.textContent==='History').onclick();
+  await new Promise(resolve=>setImmediate(resolve));
+  const table=nodes.get('task-history').children[1];
+  assert.deepEqual(table.children[0].children.map(cell=>cell.textContent),['Started','Finished','Trigger','Decision Engine','Requested Model','State','Results','Manage']);
+  assert.equal(table.children[1].children[3].textContent,'Jev');
+  assert.equal(table.children[1].children[4].textContent,'archived-jev-model');
+  assert.equal(table.children[2].children[3].textContent,'Laya');
+  assert.equal(table.children[2].children[4].textContent,'archived-laya-model');
+  assert.equal(table.children[3].children[3].textContent,'Not Recorded');
+  assert.equal(table.children[3].children[4].textContent,'Not Recorded');
+  assert.deepEqual(calls,['/api/tasks/one/runs']);
+});
+
+test('Reopened paged results retain their original engine and model through refresh and run switches', async () => {
+  const {context,nodes}=pagedWorkspace(3);
+  const original=context.fetch;
+  let saved={engine:'jev',model:'archived-model'};
+  context.fetch=async(path,options)=>{
+    const response=await original(path,options);
+    if(!path.endsWith('/results'))return response;
+    const data=await response.json();
+    Object.assign(data.snapshot.settings,saved);
+    return {...response,json:async()=>data};
+  };
+  await vm.runInContext("handlePagedProcessing({jobId:'old',state:'completed',settings:{mode:'batch'},pagedResults:true})",context);
+  const caption=()=>nodes.get('result-context').children[2].textContent;
+  assert.equal(caption(),'Run Engine: Jev · Requested Model: archived-model');
+  assert.equal(vm.runInContext('resultEngine',context),'jev');
+  vm.runInContext("engine='laya';criteriaTokenModel='current-model'",context);
+  await vm.runInContext('handleRefreshResults(false,true)',context);
+  assert.equal(caption(),'Run Engine: Jev · Requested Model: archived-model');
+  saved={engine:'laya',model:'another-archived-model'};
+  await vm.runInContext("handlePagedProcessing({jobId:'other',state:'completed',settings:{mode:'batch'},pagedResults:true})",context);
+  assert.equal(caption(),'Run Engine: Laya · Requested Model: another-archived-model');
+  saved={};
+  await vm.runInContext("handlePagedProcessing({jobId:'legacy',state:'completed',settings:{mode:'batch'},pagedResults:true})",context);
+  assert.equal(caption(),'Run Engine: Not Recorded · Requested Model: Not Recorded');
+  assert.equal(vm.runInContext('resultEngine',context),null);
+});
+
+
+test('Every result shows a copyable Response with exact bodies and failure diagnostics', async () => {
+  const answer={type:'choice',choice:'normal',confidence:1,probabilities:{normal:1,warning:0,error:0,security:0,other:0}};
+  const cases=[
+    {engine:'jev',httpStatus:200,responseContentType:'application/json',providerResponse:{answersInDecisions:true,model:'saved-model'},decisions:{category:answer},decisionDefinitions:{category:{label:'Category',type:'choice',summary:true,criteria:{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'}}}},
+    {engine:'laya',httpStatus:200,error:'Invalid Laya response format.',responseValidationError:{path:'answers.category',message:'Missing required field: category.'},providerResponse:{answers:{}}},
+    {engine:'jev',httpStatus:502,error:'Jev request failed (HTTP 502)',providerResponseText:'<script>window.bad=true</script>\nUpstream error'},
+    {engine:'laya',httpStatus:200,error:'Invalid Laya response format.',providerResponseText:''},
+    {engine:'jev',error:'Request timed out.',engineConnection:'timeout'},
+    {engineConnection:'connected',httpStatus:200},
+  ];
+  const events=[{type:'start',engine:'jev',total:cases.length},...cases.map((fields,index)=>{const event=result(index);Object.assign(event.result,fields);return event;})];
+  const {nodes,context}=workspace(events);
+  let copied;
+  context.navigator={clipboard:{writeText:async text=>{copied=text;}}};
+  await runTask(nodes);
+  const disclosure=row=>row.children.find(child=>child.children[0]?.textContent==='Response');
+  for(let index=0;index<cases.length;index++){
+    const row=nodes.get('results').children.find(row=>row.children.some(child=>child.textContent===`log-${index}`));
+    assert.ok(row, `Missing result ${index}: ${nodes.get("message").textContent}`);
+    const response=disclosure(row);
+    assert.ok(response);
+    assert.match(response.className,/result-disclosure/);
+    assert.ok(!response.className.includes('result-json'));
+    const review=row.children.find(child=>child.children[0]?.textContent==='Review');
+    if(!cases[index].error)assert.match(review.className,/result-disclosure/);
+    assert.equal(response.children[1].className,'json-panel');
+    const pre=response.children[1].children[1];
+    assert.equal(pre.textContent,'');
+    response.open=true;response.ontoggle();
+    const message=JSON.parse(pre.textContent);
+    if(index===0){
+      assert.deepEqual(message.body,{model:'saved-model',answers:{category:answer}});
+      assert.equal(cases[0].providerResponse.answersInDecisions,true);
+    }
+    if(index===1)assert.deepEqual(message.responseValidationError,cases[index].responseValidationError);
+    if(index===2 || index===3){assert.equal(message.body,cases[index].providerResponseText);assert.equal(pre.children.length,0);}
+    if(index===4){assert.equal(message.body,null);assert.match(message.message,/No provider response was received/);}
+    if(index===5){assert.equal(message.body,null);assert.match(message.message,/not recorded/);}
+    await response.children[1].children[0].children[0].onclick();
+    assert.equal(copied,pre.textContent);
+    assert.equal(response.children[1].children[0].children[1].textContent,'Copied');
+    assert.equal(row.children.at(-1).children[0].textContent,'View Result JSON');
+  }
+  vm.runInContext('render(false)',context);
+  assert.ok(nodes.get('results').children.every(row=>disclosure(row).open));
+});
+
+test('Response stays expanded across persisted page navigation without inference', async () => {
+  const {context,nodes}=pagedWorkspace(60);
+  await vm.runInContext("handlePagedProcessing({jobId:'responses',state:'completed',settings:{mode:'batch'},pagedResults:true})",context);
+  const response=()=>nodes.get('results').children[0].children.find(child=>child.children[0]?.textContent==='Response');
+  response().open=true;response().ontoggle();
+  await nodes.get('next').onclick();
+  assert.equal(response().open,false);
+  await nodes.get('previous').onclick();
+  assert.equal(response().open,true);
+  assert.match(response().children[1].children[1].textContent,/not recorded/);
+});
+
+
+test('Result metadata is collapsed under Details while Action failures stay visible', async () => {
+  const success=result(0,false),failure=result(1,false),plain=result(2,false);
+  Object.assign(success.result,{source:'/host-logs/sample-logs/voc-local-gov-consulting-qna.jsonl',line:60,recordNumber:60,profile:'local_gov',profileLabel:'Sample VOC Local Gov Consulting QnA',chunkEvents:1,eventCount:1,actionExecution:{name:'Sample Elasticsearch',status:'success',elapsedMs:254,exitCode:0}});
+  Object.assign(failure.result,{source:'ssh://host/logs',line:7,hostName:'Remote Host',hostAddress:'host',hostPort:22,actionExecution:{name:'Notify',status:'failed',elapsedMs:12,exitCode:7,error:'Connection refused'}});
+  const {nodes,context}=workspace([{type:'start',engine:'laya',total:3},success,failure,plain]);
+  await runTask(nodes);
+  const row=index=>nodes.get('results').children.find(row=>row.children[1].textContent===`log-${index}`);
+  const details=index=>row(index).children.find(child=>child.children[0]?.textContent==='Details');
+  assert.equal(details(0).open,false);
+  assert.equal(details(1).open,false);
+  assert.equal(details(2),undefined);
+  const values=Object.fromEntries(details(0).children[1].children.map(field=>[field.children[0].textContent,field.children[1].textContent]));
+  assert.equal(values.Action,'Sample Elasticsearch · success · 254ms · exit 0');
+  assert.equal(values.Source,'/host-logs/sample-logs/voc-local-gov-consulting-qna.jsonl · File line 60 · JSONL Record 60');
+  assert.equal(values.Criteria,'Sample VOC Local Gov Consulting QnA · Chunk: 1 event (max 1)');
+  assert.ok(!row(0).children.some(child=>child.className==='caption'&&child.textContent?.startsWith('Action execution:')));
+  assert.ok(row(1).children.some(child=>child.className==='error-message'&&child.textContent==='Action execution: Notify · failed · 12ms · exit 7 · Connection refused'));
+  const failedValues=Object.fromEntries(details(1).children[1].children.map(field=>[field.children[0].textContent,field.children[1].textContent]));
+  assert.equal(failedValues.Host,'Remote Host (host:22)');
+  assert.equal(failedValues.Source,'ssh://host/logs · File line 7');
+  details(0).open=true;details(0).ontoggle();
+  vm.runInContext('render(false)',context);
+  assert.equal(details(0).open,true);
+  const json=row(0).children.at(-1);json.open=true;json.ontoggle();
+  const saved=JSON.parse(json.children[1].children[1].textContent);
+  assert.equal(saved.source,success.result.source);
+  assert.equal(saved.recordNumber,60);
+  assert.deepEqual(saved.actionExecution,success.result.actionExecution);
+});
+
+test('Details expansion survives persisted pagination without new engine checks or inference', async () => {
+  const {context,nodes}=pagedWorkspace(60);
+  await new Promise(resolve=>setImmediate(resolve));
+  const original=context.fetch,paths=[];
+  context.fetch=async(path,options)=>{
+    paths.push(path);
+    const response=await original(path,options);
+    if(!path.endsWith('/results'))return response;
+    const data=await response.json();
+    for(const item of data.items || [])Object.assign(item.result,{source:'/logs/input.log',line:item.sequence,profile:'general',chunkEvents:1});
+    return {...response,json:async()=>data};
+  };
+  await vm.runInContext("handlePagedProcessing({jobId:'metadata',state:'completed',settings:{mode:'batch'},pagedResults:true})",context);
+  const details=()=>nodes.get('results').children[0].children.find(child=>child.children[0]?.textContent==='Details');
+  assert.equal(details().open,false);
+  const calls=paths.length;
+  details().open=true;details().ontoggle();
+  assert.equal(paths.length,calls);
+  await nodes.get('next').onclick();assert.equal(details().open,false);
+  await nodes.get('previous').onclick();assert.equal(details().open,true);
+  assert.ok(paths.every(path=>path==='/api/settings'||path==='/api/tasks'||path.endsWith('/results')));
 });

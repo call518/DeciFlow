@@ -89,6 +89,8 @@ async def test_batch_runs_persist_and_replay_without_reexecution(
     engine: str,
 ) -> None:
     monkeypatch.setenv("DECISION_ENGINE", engine)
+    model = "multilingual" if engine == "laya" else "test-history-model"
+    monkeypatch.setenv(f"{engine.upper()}_MODEL", model)
     calls: list[str] = []
 
     async def handle_classify(log: str, *args: object) -> Result:
@@ -102,12 +104,17 @@ async def test_batch_runs_persist_and_replay_without_reexecution(
         headers={"Origin": "http://localhost"},
     ) as client:
         run = (await client.post(f"/api/tasks/{task_setup['task']['id']}/run")).json()
+        assert run["settings"]["engine"] == engine
+        assert run["settings"]["model"] == model
         job = JOBS[run["jobId"]]
         await asyncio.wait_for(job.task, 3)
         assert job.state == "completed" and job.counts["completed"] == 2
         assert sorted(calls) == ["one", "two"]
         assert task_runs(task_setup["task"]["id"])[0]["state"] == "completed"
         replay = await client.post(f"/api/jobs/{job.id}/events")
+        monkeypatch.setenv("DECISION_ENGINE", "jev" if engine == "laya" else "laya")
+        monkeypatch.setenv("LAYA_MODEL", "changed-model")
+        monkeypatch.setenv("JEV_MODEL", "changed-model")
         JOBS.clear()  # Simulate a new server process reading the same volume.
         archived = await client.post(f"/api/jobs/{job.id}")
         assert archived.json()["counts"]["completed"] == 2
@@ -116,6 +123,13 @@ async def test_batch_runs_persist_and_replay_without_reexecution(
         assert sorted(calls) == ["one", "two"]
         history = await client.post(f"/api/tasks/{task_setup['task']['id']}/runs")
         assert len(history.json()["runs"]) == 1
+        for stored in (archived.json(), history.json()["runs"][0]):
+            assert stored["settings"]["engine"] == engine
+            assert stored["settings"]["model"] == model
+        page = await client.post(f"/api/jobs/{job.id}/results", json={})
+        assert page.status_code == 200
+        assert page.json()["snapshot"]["settings"]["engine"] == engine
+        assert page.json()["snapshot"]["settings"]["model"] == model
 
 
 async def test_overlapping_manual_and_cron_runs_and_edit_snapshot(

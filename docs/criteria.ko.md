@@ -265,7 +265,7 @@ Actions를 위한 category·urgency·ticket 관련 필드도 유지합니다.
 ## 결과·검토·저장
 
 각 결과에 모든 판단 항목을 설정된 순서대로 표시합니다.
-**Probabilities and Criteria**는 항목별 확률과 기준을 표시합니다. **Review Decisions**에서
+**Probabilities and Criteria**는 항목별 확률과 기준을 표시합니다. **Review**에서
 Choice 선택지·범위 내 Score 값·Noul 확률을 수정합니다. 수정값을 비우면 Not Reviewed로
 돌아갑니다. AI 원래 답변과 차트는 바꾸지 않습니다. Export Reviewed JSON은 어떤 항목이든
 AI와 다른 수정값이 있는 결과를 내보냅니다.

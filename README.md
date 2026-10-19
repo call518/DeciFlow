@@ -24,7 +24,7 @@ handling status, follow-up ownership, urgency, and follow-up need.
 Each result shows all decisions in the profile's configured order. **Result #** identifies
 completion order within a run, independently of input order. Numbers stay unchanged
 by filtering or paging; the latest unfiltered result number equals the completed total. Expand **Probabilities and Criteria** for its distribution
-and definitions. **Review Decisions** records typed human corrections without
+and definitions. **Review** records typed human corrections without
 changing AI predictions. Scores are probability-weighted values, not rounded grades.
 DeciFlow does not create tickets automatically.
 
@@ -204,6 +204,18 @@ paths and saved customizations are preserved: update old sample paths in Sources
 Bundled Source, Criteria, Task, and Action names begin with **Sample**.
 Existing shipped names are renamed without changing IDs or assignments; custom names
 and settings are preserved. Reset recreates the same sample names.
+
+Task History and reopened results show the engine and requested model saved when
+the run started. Missing historical metadata is **Not Recorded**; current server
+settings are never substituted.
+
+Per-result Action, Source/Host, and Criteria/chunk metadata is collapsed under **Details**;
+Action failures remain visible. Full metadata is retained in **View Result JSON**.
+
+Every result includes a **Response** disclosure styled like **Review**,
+with a read-only response panel and Copy. It shows the provider response and specific format-validation
+errors for Laya and Jev, including non-JSON error bodies. Historical records without
+a saved body and requests that received no response are identified explicitly.
 
 ## Usage and configuration
 

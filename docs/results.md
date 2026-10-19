@@ -134,6 +134,7 @@ There is no standalone `question` field.
   },
   "engineConnection": "connected",
   "httpStatus": 200,
+  "responseContentType": "application/json",
   "responseHeaders": {},
   "providerResponse": {
     "model": "laya-rl-agent",
@@ -381,6 +382,9 @@ and per-host collection status are stored separately in run history; see [Tasks]
 | `engine` | Selected provider: laya or jev. |
 | `engineConnection` | Actual request status: connected, disconnected, timeout, or api_error; absent for local input rejection. |
 | `requestedModel` | Model name sent in the request; differs from the returned model identifier. |
+| `responseContentType` | Content-Type returned by the provider. |
+| `providerResponseText` | Original decoded response text when the body is not valid JSON, including HTTP errors. |
+| `responseValidationError` | Rejected response field path, exception type, and specific validation message. |
 | `requestedAt` | Request preparation timestamp in UTC, not the log event time. |
 | `requestBytes` | UTF-8 JSON request-body size in bytes, not tokens. |
 | `questions.category.type` | Decision primitive; Category uses choice; the same request also uses score and noul. |

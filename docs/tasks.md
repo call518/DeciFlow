@@ -40,7 +40,11 @@ back automatically to paid Jev.
 
 Run states are Running, Completed, Failed, Stopped, and Skipped; an unexecuted Task
 is Idle. Any failed decision request or Action makes the run Failed. History lists
-the latest 50 records with start/finish times, trigger, counts, and View Results.
+the latest 50 records with start/finish times, trigger, saved Decision Engine and
+Requested Model, counts, and View Results. The result context also shows the run
+engine and requested model captured at execution start, independently of the current
+server settings shown at the top. Missing historical metadata is **Not Recorded**,
+including runs that failed or were skipped before preparation completed.
 Replaying results never reruns decisions or Actions. Main follows new runs of the
 selected Task unless a historical run was explicitly opened.
 

@@ -129,6 +129,7 @@ Uncertain이 아닙니다. 이는 DeciFlow의 고정 검토 기준이며 정답 
   },
   "engineConnection": "connected",
   "httpStatus": 200,
+  "responseContentType": "application/json",
   "responseHeaders": {},
   "providerResponse": {
     "model": "laya-rl-agent",
@@ -375,6 +376,9 @@ Task 실행 정보와 호스트별 수집 상태는 실행 이력에 별도로 �
 | `engine` | 선택한 제공자: laya 또는 jev. |
 | `engineConnection` | 마지막 실제 요청 상태: connected, disconnected, timeout, api_error. 로컬 입력 거절에는 없음. |
 | `requestedModel` | 요청에 보낸 모델 이름. 응답 모델 식별자와 구분. |
+| `responseContentType` | 제공자가 반환한 Content-Type. |
+| `providerResponseText` | HTTP 오류를 포함해 본문이 유효한 JSON이 아닐 때 보존한 원본 디코딩 응답 텍스트. |
+| `responseValidationError` | 거절된 응답의 필드 경로·예외 유형·구체적인 검증 사유. |
 | `requestedAt` | 요청 준비 시점의 UTC 시각. 로그 발생 시각이 아님. |
 | `requestBytes` | UTF-8 JSON 요청 본문 크기(바이트). 토큰 수가 아님. |
 | `questions.category.type` | 판정 유형. 분류는 choice 사용. 같은 요청에서 score·noul도 사용. |

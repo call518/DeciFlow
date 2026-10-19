@@ -152,9 +152,9 @@ def _aggregate(stats: Result, result: Result) -> None:
     failed = bool(result.get("error"))
     stats["failed"] += failed
     stats["review"] += needs_review(result)
-    stats["truncated"] += (
-        result.get("providerResponse", {}).get("usage", {}).get("truncated") is True
-    )
+    provider = result.get("providerResponse")
+    usage = provider.get("usage") if isinstance(provider, dict) else None
+    stats["truncated"] += isinstance(usage, dict) and usage.get("truncated") is True
     stats["processingMs"] += result.get("elapsedMs", 0)
     action = result.get("actionExecution", {}).get("status")
     stats["actionSuccess"] += action == "success"
