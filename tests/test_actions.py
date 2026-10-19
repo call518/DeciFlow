@@ -430,40 +430,22 @@ def test_default_action_storage(
 
 
 @pytest.mark.anyio
-async def test_save_legacy_layout_preserves_lock_and_old_files(
-    tmp_path: Path,
+async def test_missing_lock_is_rebuilt_at_the_same_action_path(
     managed_environment: None,
 ) -> None:
-    import shutil
-
     action = {
-        "name": "migration",
+        "name": "Rebuild lock",
         "pythonVersion": f"{sys.version_info.major}.{sys.version_info.minor}",
         "modules": ["deciflow-test-module==1.0.0"],
         "code": "import action_probe\n",
     }
     saved = (await actions.save_actions([action]))[0]
     project = Path(saved["python"]).parent.parent.parent
-    old_project = (
-        actions.get_actions_directory() / "environments" / saved["id"] / "Rev-1-example"
-    )
-    shutil.copytree(project, old_project, symlinks=True)
-    old_script = actions.get_actions_directory() / "scripts" / saved["id"] / "old.py"
-    old_script.parent.mkdir(parents=True)
-    old_script.write_text(saved["code"])
-    saved.update(
-        python=str(old_project / ".venv" / "bin" / "python"), script=str(old_script)
-    )
-    save_records("actions", {saved["id"]: saved})
-    shutil.rmtree(project)
+    (project / "uv.lock").unlink()
     restored = (await actions.save_actions([saved]))[0]
-    restored_project = Path(restored["python"]).parent.parent.parent
-    assert (restored_project / "uv.lock").read_bytes() == (
-        old_project / "uv.lock"
-    ).read_bytes()
-    assert old_script.is_file()
-    assert Path(saved["python"]).is_file()
-    assert Path(restored["script"]).parent.name == saved["directory"]
+    assert restored["python"] == saved["python"]
+    assert restored["script"] == saved["script"]
+    assert (project / "uv.lock").is_file()
     assert (await actions.run_action(restored, {}))["status"] == "success"
 
 
@@ -710,9 +692,9 @@ async def test_failed_save_keeps_current_action_and_removes_prepared_files(
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("layout", ["uuid", "rev"])
-async def test_nested_paths_are_flattened_on_save(
-    managed_environment: None, layout: str
+@pytest.mark.parametrize("extra_directory", ["scripts", "environments"])
+async def test_save_keeps_current_paths_and_extra_directories(
+    managed_environment: None, extra_directory: str
 ) -> None:
     saved = (
         await actions.save_actions(
@@ -727,37 +709,19 @@ async def test_nested_paths_are_flattened_on_save(
         )
     )[0]
     directory = Path(saved["script"]).parent
-    environment = "a" * 32 if layout == "uuid" else "Rev-1-environment"
-    script = "b" * 32 if layout == "uuid" else "Rev-1-script"
-    old_project = directory / "environments" / environment
-    old_project.mkdir(parents=True)
-    for name in (".venv", "pyproject.toml", "uv.lock", ".ready"):
-        (directory / name).replace(old_project / name)
-    old_script = directory / "scripts" / f"{script}.py"
-    old_script.parent.mkdir()
-    Path(saved["script"]).replace(old_script)
-    (directory / "keep.txt").write_text("user data")
-    lock = (old_project / "uv.lock").read_bytes()
-    saved.update(
-        python=str(old_project / ".venv" / "bin" / "python"),
-        script=str(old_script),
-        revision="Rev-1-environment",
-        history={"environments": [], "scripts": []},
-    )
-    save_records("actions", {saved["id"]: saved})
-    loaded = actions.load_actions()[0]
-    assert "revision" not in loaded and "history" not in loaded
-    with pytest.raises(ValueError, match="Save this Action"):
-        await actions.reset_action(saved["id"])
-    restored = (await actions.save_actions([loaded]))[0]
+    extra = directory / extra_directory
+    extra.mkdir()
+    (extra / "keep.txt").write_text("user data")
+    lock = (directory / "uv.lock").read_bytes()
+    marker = directory / ".venv" / "keep-marker"
+    marker.touch()
+    restored = (await actions.save_actions([{**saved, "code": "print('updated')"}]))[0]
     assert restored["id"] == saved["id"]
-    assert not (directory / "environments").exists()
-    assert not (directory / "scripts").exists()
     assert Path(restored["script"]) == directory / "action.py"
     assert Path(restored["python"]).parent.parent == directory / ".venv"
     assert (directory / "uv.lock").read_bytes() == lock
-    assert (directory / "keep.txt").read_text() == "user data"
-    assert "revision" not in restored and "history" not in restored
+    assert (extra / "keep.txt").read_text() == "user data"
+    assert marker.is_file()
     assert (await actions.run_action(restored, {}))["status"] == "success"
     assert (
         await anyio.run_process([restored["python"], "-m", "pip", "--version"])
@@ -1083,50 +1047,15 @@ async def test_default_action_preparation_and_retry(
     assert len(calls) == 3
 
 
-@pytest.mark.anyio
-async def test_name_prefixed_directory_moves_only_after_successful_save(
-    managed_environment: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    saved = (
-        await actions.save_actions(
-            [
-                {
-                    "name": "Original",
-                    "pythonVersion": "3.12",
-                    "modules": [],
-                    "code": "pass",
-                }
-            ]
-        )
-    )[0]
-    directory = Path(saved["script"]).parent
-    legacy = directory.with_name(f"Original-{saved['id']}")
-    directory.rename(legacy)
-    saved.update(
-        directory=legacy.name,
-        script=str(legacy / "action.py"),
-        python=str(legacy / ".venv" / "bin" / "python"),
+@pytest.mark.parametrize("directory", ["Original-", "../", "/tmp/", "different-"])
+def test_only_uuid_action_directories_are_accepted(directory: str) -> None:
+    identity = "a" * 32
+    with pytest.raises(ValueError, match="Invalid Action directory"):
+        actions._action_directory({"id": identity, "directory": directory + identity})
+    assert (
+        actions._action_directory({"id": identity})
+        == actions.get_actions_directory() / identity
     )
-    save_records("actions", {saved["id"]: saved})
-    original_save = actions.save_records
-
-    def handle_failure(*args: object) -> None:
-        raise OSError("Synthetic storage failure")
-
-    monkeypatch.setattr(actions, "save_records", handle_failure)
-    with pytest.raises(OSError, match="Synthetic"):
-        await actions.save_actions([saved])
-    assert legacy.is_dir()
-    assert actions.load_actions() == [saved]
-    monkeypatch.setattr(actions, "save_records", original_save)
-    migrated = (await actions.save_actions([saved]))[0]
-    assert migrated["directory"] == saved["id"]
-    assert not legacy.exists()
-    assert actions.get_action_status(migrated) == "ready"
-    renamed = (await actions.save_actions([{**migrated, "name": "Renamed"}]))[0]
-    assert renamed["python"] == migrated["python"]
-    assert renamed["script"] == migrated["script"]
-    assert list(actions.get_actions_directory().iterdir()) == [directory]
 
 
 @pytest.mark.anyio

@@ -90,7 +90,7 @@ async def test_oversized_event_does_not_abort_batch(log: str) -> None:
     assert results[0]["review"] is False
     assert "preflight" in results[0]["error"]
     assert results[0]["inputLimitExceeded"] == "request_bytes"
-    assert results[1]["category"] == "normal"
+    assert results[1]["decisions"]["category"]["choice"] == "normal"
 
 
 @pytest.mark.anyio

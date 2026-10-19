@@ -3,7 +3,9 @@ from typing import Any
 
 import pytest
 
-from classifier import URGENCY_CRITERIA
+from profiles import DEFAULT_PROFILES
+
+URGENCY_CRITERIA = DEFAULT_PROFILES["general"]["questions"]["urgency"]["criteria"]
 
 DECISION_ANSWERS: dict[str, Any] = {
     "urgency": {

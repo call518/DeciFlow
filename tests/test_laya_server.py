@@ -70,7 +70,7 @@ def test_exact_event_budget_before_inference(
 def test_all_question_types_checked_before_inference(
     monkeypatch: pytest.MonkeyPatch, overflow_type: str | None
 ) -> None:
-    from classifier import OPERATIONAL_QUESTIONS
+    from profiles import DEFAULT_PROFILES
 
     checked = []
 
@@ -89,7 +89,10 @@ def test_all_question_types_checked_before_inference(
     )
     questions = {
         "category": {"type": "choice", "instructions": "Classify.", "criteria": {}},
-        **OPERATIONAL_QUESTIONS,
+        **{
+            key: DEFAULT_PROFILES["general"]["questions"][key]
+            for key in ("urgency", "ticket")
+        },
     }
     questions_by_type = {question["type"]: question for question in questions.values()}
     router = Router()

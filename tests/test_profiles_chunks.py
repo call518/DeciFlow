@@ -19,7 +19,8 @@ from source_settings import parse_source_settings, resolve_configured_sources
 
 @pytest.mark.parametrize("engine", ["laya", "jev"])
 @pytest.mark.parametrize(
-    "profile", [key for key, value in PROFILES.items() if "criteria" in value]
+    "profile",
+    [key for key, value in PROFILES.items() if "category" in value["questions"]],
 )
 @pytest.mark.anyio
 async def test_profiles_reach_both_engines(
@@ -31,7 +32,10 @@ async def test_profiles_reach_both_engines(
         payload = json.loads(request.content)
         assert payload["state"] == "line one\nline two"
         question = payload["questions"]["category"]
-        assert question["criteria"] == PROFILES[profile]["criteria"]
+        assert (
+            question["criteria"]
+            == PROFILES[profile]["questions"]["category"]["criteria"]
+        )
         assert PROFILES[profile]["instructions"] in question["instructions"]
         assert "Prefer security" not in question["instructions"]
         assert "Use other when context is insufficient" not in question["instructions"]
@@ -56,7 +60,7 @@ async def test_profiles_reach_both_engines(
         transport=httpx.MockTransport(handle_request)
     ) as client:
         result = await classify_log("line one\nline two", get_engine(), client, profile)
-    assert result["category"] == "normal"
+    assert result["decisions"]["category"]["choice"] == "normal"
 
 
 @pytest.mark.parametrize("size", [0, -1, True, "2", 1.5])
@@ -70,10 +74,9 @@ def test_unknown_profile() -> None:
         validate_settings("unknown", 1)
 
 
-def test_legacy_chunk_setting_is_normalized_to_events() -> None:
-    specs = parse_source_settings([{"path": "example.log", "chunkLines": 2}])
+def test_chunk_events_setting_is_preserved() -> None:
+    specs = parse_source_settings([{"path": "example.log", "chunkEvents": 2}])
     assert specs[0]["chunkEvents"] == 2
-    assert "chunkLines" not in specs[0]
 
 
 @pytest.mark.anyio

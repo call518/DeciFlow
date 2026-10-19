@@ -426,7 +426,7 @@ async def handle_classify(request: Request) -> Response:
         logs = parse_logs(body.get("text") if isinstance(body, dict) else None)
         profile, chunk_events = validate_settings(
             body.get("profile", "general"),
-            body.get("chunkEvents", body.get("chunkLines", 1)),
+            body.get("chunkEvents", 1),
         )
     except (ValueError, TypeError) as error:
         return _json(400, {"error": str(error)})
@@ -652,11 +652,10 @@ async def handle_file_source(request: Request) -> Response:
         if not isinstance(body, dict) or body.get("mode") not in {
             "batch",
             "realtime",
-            "follow",
         }:
             raise ValueError("Select Batch or Realtime mode.")
-        mode = "realtime" if body["mode"] == "follow" else body["mode"]
-        values = body.get("sources", body.get("paths", body.get("path")))
+        mode = body["mode"]
+        values = body.get("sources")
         settings, events = await prepare_file_execution(mode, values)
     except EngineUnavailableError as error:
         return _json(503, {"error": str(error)})
@@ -1410,16 +1409,12 @@ async def handle_result_page(request: Request) -> Response:
         if not isinstance(body, dict):
             raise TypeError("Invalid result request.")
         if operation == "review":
-            sequence, category = body.get("sequence"), body.get("category", "")
+            sequence = body.get("sequence")
             question = body.get("question")
-            if (
-                type(sequence) is not int
-                or not isinstance(category, str)
-                or (question is not None and not isinstance(question, str))
-            ):
+            if type(sequence) is not int or not isinstance(question, str):
                 raise TypeError("Invalid reviewer decision or result cursor.")
             await anyio.to_thread.run_sync(
-                store.review, identity, sequence, category, question, body.get("value")
+                store.review, identity, sequence, question, body.get("value")
             )
             return _json(200, {"saved": True})
         state = await anyio.to_thread.run_sync(store.state, identity)

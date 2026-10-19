@@ -12,7 +12,7 @@ from ssh_hosts import load_hosts
 def parse_source_settings(
     values: object, *, allow_unassigned_profile: bool = False
 ) -> list[dict[str, Any]]:
-    """Accept configured sources or preserve legacy path inputs with defaults."""
+    """Accept registered Sources or explicit paths with per-source settings."""
     if isinstance(values, str):
         values = [line.strip() for line in values.splitlines() if line.strip()]
     if not isinstance(values, list) or not values:
@@ -39,7 +39,7 @@ def parse_source_settings(
         if not isinstance(path, str) or not path.strip():
             raise ValueError("Enter a source path or pattern.")
         profile = value.get("profile", "general")
-        events = value.get("chunkEvents", value.get("chunkLines", 1))
+        events = value.get("chunkEvents", 1)
         if allow_unassigned_profile and profile == "":
             if type(events) is not int or events < 1:
                 raise ValueError("Chunk events must be a positive integer.")

@@ -40,6 +40,4 @@ def compact_result(result: dict[str, Any]) -> dict[str, Any]:
             **{key: value for key, value in provider.items() if key != "answers"},
             "answersInDecisions": True,
         }
-    if item != result and item.get("schemaVersion") == 1:
-        item["schemaVersion"] = 2
     return item

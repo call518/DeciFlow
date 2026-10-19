@@ -63,8 +63,8 @@ edits affect new runs. Changing the data directory does not migrate existing dat
 automatically.
 
 The shared SQLite database stores current Action configurations.
-Each UI-managed Action uses `<Action UUID>/`. Existing name-prefixed directories
-are rebuilt at the UUID path on the next save and removed only after saving succeeds. Edit can change Name when it remains unique
+Each UI-managed Action uses `<Action UUID>/`. Older versioned or name-prefixed
+layouts are not migrated. Edit can change Name when it remains unique
 (case-insensitive). Task assignments, execution selection and deletion checks use
 `actionId`, never the display name. Renaming keeps the UUID, original directory,
 script and environment unchanged; running jobs retain their original snapshots. Code and the environment live directly in that directory:
@@ -123,10 +123,8 @@ failures, Source read failures, and unassigned sources do not trigger Actions.
 Remote input also includes `hostId`, `hostName`, `hostAddress`, `hostPort`, and
 `chunkSequence`; these identify the source host without changing the log text.
 
-Custom profiles expose validated answers under `decisions[decision_id]` and frozen
-configuration under `decisionDefinitions`. `category` remains the primary Choice;
-standard Category/Urgency/Work Ticket profiles also retain legacy operational
-fields. JSONL adds canonical `log`, remaining `inputRecord` metadata,
+All profiles expose validated answers under `decisions[decision_id]` and frozen
+configuration under `decisionDefinitions`. JSONL adds canonical `log`, remaining `inputRecord` metadata,
 `inputContentInLog: true`, and `recordNumber`; redundant valid `rawInput` is omitted. Use the source location/record number for business deduplication
 when appropriate; eventId changes on reruns. Actions run before later human
 corrections and do not automatically rerun when a reviewer edits a result.
@@ -161,7 +159,6 @@ unnecessary for data-path changes. See [Docker deployment](../README.md#deciflow
 Syntax colors use vendored PrismJS 1.30.0 Core + Python (about 9.4 KiB, MIT). No external CDN is contacted at runtime; the versioned asset is browser-cacheable. Sources, license, and SHA-256 checksums are recorded in `public/vendor/prism/`; update these records and rerun UI checks when upgrading. Existing editor input and scrolling are preserved.
 
 
-Action inputs retain the meaning of legacy `category`, `primaryQuestion` and `uncertain`.
 Use `decisions` and `decisionAssessments` for per-decision processing and
 `anyUncertain` for record-level Choice uncertainty. Changing `defaultDecision`
 only changes display and never reruns Actions.

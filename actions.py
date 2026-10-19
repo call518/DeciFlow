@@ -21,7 +21,6 @@ from classifier import Result
 from config_store import (
     get_data_directory,
     load_records,
-    rename_sample_records,
     save_record,
     save_records,
 )
@@ -71,7 +70,7 @@ def _default_action() -> Result:
         "modules": ["elasticsearch"],
         "code": DEFAULT_ACTION_CODE,
     }
-    _initialize_action(action, None)
+    _initialize_action(action)
     directory = _action_directory(action)
     executable = "Scripts/python.exe" if os.name == "nt" else "bin/python"
     action.update(
@@ -170,10 +169,7 @@ def load_actions() -> list[Result]:
         for value in values
     ):
         raise ValueError("Invalid action registry.")
-    rename_sample_records("actions", records, {"Elasticsearch": "Sample Elasticsearch"})
-    for value in values:
-        value.pop("revision", None)
-        value.pop("history", None)
+
     return values
 
 
@@ -188,7 +184,7 @@ async def initialize_default_action() -> None:
         if get_action_status(action) == "ready" and Path(action["script"]).is_file():
             return
         try:
-            await prepare_action(action, action)
+            await prepare_action(action)
             Path(action["script"]).write_text(action["code"], encoding="utf-8")
             action.pop("preparationError", None)
         except (OSError, ValueError, TimeoutError) as error:
@@ -203,19 +199,12 @@ def _action_directory(action: Result) -> Path:
     identity = action.get("id")
     if not isinstance(identity, str) or not re.fullmatch(r"[0-9a-f]{32}", identity):
         raise ValueError("Select a UI-managed Action with a valid ID.")
-    directory = action.get("directory", identity)
-    if (
-        not isinstance(directory, str)
-        or directory in (".", "..")
-        or "/" in directory
-        or "\\" in directory
-        or not (directory == identity or directory.endswith(f"-{identity}"))
-    ):
+    if action.get("directory", identity) != identity:
         raise ValueError("Invalid Action directory.")
-    return get_actions_directory() / directory
+    return get_actions_directory() / identity
 
 
-def _initialize_action(action: Result, previous: Result | None) -> None:
+def _initialize_action(action: Result) -> None:
     action["directory"] = action["id"]
 
 
@@ -324,7 +313,7 @@ async def reset_action(identity: str) -> Result:
             (project / ".ready").unlink(missing_ok=True)
             if venv.exists():
                 await anyio.to_thread.run_sync(shutil.rmtree, venv)
-            await prepare_action(action, action)
+            await prepare_action(action)
             action.pop("preparationError", None)
             save_record("actions", action["id"], action)
         return action
@@ -342,7 +331,7 @@ async def save_actions(values: object) -> list[Result]:
         changing = []
         for action in managed:
             old = previous.get(action["id"])
-            _initialize_action(action, old)
+            _initialize_action(action)
             if "code" not in action:
                 action["code"] = Path(action["script"]).read_text(encoding="utf-8")
             directory = _action_directory(action)
@@ -363,7 +352,7 @@ async def save_actions(values: object) -> list[Result]:
                     _update_action(action, previous.get(action["id"]))
                 )
             for action in managed:
-                await prepare_action(action, previous.get(action["id"]))
+                await prepare_action(action)
                 script = _action_directory(action) / "action.py"
                 if (
                     not script.is_file()
@@ -375,14 +364,6 @@ async def save_actions(values: object) -> list[Result]:
                 "actions",
                 {action["id"]: action for action in actions},
             )
-        for action in changing:
-            old = previous.get(action["id"])
-            if old and _action_directory(old) != _action_directory(action):
-                await anyio.to_thread.run_sync(_remove_path, _action_directory(old))
-            for kind in ("scripts", "environments"):
-                await anyio.to_thread.run_sync(
-                    _remove_path, _action_directory(action) / kind
-                )
         for action in removed:
             await anyio.to_thread.run_sync(_remove_path, _action_directory(action))
     return actions
@@ -442,23 +423,20 @@ def get_action_status(action: Result) -> str:
     )
 
 
-async def prepare_action(action: Result, previous: Result | None = None) -> None:
+async def prepare_action(action: Result) -> None:
     """Track preparation until Python and all dependencies are installed."""
     identity = action["id"]
     PREPARING_ACTIONS.add(identity)
     try:
-        await _prepare_action(action, previous)
+        await _prepare_action(action)
     finally:
         PREPARING_ACTIONS.discard(identity)
 
 
-async def _prepare_action(action: Result, previous: Result | None = None) -> None:
+async def _prepare_action(action: Result) -> None:
     """Prepare the environment directly in its Action directory."""
-    unchanged = previous is not None and all(
-        previous.get(key) == action[key] for key in ("pythonVersion", "modules")
-    )
     if "directory" not in action:
-        _initialize_action(action, previous)
+        _initialize_action(action)
     project = _action_directory(action)
     interpreter = (
         project / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
@@ -469,11 +447,6 @@ async def _prepare_action(action: Result, previous: Result | None = None) -> Non
         return
     ready.unlink(missing_ok=True)
     project.mkdir(parents=True, exist_ok=True)
-    if unchanged and previous and not (project / "uv.lock").is_file():
-        old_project = Path(previous["python"]).parent.parent.parent
-        if old_project != project and (old_project / "uv.lock").is_file():
-            for filename in ("pyproject.toml", "uv.lock"):
-                shutil.copyfile(old_project / filename, project / filename)
     version = action["pythonVersion"]
     if not (project / "uv.lock").is_file():
         constraint = version if version.count(".") == 2 else version + ".*"

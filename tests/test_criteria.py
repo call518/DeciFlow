@@ -49,18 +49,18 @@ def test_persistence_and_invalid_save(criteria_storage: Path) -> None:
     assert PROFILES == values
     assert "network" not in PROFILES
     saved = load_records("criteria")
-    values["custom"]["criteria"]["normal"] = ""
+    values["custom"]["questions"]["category"]["criteria"]["normal"] = ""
     with pytest.raises(ValueError, match="nonempty"):
         save_profiles(values)
     assert load_records("criteria") == saved
-    assert PROFILES["custom"]["criteria"]["normal"]
+    assert PROFILES["custom"]["questions"]["category"]["criteria"]["normal"]
 
 
 @pytest.mark.parametrize("invalid", ["categories", "id", "instructions"])
-def test_fixed_categories_and_required_fields(invalid: str) -> None:
+def test_invalid_options_and_required_fields(invalid: str) -> None:
     values = deepcopy(PROFILES)
     if invalid == "categories":
-        values["general"]["criteria"]["score"] = "extra"
+        values["general"]["questions"]["category"]["criteria"]["all"] = "reserved"
     elif invalid == "id":
         values["../outside"] = values["general"]
     else:
@@ -117,7 +117,10 @@ async def test_custom_criteria_snapshot_reaches_both_engines(
     def handle_request(request: httpx.Request) -> httpx.Response:
         question = json.loads(request.content)["questions"]["category"]
         assert "Original custom instructions" in question["instructions"]
-        assert question["criteria"] == snapshot["custom"]["criteria"]
+        assert (
+            question["criteria"]
+            == snapshot["custom"]["questions"]["category"]["criteria"]
+        )
         return httpx.Response(
             200,
             json={
@@ -140,7 +143,7 @@ async def test_custom_criteria_snapshot_reaches_both_engines(
     ) as client:
         with use_profile_snapshot(snapshot):
             result = await classify_log("event", get_engine(), client, "custom")
-    assert result["category"] == "normal"
+    assert result["decisions"]["category"]["choice"] == "normal"
     assert "custom" not in PROFILES
 
 
@@ -232,8 +235,8 @@ def test_startup_does_not_replace_invalid_existing_criteria(
     assert load_records("criteria") == {"general": {"label": "Invalid"}}
 
 
-def test_uuid_profiles_preserve_legacy_references(criteria_storage: Path) -> None:
-    """Persist UUID criteria alongside legacy IDs without renaming references."""
+def test_uuid_and_builtin_profile_ids_are_supported(criteria_storage: Path) -> None:
+    """Persist UUID criteria alongside built-in sample IDs."""
     values = deepcopy(PROFILES)
     identity = str(uuid4())
     assert UUID(identity).version == 4

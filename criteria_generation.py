@@ -37,7 +37,6 @@ DECISION_FIELDS = {
     "id": TEXT,
     "label": TEXT,
     "instructions": TEXT,
-    "summary": {"type": "boolean"},
 }
 GENERATION_SCHEMA = _object_schema(
     {
@@ -86,13 +85,8 @@ def _require_fields(value: object, fields: set[str]) -> dict[str, Any]:
 
 def convert_generated_profile(value: object) -> dict[str, Any]:
     """Reject omissions and duplicate IDs before mapping every generated field."""
-    default_field = (
-        "defaultDecision"
-        if isinstance(value, dict) and "defaultDecision" in value
-        else "primaryQuestion"
-    )
     draft = _require_fields(
-        value, {"label", "instructions", default_field, "decisions"}
+        value, {"label", "instructions", "defaultDecision", "decisions"}
     )
     if not isinstance(draft["decisions"], list):
         raise TypeError("Generated decisions must be a list.")
@@ -106,14 +100,12 @@ def convert_generated_profile(value: object) -> dict[str, Any]:
             raise ValueError("Generated decision type is invalid.")
         kind = raw["type"]
         extra = (
-            {"options"}
+            {"options", "reviewOptions"}
             if kind == "choice"
             else {"levels"}
             if kind == "score"
             else set()
         )
-        if kind == "choice" and "reviewOptions" in raw:
-            extra.add("reviewOptions")
         item = _require_fields(raw, set(DECISION_FIELDS) | {"type"} | extra)
         identity = item["id"]
         if not isinstance(identity, str) or identity in questions:
@@ -130,12 +122,11 @@ def convert_generated_profile(value: object) -> dict[str, Any]:
                     raise ValueError("Generated option IDs must be unique strings.")
                 options[key] = option["definition"]
             question["criteria"] = options
-            if "reviewOptions" in item:
-                question["reviewOptions"] = item["reviewOptions"]
+            question["reviewOptions"] = item["reviewOptions"]
         elif kind == "score":
             question["criteria"] = item["levels"]
         questions[identity] = question
-    profile = {key: draft[key] for key in ("label", "instructions", default_field)}
+    profile = {key: draft[key] for key in ("label", "instructions", "defaultDecision")}
     profile["questions"] = questions
     return validate_profiles({"generated": profile})["generated"]
 
@@ -268,7 +259,7 @@ async def generate_criteria(body: dict[str, Any]) -> dict[str, Any]:
                     "existing decision ID of any type, used only as the default chart. "
                     "For every Choice include reviewOptions listing option IDs that require "
                     "human review, including unknown/other options; use an empty list if none. "
-                    "all decisions can be charted regardless of summary. "
+                    "All decisions can be charted. "
                     "Decision IDs must match [a-z][a-z0-9_]{0,63}. "
                     "Use decisions/options arrays in the output schema; the app maps "
                     "their IDs to questions/criteria keys. Do not copy sample personal "

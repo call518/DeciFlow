@@ -9,14 +9,13 @@ There is no fixed three-decision limit; provider input and runtime limits still 
 
 Default Chart Decision selects exactly one existing decision of any type. It is only a
 display preference and does not change AI answers, uncertainty, or filters. Every
-decision is available in Overview regardless of `summary`. Use **Set as Default** in
+decision is available in Overview. Use **Set as Default** in
 Overview or change it in the Criteria editor. Score charts round weighted scores to
 the nearest level (half up); Noul charts show Yes probability ranges.
 
 For each Choice option, **Needs Review** explicitly marks selections requiring human
 review, such as unknown/other. The saved `reviewOptions` list contains those option
 IDs. An empty list disables selection-based review; it does not disable uncertainty.
-Existing profiles without this field retain known legacy unknown/other option IDs.
 ChatGPT generation uses the same `defaultDecision` and `reviewOptions` validation.
 
 ## Generate Criteria With AI
@@ -267,10 +266,8 @@ Delete. **Sample General System** (`general`) is an ordinary optional profile: e
 it directly, or update its Task assignments before deleting it. Deletion survives
 restart; a template remains available through **Start From Template**. A new profile
 can be written manually or generated with AI even when no profiles are saved.
-Existing saved profiles retain their five categories and fixed operational questions until edited.
-Editing or cloning uses the typed editor and saves the full decision definitions.
-Existing Task references remain valid. System results retain legacy category,
-urgency, and ticket fields for existing Actions.
+All templates, manually authored profiles, and AI-generated profiles use the same
+typed decision definitions. Shared instructions apply to every decision.
 
 First initialization provides the system examples and **Sample VOC Asia Culture Center Consulting QnA**. On every startup, existing installations also receive the consultation
 sample if neither its ID nor its name exists. Saved profiles are never overwritten;
@@ -293,10 +290,9 @@ selections require review when listed in `reviewOptions`. Chart certainty refers
 the selected Choice; any decision or record-level issue can require review. These heuristics
 are not measured accuracy and do not evaluate Score or Noul confidence.
 
-Running jobs keep frozen profiles. Results retain `decisionDefinitions`,
-`primaryQuestion`, `decisions`, and `questions`, so subsequent edits do not relabel
+Running jobs keep frozen profiles. Results retain `decisionDefinitions` and
+`decisions`, so subsequent edits do not relabel
 past answers. The current saved default only changes the initial chart selection.
-`primaryQuestion` remains a frozen compatibility projection for Actions and old JSON.
 New chart identities exclude the default selection; different decision definitions
 remain separate. Profiles containing only Score/Noul are supported without a Choice.
 
@@ -304,12 +300,17 @@ Profiles are stored in `DECIFLOW_DATA_DIR/deciflow.sqlite3`; bundled JSON files 
 initial defaults and templates. Criteria management requires a trusted UI origin.
 
 The VOC samples are Korean-only. Missing samples are added at startup.
-Saved default English profiles are removed and their Task assignments switch to
-the corresponding Korean profiles. Historical results and custom clones are preserved.
-The `(KOR)` suffix is removed from unchanged default names; custom names are kept.
 
 Laya has a separate head budget for question instructions and options. Instructions
 can be cut even when the state fits. See [VOC question budgets](voc.md#check-the-laya-question-budget).
 
 The government sample also provides a Source, Korean Criteria, and a disabled
 Batch Task at startup. See [Sample VOC Central Gov Consulting QnA](voc.md#government-qna-sample).
+
+## Profile metadata
+
+All profiles use `questions` and `defaultDecision`; Choice definitions explicitly
+store `reviewOptions`. The obsolete `summary` flag and flat profile format are
+not used. Results and Actions use `decisions` and `decisionAssessments` without
+duplicating a primary classification. Earlier data formats are not supported;
+reset development data before using this schema with an existing installation.

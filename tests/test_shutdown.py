@@ -49,7 +49,7 @@ def test_sigint_stops_open_realtime_stream(tmp_path: Path, persist: bool) -> Non
                             raise
                         time.sleep(0.05)
                 endpoint = "/api/file-source"
-                payload = {"paths": str(log), "mode": "realtime"}
+                payload = {"sources": [{"path": str(log)}], "mode": "realtime"}
                 if persist:
                     created = client.post(
                         endpoint,

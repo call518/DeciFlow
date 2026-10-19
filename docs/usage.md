@@ -99,8 +99,8 @@ use **Category** for its selected value or chart bucket and **Decision Certainty
 Choice uncertainty. Certainty filtering requires a Choice; Score/Noul do not inherit
 another decision's status. Filters search the entire stored run using decision indexes.
 Chart selections do not change list filters. Clear the Decision chip to clear its
-value and certainty scope. With All Decisions, Category retains the legacy primary
-category filter for older links.
+value and certainty scope. With All Decisions, Category can select Request Failed;
+select a Decision before filtering its values.
 
 Each result displays the original input data in bold; JSON and Action code keep
 their own formatting.
@@ -118,8 +118,7 @@ retain line locations/counts. Requests and results use `chunkEvents`.
 **Uncertain is a DeciFlow feature**, computed from the provider response in
 [`classifier.py`](../classifier.py); it is not Laya's own uncertainty flag.
 For each Choice, any of the following conditions sets its
-`decisionAssessments[id].uncertain=true`. Top-level `uncertain` retains the frozen
-primary Choice meaning for compatibility:
+`decisionAssessments[id].uncertain=true`:
 
 | Condition | JSON `reviewReasons` value | Engine |
 | --- | --- | --- |

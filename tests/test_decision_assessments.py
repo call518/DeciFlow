@@ -11,7 +11,7 @@ from classifier import classify_log
 from config import Engine
 from decisions import decision_assessments, needs_review
 from profiles import DEFAULT_PROFILES, use_profile_snapshot, validate_profiles
-from result_store import SQLiteResultStore, empty_summary
+from result_store import SQLiteResultStore
 
 
 @pytest.fixture
@@ -19,7 +19,6 @@ def profile() -> dict[str, Any]:
     return {
         "label": "Assessment Test",
         "instructions": "Use only the input.",
-        "primaryQuestion": "area",
         "defaultDecision": "response",
         "questions": {
             "area": {
@@ -56,12 +55,9 @@ def record(profile: dict[str, Any]) -> dict[str, Any]:
     return {
         "log": "Synthetic record",
         "engine": "laya",
-        "primaryQuestion": "area",
         "defaultDecision": profile["defaultDecision"],
-        "classificationGroup": "legacy",
         "criteriaGroup": "stable",
         "profileLabel": profile["label"],
-        "category": "a",
         "decisionDefinitions": profile["questions"],
         "decisions": {
             "area": {
@@ -89,7 +85,7 @@ def record(profile: dict[str, Any]) -> dict[str, Any]:
 
 @pytest.mark.parametrize("engine_name", ["laya", "jev"])
 @pytest.mark.anyio
-async def test_default_changes_do_not_change_inference_or_legacy_projection(
+async def test_default_changes_do_not_change_inference_or_group_identity(
     profile: dict[str, Any],
     engine_name: str,
 ) -> None:
@@ -119,9 +115,9 @@ async def test_default_changes_do_not_change_inference_or_legacy_projection(
                 )
     assert requests[0] == requests[1] == requests[2]
     assert len({result["criteriaGroup"] for result in results}) == 1
-    assert len({result["classificationGroup"] for result in results}) == 1
     for result in results:
-        assert result["category"] == "a" and result["uncertain"] is False
+        assert result["decisions"]["area"]["choice"] == "a"
+        assert result["decisionAssessments"]["area"]["uncertain"] is False
         assert result["anyUncertain"] is True and result["review"] is True
         assessments = result["decisionAssessments"]
         assert assessments["response"]["uncertain"] is True
@@ -137,10 +133,7 @@ def test_review_options_are_explicit_and_separate_from_uncertainty(
 ) -> None:
     item = record(profile)
     item["decisionDefinitions"]["area"]["criteria"] = {"a": "A", unknown: "No evidence"}
-    if unknown == "custom_unknown":
-        item["decisionDefinitions"]["area"]["reviewOptions"] = [unknown]
-    else:
-        item["decisionDefinitions"]["area"].pop("reviewOptions")
+    item["decisionDefinitions"]["area"]["reviewOptions"] = [unknown]
     item["decisions"]["area"].update(choice=unknown, probabilities={"a": 0, unknown: 1})
     assessment = decision_assessments(item)["area"]
     assert assessment["uncertain"] is False
@@ -170,18 +163,12 @@ def test_integrity_issues_belong_to_the_affected_decision(
     assert needs_review(item)
 
 
-def test_missing_old_assessments_are_not_certain(profile: dict[str, Any]) -> None:
+def test_missing_probability_evidence_is_not_certain(profile: dict[str, Any]) -> None:
     item = record(profile)
     for answer in item["decisions"].values():
         answer.pop("probabilities", None)
     assert decision_assessments(item)["response"]["uncertain"] is None
-    assert decision_assessments({"category": "normal"})["category"]["uncertain"] is None
-    assert (
-        decision_assessments({"category": "normal", "uncertain": False})["category"][
-            "uncertain"
-        ]
-        is False
-    )
+    assert decision_assessments({"error": "Source unavailable"}) == {}
 
 
 @pytest.mark.parametrize("default", ["area", "response", "urgency", "followup"])
@@ -193,7 +180,7 @@ def test_any_single_existing_decision_can_be_the_default(
         {"general": DEFAULT_PROFILES["general"], "custom": profile}
     )["custom"]
     assert saved["defaultDecision"] == default
-    assert saved["primaryQuestion"] == "area"
+    assert "primaryQuestion" not in saved
 
 
 @pytest.mark.parametrize("default", [None, [], ["area", "response"], "missing"])
@@ -210,7 +197,7 @@ def test_review_options_are_validated(profile: dict[str, Any], options: Any) -> 
         validate_profiles({"general": DEFAULT_PROFILES["general"], "custom": profile})
 
 
-def test_indexed_filters_and_old_summary_upgrade_preserve_original_payload(
+def test_indexed_filters_and_reopening_preserve_original_payload(
     tmp_path: Path,
     profile: dict[str, Any],
 ) -> None:
@@ -262,11 +249,8 @@ def test_indexed_filters_and_old_summary_upgrade_preserve_original_payload(
     )
     with store.transaction() as connection:
         payloads = [row[0] for row in connection.execute("SELECT payload FROM events")]
-        old = empty_summary()
-        old.pop("decisionSummaryVersion")
-        connection.execute("UPDATE runs SET summary=?", (json.dumps(old),))
-        connection.execute("DELETE FROM result_decisions")
-    # A direct page request also upgrades old indexes; no prior state() is required.
+    store.close()
+    store = SQLiteResultStore(tmp_path / "results.db")
     assert len(store.page("run", filters, 30)["items"]) == 22
     assert store.state("run")["summary"]["review"] == 22
     with store.reader() as connection:
@@ -275,7 +259,7 @@ def test_indexed_filters_and_old_summary_upgrade_preserve_original_payload(
         ] == payloads
     with pytest.raises(ValueError, match="Choice"):
         store.page("run", {"decision": "stable:followup", "certainty": "uncertain"}, 10)
-    store.review("run", 1, "", "response", "pending")
+    store.review("run", 1, "response", "pending")
     corrected = store.page("run", filters, 30)["items"][-1]["result"]
     assert corrected["decisions"]["response"]["choice"] == "done"
     assert corrected["decisionAssessments"]["response"]["uncertain"]
@@ -293,7 +277,6 @@ def test_indexed_filters_and_old_summary_upgrade_preserve_original_payload(
 async def test_profiles_without_choice_are_supported(
     profile: dict[str, Any], engine_name: str
 ) -> None:
-    profile.pop("primaryQuestion")
     profile["questions"] = {
         key: value
         for key, value in profile["questions"].items()
@@ -326,7 +309,7 @@ async def test_profiles_without_choice_are_supported(
             )
         ) as client:
             result = await classify_log("Synthetic record", engine, client, "custom")
-    assert result["primaryQuestion"] is None and "category" not in result
+    assert "primaryQuestion" not in result and "category" not in result
     assert result["review"] is False and result["anyUncertain"] is False
     assert result["defaultDecision"] == "followup"
 
@@ -372,7 +355,7 @@ async def test_nonprimary_option_integrity_is_engine_specific(
             )
         ) as client:
             result = await classify_log("Synthetic input", engine, client, "custom")
-    assert result["uncertain"] is False
+    assert result["decisionAssessments"]["area"]["uncertain"] is False
     assert result["decisionAssessments"]["response"]["uncertain"] is (
         engine_name == "laya"
     )

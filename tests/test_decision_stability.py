@@ -34,7 +34,10 @@ async def test_auth_messages_share_input_but_preserve_original_logs(
         payload = json.loads(request.content)
         states.append(payload["state"])
         question = payload["questions"]["category"]
-        assert question["criteria"] == PROFILES["authentication"]["criteria"]
+        assert (
+            question["criteria"]
+            == PROFILES["authentication"]["questions"]["category"]["criteria"]
+        )
         assert message not in json.dumps(question)
 
         return httpx.Response(
@@ -48,7 +51,9 @@ async def test_auth_messages_share_input_but_preserve_original_logs(
                         "confidence": 0.9,
                         "probabilities": {
                             key: float(key == "warning")
-                            for key in PROFILES["general"]["criteria"]
+                            for key in PROFILES["general"]["questions"]["category"][
+                                "criteria"
+                            ]
                         },
                     },
                 },
@@ -117,7 +122,11 @@ async def test_uncertainty_preserves_model_choice(
 ) -> None:
     monkeypatch.setenv("DECISION_ENGINE", engine)
     distribution = dict(
-        zip(PROFILES["general"]["criteria"], probabilities, strict=True)
+        zip(
+            PROFILES["general"]["questions"]["category"]["criteria"],
+            probabilities,
+            strict=True,
+        )
     )
     choice = max(distribution, key=lambda key: distribution[key])
 
@@ -141,11 +150,13 @@ async def test_uncertainty_preserves_model_choice(
         transport=httpx.MockTransport(handle_request)
     ) as client:
         result = await classify_log("log", get_engine(), client)
-    assert result["category"] == choice
-    assert result["probabilities"] == distribution
-    assert result["confidence"] == confidence
-    assert result["answerProbability"] == distribution[choice]
-    assert result["uncertaintyBasis"] == "selected_category_probability"
-    assert result["reviewReasons"] == expected
-    assert result["uncertain"] is bool(expected)
+    assert result["decisions"]["category"]["choice"] == choice
+    assert result["decisions"]["category"]["probabilities"] == distribution
+    assert result["decisions"]["category"]["confidence"] == confidence
+    assert (
+        result["decisionAssessments"]["category"]["answerProbability"]
+        == distribution[choice]
+    )
+    assert result["decisionAssessments"]["category"]["reviewReasons"] == expected
+    assert result["decisionAssessments"]["category"]["uncertain"] is bool(expected)
     assert result["review"] is bool(expected)

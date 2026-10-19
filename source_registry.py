@@ -5,7 +5,7 @@ from pathlib import PurePosixPath
 from uuid import uuid4
 
 from classifier import Result
-from config_store import load_records, rename_sample_records, save_record, save_records
+from config_store import load_records, save_record, save_records
 
 VOC_SOURCE = {
     "id": f"{5:032x}",
@@ -74,17 +74,7 @@ def _ensure_sample_source(sample: Result) -> None:
 def load_sources() -> list[Result]:
     """Read saved Sources, persisting sample defaults on the first access."""
     records = load_records("sources", {item["id"]: item for item in DEFAULT_SOURCES})
-    rename_sample_records(
-        "sources",
-        records,
-        {
-            "System messages": "Sample System Messages",
-            **{
-                item["name"].removeprefix("Sample "): item["name"]
-                for item in [VOC_SOURCE, CENTRAL_GOV_SOURCE, LOCAL_GOV_SOURCE]
-            },
-        },
-    )
+
     return list(records.values())
 
 

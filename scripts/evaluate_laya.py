@@ -34,7 +34,8 @@ async def evaluate(engine: Engine, cases: list[dict[str, str]]) -> list[Result]:
                     result = {**error.metadata, "error": str(error)}
             return {
                 **case,
-                "correct": result.get("category") == case["expected"],
+                "correct": result.get("decisions", {}).get("category", {}).get("choice")
+                == case["expected"],
                 "result": result,
             }
 
@@ -43,18 +44,19 @@ async def evaluate(engine: Engine, cases: list[dict[str, str]]) -> list[Result]:
 
 def summarize(rows: list[Result]) -> Result:
     """Count mismatches and failures without treating confidence as accuracy."""
-    categories = list(PROFILES["general"]["criteria"])
+    categories = list(PROFILES["general"]["questions"]["category"]["criteria"])
     matrix = {key: dict.fromkeys([*categories, "failed"], 0) for key in categories}
     uncertain = failures = correct = certain = certain_correct = 0
     for row in rows:
         result = row["result"]
         failed = "error" in result
-        predicted = "failed" if failed else result["category"]
+        predicted = "failed" if failed else result["decisions"]["category"]["choice"]
         matrix[row["expected"]][predicted] += 1
         failures += failed
         correct += row["correct"]
-        uncertain += bool(result.get("uncertain"))
-        if not failed and not result.get("uncertain"):
+        assessment = result.get("decisionAssessments", {}).get("category", {})
+        uncertain += assessment.get("uncertain") is True
+        if not failed and assessment.get("uncertain") is False:
             certain += 1
             certain_correct += row["correct"]
     return {
@@ -92,7 +94,8 @@ def main() -> None:
     if not cases or any(
         not isinstance(case, dict)
         or not isinstance(case.get("log"), str)
-        or case.get("expected") not in PROFILES["general"]["criteria"]
+        or case.get("expected")
+        not in PROFILES["general"]["questions"]["category"]["criteria"]
         or case.get("profile", "general") not in PROFILES
         for case in cases
     ):

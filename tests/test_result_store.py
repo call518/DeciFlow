@@ -11,6 +11,7 @@ import pytest
 import server
 from classifier import Result
 from jobs import JOBS, Job
+from profiles import DEFAULT_PROFILES
 from result_store import SQLiteResultStore
 
 
@@ -30,7 +31,22 @@ def event(number: int) -> Result:
         "elapsedMs": number * 10,
         "result": {
             "log": f"record {number} % literal",
-            "category": "normal",
+            "criteriaGroup": "system",
+            "defaultDecision": "category",
+            "decisionDefinitions": DEFAULT_PROFILES["general"]["questions"],
+            "decisions": {
+                "category": {
+                    "type": "choice",
+                    "choice": "normal",
+                    "probabilities": {
+                        "normal": 1,
+                        "warning": 0,
+                        "error": 0,
+                        "security": 0,
+                        "other": 0,
+                    },
+                }
+            },
             "review": number % 2 == 0,
             "elapsedMs": 2,
             "hostId": f"host-{number % 3}",
@@ -76,7 +92,7 @@ def test_keyset_pages_filters_and_aggregates_stay_independent(tmp_path: Path) ->
     )
     stats = store.state(run["jobId"])["summary"]
     assert stats["total"] == 1000 and stats["review"] == 500
-    assert stats["categories"]["all"]["normal"] == 1000
+    assert stats["decisionGroups"]["system:category"]["counts"]["all"]["normal"] == 1000
     assert stats["processingPercentiles"] == {
         "minMs": 2,
         "maxMs": 2,
@@ -143,16 +159,34 @@ async def test_paged_api_settings_reviews_export_and_archive(
             sequence = smaller["items"][0]["sequence"]
             assert (
                 await client.post(
-                    url + "/review", json={"sequence": sequence, "category": "security"}
+                    url + "/review",
+                    json={
+                        "sequence": sequence,
+                        "question": "category",
+                        "value": "security",
+                    },
                 )
             ).status_code == 200
             data = (await client.post(url + "/results", json={})).json()
-            assert data["items"][0]["result"]["category"] == "normal"
-            assert data["items"][0]["result"]["reviewerCategory"] == "security"
-            assert data["summary"]["categories"]["all"]["security"] == 0
+            assert (
+                data["items"][0]["result"]["decisions"]["category"]["choice"]
+                == "normal"
+            )
+            assert (
+                data["items"][0]["result"]["reviewerDecisions"]["category"]
+                == "security"
+            )
+            assert (
+                data["summary"]["decisionGroups"]["system:category"]["counts"]["all"][
+                    "security"
+                ]
+                == 0
+            )
             exported = (await client.post(url + "/export")).json()
             assert len(exported["results"]) == 300
-            assert exported["results"][-1]["reviewerCategory"] == "security"
+            assert (
+                exported["results"][-1]["reviewerDecisions"]["category"] == "security"
+            )
             reviewed_response = await client.post(url + "/export-reviewed")
             reviewed = reviewed_response.json()
             assert reviewed["exportScope"] == "reviewed-changes"
@@ -164,12 +198,22 @@ async def test_paged_api_settings_reviews_export_and_archive(
             )
             for category in ("normal", ""):
                 await client.post(
-                    url + "/review", json={"sequence": sequence, "category": category}
+                    url + "/review",
+                    json={
+                        "sequence": sequence,
+                        "question": "category",
+                        "value": category or None,
+                    },
                 )
                 empty = (await client.post(url + "/export-reviewed")).json()
                 assert empty["results"] == [] and empty["exported"] == 0
             await client.post(
-                url + "/review", json={"sequence": sequence, "category": "security"}
+                url + "/review",
+                json={
+                    "sequence": sequence,
+                    "question": "category",
+                    "value": "security",
+                },
             )
             JOBS.pop(job.id)
             archived = (await client.post(url + "/results", json={})).json()
@@ -264,9 +308,9 @@ def test_reviewed_export_queries_only_changes_in_bounded_batches(
     for number in range(300):
         store.append(identity, event(number), run)
         if number % 2 == 0:
-            store.review(identity, number + 1, "security")
-    store.review(identity, 1, "normal")
-    store.review(identity, 3, "")
+            store.review(identity, number + 1, "category", "security")
+    store.review(identity, 1, "category", "normal")
+    store.review(identity, 3, "category", None)
     first = store.events(identity, reviewed_only=True)
     assert len(first) == 128
     second = store.events(identity, first[-1][0], reviewed_only=True)
@@ -274,8 +318,8 @@ def test_reviewed_export_queries_only_changes_in_bounded_batches(
     assert store.events(identity, second[-1][0], reviewed_only=True) == []
     for _, encoded in first + second:
         result = json.loads(encoded)["result"]
-        assert result["reviewerCategory"] == "security"
-        assert result["category"] == "normal"
+        assert result["reviewerDecisions"]["category"] == "security"
+        assert result["decisions"]["category"]["choice"] == "normal"
     assert store.state(identity)["summary"]["total"] == 300
 
 
@@ -315,52 +359,6 @@ def test_whole_run_percentiles_and_histogram_counts(
         assert connection.execute(
             "SELECT COALESCE(SUM(samples),0) FROM processing_times"
         ).fetchone()[0] == len(durations)
-    store.close()
-
-
-@pytest.mark.parametrize("backfill_on_read", [True, False])
-def test_old_runs_backfill_once_then_use_histograms(
-    tmp_path: Path, backfill_on_read: bool
-) -> None:
-    """An existing run is migrated once and retains exact subsequent appends."""
-    store = SQLiteResultStore(tmp_path / "old-times.db")
-    run = snapshot()
-    store.create(run["jobId"], run)
-    for number, duration in enumerate([100, 200, 300, 400]):
-        item = event(number)
-        item["result"]["elapsedMs"] = duration
-        store.append(run["jobId"], item, run)
-    with store.transaction() as connection:
-        connection.execute("DELETE FROM processing_times")
-    store.append(run["jobId"], {"type": "done"}, run)
-    assert (
-        store.connection.execute("SELECT COUNT(*) FROM processing_times").fetchone()[0]
-        == 0
-    )
-    if backfill_on_read:
-        first = store.state(run["jobId"])["summary"]
-        assert first["processingPercentiles"] == {
-            "minMs": 100,
-            "maxMs": 400,
-            "medianMs": 250,
-            "p95Ms": 400,
-            "p99Ms": 400,
-        }
-    item = event(4)
-    item["result"]["elapsedMs"] = 500
-    store.append(run["jobId"], item, run)
-    assert (
-        store.state(run["jobId"])["summary"]["processingPercentiles"]["medianMs"] == 300
-    )
-    statements: list[str] = []
-    store.connection.set_trace_callback(statements.append)
-    store.state(run["jobId"])
-    assert not any("FROM events" in statement for statement in statements)
-    store.delete_task(run["settings"]["taskId"])
-    assert (
-        store.connection.execute("SELECT COUNT(*) FROM processing_times").fetchone()[0]
-        == 0
-    )
     store.close()
 
 
@@ -428,8 +426,8 @@ async def test_result_page_excludes_completions_after_its_summary(
         store.close()
 
 
-def test_all_decisions_and_legacy_summary_backfill(tmp_path: Path) -> None:
-    """Keep nonprimary counts across persisted pages and old summary upgrades."""
+def test_all_decisions_remain_counted_after_reopen(tmp_path: Path) -> None:
+    """Keep all decision counts across persisted pages and reopening."""
     store = SQLiteResultStore(tmp_path / "results.db")
     run = snapshot()
     store.create(run["jobId"], run)
@@ -438,7 +436,6 @@ def test_all_decisions_and_legacy_summary_backfill(tmp_path: Path) -> None:
         "response": {
             "label": "Response",
             "type": "choice",
-            "summary": False,
             "criteria": {"done": "Done", "pending": "Pending"},
         },
         "urgency": {"label": "Urgency", "type": "score", "criteria": ["Low", "High"]},
@@ -447,9 +444,9 @@ def test_all_decisions_and_legacy_summary_backfill(tmp_path: Path) -> None:
     for index, probability in enumerate([0, 0.25, 0.5, 0.75, 1]):
         item = event(index)
         item["result"].update(
-            classificationGroup="voc",
+            criteriaGroup="voc",
             profileLabel="VOC",
-            primaryQuestion="area",
+            defaultDecision="area",
             decisionDefinitions=definitions,
             category="a",
             uncertain=index == 2,
@@ -465,16 +462,13 @@ def test_all_decisions_and_legacy_summary_backfill(tmp_path: Path) -> None:
     failure["result"]["error"] = "failed"
     store.append(run["jobId"], failure, run)
     expected = store.state(run["jobId"])["summary"]["decisionGroups"]
-    assert expected["voc:area"]["primary"]
+    assert expected["voc:area"]["default"]
     assert expected["voc:response"]["counts"]["all"] == {"done": 0, "pending": 5}
     assert expected["voc:urgency"]["counts"]["all"] == {"0 · Low": 0, "1 · High": 5}
     assert list(expected["voc:followup"]["counts"]["all"].values()) == [1, 1, 1, 2]
     assert sum(expected["voc:followup"]["counts"]["uncertain"].values()) == 0
     assert sum(expected["voc:response"]["counts"]["unassessed"].values()) == 5
-    # Old runs have no decision aggregate; reconstruct from packed event contexts.
-    stats = store.state(run["jobId"])["summary"]
-    del stats["decisionGroups"]
-    with store.transaction() as connection:
-        connection.execute("UPDATE runs SET summary=?", (json.dumps(stats),))
-    assert store.state(run["jobId"])["summary"]["decisionGroups"] == expected
+    reopened = SQLiteResultStore(tmp_path / "results.db")
+    assert reopened.state(run["jobId"])["summary"]["decisionGroups"] == expected
+    reopened.close()
     store.close()

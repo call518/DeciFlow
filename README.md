@@ -138,8 +138,8 @@ Use this workflow as an alternative to the log example; both remain supported.
 4. In **Main**, select the Task, inspect results, and record corrections. Mixed
    classification schemes have separate choices under **Criteria** in the chart.
 
-The Overview **Decision** selector includes every decision, regardless of `summary`
-flags. Default Chart Decision selects one item of any type and can be changed without changing
+The Overview **Decision** selector includes every decision.
+Default Chart Decision selects one item of any type and can be changed without changing
 AI answers or filters. Choice charts count selected options; Score charts round weighted scores to the
 nearest level; Noul charts group Yes probabilities into 25% intervals. Certainty groups
 refer to the selected Choice. Score and Noul have no certainty groups. Decision filters

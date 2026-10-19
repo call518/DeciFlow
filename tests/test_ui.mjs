@@ -7,6 +7,26 @@ import { test } from 'node:test';
 const prismRuntime=vm.createContext({});
 vm.runInContext(readFileSync(new URL('../public/vendor/prism/prism-python-1.30.0.min.js',import.meta.url),'utf8'),prismRuntime);
 const workspaceContexts = new WeakMap();
+const systemProfile=JSON.parse(readFileSync(new URL('../profiles/general.json',import.meta.url),'utf8'));
+function profileFixture(label,instructions,criteria=systemProfile.questions.category.criteria) {
+  return {...structuredClone(systemProfile),label,instructions,questions:{...structuredClone(systemProfile.questions),category:{...structuredClone(systemProfile.questions.category),criteria}}};
+}
+function systemResult(log,overrides={}) {
+  return {log,elapsedMs:1,criteriaGroup:'system',profileId:'general',defaultDecision:'category',decisionDefinitions:structuredClone(systemProfile.questions),decisions:{category:{type:'choice',choice:'normal',confidence:.9,probabilities:{normal:1,warning:0,error:0,security:0,other:0}},urgency:{type:'score',score:undefined,probabilities:{},legend:Object.fromEntries(systemProfile.questions.urgency.criteria.map((text,i)=>[i,text]))},ticket:{type:'noul',noul:undefined}},...overrides};
+}
+function setDecisions(item,{choice,confidence,probabilities,score,scoreProbabilities,legend,noul,uncertain,reasons,candidates,...metadata}) {
+  Object.assign(item,metadata);
+  const answer=item.decisions.category;
+  if(choice!==undefined){answer.choice=choice;answer.probabilities=Object.fromEntries(Object.keys(answer.probabilities).map(key=>[key,Number(key===choice)]));}
+  if(confidence!==undefined)answer.confidence=confidence;
+  if(probabilities!==undefined)answer.probabilities=probabilities;
+  if(score!==undefined)item.decisions.urgency.score=score;
+  if(scoreProbabilities!==undefined)item.decisions.urgency.probabilities=scoreProbabilities;
+  if(legend!==undefined)item.decisions.urgency.legend=legend;
+  if(noul!==undefined)item.decisions.ticket.noul=noul;
+  if(uncertain!==undefined || reasons || candidates)item.decisionAssessments={category:{uncertain:uncertain ?? false,reviewReasons:reasons || [],candidates:candidates || [],answerProbability:answer.probabilities[answer.choice]}};
+}
+
 function runTask(nodes) {
   return vm.runInContext('handleRunTask(selectedTaskId)', workspaceContexts.get(nodes));
 }
@@ -36,7 +56,7 @@ function workspace(events, status, storage = { getItem: () => null, setItem() {}
     setAttribute(name, value) { this.attributes[name] = value; },
   });
   const context = vm.createContext({
-    Prism:prismRuntime.Prism, crypto: webcrypto, structuredClone,
+    Prism:prismRuntime.Prism, crypto: webcrypto, structuredClone, systemProfile, profileFixture, systemResult,
     ...(navigation ? { location: navigation, addEventListener: (name, handler) => listeners.set(name, handler) } : {}),
     document: {
       getElementById(id) {
@@ -96,8 +116,7 @@ function processingValues(nodes) {
 function result(index, review = true) {
   return {
     type: 'result', index, elapsedMs: index,
-    result: { log: `log-${index}`, category: 'normal', confidence: .9,
-      elapsedMs: 1, probabilities: { normal: 1, warning:0, error:0, security:0, other:0 }, review },
+    result: systemResult(`log-${index}`,{review}),
   };
 }
 
@@ -294,7 +313,7 @@ test('individual JSON reflects review changes and stays open after rendering', a
   assert.equal(JSON.parse(details.children[1].children[1].textContent).log, '<script>example</script>');
   const select = row.children.at(-2).children[1].children[0].children[0];
   select.value = 'warning'; select.onchange();
-  assert.equal(JSON.parse(details.children[1].children[1].textContent).reviewerCategory, 'warning');
+  assert.equal(JSON.parse(details.children[1].children[1].textContent).reviewerDecisions.category, 'warning');
   vm.runInContext('render()', context);
   const reopened = nodes.get('results').children[1].children.at(-1);
   assert.equal(reopened.open, true);
@@ -334,6 +353,7 @@ test('pause freezes rows while analysis continues; resume includes pending resul
   assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
   nodes.get('review-filter').value = 'all'; nodes.get('review-filter').onchange();
   assert.deepEqual(logs(nodes), ['log-0']);
+  nodes.get('decision-filter').value='system:category';nodes.get('decision-filter').onchange();
   nodes.get('category-filter').value = 'warning'; nodes.get('category-filter').onchange();
   assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
   nodes.get('category-filter').value = 'all'; nodes.get('category-filter').onchange();
@@ -425,7 +445,7 @@ test('category chart counts all sources, separates failures, and ignores filters
   const events = [{ type: 'start', engine: 'laya', total: null }];
   for (const [index, category] of ['normal', 'normal', 'warning', 'error', 'security', 'other'].entries()) {
     const event = result(index, index % 2 === 0);
-    Object.assign(event.result, { category, source: index % 2 ? '/logs/http' : '/logs/system', eventCount: 10, chunkEvents: 10 });
+    setDecisions(event.result, { choice:category, source: index % 2 ? '/logs/http' : '/logs/system', eventCount: 10, chunkEvents: 10 });
     events.push(event);
   }
   const failure = result(6);
@@ -440,10 +460,10 @@ test('category chart counts all sources, separates failures, and ignores filters
   assert.equal(nodes.get('category-chart').children[1].children[1].children[0].attributes.style, 'width:50%');
   assert.equal(nodes.get('chart-totals').textContent, '6 classified chunks · 1 failed request');
   nodes.get('review-filter').value = 'needs-review'; nodes.get('review-filter').onchange();
-  vm.runInContext("results[0].reviewerCategory = 'security'; render();", context);
+  vm.runInContext("results[0].reviewerDecisions = {category:'security'}; render();", context);
   assert.equal(values()[0], '2 (33.3%)');
   nodes.get('pause-updates').onclick();
-  vm.runInContext("results[7] = {category: 'security', elapsedMs: 1}; completionOrder.push(7); completed++; render(false);", context);
+  vm.runInContext("results[7] = systemResult('new');results[7].decisions.category.choice='security'; completionOrder.push(7); completed++; render(false);", context);
   assert.equal(values()[3], '2 (28.6%)');
   events.splice(0, events.length, { type: 'start', engine: 'laya', total: 0 });
   await runTask(nodes);
@@ -458,8 +478,8 @@ test('category overview precedes Log input and Classification Results', () => {
 
 test('uncertain category is explicitly provisional without changing the model choice', async () => {
   const event = result(0);
-  Object.assign(event.result, { category: 'error', confidence: .26, uncertain: true,
-    candidates: ['error', 'other'], reviewReasons: ['low_confidence', 'close_probabilities'],
+  setDecisions(event.result, { choice: 'error', confidence: .26, uncertain: true,
+    candidates: ['error', 'other'], reasons: ['low_answer_probability', 'close_probabilities'],
     probabilities: { normal: .01, warning: .18, error: .41, security: 0, other: .4 } });
   const { nodes } = workspace([{ type: 'start', engine: 'jev', total: 1 }, event]);
   await runTask(nodes);
@@ -468,7 +488,7 @@ test('uncertain category is explicitly provisional without changing the model ch
   assert.ok(decisionCards(row)[0].children.at(-1).textContent.includes('Error 41.0% vs Other 40.0%'));
   assert.ok(decisionCards(row)[0].children.at(-1).textContent.includes('top two probabilities differ'));
   const details = row.children.at(-1); details.open = true; details.ontoggle();
-  assert.equal(JSON.parse(details.children[1].children[1].textContent).category, 'error');
+  assert.equal(JSON.parse(details.children[1].children[1].textContent).decisions.category.choice, 'error');
   assert.equal(nodes.get('category-chart').children[2].children[2].textContent, '1 (100.0%)');
 });
 
@@ -490,7 +510,7 @@ test('category, review and literal log search combine and retain full aggregates
   const normal = result(0, false);
   normal.result.log = 'Service Started [OK]';
   const warning = result(1);
-  warning.result.category = 'warning';
+  warning.result.decisions.category.choice = 'warning';
   warning.result.log = 'Service retry [pending]';
   const failed = { type: 'result', index: 2, elapsedMs: 3,
     result: { log: 'Service request failed', error: 'timeout', review: true, elapsedMs: 2 } };
@@ -498,7 +518,7 @@ test('category, review and literal log search combine and retain full aggregates
   await runTask(nodes);
   nodes.get('log-search').value = 'SERVICE'; nodes.get('log-search').oninput();
   assert.equal(logs(nodes).length, 3);
-  nodes.get('category-filter').value = 'normal'; nodes.get('category-filter').onchange();
+  nodes.get('decision-filter').value='system:category';nodes.get('decision-filter').onchange();nodes.get('category-filter').value = 'normal'; nodes.get('category-filter').onchange();
   assert.deepEqual(logs(nodes), ['Service Started [OK]']);
   nodes.get('review-filter').value = 'needs-review'; nodes.get('review-filter').onchange();
   assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
@@ -508,7 +528,7 @@ test('category, review and literal log search combine and retain full aggregates
   nodes.get('log-search').value = '.*'; nodes.get('log-search').oninput();
   assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
   nodes.get('log-search').value = ''; nodes.get('log-search').oninput();
-  nodes.get('category-filter').value = 'failed'; nodes.get('category-filter').onchange();
+  nodes.get('decision-filter').value='all';nodes.get('decision-filter').onchange();nodes.get('category-filter').value = 'failed'; nodes.get('category-filter').onchange();
   assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
   nodes.get('review-filter').value = 'all'; nodes.get('review-filter').onchange();
   assert.deepEqual(logs(nodes), ['Service request failed']);
@@ -524,7 +544,7 @@ test('chart certainty groups partition classified results without treating failu
     [0, 'normal', false, false], [1, 'error', true, true], [2, 'other', false, true],
   ]) {
     const event = result(index, review);
-    Object.assign(event.result, { category, uncertain });
+    setDecisions(event.result, { choice:category, uncertain });
     events.push(event);
   }
   events.push({ type: 'result', index: 3, result: { log: 'failed', error: 'timeout', review: true, elapsedMs: 1 } });
@@ -571,7 +591,7 @@ test('truncated count includes rejected responses across chart filters and pause
 
 test('result label uses selected category probability rather than provider confidence', async () => {
   const event = result(0, false);
-  Object.assign(event.result, { confidence: .16, answerProbability: .9 });
+  setDecisions(event.result, { confidence: .16, probabilities:{normal:.9,warning:.1,error:0,security:0,other:0} });
   const { nodes } = workspace([{ type: 'start', engine: 'laya', total: 1 }, event]);
   await runTask(nodes);
   assert.equal(decisionCards(nodes.get('results').children[0])[0].children[2].textContent, '90.0% selected probability');
@@ -579,8 +599,8 @@ test('result label uses selected category probability rather than provider confi
 
 test('collapsed options show the rendering integrity warning', async () => {
   const event = result(0);
-  Object.assign(event.result, {
-    uncertain: true, candidates: ['normal'], reviewReasons: ['collapsed_options'],
+  setDecisions(event.result, {
+    uncertain: true, candidates: ['normal'], reasons: ['collapsed_options'],
   });
   const { nodes } = workspace([{ type: 'start', engine: 'laya', total: 1 }, event]);
   await runTask(nodes);
@@ -603,7 +623,7 @@ test('Copy JSON copies current reviewer edits and reports success or failure', a
   assert.equal(actions.children[0].textContent, 'Copy');
   assert.equal(actions.children[0].className, 'json-copy');
   await actions.children[0].onclick();
-  assert.equal(JSON.parse(copied).reviewerCategory, 'warning');
+  assert.equal(JSON.parse(copied).reviewerDecisions.category, 'warning');
   assert.equal(JSON.parse(copied).log, 'log-0');
   assert.equal(actions.children[1].textContent, 'Copied');
   context.navigator.clipboard.writeText = async () => { throw new Error('Denied'); };
@@ -682,7 +702,7 @@ test('uncertain results retain their category color class', async () => {
   for (const uncertain of [false, true]) {
     const events = categories.map((category, index) => {
       const event = result(index);
-      Object.assign(event.result, { category, uncertain });
+      setDecisions(event.result, { choice:category, uncertain });
       return event;
     });
     const { nodes } = workspace(events);
@@ -739,7 +759,7 @@ test('source filtering uses input patterns with counts and combines with other f
   const first = result(0, false);
   Object.assign(first.result, { source: '/logs/access-1.log', sourcePatterns: ['/logs/access*.log'], log: 'request ok' });
   const second = result(1);
-  Object.assign(second.result, { source: '/logs/messages', sourcePatterns: ['/logs/*', '/logs/messages'], log: 'service failed', category: 'error' });
+  setDecisions(second.result, { source: '/logs/messages', sourcePatterns: ['/logs/*', '/logs/messages'], log: 'service failed', choice: 'error' });
   const events = [{ type: 'start', engine: 'jev', total: null,
     sourcePatterns: ['/logs/access*.log', '/logs/*', '/logs/messages', '/logs/empty.log'] },
     first, second];
@@ -750,7 +770,7 @@ test('source filtering uses input patterns with counts and combines with other f
   assert.ok(select.children.some(option => option.text === '/logs/empty.log (0)'));
   select.value = '/logs/messages'; select.onchange();
   assert.deepEqual(logs(nodes), ['service failed']);
-  nodes.get('category-filter').value = 'normal'; nodes.get('category-filter').onchange();
+  nodes.get('decision-filter').value='system:category';nodes.get('decision-filter').onchange();nodes.get('category-filter').value = 'normal'; nodes.get('category-filter').onchange();
   assert.equal(nodes.get('results').children[0].textContent, 'No results to display.');
   nodes.get('category-filter').value = 'all';
   nodes.get('log-search').value = 'failed'; nodes.get('log-search').oninput();
@@ -1079,8 +1099,8 @@ test('Export stays visibly disabled during processing and enables only with down
 test('Criteria management resets drafts on menu entry, saves edits, and clears deleted source selections', async () => {
   const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, `${key} evidence`]));
   const profiles = {
-    general: { label: 'Sample General System', instructions: 'General instructions', criteria: definitions },
-    custom: { label: 'Custom', instructions: 'Custom instructions', criteria: definitions },
+    general: profileFixture('Sample General System','General instructions',definitions),
+    custom: profileFixture('Custom','Custom instructions',definitions),
   };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await nodes.get('nav-criteria').onclick();
@@ -1113,7 +1133,7 @@ test('Criteria management resets drafts on menu entry, saves edits, and clears d
 
 test('Criteria search, cancel, and duplicate IDs leave saved profiles unchanged', async () => {
   const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
-  const profiles = { general: { label: 'Sample General System', instructions: 'Original', criteria: definitions }, custom: { label: 'Custom', instructions: 'Original', criteria: definitions } };
+  const profiles = { general: profileFixture('Sample General System','Original',definitions), custom: profileFixture('Custom','Original',definitions) };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await nodes.get('nav-criteria').onclick();
   nodes.get('criteria-search').value = 'missing';
@@ -1165,7 +1185,7 @@ test('View shows read-only Action configuration without editing or losing drafts
 
 test('View shows all Criteria definitions and preserves the edit draft', async () => {
   const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, `${key} evidence`]));
-  const profiles = { general: { label: 'Sample General System', instructions: 'Saved instructions', criteria: definitions }, custom: { label: 'Custom', instructions: 'Saved instructions', criteria: definitions } };
+  const profiles = { general: profileFixture('Sample General System','Saved instructions',definitions), custom: profileFixture('Custom','Saved instructions',definitions) };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await nodes.get('nav-criteria').onclick();
   const controls = () => nodes.get('criteria-registry').children[0].children[1].children[1].children;
@@ -1195,7 +1215,7 @@ test('View shows all Criteria definitions and preserves the edit draft', async (
 
 test('Add closes View in both managers and enables the new editor', async () => {
   const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
-  const profiles = { general: { label: 'General', instructions: 'Instructions', criteria: definitions } };
+  const profiles = { general: profileFixture('General','Instructions',definitions) };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await new Promise(resolve => setImmediate(resolve));
   vm.runInContext("registeredActions=[{id:'Notify',name:'Notify', code:'pass'}]; renderActions();", context);
@@ -1215,7 +1235,7 @@ test('Add closes View in both managers and enables the new editor', async () => 
 
 test('URL routes restore Actions and Criteria on reload and support browser history', async () => {
   const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
-  const profiles = { general: { label: 'General', instructions: 'Instructions', criteria: definitions } };
+  const profiles = { general: profileFixture('General','Instructions',definitions) };
   for (const view of ['actions', 'criteria']) {
     const navigation = { hash: `#${view}` };
     const { nodes, context, listeners } = workspace([], undefined, undefined, profiles, navigation);
@@ -1276,7 +1296,7 @@ test('engine connection follows actual requests for both providers without local
 
 test('All Criteria share one searchable editable list without a required default', async () => {
   const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
-  const profiles = { general: { label: 'Sample General System', instructions: 'Default instructions', criteria: definitions }, custom: { label: 'Custom', instructions: 'Custom instructions', criteria: definitions } };
+  const profiles = { general: profileFixture('Sample General System','Default instructions',definitions), custom: profileFixture('Custom','Custom instructions',definitions) };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await nodes.get('nav-criteria').onclick();
   assert.equal(nodes.get('criteria-registry').children[0].children.length, 3);
@@ -1304,7 +1324,7 @@ function criteriaRow(nodes, name) {
 
 test('Add and Edit show only the form and restore each manager list on cancel or save', async () => {
   const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
-  const profiles = { general: { label: 'General', instructions: 'Default', criteria: definitions }, custom: { label: 'Custom', instructions: 'Custom', criteria: definitions } };
+  const profiles = { general: profileFixture('General','Default',definitions), custom: profileFixture('Custom','Custom',definitions) };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await new Promise(resolve => setImmediate(resolve));
   vm.runInContext("registeredActions=[{id:'Notify',name:'Notify', code:'pass'}]; renderActions();", context);
@@ -1499,8 +1519,8 @@ test('Action edit explains environment replacement and reset behavior', () => {
 
 test('results display urgency and ticket need probability', async () => {
   const event = result(0, false);
-  event.result.urgency = 2.37;
-  event.result.ticketProbability = 0.91;
+  event.result.decisions.urgency.score = 2.37;
+  event.result.decisions.ticket.noul = 0.91;
   const { nodes } = workspace([
     { type: 'start', engine: 'laya', total: 1 }, event,
     { type: 'done', elapsedMs: 10 },
@@ -1764,7 +1784,7 @@ test('Selected Source shows its path or pattern and updates without stale text',
 for (const engine of ['laya', 'jev']) {
   test(`${engine} presents three equal core decisions including zero and endpoint probabilities`, async () => {
     const event = result(0, false);
-    event.result.urgency = 0; event.result.ticketProbability = 0;
+    event.result.decisions.urgency.score = 0; event.result.decisions.ticket.noul = 0;
     const {nodes,context} = workspace([{type:'start',engine,total:1},event,{type:'done',elapsedMs:1}]);
     await runTask(nodes);
     let cards=decisionCards(nodes.get('results').children[0]);
@@ -1773,7 +1793,7 @@ for (const engine of ['laya', 'jev']) {
     assert.equal(cards[1].children[1].textContent,'0.00 / 3');
     assert.equal(cards[2].children[1].textContent,'0.0%');
     assert.equal(cards[2].children[2].textContent,'Yes probability · 0% No → 100% Yes');
-    vm.runInContext('results[0].urgency=3;results[0].ticketProbability=1;render(false)',context);
+    vm.runInContext('results[0].decisions.urgency.score=3;results[0].decisions.ticket.noul=1;render(false)',context);
     cards=decisionCards(nodes.get('results').children[0]);
     assert.equal(cards[1].children[1].textContent,'3.00 / 3');
     assert.equal(cards[2].children[1].textContent,'100.0%');
@@ -1796,12 +1816,12 @@ test('Missing legacy scores remain unavailable and failed requests show no predi
 for (const engine of ['laya', 'jev']) {
   test(`${engine} scopes probability distributions and review notes to each decision`, async () => {
     const event=result(0);
-    Object.assign(event.result,{
-      category:'normal',uncertain:true,candidates:['normal','error'],reviewReasons:['low_answer_probability','close_probabilities'],
+    setDecisions(event.result,{
+      choice:'normal',uncertain:true,candidates:['normal','error'],reasons:['low_answer_probability','close_probabilities'],
       probabilities:{normal:.275,warning:.2,error:.251,security:.11,other:.164},
-      urgency:2,urgencyProbabilities:{0:.1,1:.2,2:.3,3:.4},
-      urgencyLegend:{0:'Low: routine',1:'Medium: scheduled',2:'High: prompt',3:'Critical: immediate'},
-      ticketProbability:.275,
+      score:2,scoreProbabilities:{0:.1,1:.2,2:.3,3:.4},
+      legend:{0:'Low: routine',1:'Medium: scheduled',2:'High: prompt',3:'Critical: immediate'},
+      noul:.275,
     });
     const {nodes}=workspace([{type:'start',engine,total:1},event]);
     await runTask(nodes);
@@ -1822,7 +1842,7 @@ for (const engine of ['laya', 'jev']) {
 
 test('Three decisions show details by default without duplicate badges or toggles', async () => {
   const event=result(0,false);
-  event.result.urgency=1.41; event.result.ticketProbability=.299;
+  event.result.decisions.urgency.score=1.41; event.result.decisions.ticket.noul=.299;
   const {nodes,context}=workspace([event]);
   await runTask(nodes);
   const header=()=>nodes.get('results').children[0].children[0];
@@ -2079,7 +2099,7 @@ test('Nested Settings navigation opens individual sections and restores deep lin
 
 test('Source Action and Criteria menu entries close both editor and View without changing saved data', async () => {
   const definitions=Object.fromEntries(['normal','warning','error','security','other'].map(key=>[key,key]));
-  const profiles={general:{label:'General',instructions:'Instructions',criteria:definitions},custom:{label:'Custom',instructions:'Instructions',criteria:definitions}};
+  const profiles={general:profileFixture('General','Instructions',definitions),custom:profileFixture('Custom','Instructions',definitions)};
   const {nodes,context}=workspace([],undefined,undefined,profiles);
   await new Promise(resolve=>setImmediate(resolve));await nodes.get('nav-criteria').onclick();
   const original=vm.runInContext('JSON.stringify([registeredSources,registeredActions,criteriaProfiles])',context);
@@ -2462,7 +2482,7 @@ test('Host View and redraw do not repeat automatic checks within one visit',asyn
 
 test('Source Action Criteria Task and SSH Key View buttons insert a detail row immediately after selection',async()=>{
   const {context,nodes}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
-  vm.runInContext(`registeredSources=[{id:'source',name:'Input',type:'local',path:'/input'}];renderSources();registeredActions=[{id:'action',name:'Notify',code:'pass'}];renderActions();registeredTasks=[{id:'task',name:'Analysis',mode:'batch',sources:[]}];renderTasks();sshKeys=[{id:'key-Key',name:'Key',privatePath:'/key',publicPath:'/pub',publicKey:'public'}];renderSSHKeys();criteriaProfiles={general:{label:'General',instructions:'Default',criteria:{normal:'Normal'}}};renderCriteria();`,context);
+  vm.runInContext(`registeredSources=[{id:'source',name:'Input',type:'local',path:'/input'}];renderSources();registeredActions=[{id:'action',name:'Notify',code:'pass'}];renderActions();registeredTasks=[{id:'task',name:'Analysis',mode:'batch',sources:[]}];renderTasks();sshKeys=[{id:'key-Key',name:'Key',privatePath:'/key',publicPath:'/pub',publicKey:'public'}];renderSSHKeys();criteriaProfiles={general:profileFixture('General','Default',{normal:'Normal'})};renderCriteria();`,context);
   for(const [list,id,body] of [['source-registry','source-view',false],['action-registry','action-view',false],['task-list','task-view',false],['ssh-key-list','ssh-key-view',true],['criteria-registry','criteria-view',false]]){
     const table=nodes.get(list).children[0];const parent=body?table.children[1]:table;
     const row=parent.children[body?0:1];const button=row.children.at(-1).children.find(item=>item.textContent==='View');
@@ -2554,7 +2574,7 @@ test('Code View and editor use the same programming font stack',()=>{
 
 test('Criteria View uses compact full-width rows for instructions and category descriptions',()=>{
   const {context,nodes}=workspace([]);
-  vm.runInContext("criteriaProfiles={application:{label:'Application',instructions:'Distinguish retries from final failures.',criteria:{normal:'Successful operation.',warning:'Recoverable issue.',error:'Final failure.',security:'Unauthorized action.',other:'Insufficient context.'}}};handleViewCriteria('application')",context);
+  vm.runInContext("criteriaProfiles={application:profileFixture('Application','Distinguish retries from final failures.',{normal:'Successful operation.',warning:'Recoverable issue.',error:'Final failure.',security:'Unauthorized action.',other:'Insufficient context.'})};handleViewCriteria('application')",context);
   const fields=nodes.get('criteria-view').children[1];
   assert.ok(fields.className.includes('criteria-details'));
   assert.deepEqual(fields.children.map(field=>field.children[0].textContent),['Name','Decision Instructions','Default Chart Decision','Category (Choice)','Urgency (Score)','Work Ticket (Noul)']);
@@ -2769,7 +2789,7 @@ test('Confirmed reset submits once and reloads only after a new server instance 
 
 test('Clone Criteria opens an unsaved Add Profile draft and preserves source metadata', async () => {
   const criteria = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, `${key} definition`]));
-  const profiles = { general: { label: 'General', instructions: 'Default', criteria }, custom: { label: 'Authentication', instructions: 'Inspect authentication', criteria, normalization: 'single_line_syslog_header' } };
+  const profiles = { general: profileFixture('General','Default',criteria), custom: { ...profileFixture('Authentication','Inspect authentication',criteria), normalization: 'single_line_syslog_header' } };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await new Promise(resolve => setImmediate(resolve));
   await nodes.get('nav-criteria').onclick();
@@ -2800,7 +2820,7 @@ test('Clone Criteria opens an unsaved Add Profile draft and preserves source met
 
 test('Criteria UUIDs stay internal, independent of Name and stable across edits', async () => {
   const criteria = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
-  const { nodes, context } = workspace([], undefined, undefined, { general: { label: 'General', instructions: 'Default', criteria } });
+  const { nodes, context } = workspace([], undefined, undefined, { general: profileFixture('General','Default',criteria) });
   await nodes.get('nav-criteria').onclick();
   nodes.get('add-criteria').onclick();
   const first = vm.runInContext('criteriaDraftId', context);
@@ -2818,7 +2838,7 @@ test('Criteria UUIDs stay internal, independent of Name and stable across edits'
 
 test('Repeated Criteria clones report duplicate names immediately without losing the draft', async () => {
   const criteria = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
-  const profiles = { general: { label: 'General', instructions: 'Default', criteria }, general_clone: { label: 'General (Clone)', instructions: 'Copy', criteria } };
+  const profiles = { general: profileFixture('General','Default',criteria), general_clone: profileFixture('General (Clone)','Copy',criteria) };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await nodes.get('nav-criteria').onclick();
   vm.runInContext("handleCloneCriteria('general'); criteriaFields.instructions.value='Important draft';", context);
@@ -2919,21 +2939,22 @@ test('JSONL Source format requires a content field and fixes Task chunk size at 
   assert.equal(vm.runInContext('sourceRows[0].size.disabled',context),false);
 });
 
-test('All ten mixed decisions appear equally regardless of legacy summary settings',async()=>{
+test('All ten mixed decisions appear equally and can be filtered and reviewed',async()=>{
   const event=result(0,false),definitions={},answers={};
   for(let i=0;i<10;i++) {
     const type=i<2?'choice':i<5?'score':'noul';
-    definitions[`q${i}`]={label:`Decision ${i}`,type,summary:i<3,instructions:'Use observed evidence.',...(type==='choice'?{criteria:{pending:'Pending.',done:'Done.'}}:type==='score'?{criteria:['Low','High']}:{})};
+    definitions[`q${i}`]={label:`Decision ${i}`,type,instructions:'Use observed evidence.',...(type==='choice'?{criteria:{pending:'Pending.',done:'Done.'}}:type==='score'?{criteria:['Low','High']}:{})};
     answers[`q${i}`]=type==='choice'?{choice:'pending',confidence:1,probabilities:{pending:1,done:0}}:type==='score'?{score:.25,probabilities:{0:.75,1:.25}}:{noul:.8};
   }
-  Object.assign(event.result,{inputFormat:'jsonl',category:'pending',categoryFilter:'voc:pending',classificationGroup:'voc',primaryQuestion:'q0',profileLabel:'VOC',decisionDefinitions:definitions,decisions:answers});
+  Object.assign(event.result,{inputFormat:'jsonl',category:'pending',criteriaGroup:'voc',defaultDecision:'q0',profileLabel:'VOC',decisionDefinitions:definitions,decisions:answers});
   const {context,nodes}=workspace([event]);await runTask(nodes);
   const row=nodes.get('results').children[0];assert.equal(decisionCards(row).length,10);
   assert.equal(row.children[0].children.some(child=>child.className==='all-decisions'),false);
   assert.deepEqual(decisionCards(row).map(card=>card.children[0].textContent),Array.from({length:10},(_,i)=>`Decision ${i} (${i<2?'Choice':i<5?'Score':'Noul'})`));
   assert.equal(row.children[1].className,'original-input');
   assert.equal(row.children[1].children[0].textContent,'Input');
-  assert.ok(nodes.get('category-filter').children.some(option=>option.value==='voc:pending'));
+  nodes.get('decision-filter').value='voc:q0';nodes.get('decision-filter').onchange();
+  assert.ok(nodes.get('category-filter').children.some(option=>option.value==='pending'));
   const reviews=row.children.at(-2).children[1];assert.equal(reviews.children.length,10);
   const input=reviews.children[5].children[0];input.value='0.2';await input.onchange();
   assert.equal(vm.runInContext('results[0].reviewerDecisions.q5',context),.2);
@@ -2943,7 +2964,7 @@ test('All ten mixed decisions appear equally regardless of legacy summary settin
 });
 
 test('Criteria editor adds, reorders and saves typed decisions without editing templates',async()=>{
-  const criteria={general:{label:'General',instructions:'Default',criteria:{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'}}};
+  const criteria={general:profileFixture('General','Default',{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'})};
   const {context,nodes}=workspace([],undefined,undefined,criteria);await nodes.get('nav-criteria').onclick();
   nodes.get('add-criteria').onclick();
   vm.runInContext("criteriaFields.label.value='Customer Review';criteriaFields.label.oninput()",context);
@@ -2952,7 +2973,7 @@ test('Criteria editor adds, reorders and saves typed decisions without editing t
   assert.equal(vm.runInContext('decisionRows[0].type.value',context),'noul');
   await nodes.get('save-criteria').onclick();
   assert.equal(vm.runInContext("Object.values(criteriaProfiles).find(p=>p.label==='Customer Review').questions.decision_2.type",context),'noul');
-  assert.equal(vm.runInContext('criteriaProfiles.general.questions',context),undefined);
+  assert.deepEqual(JSON.parse(vm.runInContext('JSON.stringify(criteriaProfiles.general.questions)',context)),criteria.general.questions);
 });
 
 for(const engine of ['laya','jev']) {
@@ -3078,7 +3099,7 @@ test('Decision headers track names, types and positions through editor changes',
 
 test('Profile settings and Decisions share the same section design',()=>{
   const {context,nodes}=workspace([]);
-  vm.runInContext("criteriaProfiles={general:{label:'General',instructions:'Use evidence.',criteria:{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'}}};handleEditCriteria('general')",context);
+  vm.runInContext("criteriaProfiles={general:profileFixture('General','Use evidence.',{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'})};handleEditCriteria('general')",context);
   const profile=nodes.get('criteria-editor').children[2];
   assert.equal(profile.className,'criteria-section profile-settings');
   assert.equal(profile.children[0].textContent,'Profile Settings');
@@ -3093,8 +3114,8 @@ test('Custom classification colors differ by option and match result badges',()=
   vm.runInContext(`
     const definition=vocFixture.questions.inquiry_type;
     results=Object.keys(definition.criteria).map(choice=>({log:choice,category:choice,
-      categoryFilter:'voc:'+choice,classificationGroup:'voc',profileLabel:vocFixture.label,
-      primaryQuestion:'inquiry_type',decisionDefinitions:{inquiry_type:definition},
+      criteriaGroup:'voc',profileLabel:vocFixture.label,
+      defaultDecision:'inquiry_type',decisionDefinitions:{inquiry_type:definition},
       decisions:{inquiry_type:{choice,probabilities:{[choice]:1}}},elapsedMs:1}));
     completionOrder=results.map((_,i)=>i);completed=results.length;render();
   `,context);
@@ -3189,7 +3210,7 @@ test('Criteria token estimates update for shared rules, options and structural c
 
 test('Criteria estimates distinguish Laya head and Jev request limits and retain expanded details',()=>{
   const {context,nodes}=workspace([]);
-  vm.runInContext("criteriaProfiles={general:{label:'General',instructions:'Use evidence.',criteria:{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'}}};criteriaTokenLimits={head_tokens:1,context_tokens:8192};handleEditCriteria('general')",context);
+  vm.runInContext("criteriaProfiles={general:profileFixture('General','Use evidence.',{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'})};criteriaTokenLimits={head_tokens:1,context_tokens:8192};handleEditCriteria('general')",context);
   const panel=()=>nodes.get('criteria-editor').children[1];
   assert.match(panel().className,/estimate-warning/);
   assert.ok(panel().children.some(node=>/question head budget/.test(node.textContent || '')));
@@ -3209,7 +3230,7 @@ test('Uncertainty stays separate from the complete long decision value in summar
   const values=vm.runInContext(`
     const choice='시설·이용 안내 및 프로그램 이용 방법에 관한 긴 문의';
     const definition={label:'문의 유형',type:'choice',criteria:{[choice]:'시설 문의'}};
-    const record={primaryQuestion:'inquiry_type',uncertain:true,candidates:[choice],reviewReasons:['low_answer_probability']};
+    const record={defaultDecision:'inquiry_type',decisionAssessments:{inquiry_type:{uncertain:true,candidates:[choice],reviewReasons:['low_answer_probability']}}};
     const card=renderDecisionCard('inquiry_type',definition,{choice,probabilities:{[choice]:.4}},record);
     [card.children[1].textContent,card.children[2].children[0].textContent,card.children[1].title];
   `,context);
@@ -3397,7 +3418,7 @@ test('Resource links share stable IDs across Sources Actions Criteria and SSH li
   vm.runInContext(`
     registeredSources=[{id:'source-id',name:'Source',type:'local',path:'/synthetic'}];
     registeredActions=[{id:'action-id',name:'Action',code:'print(1)',modules:[]}];
-    criteriaProfiles={general:{label:'Sample General System',instructions:'Test',criteria:{normal:'Normal'}},'criteria-id':{label:'Criteria',instructions:'Test',criteria:{normal:'Normal'}}};
+    criteriaProfiles={general:profileFixture('Sample General System','Test',{normal:'Normal'}),'criteria-id':profileFixture('Criteria','Test',{normal:'Normal'})};
     sshKeys=[{id:'key-id',name:'Key',privatePath:'/synthetic/key',publicKey:'synthetic'}];
     sshHosts=[{id:'host-id',name:'Host',host:'synthetic',port:22,username:'reader',keyId:'key-id'}];
     renderSources();renderActions();renderCriteria();renderSSHKeys();renderSSHHosts();
@@ -3611,7 +3632,7 @@ test('Manager lists sort English and Korean names naturally without changing edi
     const {context,nodes}=workspace([]);
     await new Promise(resolve=>setImmediate(resolve));
     const records=names.map((name,index)=>({id:String(index),name,label:name,type:'local',path:`/logs/${index}`,code:'pass',sources:[],mode:'batch',enabled:false,timezone:'UTC',cron:''}));
-    const general={label:'Sample General System',instructions:'Classify the input.',primaryQuestion:'category',questions:{category:{label:'Category',type:'choice',summary:true,criteria:{normal:'Normal',other:'Other'}}}};
+    const general={label:'Sample General System',instructions:'Classify the input.',defaultDecision:'category',questions:{category:{label:'Category',type:'choice',criteria:{normal:'Normal',other:'Other'}}}};
     const setup={
       source:`registeredSources=${JSON.stringify(records)};renderSources()`,
       action:`registeredActions=${JSON.stringify(records)};renderActions()`,
@@ -3951,7 +3972,7 @@ test('first page of a new stopped run updates availability without replaying old
 
 test('Result numbers survive filtering and uncertainty stays beside the unchanged probability',async()=>{
   const first=result(0,false),second=result(7,false);
-  first.result.uncertain=true;
+  first.result.decisionAssessments={category:{uncertain:true,reviewReasons:['low_answer_probability']}};
   const {nodes,context}=workspace([first,second]);await runTask(nodes);
   const number=row=>row.children[0].children.find(node=>node.className.includes('result-header')).children[0].textContent;
   assert.deepEqual(nodes.get('results').children.map(number),['Result #2','Result #1']);
@@ -3991,8 +4012,8 @@ test('Removed More Decision Results links open the latest results instead of fre
 
 test('Overview selects every decision without inference and restores paged aggregates',async()=>{
   const item=result(0,false);
-  Object.assign(item.result,{category:'a',classificationGroup:'voc',profileLabel:'VOC',primaryQuestion:'area',
-    decisionDefinitions:{area:{label:'Area',type:'choice',criteria:{a:'A',b:'B'}},response:{label:'Response',type:'choice',summary:false,criteria:{pending:'Pending',done:'Done'}},urgency:{label:'Urgency',type:'score',criteria:['Low','High']},followup:{label:'Follow-up',type:'noul'}},
+  Object.assign(item.result,{category:'a',criteriaGroup:'voc',profileLabel:'VOC',defaultDecision:'area',
+    decisionDefinitions:{area:{label:'Area',type:'choice',criteria:{a:'A',b:'B'}},response:{label:'Response',type:'choice',criteria:{pending:'Pending',done:'Done'}},urgency:{label:'Urgency',type:'score',criteria:['Low','High']},followup:{label:'Follow-up',type:'noul'}},
     decisions:{area:{choice:'a',probabilities:{a:1,b:0}},response:{choice:'pending',probabilities:{pending:1,done:0}},urgency:{score:.5,probabilities:{0:.5,1:.5}},followup:{noul:.75}}});
   const {nodes,context,requests}=workspace([item]);await runTask(nodes);
   assert.equal(nodes.get('chart-criteria').hidden,true);
@@ -4013,7 +4034,7 @@ test('Overview selects every decision without inference and restores paged aggre
 
 test('Overview Criteria selector chooses the default decision and single decisions use text',async()=>{
   const first=result(0,false),second=result(1,false);
-  for(const [item,identity] of [[first,'one'],[second,'two']])Object.assign(item.result,{classificationGroup:identity,profileLabel:identity,primaryQuestion:'category',decisionDefinitions:{category:{label:'Category',type:'choice',criteria:{normal:'Normal'}}},decisions:{category:{choice:'normal',probabilities:{normal:1}}}});
+  for(const [item,identity] of [[first,'one'],[second,'two']])Object.assign(item.result,{criteriaGroup:identity,profileLabel:identity,defaultDecision:'category',decisionDefinitions:{category:{label:'Category',type:'choice',criteria:{normal:'Normal'}}},decisions:{category:{choice:'normal',probabilities:{normal:1}}}});
   const {nodes}=workspace([first,second]);await runTask(nodes);
   assert.equal(nodes.get('chart-criteria').hidden,false);
   assert.equal(nodes.get('chart-criteria').children.length,2);
@@ -4026,7 +4047,7 @@ test('Overview Criteria selector chooses the default decision and single decisio
 
 function assessmentFixture(index=0,reverse=false) {
   const event=result(index,false);
-  Object.assign(event.result,{criteriaGroup:'stable',classificationGroup:'legacy',profileId:'custom',profileLabel:'Review Fixture',primaryQuestion:'area',defaultDecision:'area',category:'a',
+  Object.assign(event.result,{criteriaGroup:'stable',profileId:'custom',profileLabel:'Review Fixture',defaultDecision:'area',category:'a',
     decisionDefinitions:{area:{label:'Area',type:'choice',criteria:{a:'A',b:'B'},reviewOptions:[]},response:{label:'Response',type:'choice',criteria:{done:'Done',pending:'Pending'},reviewOptions:[]},urgency:{label:'Urgency',type:'score',criteria:['Low','High']},followup:{label:'Follow-up',type:'noul'}},
     decisions:{area:{choice:'a',probabilities:reverse?{a:.52,b:.48}:{a:.95,b:.05}},response:{choice:'done',probabilities:reverse?{done:.95,pending:.05}:{done:.52,pending:.48}},urgency:{score:.5,probabilities:{0:.5,1:.5}},followup:{noul:.5}}});
   return event;
@@ -4079,9 +4100,9 @@ test('Missing Choice evidence is Not Assessed and never inherited from another d
 });
 
 test('Default chart save preserves all AI results and does not run inference',async()=>{
-  const profile={label:'Review Fixture',instructions:'Use evidence.',primaryQuestion:'area',defaultDecision:'area',questions:assessmentFixture().result.decisionDefinitions};
+  const profile={label:'Review Fixture',instructions:'Use evidence.',defaultDecision:'area',questions:assessmentFixture().result.decisionDefinitions};
   const event=assessmentFixture();delete event.result.profileId;
-  const {nodes,context}=workspace([event],undefined,undefined,{general:{label:'General',instructions:'General',criteria:{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'}},custom:profile});
+  const {nodes,context}=workspace([event],undefined,undefined,{general:profileFixture('General','General',{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'}),custom:profile});
   await runTask(nodes);
   const before=vm.runInContext('JSON.stringify(results)',context);
   const calls=[],originalFetch=context.fetch;context.fetch=(path,options)=>{calls.push({path,method:options?.method});return originalFetch(path,options);};
@@ -4089,21 +4110,21 @@ test('Default chart save preserves all AI results and does not run inference',as
   assert.equal(nodes.get('set-chart-default').hidden,false);
   await nodes.get('set-chart-default').onclick();
   assert.equal(vm.runInContext('criteriaProfiles.custom.defaultDecision',context),'followup');
-  assert.equal(vm.runInContext('criteriaProfiles.custom.primaryQuestion',context),'area');
+  assert.equal(vm.runInContext('Object.hasOwn(criteriaProfiles.custom,"primaryQuestion")',context),false);
   assert.equal(vm.runInContext('JSON.stringify(results)',context),before);
   assert.equal(nodes.get('set-chart-default').hidden,true);
   assert.deepEqual(calls,[{path:'/api/criteria',method:'POST'},{path:'/api/criteria',method:'PUT'}]);
 });
 
-test('Criteria editor saves any default type and explicit review options while retaining legacy projection',()=>{
+test('Criteria editor saves any default type and explicit review options without a primary projection',()=>{
   const {nodes,context}=workspace([]);
-  context.defaultFixture={label:'Review Fixture',instructions:'Use evidence.',primaryQuestion:'area',defaultDecision:'followup',questions:assessmentFixture().result.decisionDefinitions};
+  context.defaultFixture={label:'Review Fixture',instructions:'Use evidence.',defaultDecision:'followup',questions:assessmentFixture().result.decisionDefinitions};
   vm.runInContext("criteriaProfiles={general:defaultFixture,custom:defaultFixture};handleEditCriteria('custom')",context);
   assert.equal(vm.runInContext('criteriaFields.primary.options.length',context),4);
   assert.equal(vm.runInContext('criteriaFields.primary.value',context),'followup');
   vm.runInContext("decisionRows[1].options[1].review.checked=true",context);
   const profile=vm.runInContext('readDecisionProfile()',context);
-  assert.equal(profile.defaultDecision,'followup');assert.equal(profile.primaryQuestion,'area');
+  assert.equal(profile.defaultDecision,'followup');assert.equal(Object.hasOwn(profile,'primaryQuestion'),false);
   assert.deepEqual(Array.from(profile.questions.response.reviewOptions),['pending']);
   assert.equal(nodes.get('criteria-editor').hidden,false);
 });
@@ -4122,7 +4143,7 @@ test('Removing the Decision filter clears dependent value and certainty conditio
 });
 
 test('Failed default save preserves the previous default and all AI results',async()=>{
-  const profile={label:'Review Fixture',instructions:'Use evidence.',primaryQuestion:'area',defaultDecision:'area',questions:assessmentFixture().result.decisionDefinitions};
+  const profile={label:'Review Fixture',instructions:'Use evidence.',defaultDecision:'area',questions:assessmentFixture().result.decisionDefinitions};
   const {nodes,context}=workspace([assessmentFixture()],undefined,undefined,{general:profile,custom:profile});
   await runTask(nodes);const before=vm.runInContext('JSON.stringify(results)',context);
   const originalFetch=context.fetch;
@@ -4134,18 +4155,19 @@ test('Failed default save preserves the previous default and all AI results',asy
   assert.equal(vm.runInContext('JSON.stringify(results)',context),before);
 });
 
-test('Changing only the default preserves legacy profile definitions and typed compatibility metadata',()=>{
+test('Changing only the default keeps canonical definitions and drops obsolete visibility metadata',()=>{
   const {context}=workspace([]);
-  context.legacyDefaultFixture=JSON.parse(readFileSync(new URL('../profiles/http_access.json',import.meta.url),'utf8'));
-  const saved=vm.runInContext("criteriaProfiles={general:legacyDefaultFixture,custom:legacyDefaultFixture};handleEditCriteria('custom');criteriaFields.primary.value='ticket';readDecisionProfile()",context);
+  context.systemDefaultFixture=JSON.parse(readFileSync(new URL('../profiles/http_access.json',import.meta.url),'utf8'));
+  const saved=vm.runInContext("criteriaProfiles={general:systemDefaultFixture,custom:systemDefaultFixture};handleEditCriteria('custom');criteriaFields.primary.value='ticket';readDecisionProfile()",context);
   assert.equal(saved.defaultDecision,'ticket');
-  assert.deepEqual(JSON.parse(JSON.stringify(saved.criteria)),context.legacyDefaultFixture.criteria);
-  assert.equal(saved.questions,undefined);
-  context.typedDefaultFixture={label:'Typed',instructions:'Evidence.',primaryQuestion:'area',questions:{area:{label:'Area',type:'choice',instructions:'Choose.',summary:false,criteria:{a:'A',other:'Other'}}}};
-  const typed=vm.runInContext("criteriaProfiles={general:legacyDefaultFixture,custom:typedDefaultFixture};handleEditCriteria('custom');readDecisionProfile()",context);
-  assert.equal(typed.questions.area.summary,false);
-  assert.equal(Object.hasOwn(typed.questions.area,'reviewOptions'),false);
-  assert.deepEqual(JSON.parse(JSON.stringify(typed.questions)),context.typedDefaultFixture.questions);
+
+  assert.deepEqual(JSON.parse(JSON.stringify(saved.questions)),context.systemDefaultFixture.questions);
+  context.typedDefaultFixture={label:'Typed',instructions:'Evidence.',defaultDecision:'area',questions:{area:{label:'Area',type:'choice',instructions:'Choose.',criteria:{a:'A',other:'Other'}}}};
+  const typed=vm.runInContext("criteriaProfiles={general:systemDefaultFixture,custom:typedDefaultFixture};handleEditCriteria('custom');readDecisionProfile()",context);
+  assert.equal(Object.hasOwn(typed.questions.area,'summary'),false);
+  assert.deepEqual(Array.from(typed.questions.area.reviewOptions),[]);
+  const expected=structuredClone(context.typedDefaultFixture.questions);expected.area.reviewOptions=[];
+  assert.deepEqual(JSON.parse(JSON.stringify(typed.questions)),expected);
 });
 
 test('Opening another run starts with its default instead of the previous chart selection',async()=>{
@@ -4170,7 +4192,7 @@ test('Criteria can be empty and created with AI without a General profile', asyn
   assert.equal(nodes.get('criteria-editor').hidden, false);
   assert.ok(nodes.get('criteria-editor').children.some(child=>child.className.includes('criteria-generator')));
   nodes.get('cancel-criteria').onclick();
-  vm.runInContext("criteriaProfiles={general:{label:'General',instructions:'Evidence.',criteria:{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'}}};renderCriteria();", context);
+  vm.runInContext("criteriaProfiles={general:profileFixture('General','Evidence.',{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'})};renderCriteria();", context);
   await criteriaRow(nodes, 'General').children[1].children.find(button=>button.textContent==='Delete').onclick();
   assert.equal(vm.runInContext('Object.keys(criteriaProfiles).length', context), 0);
   let saved;
@@ -4236,7 +4258,7 @@ test('Reopened paged results retain their original engine and model through refr
 test('Every result shows a copyable Response with exact bodies and failure diagnostics', async () => {
   const answer={type:'choice',choice:'normal',confidence:1,probabilities:{normal:1,warning:0,error:0,security:0,other:0}};
   const cases=[
-    {engine:'jev',httpStatus:200,responseContentType:'application/json',providerResponse:{answersInDecisions:true,model:'saved-model'},decisions:{category:answer},decisionDefinitions:{category:{label:'Category',type:'choice',summary:true,criteria:{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'}}}},
+    {engine:'jev',httpStatus:200,responseContentType:'application/json',providerResponse:{answersInDecisions:true,model:'saved-model'},decisions:{category:answer},decisionDefinitions:{category:{label:'Category',type:'choice',criteria:{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'}}}},
     {engine:'laya',httpStatus:200,error:'Invalid Laya response format.',responseValidationError:{path:'answers.category',message:'Missing required field: category.'},providerResponse:{answers:{}}},
     {engine:'jev',httpStatus:502,error:'Jev request failed (HTTP 502)',providerResponseText:'<script>window.bad=true</script>\nUpstream error'},
     {engine:'laya',httpStatus:200,error:'Invalid Laya response format.',providerResponseText:''},

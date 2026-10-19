@@ -8,9 +8,8 @@ Action, SSH Host, SSH Key metadata, and application settings. Configuration coll
 record per item, keyed by its internal identifier; nested fields remain JSON payloads
 inside the DB. No separate DB server or new environment setting is required.
 
-Decision values/buckets and Choice certainty are indexed in `result_decisions`. Old
-runs backfill their aggregates and indexes once on first read or append, preserving
-original event JSON, answers and reviewer corrections. Filters cover the whole run
+Decision values/buckets and Choice certainty are indexed in `result_decisions`
+when results are stored. Filters cover the whole run
 without re-evaluating all results on every query.
 
 ## Bounded Result Loading
@@ -28,16 +27,14 @@ without re-evaluating all results on every query.
   history remains available. Throughput uses whole-run success counts and elapsed
   time. Exact Median/P95/P99 use incrementally maintained duration counts in
   `processing_times`, not full result scans on every poll. Each distinct duration
-  occupies one row per run. Legacy runs backfill once on first access; Task
+  occupies one row per run. Task
   deletion removes the corresponding histogram rows.
 - **Export All JSON** streams the entire run up to the starting cursor, including
   reviewer corrections, without loading all results into browser/server memory.
 - **Export Reviewed JSON** queries successful results with any human correction
   different from its AI value. It uses a partial index and bounded batches, keeps
-  complete original results with `reviewerDecisions` (and legacy
-  `reviewerCategory`), and does not duplicate results in a separate store.
+  complete original results with `reviewerDecisions`, and does not duplicate results in a separate store.
   Display filters do not affect exports; cleared and unchanged reviews are excluded.
-  Existing SQLite databases gain correction columns and indexes without clearing results.
 
 
 Memory no longer grows with accumulated result count. Active hosts/files, individual
@@ -62,7 +59,8 @@ for restart states, file validation, and the boundary for older executions.
 On a fresh data directory, bundled Sources, Criteria, the Elasticsearch sample Action and disabled default
 Task are created in SQLite. Empty saved lists remain empty. No configuration JSON,
 run.json, or events.ndjson is generated or imported. Previous JSON registries and
-older unrelated result databases are not imported. Existing deciflow.sqlite3 histories are migrated in place.
+older result databases are not imported or automatically migrated. Reset development
+data before applying a changed schema to an existing installation.
 Bundled Criteria JSON files under `profiles/` remain read-only seed definitions.
 
 Use one DeciFlow process per data directory on a local filesystem. SQLite uses WAL,
@@ -99,6 +97,5 @@ by content hash. Indexed pages, review validation, replay, and exports restore
 those definitions transparently; the cache is bounded. Standalone Action/export
 results retain their definitions so they do not depend on a private SQLite DB.
 `log_folded` remains a deliberate case-insensitive search copy. Task deletion also
-removes its shared contexts. Existing historical payloads and ES documents are not
-rewritten; legacy results remain readable and are compacted in returned JSON.
-No automatic bulk history migration or VACUUM is performed.
+removes its shared contexts. Reads do not rewrite stored payloads or ES documents.
+Only the current schema is supported; there is no automatic history migration.

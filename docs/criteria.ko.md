@@ -8,14 +8,13 @@
 제공자의 입력·실행 제한은 적용됩니다.
 
 Default Chart Decision은 존재하는 판단 항목 중 정확히 하나를 지정하는 표시 설정입니다.
-AI 답변·불확실성·필터는 바꾸지 않습니다. `summary`와 관계없이 모든 항목을 Overview에서
+AI 답변·불확실성·필터는 바꾸지 않습니다. 모든 항목을 Overview에서
 선택할 수 있습니다. Overview의 **Set as Default**나 Criteria 편집에서 변경합니다.
 Score는 가중 점수를 가장 가까운 수준으로 반올림하며 중간값은 올립니다. Noul은 Yes 확률 구간입니다.
 
 Choice 선택지의 **Needs Review**를 체크하면 Unknown/Other처럼 사람이 검토해야 하는
 선택을 명시적으로 지정합니다. 저장된 `reviewOptions`는 해당 선택지 ID 목록입니다.
-빈 목록은 선택값에 따른 검토만 끄며 불확실성 검사는 유지합니다. 이 필드가 없는 기존
-프로필은 알려진 기존 Unknown/Other ID를 사용합니다. ChatGPT 자동 작성도 같은
+빈 목록은 선택값에 따른 검토만 끄며 불확실성 검사는 유지합니다. ChatGPT 자동 작성도 같은
 `defaultDecision`과 `reviewOptions` 검증을 사용합니다.
 
 ## AI로 Criteria 생성
@@ -259,10 +258,8 @@ Task가 참조 중이면 차단합니다.
 **Sample General System**(`general`)도 선택적인 일반 프로필입니다. 직접 편집하거나
 Task 할당을 변경한 후 삭제할 수 있으며 재시작해도 복구하지 않습니다. 템플릿은
 **Start From Template**에서 계속 사용할 수 있습니다. 저장된 프로필이 없어도 직접
-작성하거나 AI로 새 프로필을 생성할 수 있습니다. 기존 저장 프로필은 편집 전까지
-5개 범주와 고정 운영 질문을 유지합니다. 편집·복제 시 타입별 편집기를
-사용해 전체 판단 정의를 저장합니다. 기존 Task 참조는 유지하며 시스템 결과는 기존
-Actions를 위한 category·urgency·ticket 관련 필드도 유지합니다.
+작성하거나 AI로 새 프로필을 생성할 수 있습니다. 모든 템플릿·수동 작성·AI 생성
+프로필은 같은 타입별 판단 정의를 사용하며 공통 지침은 모든 Decision에 적용합니다.
 
 최초 초기화 시 시스템 예시와 **Sample VOC Asia Culture Center Consulting QnA**을 제공합니다.
 기존 설치도 시작할 때 상담 샘플의 ID와 이름이 모두 없으면 자동 추가합니다. 저장된
@@ -283,22 +280,26 @@ AI와 다른 수정값이 있는 결과를 내보냅니다.
 차트의 확실성은 선택한 Choice 기준이고 어느 판단 항목이나 기록 전체의 문제도 Needs Review가 됩니다.
 이는 실측 정확도가 아닌 휴리스틱이며 Score·Noul의 신뢰도를 평가하지 않습니다.
 
-실행 중인 작업은 고정한 프로필을 사용합니다. 결과에 `decisionDefinitions`·`primaryQuestion`·
-`decisions`·`questions`를 보존하므로 이후 수정으로 과거 결과의 표시가 바뀌지 않습니다.
-현재 저장된 기본 항목은 초기 차트 선택에만 적용합니다. `primaryQuestion`은 Action·기존 JSON을
-위한 고정 호환 필드로 보존합니다. 새 차트 식별자는 기본 항목을 제외하며 서로 다른 판단
+실행 중인 작업은 고정한 프로필을 사용합니다. 결과에 `decisionDefinitions`·`decisions`를
+보존하므로 이후 수정으로 과거 결과의 표시가 바뀌지 않습니다.
+현재 저장된 기본 항목은 초기 차트 선택에만 적용합니다. 새 차트 식별자는 기본 항목을 제외하며 서로 다른 판단
 정의는 구분합니다. Choice 없이 Score·Noul만 있는 프로필도 지원합니다.
 
 프로필은 `DECIFLOW_DATA_DIR/deciflow.sqlite3`에 저장합니다. 번들 JSON은 초기값·템플릿이며
 Criteria 관리는 신뢰한 UI Origin에서만 허용합니다.
 
 VOC 샘플은 한국어로만 제공하며 누락된 샘플은 시작 시 추가합니다.
-저장된 기본 영어 프로필은 제거하고 Task 연결은 해당 한국어 프로필로 전환합니다.
-이전 실행 결과와 사용자 복제본은 유지합니다. 기본 이름의 `(KOR)` 접미사만 제거하며
-사용자가 바꾼 이름은 유지합니다.
 
 Laya는 본문 한도와 별도로 질문 지시문·선택지의 head 예산을 적용합니다.
 본문이 잘리지 않아도 지시문이 잘릴 수 있습니다. [VOC 토큰 예산 안내](voc.ko.md#laya-질문-토큰-예산-확인)를 확인하세요.
 
 정부기관 샘플의 Source·한국어 Criteria·비활성 Batch Task도 시작 시 자동 제공됩니다.
 [Sample VOC Central Gov Consulting QnA 설정](voc.ko.md#정부기관-qna-샘플)을 참고하세요.
+
+## 프로필 메타데이터
+
+모든 템플릿·수동 작성·AI 생성 프로필은 `questions`와 `defaultDecision`을 사용하며
+Choice 정의는 `reviewOptions`를 명시적으로 저장합니다. 공통 지침은 모든 Decision에 적용합니다.
+`summary`와 평면 프로필 형식은 사용하지 않습니다. 결과와 Action은 대표 분류를 중복
+저장하지 않고 `decisions`·`decisionAssessments`를 사용합니다. 이전 데이터 형식은 지원하지
+않으므로 기존 설치에 이 구조를 적용할 때는 개발 데이터를 Reset하세요.

@@ -198,7 +198,7 @@ async def test_file_api_and_localhost_access(
         response = await client.post(
             "/api/file-source",
             headers={"Origin": "http://127.0.0.1"},
-            json={"mode": "batch", "path": "access.log"},
+            json={"mode": "batch", "sources": [{"path": "access.log"}]},
         )
         assert response.status_code == 200
         import json
@@ -211,7 +211,10 @@ async def test_file_api_and_localhost_access(
         response = await client.post(
             "/api/file-source",
             headers={"Origin": "http://127.0.0.1"},
-            json={"mode": "batch", "paths": ["access.log", "*.log"]},
+            json={
+                "mode": "batch",
+                "sources": [{"path": "access.log"}, {"path": "*.log"}],
+            },
         )
         assert response.status_code == 200
         events = [json.loads(line) for line in response.text.splitlines()]
@@ -224,8 +227,9 @@ async def test_file_api_and_localhost_access(
         assert (await client.post("/api/file-source", json={})).status_code == 403
         for body in [
             {},
-            {"mode": "batch", "path": "../outside"},
-            {"mode": "batch", "path": str(tmp_path)},
+            {"mode": "batch", "sources": [{"path": "../outside"}]},
+            {"mode": "batch", "sources": [{"path": str(tmp_path)}]},
+            {"mode": "follow", "sources": [{"path": "access.log"}]},
         ]:
             response = await client.post(
                 "/api/file-source",

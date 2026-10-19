@@ -51,9 +51,9 @@ async def test_evaluation_records_mismatches_and_provider_metadata(
         ],
     )
     assert [row["correct"] for row in rows] == [True, False]
-    assert rows[1]["result"]["category"] == "normal"
+    assert rows[1]["result"]["decisions"]["category"]["choice"] == "normal"
     assert rows[1]["result"]["providerResponse"]["routing"]["model"] == "english"
-    assert rows[1]["result"]["uncertain"] is False
+    assert rows[1]["result"]["decisionAssessments"]["category"]["uncertain"] is False
     summary = summarize(rows)
     assert summary["certain"] == 2
     assert summary["certainCorrect"] == 1
@@ -67,7 +67,10 @@ def test_evaluation_separates_failures_and_uncertain_predictions() -> None:
             {
                 "expected": "error",
                 "correct": True,
-                "result": {"category": "error", "uncertain": True},
+                "result": {
+                    "decisions": {"category": {"choice": "error"}},
+                    "decisionAssessments": {"category": {"uncertain": True}},
+                },
             },
         ]
     )

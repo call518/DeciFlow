@@ -88,7 +88,7 @@ def test_sqlite_stores_context_once_and_hydrates_pages_reviews_and_exports(
     result = store.page("run", {}, 10)["items"][0]
     assert result["result"]["decisionDefinitions"] == sample()["decisionDefinitions"]
     assert "_contextRefs" not in result["result"]
-    store.review("run", result["sequence"], "", "category", "normal")
+    store.review("run", result["sequence"], "category", "normal")
     exported = json.loads(store.events("run")[0][1])["result"]
     assert exported["decisionDefinitions"] == sample()["decisionDefinitions"]
     assert "rawInput" not in exported and "questions" not in exported
@@ -160,21 +160,20 @@ def test_shared_definitions_preserve_decision_and_option_order(tmp_path: Path) -
     assert list(definitions["category"]["criteria"]) == ["normal", "alpha"]
 
 
-def test_legacy_history_is_read_compactly_without_rewriting_original(
+def test_current_history_is_read_without_rewriting_stored_payload(
     tmp_path: Path,
 ) -> None:
     store = open_result_store(tmp_path)
     assert isinstance(store, SQLiteResultStore)
-    store.create("legacy", {"state": "completed", "settings": {}})
-    original = json.dumps(
-        {"type": "result", "result": {**sample(), "schemaVersion": 1}}
+    snapshot = {"state": "completed", "settings": {}}
+    store.create("current", snapshot)
+    store.append(
+        "current",
+        {"type": "result", "result": {**sample(), "schemaVersion": 2}},
+        snapshot,
     )
-    with store.transaction() as connection:
-        connection.execute(
-            "INSERT INTO events(run_id,sequence,kind,payload,failed,review) VALUES(?,?,?,?,0,0)",
-            ("legacy", 1, "result", original),
-        )
-    result = store.page("legacy", {}, 10)["items"][0]["result"]
+    original = store.connection.execute("SELECT payload FROM events").fetchone()[0]
+    result = store.page("current", {}, 10)["items"][0]["result"]
     assert result["schemaVersion"] == 2
     assert result["inputRecord"] == {"caseId": "case-one"}
     assert "rawInput" not in result
@@ -183,6 +182,5 @@ def test_legacy_history_is_read_compactly_without_rewriting_original(
             connection.execute("SELECT payload FROM events").fetchone()[0] == original
         )
         assert (
-            connection.execute("SELECT COUNT(*) FROM result_contexts").fetchone()[0]
-            == 0
+            connection.execute("SELECT COUNT(*) FROM result_contexts").fetchone()[0] > 0
         )

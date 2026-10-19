@@ -22,14 +22,14 @@ def generated() -> dict[str, Any]:
     return {
         "label": "Generated consultation",
         "instructions": "Use explicit evidence at the end of the conversation.",
-        "primaryQuestion": "status",
+        "defaultDecision": "status",
         "decisions": [
             {
                 "id": "status",
                 "label": "Status",
                 "type": "choice",
                 "instructions": "Choose the final status.",
-                "summary": True,
+                "reviewOptions": ["unknown"],
                 "options": [
                     {"id": "complete", "definition": "All work is finished."},
                     {"id": "unknown", "definition": "Evidence is insufficient."},
@@ -40,7 +40,6 @@ def generated() -> dict[str, Any]:
                 "label": "Urgency",
                 "type": "score",
                 "instructions": "Rate explicit urgency.",
-                "summary": False,
                 "levels": ["Routine", "Immediate harm"],
             },
             {
@@ -48,7 +47,6 @@ def generated() -> dict[str, Any]:
                 "label": "Follow-up",
                 "type": "noul",
                 "instructions": "Does staff owe a callback?",
-                "summary": True,
             },
         ],
     }
@@ -65,11 +63,11 @@ def restore_profiles() -> Iterator[None]:
 def test_all_fields_are_preserved(generated: dict[str, Any]) -> None:
     profile = generation.convert_generated_profile(generated)
     assert list(profile["questions"]) == ["status", "urgency", "follow_up"]
-    assert profile["primaryQuestion"] == "status"
+    assert profile["defaultDecision"] == "status"
     for decision, question in zip(
         generated["decisions"], profile["questions"].values()
     ):
-        for key in ("label", "instructions", "type", "summary"):
+        for key in ("label", "instructions", "type"):
             assert question[key] == decision[key]
     assert profile["questions"]["status"]["criteria"] == {
         item["id"]: item["definition"] for item in generated["decisions"][0]["options"]
@@ -99,11 +97,11 @@ def test_invalid_generation_is_rejected(
         options = generated["decisions"][0]["options"]
         options.append(deepcopy(options[0]))
     elif invalid == "missing":
-        del generated["decisions"][0]["summary"]
+        del generated["decisions"][0]["instructions"]
     elif invalid == "unknown":
         generated["extra"] = "must not silently disappear"
     elif invalid == "primary":
-        generated["primaryQuestion"] = "urgency"
+        generated["defaultDecision"] = "missing"
     elif invalid == "score":
         generated["decisions"][1]["levels"] = ["Only one"]
     else:
@@ -148,9 +146,7 @@ async def test_generate_then_save_and_reload(
             "samples": ["A callback is owed." * 60] * sample_count,
         }
         assert engine.capitalize() in body["instructions"]
-        assert (
-            "all decisions can be charted regardless of summary" in body["instructions"]
-        )
+        assert "All decisions can be charted" in body["instructions"]
         return httpx.Response(
             200,
             json={
@@ -433,18 +429,17 @@ async def test_generated_purpose_is_required(
 def test_generated_decisions_are_all_available_for_overview(
     generated: dict[str, Any],
 ) -> None:
-    """Chart generated decisions without changing their schema or summary flags."""
+    """All generated decisions remain chartable independently of the default."""
     from result_store import _aggregate_decisions
 
-    generated["decisions"][1]["summary"] = False
     profile = generation.convert_generated_profile(generated)
     stats: dict[str, Any] = {}
     _aggregate_decisions(
         stats,
         {
             "profileLabel": profile["label"],
-            "classificationGroup": "generated",
-            "primaryQuestion": profile["primaryQuestion"],
+            "criteriaGroup": "generated",
+            "defaultDecision": profile["defaultDecision"],
             "decisionDefinitions": profile["questions"],
             "decisions": {
                 "status": {"choice": "complete"},
@@ -455,8 +450,8 @@ def test_generated_decisions_are_all_available_for_overview(
     )
     groups = stats["decisionGroups"]
     assert len(groups) == 3
-    assert groups["generated:status"]["primary"]
-    assert not groups["generated:urgency"]["primary"]
+    assert groups["generated:status"]["default"]
+    assert not groups["generated:urgency"]["default"]
     assert groups["generated:urgency"]["counts"]["all"]["1 · Immediate harm"] == 1
     assert groups["generated:follow_up"]["counts"]["all"]["75–100%"] == 1
 
@@ -466,19 +461,17 @@ def test_new_generation_schema_supports_any_default_and_explicit_review_options(
     generated: dict[str, Any],
     default: str,
 ) -> None:
-    generated.pop("primaryQuestion")
     generated["defaultDecision"] = default
     generated["decisions"][0]["reviewOptions"] = ["unknown"]
     profile = generation.convert_generated_profile(generated)
     assert profile["defaultDecision"] == default
-    assert profile["primaryQuestion"] == "status"
+    assert "primaryQuestion" not in profile
     assert profile["questions"]["status"]["reviewOptions"] == ["unknown"]
     assert "defaultDecision" in generation.GENERATION_SCHEMA["required"]
     assert "primaryQuestion" not in generation.GENERATION_SCHEMA["properties"]
 
 
 def test_generated_profiles_do_not_require_a_choice(generated: dict[str, Any]) -> None:
-    generated.pop("primaryQuestion")
     generated["defaultDecision"] = "follow_up"
     generated["decisions"] = generated["decisions"][1:]
     profile = generation.convert_generated_profile(generated)

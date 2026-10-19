@@ -62,8 +62,8 @@ Task에 서버 측으로 저장하며 새로고침 후에도 유지합니다. �
 자동으로 이동하지 않습니다.
 
 현재 설정은 공통 SQLite DB에서 관리합니다. UI에서 관리하는 Action은
-`<Action UUID>/` 디렉터리를 사용합니다. 기존 이름 접두사 폴더는 다음 저장 시 UUID 경로에
-환경을 다시 준비하고 저장 성공 후 제거합니다. Edit에서 중복되지 않는 이름으로 변경할 수 있으며 대소문자는 구분하지 않습니다.
+`<Action UUID>/` 디렉터리를 사용합니다. 과거 버전별·이름 접두사 폴더 구조는 자동 이전하지 않습니다.
+Edit에서 중복되지 않는 이름으로 변경할 수 있으며 대소문자는 구분하지 않습니다.
 Task 할당·실행 대상 선택·삭제 의존성 검사는 표시 이름 대신 `actionId`를 사용합니다.
 이름 변경 시 UUID·최초 디렉터리·코드·가상환경은 그대로 유지하며 실행 중 작업은 기존 스냅샷을 유지합니다.
 코드와 실행 환경은 해당 디렉터리 바로 아래에 둡니다:
@@ -119,9 +119,8 @@ Laya와 Jev는 같은 계약을 사용합니다. 판정 실패·Source 읽기 �
 원격 입력에는 `hostId`·`hostName`·`hostAddress`·`hostPort`·`chunkSequence`도
 포함하며, 로그 원문을 바꾸지 않고 대상 호스트를 식별합니다.
 
-사용자 프로필은 검증한 답변을 `decisions[decision_id]`, 고정한 구성을
-`decisionDefinitions`에 제공합니다. `category`는 대표 Choice이며 표준
-Category/Urgency/Work Ticket 프로필은 기존 운영 필드도 유지합니다. JSONL에는 추출한
+모든 프로필은 검증한 답변을 `decisions[decision_id]`, 고정한 구성을
+`decisionDefinitions`에 제공합니다. JSONL에는 추출한
 `log`, 본문을 제외한 `inputRecord` 메타데이터, `inputContentInLog: true`,
 `recordNumber`가 추가됩니다. 유효한 입력의 중복 `rawInput`은 생략합니다.
 필요한 업무 중복 방지는 출처·레코드 번호 등을 사용하세요. eventId는 재실행 시 바뀝니다.
@@ -155,7 +154,6 @@ Docker Compose는 `deciflow-data` 볼륨을 `DECIFLOW_DATA_DIR`
 구문 색상은 로컬에 포함한 PrismJS 1.30.0의 Core·Python 구성(약 9.4KiB, MIT)으로 처리합니다. 실행 중 외부 CDN을 요청하지 않으며 버전이 고정된 파일은 브라우저에 캐시합니다. 원본·라이선스·SHA-256은 `public/vendor/prism/`에 기록하며 버전 교체 시 해당 기록과 UI 검증을 함께 갱신합니다. 편집 입력·스크롤은 기존 방식을 유지합니다.
 
 
-Action 입력은 기존 `category`·`primaryQuestion`·`uncertain` 의미를 유지합니다.
 항목별 처리는 `decisions`와 `decisionAssessments`를 사용하고 기록 전체 불확실성은
 `anyUncertain`으로 확인합니다. `defaultDecision` 변경은 표시만 바꾸며 Action을 재실행하지 않습니다.
 

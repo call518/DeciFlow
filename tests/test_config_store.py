@@ -32,7 +32,6 @@ from tasks import (
     CENTRAL_GOV_TASK_ID,
     DEFAULT_TASK_ID,
     LOCAL_GOV_TASK_ID,
-    SYSTEM_MESSAGE_SOURCE_ID,
     SYSTEM_MESSAGE_TASK_ID,
     VOC_TASK_ID,
     ensure_central_gov_task,
@@ -171,57 +170,6 @@ def test_startup_ensures_consultation_without_overwriting_saved_profiles(
         PROFILES.update(original)
 
 
-@pytest.mark.parametrize("edited", [False, True])
-def test_english_consultation_updates_only_when_untouched(edited: bool) -> None:
-    """Translate the shipped sample without replacing user edits or its ID."""
-    original = deepcopy(PROFILES)
-    saved = deepcopy(DEFAULT_PROFILES)
-    legacy = json.loads(
-        (Path(__file__).parent / "fixtures/consultation-english.json").read_text()
-    )
-    if edited:
-        legacy["instructions"] = "My custom instructions."
-    saved["consultation"] = legacy
-    save_records("criteria", saved)
-    try:
-        load_profiles()
-        expected = legacy if edited else DEFAULT_PROFILES["consultation"]
-        assert PROFILES["consultation"] == expected
-        assert load_records("criteria")["consultation"] == expected
-        assert set(PROFILES) == set(saved)
-        if not edited:
-            assert expected["label"] == "Sample VOC Asia Culture Center Consulting QnA"
-            assert expected["questions"]["inquiry_type"]["label"] == "문의 유형"
-    finally:
-        PROFILES.clear()
-        PROFILES.update(original)
-
-
-@pytest.mark.parametrize("old_label", ["VOC 상담 판단", "VOC 상담 판단 (KOR)"])
-def test_existing_korean_sample_is_updated_without_language_suffix(
-    old_label: str,
-) -> None:
-    """Upgrade the unedited sample without adding an English counterpart."""
-    original = deepcopy(PROFILES)
-    saved = deepcopy(DEFAULT_PROFILES)
-    saved["consultation"] = json.loads(
-        (
-            Path(__file__).parent / "fixtures/consultation-korean-english-options.json"
-        ).read_text()
-    )
-    saved["consultation"]["label"] = old_label
-    save_records("criteria", saved)
-    try:
-        load_profiles()
-        assert PROFILES == DEFAULT_PROFILES
-        assert load_records("criteria") == DEFAULT_PROFILES
-        load_profiles()
-        assert PROFILES == DEFAULT_PROFILES
-    finally:
-        PROFILES.clear()
-        PROFILES.update(original)
-
-
 def test_consultation_sample_is_korean_only() -> None:
     """Only Korean consultation templates are shipped, without language suffixes."""
     for identity in ("consultation", "central_gov", "local_gov"):
@@ -277,7 +225,6 @@ def test_voc_task_is_manual_disabled_and_preserves_edits() -> None:
         ensure_voc_task()
         task = next(task for task in load_tasks() if task["id"] == VOC_TASK_ID)
         assert task["name"] == "Sample VOC Asia Culture Center Consulting QnA"
-        save_record("tasks", task["id"], {**task, "name": f"{task['name']} (KOR)"})
         ensure_voc_task()
         assert load_tasks() == [task]
         assert task["mode"] == "batch"
@@ -339,83 +286,6 @@ def test_system_message_task_reuses_source_and_preserves_edits(
     assert load_tasks() == [task]
 
 
-@pytest.mark.parametrize("edited_legacy", [False, True])
-def test_system_messages_duplicate_repair_preserves_custom_settings(
-    edited_legacy: bool,
-) -> None:
-    """Only the exact erroneous sample is removed; all Task assignments survive."""
-    canonical = {
-        "id": f"{1:032x}",
-        "name": "Sample System Messages",
-        "type": "ssh",
-        "path": "/custom/remote/messages",
-    }
-    legacy = {
-        "id": SYSTEM_MESSAGE_SOURCE_ID,
-        "name": "System Message",
-        "type": "local",
-        "path": "/host-logs/var/log/message",
-        "format": "text",
-    }
-    if edited_legacy:
-        legacy["path"] = "/my/log"
-    save_sources([canonical, legacy])
-    task = {
-        "id": SYSTEM_MESSAGE_TASK_ID,
-        "name": "System Message",
-        "enabled": True,
-        "mode": "realtime",
-        "sources": [
-            {
-                "sourceId": SYSTEM_MESSAGE_SOURCE_ID,
-                "profile": "general",
-                "chunkEvents": 3,
-                "actionId": "custom-action",
-            }
-        ],
-    }
-    other = {**deepcopy(task), "id": "other", "name": "My Task"}
-    save_record("tasks", task["id"], task)
-    save_record("tasks", other["id"], other)
-    ensure_system_message_task()
-    records = {item["id"]: item for item in load_tasks()}
-    assert records[SYSTEM_MESSAGE_TASK_ID]["name"] == "Sample System Messages"
-    for record in records.values():
-        assert record["enabled"] is True
-        assert record["sources"][0] == {
-            **task["sources"][0],
-            "sourceId": SYSTEM_MESSAGE_SOURCE_ID if edited_legacy else canonical["id"],
-        }
-    assert load_sources() == ([canonical, legacy] if edited_legacy else [canonical])
-    ensure_system_message_task()
-    assert {item["id"]: item for item in load_tasks()} == records
-
-
-@pytest.mark.parametrize("edited", [False, True])
-def test_korean_option_sample_updates_only_when_untouched(edited: bool) -> None:
-    """Localized options replace only the unedited shipped sample."""
-    original = deepcopy(PROFILES)
-    values = deepcopy(DEFAULT_PROFILES)
-    legacy = json.loads(
-        (
-            Path(__file__).parent / "fixtures/consultation-korean-english-options.json"
-        ).read_text()
-    )
-    if edited:
-        legacy["instructions"] = "Keep custom rules."
-    values["consultation"] = legacy
-    save_records("criteria", values)
-    try:
-        load_profiles()
-        assert PROFILES["consultation"] == (
-            legacy if edited else DEFAULT_PROFILES["consultation"]
-        )
-        assert load_records("criteria")["consultation"] == PROFILES["consultation"]
-    finally:
-        PROFILES.clear()
-        PROFILES.update(original)
-
-
 @pytest.mark.parametrize("existing", ["missing", "edited", "renamed_id"])
 @pytest.mark.parametrize("identity", ["central_gov", "local_gov"])
 def test_government_bootstrap_preserves_saved_settings(
@@ -457,7 +327,6 @@ def test_government_bootstrap_preserves_saved_settings(
         assert selected == (source_default if existing == "missing" else source)
         task = next(task for task in load_tasks() if task["id"] == task_id)
         assert task["name"] == source_default["name"]
-        save_record("tasks", task["id"], {**task, "name": f"{task['name']} (KOR)"})
         ensure_task()
         assert load_tasks() == [task]
         assert task["mode"] == "batch"
@@ -500,7 +369,7 @@ def test_central_gov_sample_and_localized_profiles() -> None:
     )
     korean = DEFAULT_PROFILES["central_gov"]
     assert korean["label"] == "Sample VOC Central Gov Consulting QnA"
-    assert korean["primaryQuestion"] == "policy_area"
+    assert korean["defaultDecision"] == "policy_area"
     assert set(korean["questions"]) == {
         "policy_area",
         "response_type",
@@ -508,120 +377,3 @@ def test_central_gov_sample_and_localized_profiles() -> None:
         "urgency",
         "follow_up_required",
     }
-
-
-@pytest.mark.parametrize("renamed_id", [False, True])
-@pytest.mark.parametrize("identity", ["consultation", "central_gov"])
-def test_retired_english_sample_relinks_tasks_and_preserves_custom_profiles(
-    identity: str,
-    renamed_id: bool,
-) -> None:
-    """Remove shipped English Criteria and preserve custom profile definitions."""
-    original = deepcopy(PROFILES)
-    saved = deepcopy(DEFAULT_PROFILES)
-    saved[identity]["label"] += " (KOR)"
-    saved[identity]["instructions"] = "Keep my Korean edits."
-    english_id = f"{identity}_eng"
-    saved[english_id] = {**deepcopy(saved[identity]), "label": "Old English sample"}
-    saved["custom_english"] = {
-        **deepcopy(saved[identity]),
-        "label": "My English Criteria",
-    }
-    target = f"custom_{identity}" if renamed_id else identity
-    if renamed_id:
-        saved[target] = saved.pop(identity)
-        saved[target]["label"] = DEFAULT_PROFILES[identity]["label"]
-    save_records("criteria", saved)
-    task = {"id": "a" * 32, "name": "My Task", "sources": [{"profile": english_id}]}
-    save_record("tasks", task["id"], task)
-    try:
-        load_profiles()
-        assert english_id not in PROFILES
-        assert PROFILES[target]["label"] == DEFAULT_PROFILES[identity]["label"]
-        assert PROFILES[target]["instructions"] == "Keep my Korean edits."
-        assert PROFILES["custom_english"] == saved["custom_english"]
-        expected = {**task, "sources": [{"profile": target}]}
-        assert load_tasks() == [expected]
-        assert load_records("criteria") == PROFILES
-        load_profiles()
-        assert load_tasks() == [expected]
-    finally:
-        PROFILES.clear()
-        PROFILES.update(original)
-
-
-@pytest.mark.parametrize("saved_names", ["legacy", "custom"])
-def test_sample_names_migrate_without_changing_configuration(saved_names: str) -> None:
-    """Rename shipped labels across registries while preserving settings and IDs."""
-    from actions import load_actions
-
-    original = deepcopy(PROFILES)
-    try:
-        load_profiles()
-        ensure_default_task()
-        ensure_voc_task()
-        ensure_central_gov_task()
-        ensure_local_gov_task()
-        ensure_system_message_task()
-        registries = {
-            "sources": {row["id"]: row for row in load_sources()},
-            "criteria": deepcopy(PROFILES),
-            "tasks": {row["id"]: row for row in load_tasks()},
-            "actions": {row["id"]: row for row in load_actions()},
-        }
-        expected = deepcopy(registries)
-        for kind, records in registries.items():
-            field = "label" if kind == "criteria" else "name"
-            for identity, row in records.items():
-                assert row[field].startswith("Sample ")
-                if kind == "criteria":
-                    row["instructions"] = "Keep my rules."
-                    expected[kind][identity]["instructions"] = "Keep my rules."
-                if saved_names == "custom":
-                    row[field] = f"My {row[field]}"
-                    expected[kind][identity][field] = row[field]
-                elif (
-                    row[field].startswith("Sample VOC ")
-                    or row[field]
-                    in {
-                        "Sample General System",
-                        "Sample System Messages",
-                        "Sample Elasticsearch",
-                    }
-                    or (kind == "tasks" and row[field] == "Sample DeciFlow Server Log")
-                ):
-                    row[field] = row[field].removeprefix("Sample ")
-                    if kind == "criteria" and identity == "general":
-                        row[field] = "General system"
-                    if kind == "sources" and row[field] == "System Messages":
-                        row[field] = "System messages"
-            save_records(kind, records)
-        for _ in range(2):
-            load_profiles()
-            load_sources()
-            load_actions()
-            ensure_default_task()
-            ensure_voc_task()
-            ensure_central_gov_task()
-            ensure_local_gov_task()
-            ensure_system_message_task()
-            for kind, records in expected.items():
-                assert load_records(kind) == records
-    finally:
-        PROFILES.clear()
-        PROFILES.update(original)
-
-
-def test_sample_name_migration_preserves_name_collisions() -> None:
-    """Do not overwrite a user record that already owns the new sample name."""
-    from config_store import rename_sample_records
-
-    records = {
-        "old": {"name": "Original", "setting": 1},
-        "custom": {"name": "Sample Original", "setting": 2},
-    }
-    save_records("sources", records)
-    expected = deepcopy(records)
-    rename_sample_records("sources", records, {"Original": "Sample Original"})
-    assert records == expected
-    assert load_records("sources") == expected

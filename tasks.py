@@ -17,7 +17,6 @@ from config_store import (
     delete_record,
     get_data_directory,
     load_records,
-    rename_sample_records,
     save_record,
     save_records,
 )
@@ -44,29 +43,12 @@ CENTRAL_GOV_TASK_NAME = "Sample VOC Central Gov Consulting QnA"
 LOCAL_GOV_TASK_ID = uuid5(NAMESPACE_URL, "deciflow:task:local-gov-qna").hex
 LOCAL_GOV_TASK_NAME = "Sample VOC Local Gov Consulting QnA"
 SYSTEM_MESSAGE_TASK_ID = uuid5(NAMESPACE_URL, "deciflow:task:system-message").hex
-SYSTEM_MESSAGE_SOURCE_ID = uuid5(NAMESPACE_URL, "deciflow:source:system-message").hex
 
 
 def load_tasks() -> list[Result]:
     """Read definitions, including Tasks whose dependencies need repair."""
     records = load_records("tasks")
-    rename_sample_records(
-        "tasks",
-        records,
-        {
-            "DeciFlow Server Log": DEFAULT_TASK_NAME,
-            "System Message": "Sample System Messages",
-            "System Messages": "Sample System Messages",
-            **{
-                old: name
-                for name in (VOC_TASK_NAME, CENTRAL_GOV_TASK_NAME, LOCAL_GOV_TASK_NAME)
-                for old in (
-                    name.removeprefix("Sample "),
-                    name.removeprefix("Sample ") + " (KOR)",
-                )
-            },
-        },
-    )
+
     return list(records.values())
 
 
@@ -170,8 +152,6 @@ def _ensure_consultation_task(
 ) -> None:
     for task in load_tasks():
         if task["id"] == task_id:
-            if task["name"] == f"{name} (KOR)":
-                save_record("tasks", task_id, {**task, "name": name})
             return
         if task["name"].casefold() == name.casefold():
             return
@@ -216,7 +196,7 @@ def _ensure_consultation_task(
 
 
 def ensure_system_message_task() -> None:
-    """Reuse Sample System Messages and repair the untouched duplicate sample."""
+    """Seed a disabled Task using the registered System Messages sample."""
     name = "Sample System Messages"
     sources = load_sources()
     default = DEFAULT_SOURCES[0]
@@ -237,24 +217,7 @@ def ensure_system_message_task() -> None:
     if source is None:
         source = dict(default)
         save_record("sources", source["id"], source)
-    legacy = {
-        "id": SYSTEM_MESSAGE_SOURCE_ID,
-        "name": "System Message",
-        "type": "local",
-        "path": "/host-logs/var/log/message",
-        "format": "text",
-    }
     tasks = load_tasks()
-    if legacy in sources:
-        for task in tasks:
-            changed = False
-            for assignment in task["sources"]:
-                if assignment["sourceId"] == SYSTEM_MESSAGE_SOURCE_ID:
-                    assignment["sourceId"] = source["id"]
-                    changed = True
-            if changed:
-                save_record("tasks", task["id"], task)
-        delete_record("sources", SYSTEM_MESSAGE_SOURCE_ID)
     existing = next(
         (task for task in tasks if task["id"] == SYSTEM_MESSAGE_TASK_ID), None
     )

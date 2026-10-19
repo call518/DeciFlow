@@ -212,7 +212,7 @@ async def test_realtime_reads_new_logs_without_a_browser(
             "/api/file-source",
             json={
                 "mode": "realtime",
-                "paths": str(log),
+                "sources": [{"path": str(log)}],
                 "persist": True,
             },
         )

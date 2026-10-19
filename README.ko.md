@@ -136,7 +136,7 @@ Choice·Score·Noul 중 하나라도 사람이 정정한 결과만 내려받을 
 4. **Main**에서 Task를 선택해 결과를 확인하고 수정합니다. 서로 다른 분류 체계는
    차트의 **Criteria**에서 별도로 선택합니다.
 
-Overview의 **Decision**에서 `summary` 설정과 관계없이 모든 판단 항목을 집계할 수 있습니다.
+Overview의 **Decision**에서 모든 판단 항목을 집계할 수 있습니다.
 Default Chart Decision은 모든 유형 중 하나를 지정하며 AI 답변·필터를 바꾸지 않고 변경합니다. Choice는 선택지별,
 Score는 가중 점수를 가장 가까운 수준으로 반올림하여, Noul은 Yes 확률을 25% 구간으로
 집계합니다. 확실성 그룹은 선택한 Choice 기준이며 Score·Noul에는 적용하지 않습니다.

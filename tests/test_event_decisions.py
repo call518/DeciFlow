@@ -175,11 +175,8 @@ async def test_ten_mixed_decisions_validate_each_answer(
             )
     assert len(calls) == 1 and len(result["decisions"]) == 10
     assert "ticketProbability" not in result
-    primary = profile["primaryQuestion"]
-    assert result["primaryQuestion"] == primary
-    assert result["categoryFilter"].endswith(
-        ":" + next(iter(questions[primary]["criteria"]))
-    )
+    assert result["defaultDecision"] == profile["defaultDecision"]
+    assert "primaryQuestion" not in result and "categoryFilter" not in result
     assert result["decisionDefinitions"] == questions
 
 
@@ -192,23 +189,29 @@ def test_custom_aggregates_filters_and_typed_review_export(tmp_path: Path) -> No
     answers = decision_answers(questions)
     result = {
         "log": "Conversation",
-        "category": "예약",
-        "categoryFilter": "voc:예약",
-        "classificationGroup": "voc",
-        "primaryQuestion": "inquiry_type",
+        "criteriaGroup": "voc",
+        "defaultDecision": "inquiry_type",
         "profileLabel": definition["label"],
         "decisionDefinitions": questions,
         "decisions": answers,
     }
     store.append("run", {"type": "result", "result": result}, snapshot)
-    assert store.state("run")["summary"]["categories"]["all"]["voc:예약"] == 1
-    assert len(store.page("run", {"category": "voc:예약"}, 10)["items"]) == 1
+    groups = store.state("run")["summary"]["decisionGroups"]
+    assert groups["voc:inquiry_type"]["counts"]["all"]["예약"] == 1
+    assert (
+        len(
+            store.page("run", {"decision": "voc:inquiry_type", "category": "예약"}, 10)[
+                "items"
+            ]
+        )
+        == 1
+    )
     for identity, value in [
         ("handling_status", "확인 불가"),
         ("urgency", 2.5),
         ("follow_up_required", 0.2),
     ]:
-        store.review("run", 1, "", identity, value)
+        store.review("run", 1, identity, value)
     reviewed = store.page("run", {}, 10)["items"][0]["result"]
     assert reviewed["decisions"] == answers
     assert reviewed["reviewerDecisions"] == {
@@ -218,7 +221,7 @@ def test_custom_aggregates_filters_and_typed_review_export(tmp_path: Path) -> No
     }
     assert len(store.events("run", reviewed_only=True)) == 1
     for identity in reviewed["reviewerDecisions"]:
-        store.review("run", 1, "", identity, answer_value(answers[identity]))
+        store.review("run", 1, identity, answer_value(answers[identity]))
     assert not store.events("run", reviewed_only=True)
     for identity, value in [
         ("handling_status", "bad"),
@@ -226,7 +229,7 @@ def test_custom_aggregates_filters_and_typed_review_export(tmp_path: Path) -> No
         ("follow_up_required", True),
     ]:
         with pytest.raises(ValueError):
-            store.review("run", 1, "", identity, value)
+            store.review("run", 1, identity, value)
     store.close()
 
 
@@ -261,45 +264,18 @@ async def test_secondary_choice_needs_review_without_changing_primary_certainty(
                 "Conversation", get_engine(), client, "consultation"
             )
     assert result["review"] is True
-    assert result["uncertain"] is False
-    assert result["decisionReviews"]["handling_status"] == ["other_category"]
-    assert result["decisionReviews"]["inquiry_type"] == []
+    assert result["decisionAssessments"]["inquiry_type"]["uncertain"] is False
+    assert result["decisionAssessments"]["handling_status"]["reviewReasons"] == [
+        "other_category"
+    ]
+    assert result["decisionAssessments"]["inquiry_type"]["reviewReasons"] == []
 
 
-def test_existing_sqlite_results_survive_review_schema_upgrade(tmp_path: Path) -> None:
-    import sqlite3
-
-    path = tmp_path / "old.db"
-    with sqlite3.connect(path) as connection:
-        connection.execute(
-            "CREATE TABLE events (run_id TEXT NOT NULL, sequence INTEGER NOT NULL, "
-            "kind TEXT NOT NULL, payload TEXT NOT NULL, category TEXT, host TEXT, "
-            "review INTEGER, failed INTEGER, log_folded TEXT, reviewer TEXT, "
-            "PRIMARY KEY(run_id,sequence))"
-        )
-        event = {
-            "type": "result",
-            "result": {"log": "Existing result", "category": "normal"},
-        }
-        connection.execute(
-            "INSERT INTO events VALUES(?,?,?,?,?,?,?,?,?,?)",
-            (
-                "old",
-                1,
-                "result",
-                json.dumps(event),
-                "normal",
-                "local",
-                0,
-                0,
-                "existing result",
-                None,
-            ),
-        )
-    store = SQLiteResultStore(path)
-    assert store.page("old", {}, 10)["items"][0]["result"]["log"] == "Existing result"
-    store.review("old", 1, "error")
-    assert len(store.events("old", reviewed_only=True)) == 1
+def test_fresh_sqlite_schema_uses_only_typed_reviews(tmp_path: Path) -> None:
+    store = SQLiteResultStore(tmp_path / "results.db")
+    columns = {row[1] for row in store.connection.execute("PRAGMA table_info(events)")}
+    assert {"reviews", "changed"} <= columns
+    assert {"reviewer", "category"}.isdisjoint(columns)
     store.close()
 
 

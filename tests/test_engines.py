@@ -89,7 +89,7 @@ async def test_provider_contract(
             return
         result = await classify_log("connection refused", engine, client)
     assert result["engine"] == engine_name
-    assert result["category"] == "error"
+    assert result["decisions"]["category"]["choice"] == "error"
     assert result["review"] is False
 
 
@@ -138,7 +138,7 @@ async def test_provider_truncation_keeps_original_and_continues(
     assert results[0]["review"] is False
     assert "partial prediction was discarded" in results[0]["error"]
     assert "category" not in results[0]
-    assert results[1]["category"] == "normal"
+    assert results[1]["decisions"]["category"]["choice"] == "normal"
 
 
 @pytest.mark.anyio
@@ -211,7 +211,7 @@ async def test_remote_laya_uses_client_settings_only(
         transport=httpx.MockTransport(handle_request)
     ) as client:
         result = await classify_log("INFO service started", get_engine(), client)
-    assert result["category"] == "normal"
+    assert result["decisions"]["category"]["choice"] == "normal"
     assert result["engine"] == "laya"
 
 
@@ -248,9 +248,12 @@ async def test_shortened_criteria_require_review(
         )
     ) as client:
         result = await classify_log("input", get_engine(), client)
-    assert result["category"] == "normal"
+    assert result["decisions"]["category"]["choice"] == "normal"
     assert result["review"] is bool(dropped)
-    assert ("criteria_shortened" in result["reviewReasons"]) is bool(dropped)
+    assert (
+        "criteria_shortened"
+        in result["decisionAssessments"]["category"]["reviewReasons"]
+    ) is bool(dropped)
     assert result["providerResponse"]["usage"]["criteria_tokens_dropped"] == {
         "category": dropped
     }

@@ -287,9 +287,8 @@ def test_startup_reads_changed_dotenv(tmp_path: Path) -> None:
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("mode", ["realtime", "follow"])
-async def test_realtime_mode_normalizes_legacy_requests(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mode: str
+async def test_realtime_mode_uses_current_source_settings(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     path = tmp_path / "events.log"
     path.write_text("")
@@ -305,7 +304,7 @@ async def test_realtime_mode_normalizes_legacy_requests(
         response = await client.post(
             "/api/file-source",
             headers={"Origin": "http://127.0.0.1"},
-            json={"mode": mode, "path": str(path)},
+            json={"mode": "realtime", "sources": [{"path": str(path)}]},
         )
     assert response.status_code == 200
     events = [json.loads(line) for line in response.text.splitlines()]

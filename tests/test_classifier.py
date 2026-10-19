@@ -40,10 +40,10 @@ async def test_collapsed_options_require_review_only_for_laya(
         transport=httpx.MockTransport(lambda _: httpx.Response(200, json=data))
     ) as client:
         result = await classify_log("original log", get_engine(), client)
-    assert result["category"] == ANSWER["choice"]
-    assert result["uncertain"] is (engine == "laya")
+    assert result["decisions"]["category"]["choice"] == ANSWER["choice"]
+    assert result["decisionAssessments"]["category"]["uncertain"] is (engine == "laya")
     assert result["review"] is (engine == "laya")
-    assert result["reviewReasons"] == (
+    assert result["decisionAssessments"]["category"]["reviewReasons"] == (
         ["collapsed_options"] if engine == "laya" else []
     )
     assert result["providerResponse"] == data
@@ -103,9 +103,9 @@ async def test_jev_contract() -> None:
     ) as client:
         result = await classify_log("connection refused", get_engine(), client)
     assert result["review"] is False
-    assert result["answerProbability"] == 0.7
-    assert result["confidence"] == 0.6
-    assert result["category"] == "error"
+    assert result["decisionAssessments"]["category"]["answerProbability"] == 0.7
+    assert result["decisions"]["category"]["confidence"] == 0.6
+    assert result["decisions"]["category"]["choice"] == "error"
     assert result["model"] == "jev-test"
 
 
@@ -256,7 +256,9 @@ async def test_three_questions_share_one_request(
 ) -> None:
     import json
 
-    from classifier import OPERATIONAL_QUESTIONS
+    from profiles import DEFAULT_PROFILES
+
+    definitions = DEFAULT_PROFILES["general"]["questions"]
 
     monkeypatch.setenv("DECISION_ENGINE", engine_name)
     calls = []
@@ -275,8 +277,12 @@ async def test_three_questions_share_one_request(
         calls.append(body)
         assert body["state"] == "checkout failed"
         assert set(body["questions"]) == {"category", "urgency", "ticket"}
-        for name, question in OPERATIONAL_QUESTIONS.items():
-            assert body["questions"][name] == question
+        for name, question in definitions.items():
+            sent = body["questions"][name]
+            assert sent["type"] == question["type"]
+            assert sent.get("criteria") == question.get("criteria")
+            assert DEFAULT_PROFILES["general"]["instructions"] in sent["instructions"]
+            assert question["instructions"] in sent["instructions"]
         return httpx.Response(
             200,
             json={
@@ -290,11 +296,14 @@ async def test_three_questions_share_one_request(
     ) as client:
         result = await classify_log("checkout failed", get_engine(), client)
     assert len(calls) == 1
-    assert result["urgency"] == score
-    assert result["ticketProbability"] == ticket
+    assert result["decisions"]["urgency"]["score"] == score
+    assert result["decisions"]["ticket"]["noul"] == ticket
     assert result["questions"] == calls[0]["questions"]
     assert "question" not in result
-    assert result["urgencyProbabilities"] == answers["urgency"]["probabilities"]
+    assert (
+        result["decisions"]["urgency"]["probabilities"]
+        == answers["urgency"]["probabilities"]
+    )
 
 
 @pytest.mark.anyio

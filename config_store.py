@@ -112,19 +112,3 @@ def delete_record(kind: str, identity: str) -> None:
         connection.execute(
             "DELETE FROM configuration_records WHERE kind=? AND id=?", (kind, identity)
         )
-
-
-def rename_sample_records(
-    kind: str, records: Records, names: dict[str, str], field: str = "name"
-) -> None:
-    """Rename exact shipped labels without changing IDs, edits, or name collisions."""
-    occupied = {record[field].casefold() for record in records.values()}
-    for identity, record in records.items():
-        previous = record[field]
-        replacement = names.get(previous)
-        if replacement is None or replacement.casefold() in occupied:
-            continue
-        record[field] = replacement
-        save_record(kind, identity, record)
-        occupied.discard(previous.casefold())
-        occupied.add(replacement.casefold())

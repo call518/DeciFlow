@@ -1,6 +1,5 @@
 """Explicit, domain-specific decision profiles shared by both engines."""
 
-import hashlib
 import json
 import re
 from collections.abc import Iterator
@@ -10,13 +9,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from config_store import (
-    delete_record,
-    load_records,
-    rename_sample_records,
-    save_record,
-    save_records,
-)
+from config_store import load_records, save_record, save_records
 from decisions import review_options
 
 DEFAULT_PROFILES = {
@@ -30,7 +23,6 @@ ProfileMap = dict[str, dict[str, Any]]
 PROFILE_SNAPSHOT: ContextVar[ProfileMap | None] = ContextVar(
     "profile_snapshot", default=None
 )
-CATEGORIES = ("normal", "warning", "error", "security", "other")
 
 
 def get_profile(profile: str) -> dict[str, Any]:
@@ -49,7 +41,7 @@ def use_profile_snapshot(snapshot: ProfileMap) -> Iterator[None]:
 
 
 def validate_profiles(values: object) -> ProfileMap:
-    """Validate editable profiles with the five fixed result categories."""
+    """Validate editable profiles and their typed decisions."""
     if not isinstance(values, dict):
         raise TypeError("Criteria profiles must be an object keyed by profile ID.")
     validated: ProfileMap = {}
@@ -59,9 +51,7 @@ def validate_profiles(values: object) -> ProfileMap:
             r"(?:[a-z][a-z0-9_-]{0,63}|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})",
             identity,
         ):
-            raise ValueError(
-                "Profile IDs must be UUIDs or legacy lowercase identifiers."
-            )
+            raise ValueError("Profile IDs must be UUIDs or lowercase identifiers.")
         if not isinstance(value, dict):
             raise TypeError(
                 "Each profile must contain a name, instructions and criteria."
@@ -76,25 +66,7 @@ def validate_profiles(values: object) -> ProfileMap:
         if name in names:
             raise ValueError("Criteria names must be unique.")
         names.add(name)
-        if "questions" in value:
-            fields.update(_validate_questions(value))
-        else:
-            criteria = value.get("criteria")
-            if not isinstance(criteria, dict) or set(criteria) != set(CATEGORIES):
-                raise ValueError(
-                    "Criteria must define Normal, Warning, Error, Security and Other."
-                )
-            if any(not isinstance(v, str) or not v.strip() for v in criteria.values()):
-                raise ValueError("Every category needs a nonempty definition.")
-            fields["criteria"] = {key: criteria[key].strip() for key in CATEGORIES}
-            if "defaultDecision" in value:
-                if not isinstance(value["defaultDecision"], str) or value[
-                    "defaultDecision"
-                ] not in {"category", "urgency", "ticket"}:
-                    raise ValueError(
-                        "Select exactly one existing default chart decision."
-                    )
-                fields["defaultDecision"] = value["defaultDecision"]
+        fields.update(_validate_questions(value))
         normalization = value.get("normalization")
         if normalization is not None:
             if normalization != "single_line_syslog_header":
@@ -105,7 +77,7 @@ def validate_profiles(values: object) -> ProfileMap:
 
 
 def _validate_questions(profile: dict[str, Any]) -> dict[str, Any]:
-    questions = profile["questions"]
+    questions = profile.get("questions")
     if not isinstance(questions, dict) or not questions:
         raise ValueError("Add at least one decision.")
     cleaned = {}
@@ -125,10 +97,6 @@ def _validate_questions(profile: dict[str, Any]) -> dict[str, Any]:
             if not isinstance(text, str) or not text.strip():
                 raise ValueError(f"Enter a nonempty decision {key}.")
             item[key] = text.strip()
-        summary = definition.get("summary", True)
-        if not isinstance(summary, bool):
-            raise TypeError("Summary must be a boolean.")
-        item["summary"] = summary
         criteria = definition.get("criteria")
         if kind == "choice":
             if (
@@ -151,8 +119,7 @@ def _validate_questions(profile: dict[str, Any]) -> dict[str, Any]:
                 or len(set(options)) != len(options)
             ):
                 raise ValueError("Review options must be unique Choice option IDs.")
-            if "reviewOptions" in definition:
-                item["reviewOptions"] = options
+            item["reviewOptions"] = options
         elif kind == "score" and (
             not isinstance(criteria, list) or not 2 <= len(criteria) <= 10
         ):
@@ -164,105 +131,24 @@ def _validate_questions(profile: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError("Every option or level needs a nonempty definition.")
             item["criteria"] = deepcopy(criteria)
         cleaned[identity] = item
-    primary = profile.get("primaryQuestion")
-    if primary is not None and (
-        primary not in cleaned or cleaned[primary]["type"] != "choice"
-    ):
-        raise ValueError("Select a Choice decision for the primary classification.")
-    primary = primary or next(
-        (key for key, item in cleaned.items() if item["type"] == "choice"), None
-    )
-    default = profile.get("defaultDecision", profile.get("primaryQuestion"))
+    default = profile.get("defaultDecision")
     if not isinstance(default, str) or default not in cleaned:
         raise ValueError("Select exactly one existing default chart decision.")
-    return {
-        "questions": cleaned,
-        **({"defaultDecision": default} if "defaultDecision" in profile else {}),
-        **({"primaryQuestion": primary} if primary else {}),
-    }
+    return {"questions": cleaned, "defaultDecision": default}
 
 
 def load_profiles() -> None:
     """Load saved criteria and ensure the required consultation samples exist."""
     stored = load_records("criteria", DEFAULT_PROFILES)
     values = validate_profiles(stored)
-    rename_sample_records(
-        "criteria",
-        values,
-        {
-            "General system": "Sample General System",
-            **{
-                old: DEFAULT_PROFILES[identity]["label"]
-                for identity in ("consultation", "central_gov", "local_gov")
-                for old in (
-                    DEFAULT_PROFILES[identity]["label"].removeprefix("Sample "),
-                    DEFAULT_PROFILES[identity]["label"].removeprefix("Sample ")
-                    + " (KOR)",
-                )
-            },
-        },
-        "label",
-    )
-    # Update only untouched samples, preserving saved Task IDs and user edits.
-    legacy_hashes = {
-        "eaaeb8160dec0b9b1e1ba1406087995f46126008936fbf8753fb926fd1ea2366",
-        "5cdb1ea0a7e66c3d541df8248989898612c3616dbe395579d9fdecf47a253a23",
-        "c4ca8223b173892bc9f1b24a4a5daf754d0b9086b6280506b6a35f009041c58a",
-        "139d8de41dc425a8339bf9707dd5747a9f87c76398db743496ba1db74d00910f",
-    }
     for identity in ("consultation", "central_gov", "local_gov"):
         sample = DEFAULT_PROFILES[identity]
-        saved = values.get(identity)
-        name_exists = any(
-            key != identity
-            and profile["label"].casefold() == sample["label"].casefold()
-            for key, profile in values.items()
-        )
-        untouched = (
-            identity == "consultation"
-            and saved is not None
-            and hashlib.sha256(
-                json.dumps(stored.get(identity, saved), sort_keys=True).encode()
-            ).hexdigest()
-            in legacy_hashes
-        )
-        if not name_exists and (saved is None or untouched):
+        if identity not in values and not any(
+            profile["label"].casefold() == sample["label"].casefold()
+            for profile in values.values()
+        ):
             save_record("criteria", identity, sample)
             values[identity] = deepcopy(sample)
-    # Retire shipped English profiles while keeping Task references usable.
-    retired = {
-        "consultation_eng": "consultation",
-        "central_gov_eng": "central_gov",
-    }
-    for task_id, task in load_records("tasks").items():
-        changed = False
-        for source in task["sources"]:
-            replacement = retired.get(source["profile"])
-            if replacement is not None:
-                replacement = next(
-                    (
-                        identity
-                        for identity, definition in values.items()
-                        if definition["label"] == DEFAULT_PROFILES[replacement]["label"]
-                    ),
-                    replacement,
-                )
-                if replacement not in values:
-                    save_record("criteria", replacement, DEFAULT_PROFILES[replacement])
-                    values[replacement] = deepcopy(DEFAULT_PROFILES[replacement])
-                source["profile"] = replacement
-                changed = True
-        if changed:
-            save_record("tasks", task_id, task)
-    for identity in retired:
-        if identity in values:
-            delete_record("criteria", identity)
-            del values[identity]
-    for identity in ("consultation", "central_gov"):
-        saved = values.get(identity)
-        if saved and saved["label"] == f"{DEFAULT_PROFILES[identity]['label']} (KOR)":
-            saved["label"] = DEFAULT_PROFILES[identity]["label"]
-            save_record("criteria", identity, saved)
     PROFILES.clear()
     PROFILES.update(values)
 
