@@ -8,24 +8,38 @@ Existing system-log Tasks remain supported; assign Sources and Criteria per Task
 
 ## Government QnA Sample
 
-**VOC Central Gov Consulting QnA** is also added at startup, including to existing
+**Sample VOC Central Gov Consulting QnA** is also added at startup, including to existing
 installations. Its Source uses `/host-logs/sample-logs/voc-central-gov-consulting-qna.jsonl`,
 JSONL (Line), and Content Field `consulting_content` (3,965 records).
-The **VOC Central Gov Consulting QnA** Criteria classify Policy Area,
+The **Sample VOC Central Gov Consulting QnA** Criteria classify Policy Area,
 Response Type, Follow-up Owner, Urgency, and Follow-up Required. They distinguish
 rule explanations, application guidance, referrals, completed processing, and
 explicitly outstanding agency actions. Referrals and contact footers alone do not
 create agency follow-up obligations; the profiles do not verify current law.
-The provided **VOC Central Gov Consulting QnA** Task uses Korean Criteria,
+The provided **Sample VOC Central Gov Consulting QnA** Task uses Korean Criteria,
 Batch / Manual, Events/Chunk 1, and Action None. It starts disabled with Resume on
 Restart off. Enable it and click Run to analyze the sample. Saved edits are preserved.
+
+## Local Government QnA Sample
+
+**Sample VOC Local Gov Consulting QnA** Source, Criteria, and Task are added at startup,
+including to existing installations; saved edits are preserved. The Source reads
+`/host-logs/sample-logs/voc-local-gov-consulting-qna.jsonl` (3,280 records) as
+JSONL (Line), with Content Field `상담내용`. Only this field is sent for classification;
+`지방자치단체명` and `상담담당부서` remain original record metadata, including empty departments.
+The Korean Criteria cover local policy area, response type, follow-up owner, urgency,
+and follow-up required. General project schedules and improvement plans alone do not
+count as outstanding commitments for an individual inquiry. The Task uses Batch / Manual,
+Events/Chunk 1, and Action None, with Enabled and Resume on Restart off. Restart
+DeciFlow-UI without Reset, enable the Task, and click Run. For native execution,
+change the Source path to the sample file's actual local path.
 
 ## 1. Run the Bundled Sample
 
 1. Apply the new code and restart DeciFlow-UI. No Reset is required.
-2. Find **VOC Asia Culture Center Consulting QnA** under Source.
-3. Find **VOC Asia Culture Center Consulting QnA** under Criteria.
-4. View the provided **VOC Asia Culture Center Consulting QnA** Task and check its assignments below.
+2. Find **Sample VOC Asia Culture Center Consulting QnA** under Source.
+3. Find **Sample VOC Asia Culture Center Consulting QnA** under Criteria.
+4. View the provided **Sample VOC Asia Culture Center Consulting QnA** Task and check its assignments below.
 5. Enable the Task, then click **Run**. Enabling or saving does not start it.
 6. Select this Task in Main's Task Monitor.
 
@@ -36,7 +50,7 @@ Restart off. Enable it and click Run to analyze the sample. Saved edits are pres
 | Input Format | JSONL (Line) |
 | Content Field | `consulting_content` |
 | Task Mode | Batch / Manual |
-| Criteria | VOC Asia Culture Center Consulting QnA |
+| Criteria | Sample VOC Asia Culture Center Consulting QnA |
 | Events/Chunk | 1 (fixed for JSONL) |
 | Action | None |
 | Enabled / Resume on Restart | Both off when first provided |

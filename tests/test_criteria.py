@@ -56,13 +56,11 @@ def test_persistence_and_invalid_save(criteria_storage: Path) -> None:
     assert PROFILES["custom"]["criteria"]["normal"]
 
 
-@pytest.mark.parametrize("invalid", ["categories", "general", "id", "instructions"])
+@pytest.mark.parametrize("invalid", ["categories", "id", "instructions"])
 def test_fixed_categories_and_required_fields(invalid: str) -> None:
     values = deepcopy(PROFILES)
     if invalid == "categories":
         values["general"]["criteria"]["score"] = "extra"
-    elif invalid == "general":
-        values.pop("general")
     elif invalid == "id":
         values["../outside"] = values["general"]
     else:
@@ -246,3 +244,38 @@ def test_uuid_profiles_preserve_legacy_references(criteria_storage: Path) -> Non
     assert PROFILES == values
     assert get_profile(identity)["label"] == "한글 Criteria"
     assert get_profile("general") == values["general"]
+
+
+@pytest.mark.anyio
+async def test_general_is_optional_but_task_assignments_still_block_deletion(
+    criteria_storage: Path,
+) -> None:
+    """General follows the same editing, deletion, and persistence rules as any profile."""
+    values = deepcopy(PROFILES)
+    values["general"]["instructions"] = "Custom system rules."
+    save_profiles(values)
+    task = {"id": "task", "name": "System Task", "sources": [{"profile": "general"}]}
+    save_records("tasks", {"task": task})
+    del values["general"]
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=server.app), base_url="http://localhost"
+    ) as client:
+        headers = {"Origin": "http://localhost"}
+        blocked = await client.put("/api/criteria", headers=headers, json=values)
+        assert blocked.status_code == 400
+        assert "System Task" in blocked.json()["error"]
+        assert PROFILES["general"]["instructions"] == "Custom system rules."
+        task["sources"][0]["profile"] = "http_access"
+        save_records("tasks", {"task": task})
+        saved = await client.put("/api/criteria", headers=headers, json=values)
+        assert saved.status_code == 200
+        assert "general" not in saved.json()["profiles"]
+        load_profiles()
+        assert PROFILES == values
+        assert "general" not in load_records("criteria")
+        save_records("tasks", {})
+        empty = await client.put("/api/criteria", headers=headers, json={})
+        assert empty.status_code == 200
+        assert empty.json()["profiles"] == {}
+        assert load_records("criteria") == {}
+        assert (await client.get("/api/status")).status_code == 200

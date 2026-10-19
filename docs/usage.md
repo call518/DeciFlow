@@ -45,7 +45,7 @@ No ticket is created automatically. Missing or invalid answers fail the whole re
 
 | Criteria profile | Focus |
 | --- | --- |
-| General system | System/service operation and failures |
+| Sample General System | System/service operation and failures |
 | Sample Authentication | Authentication/session outcomes, service failures, and abuse |
 | Sample HTTP access | Responses, request failures, and suspicious access |
 | Sample Application | Application operations, exceptions, and dependencies |
@@ -53,7 +53,8 @@ No ticket is created automatically. Missing or invalid answers fail the whole re
 
 Use **Criteria** in the sidebar to add, edit, or delete profiles.
 System profiles retain Normal, Warning, Error, Security, and Other; custom
-profiles choose their own options. `general` cannot be deleted. **Save Changes** applies to new runs; running jobs keep their original
+profiles choose their own options. `general` follows the same editing and deletion
+rules as every other profile. **Save Changes** applies to new runs; running jobs keep their original
 criteria. See [Criteria management](criteria.md) for storage and deletion restrictions on Task references.
 Describe outcomes and evidence; keep specific log strings in evaluation samples.
 
@@ -68,7 +69,7 @@ detected. Overlapping local matches with identical settings are deduplicated by 
 path; conflicting settings are rejected. Chunking does not bypass model budgets. Remote rotation uses size/prefix checks;
 see [SSH limitations](sources.md#ssh-configuration).
 
-General system separates routine operation (Normal), recoverable problems
+Sample General System separates routine operation (Normal), recoverable problems
 (Warning), explicit failures (Error), and evidenced abuse or policy violations
 (Security). A service name, IP address, or security-related topic is not evidence
 of an incident. These criteria guide predictions; validate your deployed model

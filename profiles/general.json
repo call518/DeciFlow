@@ -1,5 +1,5 @@
 {
-  "label": "General system",
+  "label": "Sample General System",
   "instructions": "Judge operational outcomes, not service names or topics. Routine changes are normal; recoverable problems are warning; explicit failures are error. Security requires abuse or policy-violation evidence, not addresses or security terminology. Unknown cause alone is not other.",
   "criteria": {
     "normal": "Routine startup, initialization, configuration, maintenance, status update, or successful operation without evidence of a problem.",

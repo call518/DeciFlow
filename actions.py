@@ -18,7 +18,13 @@ import anyio
 from anyio.abc import ByteReceiveStream
 
 from classifier import Result
-from config_store import get_data_directory, load_records, save_record, save_records
+from config_store import (
+    get_data_directory,
+    load_records,
+    rename_sample_records,
+    save_record,
+    save_records,
+)
 from result_payload import compact_result
 
 DEFAULT_ACTION_ID = uuid5(NAMESPACE_URL, "deciflow:action:elasticsearch").hex
@@ -60,7 +66,7 @@ def get_actions_directory() -> Path:
 def _default_action() -> Result:
     action: Result = {
         "id": DEFAULT_ACTION_ID,
-        "name": "Elasticsearch",
+        "name": "Sample Elasticsearch",
         "pythonVersion": "3.12",
         "modules": ["elasticsearch"],
         "code": DEFAULT_ACTION_CODE,
@@ -154,7 +160,8 @@ def validate_actions(values: object) -> list[Result]:
 def load_actions() -> list[Result]:
     """Seed the sample on first initialization; preserve saved edits and deletions."""
     default = _default_action()
-    values = list(load_records("actions", {default["id"]: default}).values())
+    records = load_records("actions", {default["id"]: default})
+    values = list(records.values())
     if not isinstance(values, list) or any(
         not isinstance(value, dict)
         or any(
@@ -163,6 +170,7 @@ def load_actions() -> list[Result]:
         for value in values
     ):
         raise ValueError("Invalid action registry.")
+    rename_sample_records("actions", records, {"Elasticsearch": "Sample Elasticsearch"})
     for value in values:
         value.pop("revision", None)
         value.pop("history", None)

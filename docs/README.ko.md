@@ -15,8 +15,9 @@ Source → Criteria → 선택적 Actions → Tasks 순으로 구성하고 Main�
 | [Sources](sources.ko.md) | 로컬·SSH 파일 소스 등록과 Tasks에서 선택 |
 | [사용법](usage.ko.md) | 로그 분석·결과 필터·판정 검토·재접속·지표 확인 |
 | [설정](configuration.ko.md) | 환경변수·Laya/Jev 모델·요청 예산 설정 |
-| [VOC Asia Culture Center Consulting QnA](voc.ko.md) | 기본 샘플 실행·전체 Criteria 입력값·판단 기준 검증 |
-| [VOC Central Gov Consulting QnA](voc.ko.md#정부기관-qna-샘플) | 정부기관 QnA 샘플의 Source·한국어 Criteria·Task 실행 |
+| [Sample VOC Asia Culture Center Consulting QnA](voc.ko.md) | 기본 샘플 실행·전체 Criteria 입력값·판단 기준 검증 |
+| [Sample VOC Central Gov Consulting QnA](voc.ko.md#정부기관-qna-샘플) | 정부기관 QnA 샘플의 Source·한국어 Criteria·Task 실행 |
+| [Sample VOC Local Gov Consulting QnA](voc.ko.md#지방자치단체-qna-샘플) | 지방자치단체 QnA 샘플의 Source·한국어 Criteria·Task 실행 |
 | [Criteria](criteria.ko.md) | 필드별 작성법·타입별 예시·저장 오류 해결 |
 | [Python Actions](actions.ko.md) | 판정 후 Python 코드 실행과 실행 환경 관리 |
 | [Tasks](tasks.ko.md) | 재사용 실행 설정·Cron 예약·연속 감시·영속 실행 이력 |

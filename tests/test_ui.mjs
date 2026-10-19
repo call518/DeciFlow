@@ -378,7 +378,7 @@ test('file line labels distinguish batch from observed realtime sequences', asyn
     const prefix = mode === 'realtime' ? 'Observed' : 'File';
     assert.equal(rows[1].children[2].textContent, `Source: /var/log/secure · ${prefix} line 1`);
     assert.equal(rows[0].children[2].textContent, `Source: /var/log/secure · ${prefix} lines 10–12`);
-    assert.equal(rows[1].children[3].textContent, 'Criteria: General system · Chunk: 1 event (max 1)');
+    assert.equal(rows[1].children[3].textContent, 'Criteria: Sample General System · Chunk: 1 event (max 1)');
     assert.equal(rows[0].children[3].textContent, 'Criteria: Sample Authentication · Chunk: 1 event (max 5)');
     if (mode === 'realtime') assert.ok(rows[1].children[2].title.includes('not an absolute'));
     nodes.get('source-mode').value = mode === 'realtime' ? 'batch' : 'realtime';
@@ -1078,7 +1078,7 @@ test('Export stays visibly disabled during processing and enables only with down
 test('Criteria management resets drafts on menu entry, saves edits, and clears deleted source selections', async () => {
   const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, `${key} evidence`]));
   const profiles = {
-    general: { label: 'General system', instructions: 'General instructions', criteria: definitions },
+    general: { label: 'Sample General System', instructions: 'General instructions', criteria: definitions },
     custom: { label: 'Custom', instructions: 'Custom instructions', criteria: definitions },
   };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
@@ -1086,7 +1086,7 @@ test('Criteria management resets drafts on menu entry, saves edits, and clears d
   assert.equal(nodes.get('criteria-page').hidden, false);
   assert.equal(nodes.get('main-page').hidden, true);
   assert.equal(nodes.get('save-criteria').disabled, false);
-  assert.equal(nodes.get('criteria-default').children[0].children[1].children[1].children[0].textContent, 'View');
+  assert.equal(criteriaRow(nodes, 'Sample General System').children[1].children[0].textContent, 'View');
   assert.equal(nodes.get('criteria-registry').children[0].children[1].children[0].textContent, 'Custom');
   nodes.get('add-criteria').onclick();
   vm.runInContext("criteriaFields.label.value='New profile'; criteriaFields.instructions.value='New instructions';", context);
@@ -1112,7 +1112,7 @@ test('Criteria management resets drafts on menu entry, saves edits, and clears d
 
 test('Criteria search, cancel, and duplicate IDs leave saved profiles unchanged', async () => {
   const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
-  const profiles = { general: { label: 'General system', instructions: 'Original', criteria: definitions }, custom: { label: 'Custom', instructions: 'Original', criteria: definitions } };
+  const profiles = { general: { label: 'Sample General System', instructions: 'Original', criteria: definitions }, custom: { label: 'Custom', instructions: 'Original', criteria: definitions } };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await nodes.get('nav-criteria').onclick();
   nodes.get('criteria-search').value = 'missing';
@@ -1123,7 +1123,7 @@ test('Criteria search, cancel, and duplicate IDs leave saved profiles unchanged'
   nodes.get('cancel-criteria').onclick();
   assert.equal(vm.runInContext('criteriaProfiles.custom.instructions', context), 'Original');
   nodes.get('add-criteria').onclick();
-  vm.runInContext("criteriaFields.label.value='General system'; criteriaFields.label.oninput();", context);
+  vm.runInContext("criteriaFields.label.value='Sample General System'; criteriaFields.label.oninput();", context);
   await nodes.get('save-criteria').onclick();
   assert.match(nodes.get('criteria-message').textContent, /already exists/);
   assert.equal(nodes.get('save-criteria').disabled, true);
@@ -1164,7 +1164,7 @@ test('View shows read-only Action configuration without editing or losing drafts
 
 test('View shows all Criteria definitions and preserves the edit draft', async () => {
   const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, `${key} evidence`]));
-  const profiles = { general: { label: 'General system', instructions: 'Saved instructions', criteria: definitions }, custom: { label: 'Custom', instructions: 'Saved instructions', criteria: definitions } };
+  const profiles = { general: { label: 'Sample General System', instructions: 'Saved instructions', criteria: definitions }, custom: { label: 'Custom', instructions: 'Saved instructions', criteria: definitions } };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await nodes.get('nav-criteria').onclick();
   const controls = () => nodes.get('criteria-registry').children[0].children[1].children[1].children;
@@ -1204,7 +1204,7 @@ test('Add closes View in both managers and enables the new editor', async () => 
   assert.equal(nodes.get('action-editor').hidden, false);
   assert.equal(nodes.get('save-actions').disabled, false);
   await nodes.get('nav-criteria').onclick();
-  nodes.get('criteria-default').children[0].children[1].children[1].children[0].onclick();
+  criteriaRow(nodes, 'General').children[1].children[0].onclick();
   nodes.get('add-criteria').onclick();
   assert.equal(nodes.get('criteria-view').hidden, true);
   assert.equal(nodes.get('criteria-editor').hidden, false);
@@ -1273,24 +1273,32 @@ test('engine connection follows actual requests for both providers without local
 });
 
 
-test('Default Criteria stays above search with View and Clone and outside the editable list', async () => {
+test('All Criteria share one searchable editable list without a required default', async () => {
   const definitions = Object.fromEntries(['normal', 'warning', 'error', 'security', 'other'].map(key => [key, key]));
-  const profiles = { general: { label: 'General system', instructions: 'Default instructions', criteria: definitions }, custom: { label: 'Custom', instructions: 'Custom instructions', criteria: definitions } };
-  const { nodes } = workspace([], undefined, undefined, profiles);
+  const profiles = { general: { label: 'Sample General System', instructions: 'Default instructions', criteria: definitions }, custom: { label: 'Custom', instructions: 'Custom instructions', criteria: definitions } };
+  const { nodes, context } = workspace([], undefined, undefined, profiles);
   await nodes.get('nav-criteria').onclick();
-  const defaultRow = () => nodes.get('criteria-default').children[0].children[1];
-  assert.deepEqual(nodes.get('criteria-default').children[0].children[0].children.map(cell => cell.textContent), ['Name', 'Manage']);
-  assert.equal(defaultRow().children[0].textContent, 'General system');
-  assert.deepEqual(defaultRow().children[1].children.map(button => button.textContent), ['View', 'Clone']);
-  assert.equal(nodes.get('criteria-registry').children[0].children.length, 2);
+  assert.equal(nodes.get('criteria-registry').children[0].children.length, 3);
+  const row = criteriaRow(nodes, 'Sample General System');
+  assert.deepEqual(row.children[1].children.map(button => button.textContent), ['View', 'Edit', 'Clone', 'Delete']);
+  row.children[1].children[0].onclick();
+  assert.equal(nodes.get('criteria-view').children[1].children[0].children[1].textContent, 'Sample General System');
   nodes.get('criteria-search').value = 'missing'; nodes.get('criteria-search').oninput();
-  assert.equal(defaultRow().children[0].textContent, 'General system');
-  defaultRow().children[1].children[0].onclick();
-  assert.equal(nodes.get('criteria-view').children[1].children[0].children[1].textContent, 'General system');
+  assert.equal(nodes.get('criteria-registry').children[0].textContent, 'No profiles match your search.');
+  nodes.get('criteria-search').value = 'general'; nodes.get('criteria-search').oninput();
+  assert.equal(criteriaRow(nodes, 'Sample General System').children[0].textContent, 'Sample General System');
+  criteriaRow(nodes, 'Sample General System').children[1].children[1].onclick();
+  assert.equal(vm.runInContext('editingCriteria', context), 'general');
+  nodes.get('cancel-criteria').onclick();
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-  assert.ok(html.indexOf('id="criteria-default"') < html.indexOf('id="additional-criteria-title"'));
-  assert.ok(html.indexOf('id="additional-criteria-title"') < html.indexOf('id="criteria-search"'));
+  assert.ok(!html.includes('criteria-default'));
+  assert.ok(!html.includes('Default Criteria'));
+  assert.ok(!html.includes('Registered Criteria'));
 });
+
+function criteriaRow(nodes, name) {
+  return nodes.get('criteria-registry').children[0].children.find(row => row.children[0]?.textContent === name);
+}
 
 
 test('Add and Edit show only the form and restore each manager list on cancel or save', async () => {
@@ -1311,7 +1319,7 @@ test('Add and Edit show only the form and restore each manager list on cancel or
   assert.equal(nodes.get('action-list').hidden, false);
   assert.equal(nodes.get('action-editor').hidden, true);
   await nodes.get('nav-criteria').onclick();
-  nodes.get('criteria-default').children[0].children[1].children[1].children[0].onclick();
+  criteriaRow(nodes, 'General').children[1].children[0].onclick();
   nodes.get('add-criteria').onclick();
   assert.equal(nodes.get('criteria-list').hidden, true);
   assert.equal(nodes.get('criteria-view').hidden, true);
@@ -2454,7 +2462,7 @@ test('Host View and redraw do not repeat automatic checks within one visit',asyn
 test('Source Action Criteria Task and SSH Key View buttons insert a detail row immediately after selection',async()=>{
   const {context,nodes}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
   vm.runInContext(`registeredSources=[{id:'source',name:'Input',type:'local',path:'/input'}];renderSources();registeredActions=[{id:'action',name:'Notify',code:'pass'}];renderActions();registeredTasks=[{id:'task',name:'Analysis',mode:'batch',sources:[]}];renderTasks();sshKeys=[{id:'key-Key',name:'Key',privatePath:'/key',publicPath:'/pub',publicKey:'public'}];renderSSHKeys();criteriaProfiles={general:{label:'General',instructions:'Default',criteria:{normal:'Normal'}}};renderCriteria();`,context);
-  for(const [list,id,body] of [['source-registry','source-view',false],['action-registry','action-view',false],['task-list','task-view',false],['ssh-key-list','ssh-key-view',true],['criteria-default','criteria-view',false]]){
+  for(const [list,id,body] of [['source-registry','source-view',false],['action-registry','action-view',false],['task-list','task-view',false],['ssh-key-list','ssh-key-view',true],['criteria-registry','criteria-view',false]]){
     const table=nodes.get(list).children[0];const parent=body?table.children[1]:table;
     const row=parent.children[body?0:1];const button=row.children.at(-1).children.find(item=>item.textContent==='View');
     button.onclick();assert.ok(row.nextSibling,id);assert.equal(row.nextSibling.children[0].children[0],nodes.get(id),id);
@@ -2773,7 +2781,7 @@ test('Clone Criteria opens an unsaved Add Profile draft and preserves source met
   for (const key of Object.keys(criteria)) assert.equal(vm.runInContext(`decisionRows[0].options.find(option=>option.key.value==='${key}').text.value`, context), criteria[key]);
   assert.equal(vm.runInContext('Object.keys(criteriaProfiles).length', context), 2);
   nodes.get('cancel-criteria').onclick();
-  nodes.get('criteria-default').children[0].children[1].children[1].children[1].onclick();
+  criteriaRow(nodes, 'General').children[1].children[2].onclick();
   assert.equal(vm.runInContext('criteriaFields.label.value', context), 'General (Clone)');
   nodes.get('cancel-criteria').onclick();
   vm.runInContext("handleCloneCriteria('custom'); decisionRows[0].options[0].text.value='Edited definition';", context);
@@ -3234,8 +3242,8 @@ test('Task History stays below its row through refresh and closes for another de
 
 test('Result context emphasizes Task name and reports non-JSON API responses', async () => {
   const {nodes,context}=workspace([]);
-  vm.runInContext("renderResultContext('VOC Asia Culture Center Consulting QnA','2026-10-17T00:00:00Z','run-one')",context);
-  assert.equal(nodes.get('result-context').children[0].textContent,'VOC Asia Culture Center Consulting QnA');
+  vm.runInContext("renderResultContext('Sample VOC Asia Culture Center Consulting QnA','2026-10-17T00:00:00Z','run-one')",context);
+  assert.equal(nodes.get('result-context').children[0].textContent,'Sample VOC Asia Culture Center Consulting QnA');
   assert.equal(nodes.get('result-context').children[0].className,'result-task-name');
   context.htmlResponse={status:502,ok:false,json:async()=>{throw new SyntaxError('Unexpected token <');}};
   await assert.rejects(vm.runInContext("readResultResponse(htmlResponse,'/api/jobs/run-one/results')",context),/\/api\/jobs\/run-one\/results.*invalid JSON.*HTTP 502/);
@@ -3387,7 +3395,7 @@ test('Resource links share stable IDs across Sources Actions Criteria and SSH li
   vm.runInContext(`
     registeredSources=[{id:'source-id',name:'Source',type:'local',path:'/synthetic'}];
     registeredActions=[{id:'action-id',name:'Action',code:'print(1)',modules:[]}];
-    criteriaProfiles={general:{label:'General system',instructions:'Test',criteria:{normal:'Normal'}},'criteria-id':{label:'Criteria',instructions:'Test',criteria:{normal:'Normal'}}};
+    criteriaProfiles={general:{label:'Sample General System',instructions:'Test',criteria:{normal:'Normal'}},'criteria-id':{label:'Criteria',instructions:'Test',criteria:{normal:'Normal'}}};
     sshKeys=[{id:'key-id',name:'Key',privatePath:'/synthetic/key',publicKey:'synthetic'}];
     sshHosts=[{id:'host-id',name:'Host',host:'synthetic',port:22,username:'reader',keyId:'key-id'}];
     renderSources();renderActions();renderCriteria();renderSSHKeys();renderSSHHosts();
@@ -3460,7 +3468,7 @@ test('Criteria None survives profile refresh and blocks Task execution', async (
   vm.runInContext(`
     updateSourceSettings(['1'.padStart(32,'0')]);
     sourceRows[0].profile.value='';sourceRows[0].profile.onchange();
-    handleCriteriaLabels({general:{label:'General system'}});
+    handleCriteriaLabels({general:{label:'Sample General System'}});
   `,context);
   assert.equal(vm.runInContext('sourceRows[0].profile.value',context),'');
   assert.equal(vm.runInContext('sourceRows[0].profile.children[0].text',context),'None');
@@ -3601,7 +3609,7 @@ test('Manager lists sort English and Korean names naturally without changing edi
     const {context,nodes}=workspace([]);
     await new Promise(resolve=>setImmediate(resolve));
     const records=names.map((name,index)=>({id:String(index),name,label:name,type:'local',path:`/logs/${index}`,code:'pass',sources:[],mode:'batch',enabled:false,timezone:'UTC',cron:''}));
-    const general={label:'General system',instructions:'Classify the input.',primaryQuestion:'category',questions:{category:{label:'Category',type:'choice',summary:true,criteria:{normal:'Normal',other:'Other'}}}};
+    const general={label:'Sample General System',instructions:'Classify the input.',primaryQuestion:'category',questions:{category:{label:'Category',type:'choice',summary:true,criteria:{normal:'Normal',other:'Other'}}}};
     const setup={
       source:`registeredSources=${JSON.stringify(records)};renderSources()`,
       action:`registeredActions=${JSON.stringify(records)};renderActions()`,
@@ -3611,12 +3619,12 @@ test('Manager lists sort English and Korean names naturally without changing edi
     vm.runInContext(setup[manager],context);
     const table=nodes.get(manager==='task'?'task-list':`${manager}-registry`).children[0];
     const rows=table.children.slice(1);
-    assert.deepEqual(rows.map(row=>row.children[0].textContent),expected,manager);
+    assert.deepEqual(rows.map(row=>row.children[0].textContent),manager==='criteria'?['가방','나무','alpha 2','Alpha 10','Sample General System','Zulu']:expected,manager);
     if(manager!=='criteria') {
       const collection={source:'registeredSources',action:'registeredActions',task:'registeredTasks'}[manager];
       assert.equal(vm.runInContext(`JSON.stringify(${collection}.map(item=>item.name))`,context),JSON.stringify(names));
     }else{
-      assert.equal(nodes.get('criteria-default').children[0].children.length,2);
+      assert.deepEqual(criteriaRow(nodes,'Sample General System').children[1].children.map(button=>button.textContent),['View','Edit','Clone','Delete']);
     }
     const selected=rows.find(row=>row.children[0].textContent==='alpha 2');
     const edit=selected.children.at(-1).children.find(button=>button.textContent==='Edit');
@@ -4128,4 +4136,24 @@ test('Opening another run starts with its default instead of the previous chart 
   assert.equal(nodes.get('classification-group').value,'stable:followup');
   assert.equal(nodes.get('chart-all').attributes['aria-pressed'],'true');
   assert.equal(nodes.get('chart-uncertain').hidden,true);
+});
+
+
+test('Criteria can be empty and created with AI without a General profile', async () => {
+  const { nodes, context } = workspace([], undefined, undefined, {});
+  await nodes.get('nav-criteria').onclick();
+  assert.equal(nodes.get('criteria-registry').children[0].textContent, 'No criteria yet. Add a profile or generate one with AI.');
+  assert.equal(nodes.get('add-criteria').disabled, false);
+  nodes.get('add-criteria').onclick();
+  assert.equal(nodes.get('criteria-editor').hidden, false);
+  assert.ok(nodes.get('criteria-editor').children.some(child=>child.className.includes('criteria-generator')));
+  nodes.get('cancel-criteria').onclick();
+  vm.runInContext("criteriaProfiles={general:{label:'General',instructions:'Evidence.',criteria:{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'}}};renderCriteria();", context);
+  await criteriaRow(nodes, 'General').children[1].children.find(button=>button.textContent==='Delete').onclick();
+  assert.equal(vm.runInContext('Object.keys(criteriaProfiles).length', context), 0);
+  let saved;
+  context.fetch=async (_path,options)=>{saved=JSON.parse(options.body);return {ok:true,json:async()=>({profiles:saved})};};
+  await nodes.get('save-criteria').onclick();
+  assert.deepEqual(saved, {});
+  assert.equal(nodes.get('criteria-registry').children[0].textContent, 'No criteria yet. Add a profile or generate one with AI.');
 });

@@ -113,7 +113,7 @@ For optional GPU acceleration, see [Docker deployment details](#laya-docker);
 for a paid API, see [Jev](#jev).
 The default key `changeme` is for trials. Change it in `.env` before deployment.
 
-A built-in **DeciFlow Server Log** Task monitors `DECIFLOW_LOG_DIR/server.log` / `DECIFLOW_LOG_DIR/access.log`; it is disabled by default (enable it before Run). Missing default configuration is restored on startup, including after Reset DeciFlow. See [Tasks](docs/tasks.md).
+A built-in **Sample DeciFlow Server Log** Task monitors `DECIFLOW_LOG_DIR/server.log` / `DECIFLOW_LOG_DIR/access.log`; it is disabled by default (enable it before Run). Missing default configuration is restored on startup, including after Reset DeciFlow. See [Tasks](docs/tasks.md).
 
 Use **Export Reviewed JSON** in Classification Results to download only results
 with human corrections to any Choice, Score, or Noul decision in the selected run.
@@ -122,16 +122,16 @@ with human corrections to any Choice, Score, or Noul decision in the selected ru
 
 Use this workflow as an alternative to the log example; both remain supported.
 
-1. In **Sources**, use the automatically provided **VOC Asia Culture Center Consulting QnA** sample,
+1. In **Sources**, use the automatically provided **Sample VOC Asia Culture Center Consulting QnA** sample,
    or register a readable file, select **JSONL (Line)**, and enter its
    **Content Field** (`consulting_content` for both supplied samples). With the
    supplied host samples and Compose mount, use
    `/host-logs/sample-logs/voc-asia-culture-center-consulting-qna.jsonl` or
    `/host-logs/sample-logs/voc-central-gov-consulting-qna.jsonl`.
-2. In **Criteria**, select **VOC Asia Culture Center Consulting QnA**, automatically added
+2. In **Criteria**, select **Sample VOC Asia Culture Center Consulting QnA**, automatically added
    at startup when absent, or Clone it to customize. Use a query-specific profile
    for question-only inputs; follow-up judgments require conversation evidence.
-3. Enable the provided **VOC Asia Culture Center Consulting QnA** Batch Task and Run, or
+3. Enable the provided **Sample VOC Asia Culture Center Consulting QnA** Batch Task and Run, or
    create a Task with the desired Source and Criteria and Action None.
    JSONL always processes one object per line, preserving repeated conversations
    as separate records. The supplied consultation file has 841 input records.
@@ -170,22 +170,40 @@ See [AI Criteria generation](docs/criteria.md#generate-criteria-with-ai).
 
 ### Government QnA Sample
 
-**VOC Central Gov Consulting QnA** is also added at startup, including to existing
+**Sample VOC Central Gov Consulting QnA** is also added at startup, including to existing
 installations. Its Source uses `/host-logs/sample-logs/voc-central-gov-consulting-qna.jsonl`,
 JSONL (Line), and Content Field `consulting_content` (3,965 records).
-The **VOC Central Gov Consulting QnA** Criteria classify Policy Area,
+The **Sample VOC Central Gov Consulting QnA** Criteria classify Policy Area,
 Response Type, Follow-up Owner, Urgency, and Follow-up Required. They distinguish
 rule explanations, application guidance, referrals, completed processing, and
 explicitly outstanding agency actions. Referrals and contact footers alone do not
 create agency follow-up obligations; the profiles do not verify current law.
-The provided **VOC Central Gov Consulting QnA** Task uses Korean Criteria,
+The provided **Sample VOC Central Gov Consulting QnA** Task uses Korean Criteria,
 Batch / Manual, Events/Chunk 1, and Action None. It starts disabled with Resume on
 Restart off. Enable it and click Run to analyze the sample. Saved edits are preserved.
 
-Both bundled VOC Criteria are Korean-only and omit language suffixes. Startup removes
+### Local Government QnA Sample
+
+**Sample VOC Local Gov Consulting QnA** Source, Criteria, and Task are added at startup,
+including to existing installations; saved edits are preserved. The Source reads
+`/host-logs/sample-logs/voc-local-gov-consulting-qna.jsonl` (3,280 records) as
+JSONL (Line), with Content Field `상담내용`. Only this field is sent for classification;
+`지방자치단체명` and `상담담당부서` remain original record metadata, including empty departments.
+The Korean Criteria cover local policy area, response type, follow-up owner, urgency,
+and follow-up required. General project schedules and improvement plans alone do not
+count as outstanding commitments for an individual inquiry. The Task uses Batch / Manual,
+Events/Chunk 1, and Action None, with Enabled and Resume on Restart off. Restart
+DeciFlow-UI without Reset, enable the Task, and click Run. For native execution,
+change the Source path to the sample file's actual local path.
+
+All bundled VOC Criteria are Korean-only and omit language suffixes. Startup removes
 the retired default English Criteria and redirects their Task assignments to the Korean
 versions; custom English clones and historical results remain unchanged. Existing Source
 paths and saved customizations are preserved: update old sample paths in Sources manually.
+
+Bundled Source, Criteria, Task, and Action names begin with **Sample**.
+Existing shipped names are renamed without changing IDs or assignments; custom names
+and settings are preserved. Reset recreates the same sample names.
 
 ## Usage and configuration
 
@@ -199,7 +217,7 @@ and request/result examples.
 | [Sources](docs/sources.md) | Register local/SSH sources, manage SSH Keys in Settings, and select sorted dropdown entries |
 | [Usage](docs/usage.md) | Input modes, criteria, filters, human review, reconnecting, timing |
 | [Configuration](docs/configuration.md) | Environment variables, models, input budgets |
-| [Criteria](docs/criteria.md) | Manage typed decision profiles with internal UUIDs; Default Criteria is read-only and cloneable |
+| [Criteria](docs/criteria.md) | Manage typed decision profiles in one list with internal UUIDs and optional AI generation |
 | [Python Actions](docs/actions.md) | Configuration viewing, environment Status, pip-enabled environments, Reset venv, deletion, source assignment |
 | [Result JSON](docs/results.md) | Current request/result examples and field reference |
 
@@ -208,7 +226,7 @@ SSH Hosts per Source. Hosts collect independently, share classification slots
 fairly, and produce unified results with Host filtering and collection status.
 
 Sources, Criteria, Actions, and Tasks lists sort names alphabetically, including Korean
-names; Default Criteria stays separate. Sources show type/format badges and one path per line.
+names. All Criteria share the same View, Edit, Clone, and Delete controls. Sources show type/format badges and one path per line.
 Result cards share borders and thick separators across all Tasks. Compact filter controls
 select a filter type and its value; conditions combine, remain active when switching types,
 and can be removed individually or with **Clear All**.
@@ -222,7 +240,7 @@ SSH Hosts and Configurations (result page size, default 30, and maintenance). Re
 [Usage](docs/usage.md) covers navigation, result controls, and reconnecting.
 Settings and results share `DECIFLOW_DATA_DIR/deciflow.sqlite3`; only SSH key material, known_hosts and Action execution files remain on disk. This test-stage storage change does not import earlier JSON registries or databases: reset application data before use.
 
-A bundled **Elasticsearch** Action is registered on fresh initialization/reset (Python 3.12, module `elasticsearch`). Startup automatically prepares its script, venv, Python and module before Tasks start (download access is required). Setup failures appear in Actions and can be retried by saving or restarting. It is not assigned to Tasks automatically.
+A bundled **Sample Elasticsearch** Action is registered on fresh initialization/reset (Python 3.12, module `elasticsearch`). Startup automatically prepares its script, venv, Python and module before Tasks start (download access is required). Setup failures appear in Actions and can be retried by saving or restarting. It is not assigned to Tasks automatically.
 
 Action execution files use `actions/<Action UUID>/`; changing the Name does not create another venv. Action and SSH Key names are editable. Task Action selections and SSH Host key selections use UUIDs; renaming preserves assignments, key files, and Action environments.
 

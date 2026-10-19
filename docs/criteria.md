@@ -255,13 +255,17 @@ Changes and is blocked while Tasks reference the profile.
 
 ## Existing System Profiles
 
-**Default Criteria** (`general`) remains read-only and cloneable. Existing saved
-profiles retain their five categories and fixed operational questions until edited.
+All profiles appear in one searchable **Criteria** list with View, Edit, Clone, and
+Delete. **Sample General System** (`general`) is an ordinary optional profile: edit
+it directly, or update its Task assignments before deleting it. Deletion survives
+restart; a template remains available through **Start From Template**. A new profile
+can be written manually or generated with AI even when no profiles are saved.
+Existing saved profiles retain their five categories and fixed operational questions until edited.
 Editing or cloning uses the typed editor and saves the full decision definitions.
 Existing Task references remain valid. System results retain legacy category,
 urgency, and ticket fields for existing Actions.
 
-First initialization provides the system examples and **VOC Asia Culture Center Consulting QnA**. On every startup, existing installations also receive the consultation
+First initialization provides the system examples and **Sample VOC Asia Culture Center Consulting QnA**. On every startup, existing installations also receive the consultation
 sample if neither its ID nor its name exists. Saved profiles are never overwritten;
 deleting this required sample causes it to return on the next startup. Other
 examples remain available through **Start From Template** without a data reset.
@@ -301,4 +305,4 @@ Laya has a separate head budget for question instructions and options. Instructi
 can be cut even when the state fits. See [VOC question budgets](voc.md#check-the-laya-question-budget).
 
 The government sample also provides a Source, Korean Criteria, and a disabled
-Batch Task at startup. See [VOC Central Gov Consulting QnA](voc.md#government-qna-sample).
+Batch Task at startup. See [Sample VOC Central Gov Consulting QnA](voc.md#government-qna-sample).

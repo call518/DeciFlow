@@ -4,7 +4,7 @@
 
 ## 기본 샘플 Action
 
-최초 초기화 또는 Reset DeciFlow 후 **Elasticsearch**를 자동 등록합니다.
+최초 초기화 또는 Reset DeciFlow 후 **Sample Elasticsearch**를 자동 등록합니다.
 Python **3.12**, 모듈 **elasticsearch**를 사용하며 결과에 UTC `@timestamp`를 추가해
 `http://host.docker.internal:9200`의 `deciflow` 인덱스에 저장하는 코드입니다.
 Task 시작 전에 스크립트·venv를 자동 생성하고 Python·모듈을 설치합니다.

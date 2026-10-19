@@ -116,7 +116,7 @@ def test_readmes_keep_commands_identifiers_and_links_equivalent(
                 if not target.startswith(("https://", "http://", "#"))
             )
         )
-        for profile_name in ("consultation", "central_gov"):
+        for profile_name in ("consultation", "central_gov", "local_gov"):
             profile = json.loads(
                 (ROOT / "profiles" / f"{profile_name}.json").read_text()
             )

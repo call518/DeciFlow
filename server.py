@@ -75,6 +75,7 @@ from result_payload import compact_result
 from result_store import open_result_store
 from source_registry import (
     ensure_central_gov_source,
+    ensure_local_gov_source,
     ensure_voc_source,
     load_sources,
     save_sources,
@@ -95,6 +96,7 @@ from tasks import (
     TaskScheduler,
     delete_task,
     ensure_central_gov_task,
+    ensure_local_gov_task,
     ensure_system_message_task,
     ensure_voc_task,
     load_tasks,
@@ -1475,6 +1477,8 @@ async def lifespan(application: Starlette) -> AsyncIterator[None]:
     ensure_voc_task()
     ensure_central_gov_source()
     ensure_central_gov_task()
+    ensure_local_gov_source()
+    ensure_local_gov_task()
     ensure_system_message_task()
     await initialize_default_action()
     get_keys_directory()

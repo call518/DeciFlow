@@ -8,24 +8,38 @@
 
 ## 정부기관 QnA 샘플
 
-**VOC Central Gov Consulting QnA**는 기존 설치를 포함해 시작 시 자동 추가됩니다.
+**Sample VOC Central Gov Consulting QnA**는 기존 설치를 포함해 시작 시 자동 추가됩니다.
 Source는 `/host-logs/sample-logs/voc-central-gov-consulting-qna.jsonl`,
 JSONL (Line), Content Field `consulting_content`를 사용합니다(3,965건).
-**VOC Central Gov Consulting QnA** Criteria는 행정·정책 분야,
+**Sample VOC Central Gov Consulting QnA** Criteria는 행정·정책 분야,
 답변 유형, 후속 처리 주체, 긴급도, 기관 후속 처리 필요성을 판단합니다.
 법령 설명·신청 안내·관할 기관 문의 안내·개별 처리 완료·기관의 명시적 미완료 조치를
 구분합니다. 문의 안내나 말미 연락처만으로 기관의 후속 처리 의무를 추정하지 않으며
 법령의 현행성을 검증하지 않습니다.
-기본 **VOC Central Gov Consulting QnA** Task는 한국어 Criteria,
+기본 **Sample VOC Central Gov Consulting QnA** Task는 한국어 Criteria,
 Batch / Manual, Events/Chunk 1, Action None으로 연결되며 Enable과 Resume on Restart는
 꺼져 있습니다. 활성화 후 Run으로 실행하세요. 저장된 사용자 수정은 유지합니다.
+
+## 지방자치단체 QnA 샘플
+
+**Sample VOC Local Gov Consulting QnA** Source, Criteria, Task는 기존 설치에도 시작 시
+자동 추가되며 저장된 사용자 수정은 유지합니다. Source는
+`/host-logs/sample-logs/voc-local-gov-consulting-qna.jsonl`(3,280건)을
+JSONL (Line), Content Field `상담내용`으로 읽습니다. 이 필드만 분류에 전달하고
+`지방자치단체명`과 `상담담당부서`는 빈 부서명을 포함해 원본 메타데이터로 보존합니다.
+한국어 Criteria는 지방행정 분야, 답변 유형, 후속 조치 담당, 긴급도, 후속 조치 필요성을
+판단합니다. 일반적인 사업 일정이나 개선 계획만으로 개별 민원의 미완료 약속으로
+판단하지 않습니다. Task는 Batch / Manual, Events/Chunk 1, Action None이며
+Enabled와 Resume on Restart는 꺼져 있습니다. Reset 없이 DeciFlow-UI를 재시작하고
+Task를 활성화한 뒤 Run으로 실행하세요. 네이티브 실행 시 Source 경로를 실제 로컬
+샘플 파일 경로로 변경하세요.
 
 ## 1. 기본 샘플 실행
 
 1. 새 코드를 적용하고 DeciFlow-UI를 재시작합니다. Reset은 필요 없습니다.
-2. Source에서 **VOC Asia Culture Center Consulting QnA**를 확인합니다.
-3. Criteria에서 **VOC Asia Culture Center Consulting QnA**를 확인합니다.
-4. Tasks에서 기본 **VOC Asia Culture Center Consulting QnA**를 View하여 아래 할당을 확인합니다.
+2. Source에서 **Sample VOC Asia Culture Center Consulting QnA**를 확인합니다.
+3. Criteria에서 **Sample VOC Asia Culture Center Consulting QnA**를 확인합니다.
+4. Tasks에서 기본 **Sample VOC Asia Culture Center Consulting QnA**를 View하여 아래 할당을 확인합니다.
 5. Enabled를 켠 뒤 **Run**을 누릅니다. 활성화·저장만으로는 실행되지 않습니다.
 6. Main의 Task Monitor에서 이 Task를 선택합니다.
 
@@ -36,7 +50,7 @@ Batch / Manual, Events/Chunk 1, Action None으로 연결되며 Enable과 Resume 
 | Input Format | JSONL (Line) |
 | Content Field | `consulting_content` |
 | Task Mode | Batch / Manual |
-| Criteria | VOC Asia Culture Center Consulting QnA |
+| Criteria | Sample VOC Asia Culture Center Consulting QnA |
 | Events/Chunk | 1 (JSONL에서 고정) |
 | Action | None |
 | Enabled / Resume on Restart | 최초 제공 시 모두 꺼짐 |
@@ -106,7 +120,7 @@ DeciFlow의 Jev 입력 바이트 검사는 정확한 토큰 계측이 아닙니�
 
 | Field | Value |
 | --- | --- |
-| Name | VOC Asia Culture Center Consulting QnA |
+| Name | Sample VOC Asia Culture Center Consulting QnA |
 | Default Chart Decision | 문의 유형 |
 
 **Decision Instructions**

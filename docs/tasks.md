@@ -50,9 +50,9 @@ Stop a Task before deleting it. Deletion permanently removes its history, result
 
 ## Default Task
 
-DeciFlow creates **DeciFlow Server Log** with its **Sample DeciFlow Server Log** Local File Source first in the
+DeciFlow creates **Sample DeciFlow Server Log** with its **Sample DeciFlow Server Log** Local File Source first in the
 Sources registry. It monitors
-`DECIFLOW_LOG_DIR/server.log` / `DECIFLOW_LOG_DIR/access.log`, General system criteria, one event per chunk, and
+`DECIFLOW_LOG_DIR/server.log` / `DECIFLOW_LOG_DIR/access.log`, Sample General System criteria, one event per chunk, and
 no Action. It uses Realtime mode with the Task disabled; enable it, then use Run to start
 it manually. Automatic restart is off. File logging must be enabled.
 
@@ -169,17 +169,17 @@ Confirming Task deletion permanently removes its definition, all run history, re
 Once visible, the tooltip stays open while the pointer is over the Task card or
 tooltip. Move into the tooltip to select/copy text; leaving both closes it.
 
-At startup, **VOC Asia Culture Center Consulting QnA** is provided as a disabled manual
-Batch Task using the VOC Asia Culture Center Consulting QnA Source, Korean Criteria, one event per chunk,
+At startup, **Sample VOC Asia Culture Center Consulting QnA** is provided as a disabled manual
+Batch Task using the Sample VOC Asia Culture Center Consulting QnA Source, Korean Criteria, one event per chunk,
 and Action None. Enable it, then Run to analyze the file. Existing Task settings are preserved.
 
-**System Messages** is also provided at startup as a disabled Realtime Task with
-General system, one event per chunk, and Action None. It reuses **System messages**,
+**Sample System Messages** is also provided at startup as a disabled Realtime Task with
+Sample General System, one event per chunk, and Action None. It reuses **Sample System Messages**,
 whose initial local path is `/host-logs/var/log/messages`. Saved Source edits,
 including Remote File type, are preserved. For SSH, use the path on the remote
 host (usually `/var/log/messages`) and select Source Hosts in the Task.
 The untouched erroneous System Message Source is removed and its Task references
-are reassigned to System messages; customized duplicate Sources are preserved.
+are reassigned to Sample System Messages; customized duplicate Sources are preserved.
 
 Clicking Run in Tasks automatically opens Main to show the selected Task results.
 
@@ -252,4 +252,4 @@ runs; subsequent new Runs support recovery. Keep the data volume and original fi
 Set Criteria to **None** to release its dependency temporarily. Assign Criteria to every Source before running the Task.
 
 The government sample also provides a Source, Korean Criteria, and a disabled
-Batch Task at startup. See [VOC Central Gov Consulting QnA](voc.md#government-qna-sample).
+Batch Task at startup. See [Sample VOC Central Gov Consulting QnA](voc.md#government-qna-sample).

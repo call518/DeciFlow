@@ -129,7 +129,7 @@ async def test_registration_api_and_unknown_assignment(
         transport=httpx.ASGITransport(app=server.app), base_url="http://localhost"
     ) as client:
         initial = (await client.get("/api/actions")).json()["actions"]
-        assert len(initial) == 1 and initial[0]["name"] == "Elasticsearch"
+        assert len(initial) == 1 and initial[0]["name"] == "Sample Elasticsearch"
         assert (await client.put("/api/actions", json=[action])).status_code == 403
         headers = {"Origin": "http://localhost"}
         response = await client.put("/api/actions", json=[action], headers=headers)
@@ -1028,7 +1028,7 @@ def test_default_elasticsearch_action_is_seeded_once_without_preparation() -> No
 
     sample = actions.load_actions()[0]
     assert sample["id"] == actions.DEFAULT_ACTION_ID
-    assert sample["name"] == "Elasticsearch"
+    assert sample["name"] == "Sample Elasticsearch"
     assert sample["pythonVersion"] == "3.12"
     assert sample["modules"] == ["elasticsearch"]
     compile(sample["code"], "sample-action", "exec")

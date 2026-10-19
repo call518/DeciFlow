@@ -5,11 +5,11 @@ from pathlib import PurePosixPath
 from uuid import uuid4
 
 from classifier import Result
-from config_store import load_records, save_record, save_records
+from config_store import load_records, rename_sample_records, save_record, save_records
 
 VOC_SOURCE = {
     "id": f"{5:032x}",
-    "name": "VOC Asia Culture Center Consulting QnA",
+    "name": "Sample VOC Asia Culture Center Consulting QnA",
     "type": "local",
     "path": "/host-logs/sample-logs/voc-asia-culture-center-consulting-qna.jsonl",
     "format": "jsonl",
@@ -18,21 +18,30 @@ VOC_SOURCE = {
 
 CENTRAL_GOV_SOURCE = {
     "id": f"{6:032x}",
-    "name": "VOC Central Gov Consulting QnA",
+    "name": "Sample VOC Central Gov Consulting QnA",
     "type": "local",
     "path": "/host-logs/sample-logs/voc-central-gov-consulting-qna.jsonl",
     "format": "jsonl",
     "contentField": "consulting_content",
 }
 
+LOCAL_GOV_SOURCE = {
+    "id": f"{7:032x}",
+    "name": "Sample VOC Local Gov Consulting QnA",
+    "type": "local",
+    "path": "/host-logs/sample-logs/voc-local-gov-consulting-qna.jsonl",
+    "format": "jsonl",
+    "contentField": "상담내용",
+}
+
 DEFAULT_SOURCES = [
     {"id": f"{index:032x}", "name": name, "type": "local", "path": path}
     for index, name, path in (
-        (1, "System messages", "/host-logs/var/log/messages"),
+        (1, "Sample System Messages", "/host-logs/var/log/messages"),
         (2, "Sample HTTP access", "/host-logs/sample-logs/access-1k.log"),
         (3, "Sample SSH authentication", "/host-logs/sample-logs/SSH_2k.log"),
     )
-] + [VOC_SOURCE, CENTRAL_GOV_SOURCE]
+] + [VOC_SOURCE, CENTRAL_GOV_SOURCE, LOCAL_GOV_SOURCE]
 
 
 def ensure_voc_source() -> None:
@@ -43,6 +52,11 @@ def ensure_voc_source() -> None:
 def ensure_central_gov_source() -> None:
     """Add the government QnA sample without replacing saved Sources."""
     _ensure_sample_source(CENTRAL_GOV_SOURCE)
+
+
+def ensure_local_gov_source() -> None:
+    """Add the local government QnA sample without replacing saved Sources."""
+    _ensure_sample_source(LOCAL_GOV_SOURCE)
 
 
 def _ensure_sample_source(sample: Result) -> None:
@@ -59,9 +73,19 @@ def _ensure_sample_source(sample: Result) -> None:
 
 def load_sources() -> list[Result]:
     """Read saved Sources, persisting sample defaults on the first access."""
-    return list(
-        load_records("sources", {item["id"]: item for item in DEFAULT_SOURCES}).values()
+    records = load_records("sources", {item["id"]: item for item in DEFAULT_SOURCES})
+    rename_sample_records(
+        "sources",
+        records,
+        {
+            "System messages": "Sample System Messages",
+            **{
+                item["name"].removeprefix("Sample "): item["name"]
+                for item in [VOC_SOURCE, CENTRAL_GOV_SOURCE, LOCAL_GOV_SOURCE]
+            },
+        },
     )
+    return list(records.values())
 
 
 def input_settings(value: Result) -> Result:

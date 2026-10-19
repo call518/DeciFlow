@@ -1,5 +1,5 @@
 {
-  "label": "VOC Central Gov Consulting QnA",
+  "label": "Sample VOC Central Gov Consulting QnA",
   "instructions": "정부기관 질의와 답변을 하나의 기록으로 읽고 제공된 본문의 근거만 판단한다. 법령의 현행성, 자격 충족 여부, 소관 기관을 외부 지식으로 보충하거나 추측하지 않는다. 법령 설명은 승인·지급·행정 처리 완료의 증거가 아니다. 관할 기관 문의 안내나 추가 문의 연락처 제공만으로 기관의 미완료 약속이 있다고 판단하지 않는다. 민원인이 할 일과 기관이 명시적으로 약속한 일을 구분하며 마스킹된 정보는 추측하지 않는다.",
   "primaryQuestion": "policy_area",
   "questions": {

@@ -22,9 +22,9 @@ from decisions import (  # noqa: F401
     review_options,
     validate_answer,
 )
-from profiles import PROFILES, get_profile
+from profiles import DEFAULT_PROFILES, get_profile
 
-CRITERIA = PROFILES["general"]["criteria"]
+CRITERIA = DEFAULT_PROFILES["general"]["criteria"]
 Result = dict[str, Any]
 Classifier = Callable[[str], Awaitable[Result]]
 

@@ -20,8 +20,10 @@ from profiles import DEFAULT_PROFILES, PROFILES, load_profiles
 from result_store import SQLiteResultStore, close_result_store, open_result_store
 from source_registry import (
     CENTRAL_GOV_SOURCE,
+    LOCAL_GOV_SOURCE,
     VOC_SOURCE,
     ensure_central_gov_source,
+    ensure_local_gov_source,
     ensure_voc_source,
     load_sources,
     save_sources,
@@ -29,11 +31,13 @@ from source_registry import (
 from tasks import (
     CENTRAL_GOV_TASK_ID,
     DEFAULT_TASK_ID,
+    LOCAL_GOV_TASK_ID,
     SYSTEM_MESSAGE_SOURCE_ID,
     SYSTEM_MESSAGE_TASK_ID,
     VOC_TASK_ID,
     ensure_central_gov_task,
     ensure_default_task,
+    ensure_local_gov_task,
     ensure_system_message_task,
     ensure_voc_task,
     load_tasks,
@@ -47,7 +51,7 @@ def test_fresh_defaults_are_persisted_and_empty_lists_stay_empty() -> None:
         ensure_default_task()
         assert load_tasks()[0]["id"] == DEFAULT_TASK_ID
         assert load_tasks()[0]["enabled"] is False
-        assert len(load_sources()) == 6
+        assert len(load_sources()) == 7
         assert load_settings() == {"resultsPerPage": 30}
         with sqlite3.connect(get_database_path()) as connection:
             counts = dict(
@@ -55,7 +59,7 @@ def test_fresh_defaults_are_persisted_and_empty_lists_stay_empty() -> None:
                     "SELECT kind,COUNT(*) FROM configuration_records GROUP BY kind"
                 )
             )
-        assert counts == {"sources": 6, "criteria": 7, "tasks": 1, "settings": 1}
+        assert counts == {"sources": 7, "criteria": 8, "tasks": 1, "settings": 1}
         save_sources([])
         assert load_sources() == []
         assert not list(get_data_directory().rglob("*.json"))
@@ -117,7 +121,7 @@ def test_old_json_and_database_are_not_imported() -> None:
         ensure_default_task()
         assert load_settings()["resultsPerPage"] == 30
         assert load_records("criteria") == DEFAULT_PROFILES
-        assert len(load_sources()) == 6
+        assert len(load_sources()) == 7
         assert load_tasks()[0]["enabled"] is False
     finally:
         PROFILES.clear()
@@ -186,7 +190,7 @@ def test_english_consultation_updates_only_when_untouched(edited: bool) -> None:
         assert load_records("criteria")["consultation"] == expected
         assert set(PROFILES) == set(saved)
         if not edited:
-            assert expected["label"] == "VOC Asia Culture Center Consulting QnA"
+            assert expected["label"] == "Sample VOC Asia Culture Center Consulting QnA"
             assert expected["questions"]["inquiry_type"]["label"] == "문의 유형"
     finally:
         PROFILES.clear()
@@ -220,7 +224,7 @@ def test_existing_korean_sample_is_updated_without_language_suffix(
 
 def test_consultation_sample_is_korean_only() -> None:
     """Only Korean consultation templates are shipped, without language suffixes."""
-    for identity in ("consultation", "central_gov"):
+    for identity in ("consultation", "central_gov", "local_gov"):
         profile = DEFAULT_PROFILES[identity]
         assert not profile["label"].endswith(" (KOR)")
         assert f"{identity}_eng" not in DEFAULT_PROFILES
@@ -236,7 +240,7 @@ def test_default_voc_source_points_to_bundled_sample() -> None:
     """The seeded VOC Source references an existing sample and content field."""
     source = next(item for item in load_sources() if item["id"] == VOC_SOURCE["id"])
     sample = Path(source["path"].removeprefix("/host-logs/"))
-    assert source["name"] == "VOC Asia Culture Center Consulting QnA"
+    assert source["name"] == "Sample VOC Asia Culture Center Consulting QnA"
     assert sample == Path("sample-logs/voc-asia-culture-center-consulting-qna.jsonl")
     assert source["format"] == "jsonl"
     with sample.open() as stream:
@@ -272,7 +276,7 @@ def test_voc_task_is_manual_disabled_and_preserves_edits() -> None:
         ensure_voc_source()
         ensure_voc_task()
         task = next(task for task in load_tasks() if task["id"] == VOC_TASK_ID)
-        assert task["name"] == "VOC Asia Culture Center Consulting QnA"
+        assert task["name"] == "Sample VOC Asia Culture Center Consulting QnA"
         save_record("tasks", task["id"], {**task, "name": f"{task['name']} (KOR)"})
         ensure_voc_task()
         assert load_tasks() == [task]
@@ -302,7 +306,7 @@ def test_voc_task_is_manual_disabled_and_preserves_edits() -> None:
 def test_system_message_task_reuses_source_and_preserves_edits(
     existing_source: bool,
 ) -> None:
-    """Reuse the plural-path Source with General system, without execution."""
+    """Reuse the plural-path Source with Sample General System, without execution."""
     if existing_source:
         save_sources(
             [
@@ -342,7 +346,7 @@ def test_system_messages_duplicate_repair_preserves_custom_settings(
     """Only the exact erroneous sample is removed; all Task assignments survive."""
     canonical = {
         "id": f"{1:032x}",
-        "name": "System messages",
+        "name": "Sample System Messages",
         "type": "ssh",
         "path": "/custom/remote/messages",
     }
@@ -375,7 +379,7 @@ def test_system_messages_duplicate_repair_preserves_custom_settings(
     save_record("tasks", other["id"], other)
     ensure_system_message_task()
     records = {item["id"]: item for item in load_tasks()}
-    assert records[SYSTEM_MESSAGE_TASK_ID]["name"] == "System Messages"
+    assert records[SYSTEM_MESSAGE_TASK_ID]["name"] == "Sample System Messages"
     for record in records.values():
         assert record["enabled"] is True
         assert record["sources"][0] == {
@@ -413,40 +417,54 @@ def test_korean_option_sample_updates_only_when_untouched(edited: bool) -> None:
 
 
 @pytest.mark.parametrize("existing", ["missing", "edited", "renamed_id"])
-def test_central_gov_bootstrap_preserves_saved_settings(existing: str) -> None:
+@pytest.mark.parametrize("identity", ["central_gov", "local_gov"])
+def test_government_bootstrap_preserves_saved_settings(
+    existing: str, identity: str
+) -> None:
     """Seed both profiles and a disabled Batch once, preserving user records."""
+    source_default = (
+        CENTRAL_GOV_SOURCE if identity == "central_gov" else LOCAL_GOV_SOURCE
+    )
+    task_id = CENTRAL_GOV_TASK_ID if identity == "central_gov" else LOCAL_GOV_TASK_ID
+    ensure_source = (
+        ensure_central_gov_source
+        if identity == "central_gov"
+        else ensure_local_gov_source
+    )
+    ensure_task = (
+        ensure_central_gov_task if identity == "central_gov" else ensure_local_gov_task
+    )
     original = deepcopy(PROFILES)
     profiles = deepcopy(DEFAULT_PROFILES)
-    for identity in ("central_gov",):
-        sample = profiles.pop(identity)
-        if existing == "edited":
-            sample["instructions"] = "Keep my government criteria."
-            profiles[identity] = sample
-        elif existing == "renamed_id":
-            profiles[f"custom_{identity}"] = sample
+    sample = profiles.pop(identity)
+    if existing == "edited":
+        sample["instructions"] = "Keep my government criteria."
+        profiles[identity] = sample
+    elif existing == "renamed_id":
+        profiles[f"custom_{identity}"] = sample
     save_records("criteria", profiles)
-    source = {**CENTRAL_GOV_SOURCE, "name": "My Government Source"}
+    source = {**source_default, "name": "My Government Source"}
     if existing == "renamed_id":
         source["id"] = "b" * 32
     save_sources([] if existing == "missing" else [source])
     try:
         load_profiles()
-        ensure_central_gov_source()
-        ensure_central_gov_task()
+        ensure_source()
+        ensure_task()
         sources = load_sources()
         assert len(sources) == 1
         selected = sources[0]
-        assert selected == (CENTRAL_GOV_SOURCE if existing == "missing" else source)
-        task = next(task for task in load_tasks() if task["id"] == CENTRAL_GOV_TASK_ID)
-        assert task["name"] == "VOC Central Gov Consulting QnA"
+        assert selected == (source_default if existing == "missing" else source)
+        task = next(task for task in load_tasks() if task["id"] == task_id)
+        assert task["name"] == source_default["name"]
         save_record("tasks", task["id"], {**task, "name": f"{task['name']} (KOR)"})
-        ensure_central_gov_task()
+        ensure_task()
         assert load_tasks() == [task]
         assert task["mode"] == "batch"
         assert task["enabled"] is False
         assert task["resumeOnRestart"] is False
         assert task["cron"] == ""
-        profile_id = "custom_central_gov" if existing == "renamed_id" else "central_gov"
+        profile_id = f"custom_{identity}" if existing == "renamed_id" else identity
         assert task["sources"] == [
             {
                 "sourceId": selected["id"],
@@ -461,8 +479,8 @@ def test_central_gov_bootstrap_preserves_saved_settings(existing: str) -> None:
         task["name"] = "My Government Task"
         save_record("tasks", task["id"], task)
         load_profiles()
-        ensure_central_gov_source()
-        ensure_central_gov_task()
+        ensure_source()
+        ensure_task()
         assert PROFILES == expected
         assert load_sources() == sources
         assert load_tasks() == [task]
@@ -481,7 +499,7 @@ def test_central_gov_sample_and_localized_profiles() -> None:
         isinstance(row[CENTRAL_GOV_SOURCE["contentField"]], str) for row in records
     )
     korean = DEFAULT_PROFILES["central_gov"]
-    assert korean["label"] == "VOC Central Gov Consulting QnA"
+    assert korean["label"] == "Sample VOC Central Gov Consulting QnA"
     assert korean["primaryQuestion"] == "policy_area"
     assert set(korean["questions"]) == {
         "policy_area",
@@ -530,3 +548,80 @@ def test_retired_english_sample_relinks_tasks_and_preserves_custom_profiles(
     finally:
         PROFILES.clear()
         PROFILES.update(original)
+
+
+@pytest.mark.parametrize("saved_names", ["legacy", "custom"])
+def test_sample_names_migrate_without_changing_configuration(saved_names: str) -> None:
+    """Rename shipped labels across registries while preserving settings and IDs."""
+    from actions import load_actions
+
+    original = deepcopy(PROFILES)
+    try:
+        load_profiles()
+        ensure_default_task()
+        ensure_voc_task()
+        ensure_central_gov_task()
+        ensure_local_gov_task()
+        ensure_system_message_task()
+        registries = {
+            "sources": {row["id"]: row for row in load_sources()},
+            "criteria": deepcopy(PROFILES),
+            "tasks": {row["id"]: row for row in load_tasks()},
+            "actions": {row["id"]: row for row in load_actions()},
+        }
+        expected = deepcopy(registries)
+        for kind, records in registries.items():
+            field = "label" if kind == "criteria" else "name"
+            for identity, row in records.items():
+                assert row[field].startswith("Sample ")
+                if kind == "criteria":
+                    row["instructions"] = "Keep my rules."
+                    expected[kind][identity]["instructions"] = "Keep my rules."
+                if saved_names == "custom":
+                    row[field] = f"My {row[field]}"
+                    expected[kind][identity][field] = row[field]
+                elif (
+                    row[field].startswith("Sample VOC ")
+                    or row[field]
+                    in {
+                        "Sample General System",
+                        "Sample System Messages",
+                        "Sample Elasticsearch",
+                    }
+                    or (kind == "tasks" and row[field] == "Sample DeciFlow Server Log")
+                ):
+                    row[field] = row[field].removeprefix("Sample ")
+                    if kind == "criteria" and identity == "general":
+                        row[field] = "General system"
+                    if kind == "sources" and row[field] == "System Messages":
+                        row[field] = "System messages"
+            save_records(kind, records)
+        for _ in range(2):
+            load_profiles()
+            load_sources()
+            load_actions()
+            ensure_default_task()
+            ensure_voc_task()
+            ensure_central_gov_task()
+            ensure_local_gov_task()
+            ensure_system_message_task()
+            for kind, records in expected.items():
+                assert load_records(kind) == records
+    finally:
+        PROFILES.clear()
+        PROFILES.update(original)
+
+
+def test_sample_name_migration_preserves_name_collisions() -> None:
+    """Do not overwrite a user record that already owns the new sample name."""
+    from config_store import rename_sample_records
+
+    records = {
+        "old": {"name": "Original", "setting": 1},
+        "custom": {"name": "Sample Original", "setting": 2},
+    }
+    save_records("sources", records)
+    expected = deepcopy(records)
+    rename_sample_records("sources", records, {"Original": "Sample Original"})
+    assert records == expected
+    assert load_records("sources") == expected

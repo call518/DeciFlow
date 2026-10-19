@@ -111,7 +111,7 @@ docker compose logs --follow laya-cpu
 유료 API를 사용하려면 [Jev](#jev)를 참고하세요.
 기본 키 `changeme`는 체험용입니다. 운영 전 `.env`의 키를 변경하세요.
 
-기본 **DeciFlow Server Log** Task는 `DECIFLOW_LOG_DIR/server.log` / `DECIFLOW_LOG_DIR/access.log`를 감시하며 기본 Disable 상태입니다(Run 전에 Enable로 전환). Reset 후를 포함한 서버 시작 시 누락된 기본 설정을 복구합니다. [Tasks](docs/tasks.ko.md)를 참고하세요.
+기본 **Sample DeciFlow Server Log** Task는 `DECIFLOW_LOG_DIR/server.log` / `DECIFLOW_LOG_DIR/access.log`를 감시하며 기본 Disable 상태입니다(Run 전에 Enable로 전환). Reset 후를 포함한 서버 시작 시 누락된 기본 설정을 복구합니다. [Tasks](docs/tasks.ko.md)를 참고하세요.
 
 Classification Results의 **Export Reviewed JSON**으로 선택한 실행에서 사람의
 Choice·Score·Noul 중 하나라도 사람이 정정한 결과만 내려받을 수 있습니다.
@@ -125,11 +125,11 @@ Choice·Score·Noul 중 하나라도 사람이 정정한 결과만 내려받을 
    샘플과 Compose 마운트를 사용하면
    `/host-logs/sample-logs/voc-asia-culture-center-consulting-qna.jsonl` 또는
    `/host-logs/sample-logs/voc-central-gov-consulting-qna.jsonl`을 지정합니다.
-   상담 파일용 **VOC Asia Culture Center Consulting QnA** Source는 시작 시 자동 제공됩니다.
-2. **Criteria**에서 **VOC Asia Culture Center Consulting QnA**를 사용하거나 Clone하여 수정합니다.
+   상담 파일용 **Sample VOC Asia Culture Center Consulting QnA** Source는 시작 시 자동 제공됩니다.
+2. **Criteria**에서 **Sample VOC Asia Culture Center Consulting QnA**를 사용하거나 Clone하여 수정합니다.
    샘플이 없으면 시작 시 자동 추가됩니다. 질문만 있는 자료에는
    문의 분류용 프로필을 사용하세요. 후속 처리 판단에는 대화 내용이 필요합니다.
-3. 기본 **VOC Asia Culture Center Consulting QnA** Batch Task를 활성화한 뒤 Run합니다.
+3. 기본 **Sample VOC Asia Culture Center Consulting QnA** Batch Task를 활성화한 뒤 Run합니다.
    또는 원하는 Source와 Criteria, Action None으로 별도 Task를 만듭니다.
    JSONL은 한 줄의 객체를 한 건씩 처리하며 동일한 대화도 별도 레코드로 유지합니다.
    제공된 상담 파일은 입력 841건입니다.
@@ -166,22 +166,40 @@ JSONL은 입력칸 대신 레코드 하나가 샘플 하나라는 안내를 표�
 
 ### 정부기관 QnA 샘플
 
-**VOC Central Gov Consulting QnA**는 기존 설치를 포함해 시작 시 자동 추가됩니다.
+**Sample VOC Central Gov Consulting QnA**는 기존 설치를 포함해 시작 시 자동 추가됩니다.
 Source는 `/host-logs/sample-logs/voc-central-gov-consulting-qna.jsonl`,
 JSONL (Line), Content Field `consulting_content`를 사용합니다(3,965건).
-**VOC Central Gov Consulting QnA** Criteria는 행정·정책 분야,
+**Sample VOC Central Gov Consulting QnA** Criteria는 행정·정책 분야,
 답변 유형, 후속 처리 주체, 긴급도, 기관 후속 처리 필요성을 판단합니다.
 법령 설명·신청 안내·관할 기관 문의 안내·개별 처리 완료·기관의 명시적 미완료 조치를
 구분합니다. 문의 안내나 말미 연락처만으로 기관의 후속 처리 의무를 추정하지 않으며
 법령의 현행성을 검증하지 않습니다.
-기본 **VOC Central Gov Consulting QnA** Task는 한국어 Criteria,
+기본 **Sample VOC Central Gov Consulting QnA** Task는 한국어 Criteria,
 Batch / Manual, Events/Chunk 1, Action None으로 연결되며 Enable과 Resume on Restart는
 꺼져 있습니다. 활성화 후 Run으로 실행하세요. 저장된 사용자 수정은 유지합니다.
 
-두 기본 VOC Criteria는 한국어만 제공하며 이름에 언어 접미사를 붙이지 않습니다.
+### 지방자치단체 QnA 샘플
+
+**Sample VOC Local Gov Consulting QnA** Source, Criteria, Task는 기존 설치에도 시작 시
+자동 추가되며 저장된 사용자 수정은 유지합니다. Source는
+`/host-logs/sample-logs/voc-local-gov-consulting-qna.jsonl`(3,280건)을
+JSONL (Line), Content Field `상담내용`으로 읽습니다. 이 필드만 분류에 전달하고
+`지방자치단체명`과 `상담담당부서`는 빈 부서명을 포함해 원본 메타데이터로 보존합니다.
+한국어 Criteria는 지방행정 분야, 답변 유형, 후속 조치 담당, 긴급도, 후속 조치 필요성을
+판단합니다. 일반적인 사업 일정이나 개선 계획만으로 개별 민원의 미완료 약속으로
+판단하지 않습니다. Task는 Batch / Manual, Events/Chunk 1, Action None이며
+Enabled와 Resume on Restart는 꺼져 있습니다. Reset 없이 DeciFlow-UI를 재시작하고
+Task를 활성화한 뒤 Run으로 실행하세요. 네이티브 실행 시 Source 경로를 실제 로컬
+샘플 파일 경로로 변경하세요.
+
+모든 기본 VOC Criteria는 한국어만 제공하며 이름에 언어 접미사를 붙이지 않습니다.
 시작 시 이전 기본 영문 Criteria를 제거하고 해당 Task 할당을 한국어 버전으로 연결합니다.
 사용자가 복제한 영문 Criteria와 과거 결과는 유지합니다. 기존 Source 경로와 사용자 수정도
 보존하므로 이전 샘플 경로는 Sources에서 직접 변경하세요.
+
+기본 Source·Criteria·Task·Action 이름은 **Sample**로 시작합니다.
+기존 기본 이름도 ID와 할당을 유지한 채 변경하며 사용자 지정 이름과 설정은 보존합니다.
+Reset 후에도 같은 샘플 이름으로 다시 생성됩니다.
 
 ## 사용법과 설정
 
@@ -195,7 +213,7 @@ Batch / Manual, Events/Chunk 1, Action None으로 연결되며 Enable과 Resume 
 | [Sources](docs/sources.ko.md) | 로컬·SSH 파일 소스 등록, Settings의 SSH 키 관리, 정렬된 풀다운 선택 |
 | [사용법](docs/usage.ko.md) | 입력 모드·판정 기준·필터·수동 검토·재접속·시간 지표 |
 | [설정](docs/configuration.ko.md) | 환경변수·모델·입력 예산 |
-| [Criteria](docs/criteria.ko.md) | 내부 UUID 기반 타입별 판단 프로필 관리; Default Criteria는 읽기 전용이며 복제 가능 |
+| [Criteria](docs/criteria.ko.md) | 내부 UUID 기반 타입별 판단 프로필을 한 목록에서 관리하고 선택적으로 AI 생성 |
 | [Python Actions](docs/actions.ko.md) | 구성 보기·환경 Status·pip 포함 환경·Reset venv·삭제·소스 할당 |
 | [결과 JSON](docs/results.ko.md) | 현재 요청·결과 예시와 필드 설명 |
 
@@ -204,8 +222,8 @@ Source에는 경로·패턴을 한 줄에 하나씩 여러 개 등록할 수 있
 선택합니다. 호스트별로 독립 수집하고 판정 차례를 공정하게 배분하며, 실행별 통합
 결과에 Host 필터·호스트 수집 상태를 제공합니다.
 
-Sources·Criteria·Actions·Tasks 목록은 이름의 ABC/가나다 순으로 정렬하고 Default Criteria는
-별도로 표시합니다. Source는 타입·형식 배지와 줄별 경로로 표시합니다. 모든 Task의 결과 카드는
+Sources·Criteria·Actions·Tasks 목록은 이름의 ABC/가나다 순으로 정렬합니다.
+모든 Criteria는 동일한 View·Edit·Clone·Delete 기능을 제공합니다. Source는 타입·형식 배지와 줄별 경로로 표시합니다. 모든 Task의 결과 카드는
 공통 테두리와 굵은 구분선을 사용합니다. 작은 필터 컨트롤에서 종류와 값을 선택하며 조건은
 함께 적용되고 종류를 전환해도 유지합니다. 개별 조건이나 **Clear All**로 해제할 수 있습니다.
 **Results per Page**는 기본 30건이며 10/30/50/100건을 선택합니다. 기존 저장값은 유지합니다.
@@ -218,7 +236,7 @@ Main 아래에 Source·Criteria·Actions·Tasks, Settings 아래에 SSH Keys·SS
 화면 경로·결과 조작·재접속은 [사용법](docs/usage.ko.md)을 참고하세요.
 설정과 실행 결과는 `DECIFLOW_DATA_DIR/deciflow.sqlite3`에서 통합 관리하며 SSH 키·known_hosts·Action 실행 파일은 파일로 유지합니다. 테스트 단계의 저장 구조 변경으로 이전 JSON·DB를 이관하지 않습니다. 사용 전 앱 데이터를 초기화하세요.
 
-최초 초기화·Reset 후 **Elasticsearch** 샘플 Action(Python 3.12, 모듈 `elasticsearch`)을 자동 등록합니다. Task 시작 전에 스크립트·venv·Python·모듈을 자동 준비합니다(다운로드 연결 필요). 실패 원인은 Actions에 표시되며 저장 또는 재시작으로 재시도합니다. Task에는 자동 할당하지 않습니다.
+최초 초기화·Reset 후 **Sample Elasticsearch** 샘플 Action(Python 3.12, 모듈 `elasticsearch`)을 자동 등록합니다. Task 시작 전에 스크립트·venv·Python·모듈을 자동 준비합니다(다운로드 연결 필요). 실패 원인은 Actions에 표시되며 저장 또는 재시작으로 재시도합니다. Task에는 자동 할당하지 않습니다.
 
 Action 실행 파일은 `actions/<Action UUID>/`에 저장하며 이름 변경으로 venv가 추가 생성되지 않습니다. Action·SSH Key 이름을 수정할 수 있습니다. Task의 Action 선택과 SSH Host의 키 선택은 UUID를 사용하므로 이름을 바꿔도 할당·키 파일·Action 실행 환경은 유지됩니다.
 

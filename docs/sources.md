@@ -16,7 +16,7 @@ connection credentials are managed in **Settings → SSH Hosts**.
 | Remote File (SSH) | UTF-8 regular files on an SSH/SFTP host; absolute POSIX paths, key authentication, and host-key verification |
 
 Paths accept `*`, `?`, `[abc]`, and recursive `**` patterns. A registration can
-match multiple files. Initial examples are System messages, Sample HTTP access,
+match multiple files. Initial examples are Sample System Messages, Sample HTTP access,
 and Sample SSH authentication; edit them for your environment. Registered names
 and IDs must be unique. Renaming preserves the ID.
 
@@ -226,7 +226,7 @@ Remote `source` and `sourcePatterns` use `ssh://user@host:port/path` to distingu
 hosts. Credentials and SSH Key Paths are not added to classification requests or
 result records. See [request/result JSON](results.md).
 
-**VOC Asia Culture Center Consulting QnA** is provided automatically at startup with Local File,
+**Sample VOC Asia Culture Center Consulting QnA** is provided automatically at startup with Local File,
 JSONL (Line), `/host-logs/sample-logs/voc-asia-culture-center-consulting-qna.jsonl`, and Content
 Field `consulting_content`. Existing registrations are preserved; an equivalent
 local path is reused. A disabled manual VOC Task is also provided; it never starts automatically. The path assumes
@@ -239,4 +239,4 @@ create another Source and replace the Task assignment, or remove all referencing
 Task assignments first. Unassigned Sources can change Type.
 
 The government sample also provides a Source, Korean Criteria, and a disabled
-Batch Task at startup. See [VOC Central Gov Consulting QnA](voc.md#government-qna-sample).
+Batch Task at startup. See [Sample VOC Central Gov Consulting QnA](voc.md#government-qna-sample).

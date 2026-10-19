@@ -10,7 +10,13 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from config_store import delete_record, load_records, save_record, save_records
+from config_store import (
+    delete_record,
+    load_records,
+    rename_sample_records,
+    save_record,
+    save_records,
+)
 from decisions import review_options
 
 DEFAULT_PROFILES = {
@@ -95,8 +101,6 @@ def validate_profiles(values: object) -> ProfileMap:
                 raise ValueError("Unsupported profile normalization.")
             fields["normalization"] = normalization
         validated[identity] = fields
-    if "general" not in validated:
-        raise ValueError("The general profile is required and cannot be deleted.")
     return validated
 
 
@@ -182,6 +186,23 @@ def load_profiles() -> None:
     """Load saved criteria and ensure the required consultation samples exist."""
     stored = load_records("criteria", DEFAULT_PROFILES)
     values = validate_profiles(stored)
+    rename_sample_records(
+        "criteria",
+        values,
+        {
+            "General system": "Sample General System",
+            **{
+                old: DEFAULT_PROFILES[identity]["label"]
+                for identity in ("consultation", "central_gov", "local_gov")
+                for old in (
+                    DEFAULT_PROFILES[identity]["label"].removeprefix("Sample "),
+                    DEFAULT_PROFILES[identity]["label"].removeprefix("Sample ")
+                    + " (KOR)",
+                )
+            },
+        },
+        "label",
+    )
     # Update only untouched samples, preserving saved Task IDs and user edits.
     legacy_hashes = {
         "eaaeb8160dec0b9b1e1ba1406087995f46126008936fbf8753fb926fd1ea2366",
@@ -189,7 +210,7 @@ def load_profiles() -> None:
         "c4ca8223b173892bc9f1b24a4a5daf754d0b9086b6280506b6a35f009041c58a",
         "139d8de41dc425a8339bf9707dd5747a9f87c76398db743496ba1db74d00910f",
     }
-    for identity in ("consultation", "central_gov"):
+    for identity in ("consultation", "central_gov", "local_gov"):
         sample = DEFAULT_PROFILES[identity]
         saved = values.get(identity)
         name_exists = any(

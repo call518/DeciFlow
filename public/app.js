@@ -305,7 +305,7 @@ const defaultSourceProfiles = Object.freeze({
   '/host-logs/sample-logs/SSH_2k.log': 'authentication',
 });
 const sampleSources = [
-  { id: '1'.padStart(32, '0'), name: 'System messages', type: 'local', path: '/host-logs/var/log/messages' },
+  { id: '1'.padStart(32, '0'), name: 'Sample System Messages', type: 'local', path: '/host-logs/var/log/messages' },
   { id: '2'.padStart(32, '0'), name: 'Sample HTTP access', type: 'local', path: '/host-logs/sample-logs/access-1k.log' },
   { id: '3'.padStart(32, '0'), name: 'Sample SSH authentication', type: 'local', path: '/host-logs/sample-logs/SSH_2k.log' },
 ];
@@ -1206,7 +1206,7 @@ result = json.load(sys.stdin)
 # Use result["category"], result["log"], and result["source"] here.
 # Replace this handler with your notification, storage, or other integration.
 `;
-const profileLabels = { general: 'General system', authentication: 'Sample Authentication', http_access: 'Sample HTTP access', application: 'Sample Application', network: 'Sample Network / tcpdump text' };
+const profileLabels = { general: 'Sample General System', authentication: 'Sample Authentication', http_access: 'Sample HTTP access', application: 'Sample Application', network: 'Sample Network / tcpdump text' };
 let registeredActions = [];
 let actionRows = [];
 let preparingActions = false;
@@ -1436,21 +1436,6 @@ function renderCriteria() {
   handleClearRouteLinks('/criteria');
   handleParkInlineView('criteria-view');
   $('criteria-list').hidden = editingCriteria !== null;
-  const defaultTable = element('table', '', 'action-list');
-  const defaultHeader = element('tr', '');
-  for (const title of ['Name', 'Manage']) defaultHeader.append(element('th', title));
-  const defaultRow = element('tr', '');
-  defaultRow.append(element('td', criteriaProfiles.general.label));
-  const defaultControls = element('td', '', 'action-list-controls');
-  const viewDefault = element('a', 'View', 'quiet');
-  viewDefault.type = 'button'; viewDefault.disabled = savingCriteria;
-  viewDefault.onclick = () => handleViewCriteria('general');
-  const cloneDefault = element('button', 'Clone', 'quiet');
-  cloneDefault.type = 'button'; cloneDefault.disabled = savingCriteria || editingCriteria !== null;
-  cloneDefault.onclick = () => handleCloneCriteria('general');
-  defaultControls.append(viewDefault, cloneDefault); defaultRow.append(defaultControls);
-  defaultTable.append(defaultHeader);handleAppendViewRow(defaultTable,defaultRow,'criteria-view','general');
-  $('criteria-default').replaceChildren(); $('criteria-default').append(defaultTable);
   const table = element('table', '', 'action-list');
   const header = element('tr', '');
   for (const title of ['Name', 'Manage']) header.append(element('th', title));
@@ -1458,7 +1443,7 @@ function renderCriteria() {
   const query = $('criteria-search').value.trim().toLowerCase();
   let matches = 0;
   for (const [id, profile] of Object.entries(criteriaProfiles).sort(([,left],[,right])=>compareNames({name:left.label},{name:right.label}))) {
-    if (id === 'general' || !profile.label.toLowerCase().includes(query)) continue;
+    if (!profile.label.toLowerCase().includes(query)) continue;
     matches++;
     const row = element('tr', '');
     row.append(element('td', profile.label));
@@ -1477,7 +1462,7 @@ function renderCriteria() {
     row.append(controls); handleAppendViewRow(table,row,'criteria-view',id);
   }
   $('criteria-registry').replaceChildren();
-  $('criteria-registry').append(matches ? table : element('p', 'No profiles match your search.', 'caption'));
+  $('criteria-registry').append(matches ? table : element('p', Object.keys(criteriaProfiles).length ? 'No profiles match your search.' : 'No criteria yet. Add a profile or generate one with AI.', 'caption'));
   $('add-criteria').disabled = !criteriaLoaded || savingCriteria || editingCriteria !== null;
 }
 function handleCloneCriteria(id) {
@@ -1585,7 +1570,7 @@ function handleEditCriteria(id, template = null, generatedPurpose = null) {
     const label=element('label',caption);const input=element(key==='label'?'input':'textarea','');
     input.value=profile[key];input.setAttribute('aria-label',caption);input.oninput=()=>handleValidateCriteria();
     label.append(input);
-    addHelp(label,input,key==='label'?'Profile name shown when assigning Criteria to a Task. Example: VOC Asia Culture Center Consulting QnA.':'Rules shared by every decision. State the evidence to use and what must not be inferred.');
+    addHelp(label,input,key==='label'?'Profile name shown when assigning Criteria to a Task. Example: Sample VOC Asia Culture Center Consulting QnA.':'Rules shared by every decision. State the evidence to use and what must not be inferred.');
     form.append(label);criteriaFields[key]=input;
   }
   const primaryLabel=element('label','Default Chart Decision');const primary=element('select','');

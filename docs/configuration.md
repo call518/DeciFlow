@@ -131,7 +131,7 @@ directory remain unchanged. Put only DeciFlow-managed data in the configured roo
 
 The server replaces its process with the original Python command; no Docker socket
 or Docker control permission is required. Use one server process per data directory.
-Default Criteria, sample Sources, the disabled default Task, and default settings
+Sample Criteria, sample Sources, the disabled default Task, and default settings
 return. The browser waits for a new server instance and reloads; it does not retry
 the destructive request. An incomplete cleanup is reported in red after restart;
 check server logs before retrying. Existing Task runs do not resume because their

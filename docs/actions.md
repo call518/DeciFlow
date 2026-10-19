@@ -4,7 +4,7 @@
 
 ## Default Sample Action
 
-On first initialization or after Reset DeciFlow, **Elasticsearch** is registered
+On first initialization or after Reset DeciFlow, **Sample Elasticsearch** is registered
 with Python **3.12**, module **elasticsearch**, and code that writes each result to
 `http://host.docker.internal:9200`, index `deciflow`, adding a UTC `@timestamp`.
 Startup automatically creates its script and venv and installs Python and its module

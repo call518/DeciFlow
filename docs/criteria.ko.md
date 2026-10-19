@@ -247,12 +247,16 @@ Task가 참조 중이면 차단합니다.
 
 ## 기존 시스템 프로필
 
-**Default Criteria**(`general`)는 읽기 전용이며 Clone할 수 있습니다. 기존 저장 프로필은
-편집 전까지 5개 범주와 고정 운영 질문을 유지합니다. 편집·복제 시 타입별 편집기를
+모든 프로필은 검색 가능한 **Criteria** 목록 하나에서 View·Edit·Clone·Delete로 관리합니다.
+**Sample General System**(`general`)도 선택적인 일반 프로필입니다. 직접 편집하거나
+Task 할당을 변경한 후 삭제할 수 있으며 재시작해도 복구하지 않습니다. 템플릿은
+**Start From Template**에서 계속 사용할 수 있습니다. 저장된 프로필이 없어도 직접
+작성하거나 AI로 새 프로필을 생성할 수 있습니다. 기존 저장 프로필은 편집 전까지
+5개 범주와 고정 운영 질문을 유지합니다. 편집·복제 시 타입별 편집기를
 사용해 전체 판단 정의를 저장합니다. 기존 Task 참조는 유지하며 시스템 결과는 기존
 Actions를 위한 category·urgency·ticket 관련 필드도 유지합니다.
 
-최초 초기화 시 시스템 예시와 **VOC Asia Culture Center Consulting QnA**을 제공합니다.
+최초 초기화 시 시스템 예시와 **Sample VOC Asia Culture Center Consulting QnA**을 제공합니다.
 기존 설치도 시작할 때 상담 샘플의 ID와 이름이 모두 없으면 자동 추가합니다. 저장된
 프로필은 덮어쓰지 않으며, 이 필수 샘플을 삭제하면 다음 시작 시 다시 추가됩니다.
 다른 예시는 데이터 초기화 없이 **Start From Template**으로 불러옵니다. 상담 상태는 대화 종료 시점의 상태이며 이후 업무 완료 사실은 아닙니다.
@@ -289,4 +293,4 @@ Laya는 본문 한도와 별도로 질문 지시문·선택지의 head 예산을
 본문이 잘리지 않아도 지시문이 잘릴 수 있습니다. [VOC 토큰 예산 안내](voc.ko.md#laya-질문-토큰-예산-확인)를 확인하세요.
 
 정부기관 샘플의 Source·한국어 Criteria·비활성 Batch Task도 시작 시 자동 제공됩니다.
-[VOC Central Gov Consulting QnA 설정](voc.ko.md#정부기관-qna-샘플)을 참고하세요.
+[Sample VOC Central Gov Consulting QnA 설정](voc.ko.md#정부기관-qna-샘플)을 참고하세요.

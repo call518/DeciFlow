@@ -15,8 +15,9 @@ Source → Criteria → optional Actions → Tasks, and inspect current/latest T
 | [Sources](sources.md) | Register local or SSH file sources and select them in Tasks |
 | [Usage](usage.md) | Analyze logs, filter results, review predictions, reconnect, or understand metrics |
 | [Configuration](configuration.md) | Set environment variables, choose Laya/Jev models, or adjust request budgets |
-| [VOC Asia Culture Center Consulting QnA](voc.md) | Run the sample, author full Criteria, and validate conversation decisions |
-| [VOC Central Gov Consulting QnA](voc.md#government-qna-sample) | Run the government QnA sample with its Source, Korean Criteria, and Task |
+| [Sample VOC Asia Culture Center Consulting QnA](voc.md) | Run the sample, author full Criteria, and validate conversation decisions |
+| [Sample VOC Central Gov Consulting QnA](voc.md#government-qna-sample) | Run the government QnA sample with its Source, Korean Criteria, and Task |
+| [Sample VOC Local Gov Consulting QnA](voc.md#local-government-qna-sample) | Run the local government QnA sample with its Source, Korean Criteria, and Task |
 | [Criteria](criteria.md) | Field-by-field authoring, decision types, examples, and save-error troubleshooting |
 | [Python Actions](actions.md) | Run Python Code after classification and manage execution environments |
 | [Tasks](tasks.md) | Reusable executions, cron schedules, continuous monitoring, and durable run history |

@@ -42,7 +42,7 @@ Criteria는 Choice·Score·Noul 판단 항목의 개수·선택지·단계를 �
 
 | Criteria 프로필 | 판정 대상 |
 | --- | --- |
-| General system | 시스템·서비스 동작과 장애 |
+| Sample General System | 시스템·서비스 동작과 장애 |
 | Sample Authentication | 인증·세션 결과, 서비스 장애, 악용 증거 |
 | Sample HTTP access | 응답, 요청 실패, 의심 접근 |
 | Sample Application | 애플리케이션 작업, 예외, 의존 서비스 |
@@ -50,7 +50,7 @@ Criteria는 Choice·Score·Noul 판단 항목의 개수·선택지·단계를 �
 
 프로필은 사이드바의 **Criteria**에서 추가·수정·삭제합니다.
 시스템 프로필은 Normal·Warning·Error·Security·Other를 유지하고 사용자 프로필은
-선택지를 지정합니다. `general`은 삭제할 수 없습니다.
+선택지를 지정합니다. `general`도 다른 프로필과 동일한 편집·삭제 규칙을 따릅니다.
 **Save Changes** 후 다음 분석부터 적용하고, 실행 중인 작업은 기존 기준을 유지합니다.
 저장 위치와 Task 참조에 따른 삭제 제한은 [Criteria 관리](criteria.ko.md)를 참고하세요.
 기준에는 사건의 결과와 증거를 설명하고 특정 로그 문자열은 검증 샘플에서 다룹니다.
@@ -66,7 +66,7 @@ Criteria는 Choice·Score·Noul 판단 항목의 개수·선택지·단계를 �
 모델 입력 예산은 그대로 적용됩니다. 원격 회전은 크기·앞부분 비교를 사용하므로
 [SSH 제약](sources.ko.md#ssh-설정)도 확인하세요.
 
-General system은 정상 동작(Normal), 복구 가능한 문제(Warning), 명시적 실패(Error),
+Sample General System은 정상 동작(Normal), 복구 가능한 문제(Warning), 명시적 실패(Error),
 악용·정책 위반의 증거(Security)를 구분합니다. 서비스명·IP·보안 관련 주제만으로
 보안 사건을 판정하지 않습니다. 기준은 모델의 판단 지침이므로 실제 활용 전
 대표 로그로 배포 모델의 판정 정확도를 검증하세요.

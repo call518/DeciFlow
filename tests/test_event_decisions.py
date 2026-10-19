@@ -124,7 +124,7 @@ def test_jsonl_requires_content_field(field: object) -> None:
         )
 
 
-@pytest.mark.parametrize("profile_id", ["consultation", "central_gov"])
+@pytest.mark.parametrize("profile_id", ["consultation", "central_gov", "local_gov"])
 @pytest.mark.parametrize("engine_name", ["laya", "jev"])
 @pytest.mark.parametrize("invalid", [None, "missing", "score", "noul", "choice"])
 @pytest.mark.anyio
@@ -301,3 +301,33 @@ def test_existing_sqlite_results_survive_review_schema_upgrade(tmp_path: Path) -
     store.review("old", 1, "error")
     assert len(store.events("old", reviewed_only=True)) == 1
     store.close()
+
+
+@pytest.mark.anyio
+async def test_local_gov_sample_preserves_metadata() -> None:
+    """Read every local government record using its Unicode content field."""
+    path = Path("sample-logs/voc-local-gov-consulting-qna.jsonl")
+    originals = [json.loads(line) for line in path.read_text().splitlines()]
+    specs = parse_source_settings(
+        [
+            {
+                "path": str(path),
+                "format": "jsonl",
+                "contentField": "상담내용",
+                "profile": "local_gov",
+                "chunkEvents": 10,
+            }
+        ]
+    )
+    records = [row async for row in read_configured(resolve_configured_sources(specs))]
+    assert len(records) == len(originals) == 3280
+    for row, original in zip(records, originals, strict=True):
+        assert "error" not in row
+        assert row["log"] == original["상담내용"]
+        assert row["inputRecord"] == {
+            "지방자치단체명": original["지방자치단체명"],
+            "상담담당부서": original["상담담당부서"],
+        }
+        assert row["inputContentInLog"] is True
+        assert row["eventCount"] == row["chunkEvents"] == 1
+    assert any(row["inputRecord"]["상담담당부서"] == "" for row in records)

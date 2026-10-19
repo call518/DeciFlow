@@ -17,6 +17,7 @@ from config_store import (
     delete_record,
     get_data_directory,
     load_records,
+    rename_sample_records,
     save_record,
     save_records,
 )
@@ -25,27 +26,48 @@ from result_store import open_result_store
 from source_registry import (
     CENTRAL_GOV_SOURCE,
     DEFAULT_SOURCES,
+    LOCAL_GOV_SOURCE,
     VOC_SOURCE,
     load_sources,
     save_sources,
 )
 from source_settings import parse_source_settings
 
-DEFAULT_TASK_NAME = "DeciFlow Server Log"
+DEFAULT_TASK_NAME = "Sample DeciFlow Server Log"
 DEFAULT_SOURCE_NAME = "Sample DeciFlow Server Log"
 DEFAULT_TASK_ID = uuid5(NAMESPACE_URL, "deciflow:task:server-log").hex
 DEFAULT_SOURCE_ID = uuid5(NAMESPACE_URL, "deciflow:source:server-log").hex
 VOC_TASK_ID = uuid5(NAMESPACE_URL, "deciflow:task:voc-consultations").hex
-VOC_TASK_NAME = "VOC Asia Culture Center Consulting QnA"
+VOC_TASK_NAME = "Sample VOC Asia Culture Center Consulting QnA"
 CENTRAL_GOV_TASK_ID = uuid5(NAMESPACE_URL, "deciflow:task:central-gov-qna").hex
-CENTRAL_GOV_TASK_NAME = "VOC Central Gov Consulting QnA"
+CENTRAL_GOV_TASK_NAME = "Sample VOC Central Gov Consulting QnA"
+LOCAL_GOV_TASK_ID = uuid5(NAMESPACE_URL, "deciflow:task:local-gov-qna").hex
+LOCAL_GOV_TASK_NAME = "Sample VOC Local Gov Consulting QnA"
 SYSTEM_MESSAGE_TASK_ID = uuid5(NAMESPACE_URL, "deciflow:task:system-message").hex
 SYSTEM_MESSAGE_SOURCE_ID = uuid5(NAMESPACE_URL, "deciflow:source:system-message").hex
 
 
 def load_tasks() -> list[Result]:
     """Read definitions, including Tasks whose dependencies need repair."""
-    return list(load_records("tasks").values())
+    records = load_records("tasks")
+    rename_sample_records(
+        "tasks",
+        records,
+        {
+            "DeciFlow Server Log": DEFAULT_TASK_NAME,
+            "System Message": "Sample System Messages",
+            "System Messages": "Sample System Messages",
+            **{
+                old: name
+                for name in (VOC_TASK_NAME, CENTRAL_GOV_TASK_NAME, LOCAL_GOV_TASK_NAME)
+                for old in (
+                    name.removeprefix("Sample "),
+                    name.removeprefix("Sample ") + " (KOR)",
+                )
+            },
+        },
+    )
+    return list(records.values())
 
 
 def _write_tasks(tasks: list[Result]) -> None:
@@ -133,6 +155,16 @@ def ensure_central_gov_task() -> None:
     )
 
 
+def ensure_local_gov_task() -> None:
+    """Provide a disabled local government QnA Batch without changing saved Tasks."""
+    _ensure_consultation_task(
+        LOCAL_GOV_TASK_ID,
+        LOCAL_GOV_TASK_NAME,
+        LOCAL_GOV_SOURCE,
+        "local_gov",
+    )
+
+
 def _ensure_consultation_task(
     task_id: str, name: str, sample: Result, profile_id: str
 ) -> None:
@@ -184,8 +216,8 @@ def _ensure_consultation_task(
 
 
 def ensure_system_message_task() -> None:
-    """Reuse System messages and repair the untouched duplicate sample."""
-    name = "System Messages"
+    """Reuse Sample System Messages and repair the untouched duplicate sample."""
+    name = "Sample System Messages"
     sources = load_sources()
     default = DEFAULT_SOURCES[0]
     source = next(
@@ -227,11 +259,6 @@ def ensure_system_message_task() -> None:
         (task for task in tasks if task["id"] == SYSTEM_MESSAGE_TASK_ID), None
     )
     if existing is not None:
-        if existing["name"] == "System Message" and not any(
-            task["name"].casefold() == name.casefold() for task in tasks
-        ):
-            existing["name"] = name
-            save_record("tasks", existing["id"], existing)
         return
     if any(task["name"].casefold() == name.casefold() for task in tasks):
         return

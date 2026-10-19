@@ -123,6 +123,7 @@ async def test_generate_then_save_and_reload(
     model: str | None,
 ) -> None:
     monkeypatch.setenv("DECISION_ENGINE", engine)
+    PROFILES.clear()
     monkeypatch.setenv("OPENAI_API_KEY", "private-test-key")
     if model is None:
         monkeypatch.delenv("OPENAI_CRITERIA_MODEL", raising=False)

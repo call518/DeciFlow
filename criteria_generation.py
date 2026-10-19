@@ -11,7 +11,7 @@ import httpx
 
 from config import get_engine
 from configured_sources import read_configured
-from profiles import DEFAULT_PROFILES, validate_profiles
+from profiles import validate_profiles
 from remote_sources import read_remote
 from source_settings import parse_source_settings, resolve_configured_sources
 
@@ -133,9 +133,7 @@ def convert_generated_profile(value: object) -> dict[str, Any]:
         questions[identity] = question
     profile = {key: draft[key] for key in ("label", "instructions", default_field)}
     profile["questions"] = questions
-    return validate_profiles(
-        {"general": DEFAULT_PROFILES["general"], "generated": profile}
-    )["generated"]
+    return validate_profiles({"generated": profile})["generated"]
 
 
 async def preview_samples(selection: dict[str, Any]) -> list[str]:

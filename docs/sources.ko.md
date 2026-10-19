@@ -16,7 +16,7 @@ Remote File에는 재사용할 경로를 지정합니다. Task의 Source별로 �
 | Remote File (SSH) | SSH/SFTP 호스트의 UTF-8 일반 파일. 절대 POSIX 경로·키 인증·호스트 키 검증 필요 |
 
 경로는 `*`·`?`·`[abc]`·재귀 `**` 패턴을 지원하며 등록 하나로 여러 파일을 선택할 수
-있습니다. 초기 예시는 System messages·Sample HTTP access·Sample SSH authentication입니다.
+있습니다. 초기 예시는 Sample System Messages·Sample HTTP access·Sample SSH authentication입니다.
 환경에 맞게 편집하세요. 이름·ID는 중복할 수 없으며 이름을 바꿔도 ID는 유지합니다.
 
 **File Path / Pattern**에는 Local File·Remote File 모두 한 줄에 경로·패턴을 하나씩
@@ -216,7 +216,7 @@ Tasks에 소스 ID·hostIds·실행 설정을 저장합니다. 직접 파일 API
 사용합니다. 인증 정보·SSH 키 경로는 판정 요청이나 결과 항목에 추가하지 않습니다.
 [요청·결과 JSON](results.ko.md)을 참고하세요.
 
-**VOC Asia Culture Center Consulting QnA** Source는 시작 시 자동 제공됩니다. Local File, JSONL (Line),
+**Sample VOC Asia Culture Center Consulting QnA** Source는 시작 시 자동 제공됩니다. Local File, JSONL (Line),
 `/host-logs/sample-logs/voc-asia-culture-center-consulting-qna.jsonl`, Content Field
 `consulting_content`로 설정합니다. 기존 등록은 유지하며 같은 로컬 경로가 있으면
 중복 추가하지 않습니다. 비활성 수동 VOC Task도 제공하며 자동 실행하지 않습니다. 경로는 Compose
@@ -228,4 +228,4 @@ Tasks에 소스 ID·hostIds·실행 설정을 저장합니다. 직접 파일 API
 교체하거나 모든 Task 참조를 먼저 제거하세요. 미사용 Source의 타입은 변경할 수 있습니다.
 
 정부기관 샘플의 Source·한국어 Criteria·비활성 Batch Task도 시작 시 자동 제공됩니다.
-[VOC Central Gov Consulting QnA 설정](voc.ko.md#정부기관-qna-샘플)을 참고하세요.
+[Sample VOC Central Gov Consulting QnA 설정](voc.ko.md#정부기관-qna-샘플)을 참고하세요.

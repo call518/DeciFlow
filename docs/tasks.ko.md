@@ -47,9 +47,9 @@ Task 삭제 전 실행을 중지해야 하며 삭제하면 실행 이력·결과
 
 ## 기본 Task
 
-DeciFlow는 **DeciFlow Server Log**를 자동 생성하며 **Sample DeciFlow Server Log** Local File Source를
+DeciFlow는 **Sample DeciFlow Server Log**를 자동 생성하며 **Sample DeciFlow Server Log** Local File Source를
 Sources 목록의 첫 번째에 등록합니다. 경로는
-`DECIFLOW_LOG_DIR/server.log` / `DECIFLOW_LOG_DIR/access.log`이며 General system 기준·청크당 1개 이벤트·Action
+`DECIFLOW_LOG_DIR/server.log` / `DECIFLOW_LOG_DIR/access.log`이며 Sample General System 기준·청크당 1개 이벤트·Action
 없음으로 설정됩니다. Realtime 모드이고 Task는 기본 Disable 상태입니다.
 Enable로 전환한 뒤 Run으로 직접 시작합니다. 자동 재시작도 꺼져 있습니다. 파일 로깅이 켜져 있어야 합니다.
 
@@ -162,17 +162,17 @@ Task 삭제 확인창에서 승인하면 Task 정의·실행 이력·결과·수
 말풍선이 열린 뒤에는 Task 카드나 말풍선 위에서 마우스를 움직여도 유지합니다.
 말풍선으로 이동해 텍스트를 선택·복사할 수 있으며 양쪽에서 벗어나면 닫힙니다.
 
-시작 시 **VOC Asia Culture Center Consulting QnA** Task를 비활성 수동 Batch로 제공합니다.
-VOC Asia Culture Center Consulting QnA Source, 한국어 Criteria, Events/Chunk 1, Action None을 연결합니다.
+시작 시 **Sample VOC Asia Culture Center Consulting QnA** Task를 비활성 수동 Batch로 제공합니다.
+Sample VOC Asia Culture Center Consulting QnA Source, 한국어 Criteria, Events/Chunk 1, Action None을 연결합니다.
 활성화한 뒤 Run을 누르면 파일을 분석합니다.
 기존 Task 설정은 덮어쓰지 않습니다.
 
-**System Messages**도 비활성 Realtime Task로 자동 제공합니다. General system,
-Events/Chunk 1, Action None으로 기존 **System messages** Source를 재사용합니다.
+**Sample System Messages**도 비활성 Realtime Task로 자동 제공합니다. Sample General System,
+Events/Chunk 1, Action None으로 기존 **Sample System Messages** Source를 재사용합니다.
 초기 로컬 경로는 `/host-logs/var/log/messages`이며 Remote File 변경 등 사용자 설정은
 유지합니다. SSH라면 원격 호스트의 실제 경로(보통 `/var/log/messages`)를 입력하고
 Task에서 Source Hosts를 선택하세요. 잘못 추가된 System Message Source가 원본
-그대로이면 삭제하고 Task 참조를 System messages로 연결하며, 수정한 중복 Source는 보존합니다.
+그대로이면 삭제하고 Task 참조를 Sample System Messages로 연결하며, 수정한 중복 Source는 보존합니다.
 
 Tasks에서 Run을 누르면 Main으로 자동 이동하여 해당 Task의 실행 결과를 표시합니다.
 
@@ -240,4 +240,4 @@ DeciFlow 프로세스 하나만 사용해야 합니다. 기존 SQLite에 테이�
 Criteria도 **None**으로 저장해 해당 의존성을 잠시 해제할 수 있습니다. Task를 실행하려면 모든 Source에 Criteria를 지정해야 합니다.
 
 정부기관 샘플의 Source·한국어 Criteria·비활성 Batch Task도 시작 시 자동 제공됩니다.
-[VOC Central Gov Consulting QnA 설정](voc.ko.md#정부기관-qna-샘플)을 참고하세요.
+[Sample VOC Central Gov Consulting QnA 설정](voc.ko.md#정부기관-qna-샘플)을 참고하세요.
