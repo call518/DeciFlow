@@ -2,7 +2,9 @@
 
 [English](configuration.md) | [한국어](configuration.ko.md) | [문서 안내](README.ko.md) | [README](../README.ko.md)
 
-DeciFlow 설정은 `.env`에서 관리하며 프로세스 환경변수가 우선합니다.
+DeciFlow 운영 설정은 **Settings → Configurations**에서 수정할 수 있습니다.
+UI 저장값 → `.env`/프로세스 환경변수 → 코드 기본값 순으로 적용합니다.
+**Use UI Override**를 해제하면 환경변수/기본값으로 복원합니다. 초기 환경은 `.env`에서 준비합니다.
 Laya 서버 설정은 Laya 호스트에서 관리하며, Compose는 `LAYA_API_KEY`를 DeciFlow와
 공유합니다. `COMPOSE_PROFILES`는 `cpu` 또는 `cuda`를 선택하며 빈 값이면 UI만 실행합니다.
 
@@ -30,9 +32,10 @@ Laya 서버 설정은 Laya 호스트에서 관리하며, Compose는 `LAYA_API_KE
 `https://*.ngrok-free.app`을 포함합니다. 기존 `.env` 값은
 덮어쓰지 않습니다. 네이티브 DeciFlow·외부 Laya는 접근 가능한 URL을 직접 설정하세요.
 CPU·CUDA 모두 8000 포트를 공개합니다.
-UI 시작 시 마운트된 `.env`에 명시한 `DECISION_ENGINE`·`LAYA_*`·`JEV_*` 값은
-기존 엔진 환경변수보다 우선합니다. 변경 후 Docker Desktop에서 DeciFlow-UI를
-Restart하거나 `docker compose restart ui`를 실행하고 브라우저를 새로고침하세요.
+재시작 후에도 UI 저장값이 우선합니다. UI 시작 시 마운트된 `.env`에 명시한 `DECISION_ENGINE`·`LAYA_*`·`JEV_*` 값은
+기존 엔진 환경변수보다 우선합니다. 환경 파일의 엔진 설정·인증정보를 변경한 후에는
+**Restart DeciFlow**, Docker Desktop의 DeciFlow-UI Restart 또는 `docker compose restart ui`를
+실행하고 브라우저를 새로고침하세요.
 파일에 없는 항목은 기존 환경값을 유지합니다. 다른 설정의 환경변수 우선순위는
 유지합니다. 포트·마운트·Compose 프로필·Laya 서비스 변경은 `docker compose up -d`로
 해당 컨테이너를 재생성해야 합니다. 네이티브 실행은 Python 프로세스를 재시작하세요.
@@ -141,3 +144,46 @@ HTTP 202 응답 후 정상 종료를 시작하며 초기화 중 중복 요청은
 노출하지 마세요.
 
 **Settings → Configurations**에서 설정들을 수정한 뒤 맨 아래 **Save Changes**로 한 번에 반영합니다. **Reset DeciFlow**는 별도의 확인창을 거쳐 즉시 실행하는 동작입니다.
+
+## 런타임 설정
+
+**Configurations → Save Changes**는 페이지 크기와 선택한 런타임 설정을 SQLite에
+한 번에 저장합니다. Decision Engine, Laya URL·모델·전체/질문 토큰 예산·동시 요청 수,
+Jev 모델·요청 바이트 예산·동시 요청 수, OpenAI Criteria 작성 모델을 지원합니다.
+각 항목에는 환경변수명, 적용 출처·시점, 간단한 도움말과 `.env.example`의 영문
+상세 설명을 제공합니다. 저장 전에 두 엔진의 적용 설정을 검증합니다. Jev 선택에는
+`JEV_API_KEY` 설정과 비용 확인이 필요하며 자동 대체 엔진을 사용하지 않습니다.
+저장 후 브라우저를 새로 고쳐 반영하며 서버 재시작은 필요 없습니다.
+
+새 실행부터 저장값을 사용합니다. 실행 중인 작업은 시작 당시 엔진·모델·URL·예산·동시
+요청 수를 유지합니다. 새로 시작한 복구 가능 실행에는 이 비밀값 없는 설정을 저장하여
+Configurations가 바뀌어도 원래 설정으로 복구합니다. 스냅샷이 없는 기존 실행은
+엔진·모델 변경 시 복구를 중단하는 기존 정책을 유지합니다. 인증정보는 환경변수에서
+읽으며 실행 스냅샷에 저장하지 않습니다. AI Criteria 생성도 요청 시작 시 설정을 사용합니다.
+
+API 키(`LAYA_API_KEY`, `JEV_API_KEY`, `OPENAI_API_KEY`)는 `.env`에 남기고 UI에는
+설정 여부만 표시합니다. 포트·데이터/로그 경로·신뢰 출처·Compose 프로필은 배포 환경에서
+관리하며 Environment and Deployment에 편집 없이 설명합니다. 원격 Laya의 모델 적재·GPU·
+워커·포트·볼륨은 해당 호스트/컨테이너에서 관리합니다. UI 저장은 `.env`를 수정하지 않습니다.
+
+## DeciFlow 재시작
+
+**Reset DeciFlow** 아래 **Restart DeciFlow**는 데이터를 삭제하지 않고 DeciFlow의
+Python 프로세스만 재시작합니다. 확인창은 활성 실행 수와 미저장 설정 변경을 안내합니다.
+취소·Escape는 아무 작업도 하지 않습니다. 실행 중인 작업은 체크포인트와 함께 일시 중단하고,
+조건을 충족하는 활성 Task는 원래 ID·설정으로 복구합니다. 일시정지 상태는 유지하며 기존
+Task 복구 규칙을 적용합니다. 외부 추론은 이미 공급자에 전달되었을 수 있고 Action은 기존의
+보수적 복구 정책을 따릅니다. 무중단이나 정확히 한 번 실행을 보장하는 기능은 아닙니다.
+
+UI는 확인한 재시작 요청을 한 번만 보내고 최대 60초 동안 새 서버 인스턴스를 기다린 뒤
+새로 고칩니다. 서버가 돌아오지 않으면 오류를 표시하므로 로그 확인 후 직접 새로 고치세요.
+동시 Reset/Restart는 거부합니다. 재시작은 마운트된 `.env`의 엔진·인증정보 항목을 다시
+읽지만 Laya 재시작·모델 적재나 Docker 포트·볼륨·프로필·GPU 변경은 수행하지 않습니다.
+그런 변경은 해당 컨테이너를 재생성하세요. 원래 실행 명령으로 프로세스를 교체할 수 있는
+실행 방식이 필요하며 데이터 디렉터리당 프로세스 하나를 사용하세요.
+
+`POST /api/configuration`은 비밀값 없는 설정 정보를 조회합니다. `PUT /api/configuration`은
+`resultsPerPage`와 `runtimeOverrides`(지원하는 비밀값 없는 환경변수명만)를 받습니다.
+`POST /api/restart`는 `{ "confirmation": "RESTART DECIFLOW" }`를 요구하며 202를 반환합니다.
+기존 신뢰 출처 검사를 적용하며 로그인 인증을 제공하지는 않습니다. 신뢰할 수 없는 네트워크에
+관리 화면을 공개한다면 프록시 인증으로 보호하세요.

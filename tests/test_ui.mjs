@@ -4369,3 +4369,42 @@ test('Result scroll buttons use the results pane on desktop and section alignmen
   vm.runInContext('completed=0;results=[];completionOrder=[];render()',context);
   assert.equal(nodes.get('result-scroll-controls').hidden,true);
 });
+
+test('Configurations show override sources and save only explicitly enabled fields',async()=>{
+  const {nodes,context}=workspace([]);let saved,reloaded=0;const calls=[];
+  const fields=[
+    {key:'DECISION_ENGINE',label:'Decision Engine',group:'Engine',options:['laya','jev'],value:'laya',fallback:'laya',source:'Default',help:'No automatic fallback.',reference:'Decision engine: laya or jev.'},
+    {key:'LAYA_API_URL',label:'API URL',group:'Laya',value:'http://localhost:8000/v1/systemone',fallback:'http://localhost:8000/v1/systemone',source:'Environment',help:'Full URL.',reference:'Include /v1/systemone.'},
+  ];
+  const metadata={resultsPerPage:30,fields,overrides:{},environment:[],credentials:{JEV_API_KEY:false}};
+  context.location={reload(){reloaded++;}};
+  context.fetch=async(path,options)=>{
+    calls.push(path);assert.equal(path,'/api/configuration');
+    if(options.method==='PUT')saved=JSON.parse(options.body);
+    return {ok:true,json:async()=>metadata};
+  };
+  await vm.runInContext('handleLoadRuntimeConfiguration()',context);
+  assert.equal(nodes.get('save-results-settings').disabled,false);
+  assert.equal(vm.runInContext("runtimeControls.get('DECISION_ENGINE').input.disabled",context),true);
+  vm.runInContext("runtimeControls.get('LAYA_API_URL').checkbox.checked=true;runtimeControls.get('LAYA_API_URL').checkbox.onchange();runtimeControls.get('LAYA_API_URL').input.value='http://localhost:9000/v1/systemone'",context);
+  nodes.get('results-per-page').value='50';
+  await nodes.get('results-settings-form').onsubmit({preventDefault(){}});
+  assert.deepEqual(saved,{resultsPerPage:50,runtimeOverrides:{LAYA_API_URL:'http://localhost:9000/v1/systemone'}});
+  assert.equal(reloaded,1);
+  assert.deepEqual(calls,['/api/configuration','/api/configuration']);
+  vm.runInContext("runtimeControls.get('LAYA_API_URL').checkbox.checked=false;runtimeControls.get('LAYA_API_URL').checkbox.onchange()",context);
+  assert.equal(vm.runInContext("runtimeControls.get('LAYA_API_URL').input.value",context),fields[1].fallback);
+});
+
+test('Restart confirmation defaults to cancel and does not request restart on cancellation',async()=>{
+  const {nodes,context}=workspace([]);const calls=[];
+  context.fetch=async(path)=>{calls.push(path);assert.equal(path,'/api/reset/status');return {ok:true,json:async()=>({activeRuns:2})};};
+  const dialog=context.document.getElementById('maintenance-dialog');dialog.showModal=()=>{};
+  const pending=nodes.get('restart-deciflow').onclick();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(dialog.returnValue,'cancel');
+  assert.match(nodes.get('maintenance-description').textContent,/2 active runs/);
+  assert.equal(nodes.get('maintenance-approve').className,'warning');
+  dialog.onclose();await pending;
+  assert.ok(calls.every(path=>path==='/api/reset/status'));
+});

@@ -229,8 +229,11 @@ cursor before inference. Saving a result also removes its queued input in the sa
 SQLite transaction. Unfinished inputs are replayed before reading beyond the saved
 cursor; completed results, reviews, metrics, frozen Criteria/Actions, and run IDs
 remain intact. An unfinished inference may be requested again, including a paid Jev
-request; a stored result is not classified again. The configured engine and model
-must match the original run; recovery never switches to a different provider.
+request; a stored result is not classified again. New runs preserve their engine,
+model, endpoint, budgets, and concurrency in a non-secret runtime snapshot and
+recover with it even if Configurations changed. Credentials remain in the environment.
+Legacy runs without a snapshot require the configured engine/model to match.
+Recovery never switches to a different provider.
 
 This applies to manual/cron Batch and local/SSH Realtime. Realtime readers save their
 initial positions even before a first event arrives. Local files are checked using

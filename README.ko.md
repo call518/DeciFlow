@@ -250,7 +250,7 @@ Sources·Criteria·Actions·Tasks 목록은 이름의 ABC/가나다 순으로 �
 브라우저는 새 결과만 집계하고 기존 카드를 재사용합니다. Main이나 탭이 숨겨지면
 그리기를 미루며 Task는 계속 실행하고 전체 결과는 유지합니다.
 
-Main 아래에 Source·Criteria·Actions·Tasks, Settings 아래에 SSH Keys·SSH Hosts·Configurations(기본 페이지 크기 30건 및 유지 관리)를
+Main 아래에 Source·Criteria·Actions·Tasks, Settings 아래에 SSH Keys·SSH Hosts·Configurations(엔진·모델·예산·동시 요청 수, AI 작성 모델, 페이지 크기 및 유지 관리)를
 배치합니다. 사이드바로 재진입하면 목록을 열고 미저장 초안은 버립니다.
 화면 경로·결과 조작·재접속은 [사용법](docs/usage.ko.md)을 참고하세요.
 설정과 실행 결과는 `DECIFLOW_DATA_DIR/deciflow.sqlite3`에서 통합 관리하며 SSH 키·known_hosts·Action 실행 파일은 파일로 유지합니다. 테스트 단계의 저장 구조 변경으로 이전 JSON·DB를 이관하지 않습니다. 사용 전 앱 데이터를 초기화하세요.
@@ -258,6 +258,9 @@ Main 아래에 Source·Criteria·Actions·Tasks, Settings 아래에 SSH Keys·SS
 최초 초기화·Reset 후 **Sample Elasticsearch** 샘플 Action(Python 3.12, 모듈 `elasticsearch`)을 자동 등록합니다. Task 시작 전에 스크립트·venv·Python·모듈을 자동 준비합니다(다운로드 연결 필요). 실패 원인은 Actions에 표시되며 저장 또는 재시작으로 재시도합니다. Task에는 자동 할당하지 않습니다.
 
 Action 실행 파일은 `actions/<Action UUID>/`에 저장하며 이름 변경으로 venv가 추가 생성되지 않습니다. Action·SSH Key 이름을 수정할 수 있습니다. Task의 Action 선택과 SSH Host의 키 선택은 UUID를 사용하므로 이름을 바꿔도 할당·키 파일·Action 실행 환경은 유지됩니다.
+
+**Settings → Configurations**에서 비밀값 없는 운영 설정을 서버 재시작 없이 저장할 수 있습니다. 새 실행부터 적용하고 실행 중이거나 복구한 작업은 원래 설정을 유지합니다. UI 저장값은 `.env`보다 우선하며 Use UI Override를 해제하면 환경 설정으로 복원합니다. API 키와 배포 설정은 `.env`에 남습니다. [설정 안내](docs/configuration.ko.md)를 참고하세요.
+Reset 아래의 **Restart DeciFlow**는 데이터를 보존하고 작업을 일시 중단·복구하면서 UI 프로세스만 교체합니다. Docker·Laya 배포 변경은 별도 재시작/재생성이 필요합니다.
 
 **Settings → Configurations → Reset DeciFlow**는 명시적 확인 후 앱 데이터를 영구
 삭제하고 UI 서버를 재시작합니다. 먼저 백업하고 [초기화 범위와 동작](docs/configuration.ko.md#deciflow-초기화)을 확인하세요.
@@ -456,11 +459,13 @@ Sources·Tasks와 실행 이력·Actions·Criteria·SSH 키 쌍·SSH Host를 저
 
 #### 연결 설정과 재시작
 
+UI 저장값은 `.env`보다 우선합니다. 변경한 환경값을 사용하려면 해당 Use UI Override를 해제하세요.
+
 Compose Laya 주소는 `http://laya:8000/v1/systemone`입니다. 외부 서버는 컨테이너에서
 접근 가능한 주소를 사용하세요. `127.0.0.1`은 UI 컨테이너 자신입니다.
 사이드바의 호스트·OS·IP 정보도 컨테이너를 나타냅니다.
 `.env`의 엔진 설정(`DECISION_ENGINE`·`LAYA_*`·`JEV_*`)은 Docker Desktop에서
-DeciFlow-UI를 Restart하거나 `docker compose restart ui`를 실행한 뒤 브라우저를
+Configurations의 **Restart DeciFlow**, DeciFlow-UI Restart 또는 `docker compose restart ui`를 실행한 뒤 브라우저를
 새로고침하면 적용됩니다. UI가 시작할 때 마운트된 파일의 엔진 설정을 다시 읽습니다.
 포트·마운트·Compose 프로필·Laya 서비스 설정은 `docker compose up -d`로
 해당 컨테이너를 재생성해야 합니다.

@@ -452,6 +452,7 @@ async def test_explicit_stop_is_not_recovered_and_engine_change_is_reported(
     assert await server.restore_task_runs() == set()
     assert not JOBS
     second = JOBS[(await server.launch_task(recovery_task["task"], "manual"))["jobId"]]
+    second.settings.pop("runtimeSnapshot", None)  # Legacy runs lack frozen options.
     await second.pause()
     await second.suspend()
     JOBS.clear()
@@ -493,3 +494,36 @@ async def test_server_lifespan_recovers_before_accepting_new_starts(
         gate.set()
         await asyncio.wait_for(recovered.task, 5)
         assert recovered.counts["completed"] == 3
+
+
+async def test_recovery_preserves_runtime_snapshot_after_settings_change(
+    recovery_task: Result, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app_settings import save_settings
+    from config import Engine
+
+    observed = []
+
+    async def classify(log: str, engine: Engine, *args: object) -> Result:
+        observed.append((engine.name, engine.model, engine.head_tokens))
+        return {"category": "normal", "review": False}
+
+    monkeypatch.setattr(server, "classify_log", classify)
+    first = JOBS[(await server.launch_task(recovery_task["task"], "manual"))["jobId"]]
+    await first.pause()
+    await first.suspend()
+    JOBS.clear()
+    save_settings(
+        {
+            "resultsPerPage": 30,
+            "runtimeOverrides": {"DECISION_ENGINE": "jev", "LAYA_HEAD_TOKENS": "400"},
+        }
+    )
+    await server.restore_task_runs()
+    restored = JOBS[first.id]
+    assert restored.settings["engine"] == "laya"
+    assert "JEV_API_KEY" not in restored.settings["runtimeSnapshot"]
+    await restored.resume()
+    await asyncio.wait_for(restored.task, 5)
+    assert restored.state == "completed"
+    assert all(item == ("laya", "multilingual", 256) for item in observed)

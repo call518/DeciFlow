@@ -2,11 +2,14 @@
 
 import os
 import re
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from dotenv import dotenv_values, load_dotenv
+
+from runtime_config import effective_values
 
 # https://docs.typesafe.ai/models (verified 2026-10-10).
 JEV_MODEL = "jev-1.13.0"
@@ -28,13 +31,26 @@ class Engine:
     model: str
     timeout: int
     concurrency: int = 4
+    runtime: Mapping[str, str] | None = field(default=None, repr=False)
+
+    def _value(self, key: str, default: str) -> str:
+        return (
+            self.runtime.get(key, default)
+            if self.runtime is not None
+            else os.getenv(key, default)
+        )
+
+    @property
+    def input_bytes(self) -> int:
+        """Return the frozen Jev request byte budget."""
+        return get_jev_input_bytes(self.runtime)
 
     @property
     def context_tokens(self) -> int:
         """Return the conservative request window for the selected model."""
         if self.name == "jev":
             return JEV_CONTEXT_TOKENS
-        raw = os.getenv("LAYA_MAX_TOKENS", "").strip()
+        raw = self._value("LAYA_MAX_TOKENS", "").strip()
         built_in = self.model in {"english", "multilingual", "typed-decisions"}
         if not raw:
             if not built_in:
@@ -53,7 +69,7 @@ class Engine:
     def head_tokens(self) -> int:
         """Return the selected Laya model's question budget."""
         try:
-            value = int(os.getenv("LAYA_HEAD_TOKENS", str(LAYA_HEAD_TOKENS)))
+            value = int(self._value("LAYA_HEAD_TOKENS", str(LAYA_HEAD_TOKENS)))
         except ValueError as error:
             raise ValueError("LAYA_HEAD_TOKENS must be a positive integer.") from error
         if not 0 < value < self.context_tokens:
@@ -75,22 +91,24 @@ def load_startup_settings(path: Path) -> None:
             os.environ[key] = value
 
 
-def get_engine() -> Engine:
+def get_engine(values: Mapping[str, str] | None = None) -> Engine:
     """Select Laya by default; never fall back to a paid provider."""
-    name = os.getenv("DECISION_ENGINE", "laya").strip().lower()
+    values = dict(effective_values() if values is None else values)
+    name = values.get("DECISION_ENGINE", "laya").strip().lower()
     if name == "jev":
-        get_jev_input_bytes()
+        get_jev_input_bytes(values)
         return Engine(
             name,
             "https://api.typesafe.ai/v1/systemone",
             os.getenv("JEV_API_KEY", ""),
-            get_model(name),
+            get_model(name, values),
             30,
-            get_concurrency(name),
+            get_concurrency(name, values),
+            values,
         )
     if name != "laya":
         raise ValueError("DECISION_ENGINE must be laya or jev.")
-    url = os.getenv("LAYA_API_URL", "http://127.0.0.1:8000/v1/systemone").strip()
+    url = values.get("LAYA_API_URL", "http://127.0.0.1:8000/v1/systemone").strip()
     parsed = urlsplit(url)
     if (
         parsed.scheme not in {"http", "https"}
@@ -105,18 +123,20 @@ def get_engine() -> Engine:
         name,
         url,
         os.getenv("LAYA_API_KEY", "changeme"),
-        get_model(name),
+        get_model(name, values),
         120,
-        get_concurrency(name),
+        get_concurrency(name, values),
+        values,
     )
     _ = engine.head_tokens  # Validate before accepting a classification run.
     return engine
 
 
-def get_model(engine: str) -> str:
+def get_model(engine: str, values: Mapping[str, str] | None = None) -> str:
     """Read the selected provider's model without changing providers on failure."""
     key = f"{engine.upper()}_MODEL"
-    model = os.getenv(key, LAYA_MODEL if engine == "laya" else JEV_MODEL).strip()
+    values = os.environ if values is None else values
+    model = values.get(key, LAYA_MODEL if engine == "laya" else JEV_MODEL).strip()
     if not model:
         raise ValueError(f"{key} must not be empty.")
     if engine == "laya" and not re.fullmatch(r"[a-zA-Z][a-zA-Z0-9_-]*", model):
@@ -124,11 +144,12 @@ def get_model(engine: str) -> str:
     return model
 
 
-def get_jev_input_bytes() -> int:
+def get_jev_input_bytes(values: Mapping[str, str] | None = None) -> int:
     """Read a conservative byte budget, not an exact Jev token count."""
+    values = effective_values() if values is None else values
     key = "JEV_MAX_INPUT_BYTES"
     try:
-        value = int(os.getenv(key, str(DEFAULT_JEV_INPUT_BYTES)))
+        value = int(values.get(key, str(DEFAULT_JEV_INPUT_BYTES)))
     except ValueError as error:
         raise ValueError(f"{key} must be an integer from 1 to 30,000.") from error
     if not 1 <= value <= DEFAULT_JEV_INPUT_BYTES:
@@ -136,11 +157,12 @@ def get_jev_input_bytes() -> int:
     return value
 
 
-def get_concurrency(engine: str) -> int:
+def get_concurrency(engine: str, values: Mapping[str, str] | None = None) -> int:
     """Read the selected engine's positive simultaneous request limit."""
+    values = effective_values() if values is None else values
     key = f"{engine.upper()}_CONCURRENCY"
     try:
-        value = int(os.getenv(key, "4"))
+        value = int(values.get(key, "4"))
     except ValueError as error:
         raise ValueError(f"{key} must be a positive integer.") from error
     if value < 1:

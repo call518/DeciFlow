@@ -1192,7 +1192,7 @@ function handleNavigation(view, section=null, path=null) {
   $('nav-settings').setAttribute('data-active', String(view === 'settings'));
   const settingsHeading = section === 'ssh-keys'
     ? ['SSH Keys', 'Manage authentication keys for SSH connections.']
-    : section === 'configuration' ? ['Configurations', 'Manage result display and application maintenance settings.']
+    : section === 'configuration' ? ['Configurations', 'Manage decision engines, AI assistance, result display, and application maintenance.']
     : section === 'ssh-hosts'
       ? ['SSH Hosts', 'Manage remote hosts and test SSH connections.']
       : ['Settings', 'Manage shared application settings.'];
@@ -1201,7 +1201,7 @@ function handleNavigation(view, section=null, path=null) {
   $('settings-overview').hidden = Boolean(section);
   $('settings-configuration').hidden=view!=='settings' || section!=='configuration';
   $('nav-configuration').setAttribute('aria-current',view==='settings' && section==='configuration'?'page':'false');
-  if(view==='settings' && section==='configuration'){handleLoadResetStatus();handleLoadResultSettings();}
+  if(view==='settings' && section==='configuration'){handleLoadResetStatus();handleLoadResultSettings();handleLoadRuntimeConfiguration();}
   for(const id of ['ssh-keys','ssh-hosts']) {
     $(`settings-${id}`).hidden = view !== 'settings' || section !== id;
     $(`nav-${id}`).setAttribute('aria-current', view === 'settings' && section===id ? 'page' : 'false');
@@ -2700,7 +2700,8 @@ async function handleLoadResetStatus() {
     if(response.status===404 || response.status===405)throw new Error('Reset API is unavailable. Restart the DeciFlow UI server or container.');
     const data=await readApiJsonResponse(response);if(!response.ok)throw new Error(data.error);
     resetInfo=data;$('reset-data-directory').textContent=data.dataDirectory;
-    $('reset-deciflow').disabled=Boolean(data.resetting);
+    $('reset-deciflow').disabled=Boolean(data.resetting || data.restarting);
+    $('restart-deciflow').disabled=Boolean(data.resetting || data.restarting);
     handleMessage('configuration-message',data.resetError || (data.resetting?'Reset is in progress…':''),Boolean(data.resetError));
   }catch(error){handleMessage('configuration-message',error.message,true);}
 }
@@ -2737,6 +2738,78 @@ $('reset-deciflow').onclick=async()=>{
   }catch(error){handleMessage('configuration-message',error.message,true);}
   finally{resettingDeciFlow=false;if(!accepted)$('reset-deciflow').disabled=false;}
 };
+let runtimeConfiguration=null;
+const runtimeControls=new Map();
+let configurationDirty=false;
+$('results-settings-form').oninput=()=>{configurationDirty=true;};
+function handleConfirmMaintenance(title,description,button,buttonClass='quiet') {
+  const dialog=$('maintenance-dialog');dialog.returnValue='cancel';
+  $('maintenance-title').textContent=title;$('maintenance-description').textContent=description;
+  $('maintenance-approve').textContent=button;$('maintenance-approve').className=buttonClass;
+  return new Promise(resolve=>{dialog.onclose=()=>resolve(dialog.returnValue==='approve');dialog.showModal();});
+}
+async function handleLoadRuntimeConfiguration() {
+  $('save-results-settings').disabled=true;
+  try{
+    const response=await fetch('/api/configuration',{method:'POST'});
+    const data=await readApiJsonResponse(response);if(!response.ok)throw new Error(data.error);
+    if(!Array.isArray(data.fields))throw new Error('Configurations API is unavailable. Restart the DeciFlow server to load the updated backend.');
+    runtimeConfiguration=data;runtimeControls.clear();configurationDirty=false;
+    const root=$('runtime-configuration');root.replaceChildren();
+    root.append(element('p','Saved overrides take precedence over .env and defaults. Changes apply to new runs; active and recovered runs retain their original settings. Clear Use UI Override to restore the environment/default value.','caption'));
+    for(const group of [...new Set(data.fields.map(field=>field.group))]){
+      const section=element('fieldset','','criteria-section runtime-section');section.append(element('legend',group));
+      const fields=element('div','','runtime-fields');section.append(fields);
+      for(const field of data.fields.filter(field=>field.group===group)){
+        const row=element('div','','runtime-field');
+        const label=element('label',field.label);const input=element(field.options?'select':'input','');
+        input.setAttribute('aria-label',`${group} ${field.label}`);
+        if(field.options){for(const option of field.options)input.append(new Option(option==='laya'?'Laya':option==='jev'?'Jev':option,option));}
+        else input.type='text';
+        input.value=field.value;label.append(input);
+        const toggle=element('label','','runtime-override');const checkbox=element('input','');checkbox.type='checkbox';checkbox.checked=Object.hasOwn(data.overrides,field.key);
+        checkbox.setAttribute('aria-label',`Override ${field.key}`);toggle.append(checkbox,element('span','Use UI Override'));
+        input.disabled=!checkbox.checked;
+        const source=element('p',`${field.key} · ${field.source} · New Runs`,'caption');
+        checkbox.onchange=()=>{configurationDirty=true;input.disabled=!checkbox.checked;if(!checkbox.checked)input.value=field.fallback;source.textContent=`${field.key} · ${checkbox.checked?'UI Override':field.source==='UI Override'?'Environment / Default':field.source} · New Runs`;};
+        input.oninput=()=>{configurationDirty=true;};
+        const reference=element('details','','runtime-reference');reference.append(element('summary','Environment Reference'),element('p',field.reference,'caption'));
+        row.append(label,toggle,source,element('p',field.help,'caption'),reference);fields.append(row);
+        runtimeControls.set(field.key,{input,checkbox});
+      }
+      root.append(section);
+    }
+    const environment=$('environment-settings');environment.replaceChildren();
+    const credentials=element('div','');
+    for(const [key,configured] of Object.entries(data.credentials)){
+      const reference=element('details','','runtime-reference');reference.append(element('summary',`${key}: ${configured?'Configured':'Not Set'}`),element('p',data.credentialReferences?.[key] || 'Managed in .env; restart DeciFlow after changing this credential.','caption'));credentials.append(reference);
+    }
+    environment.append(element('p','API keys remain in .env and are never returned to the browser. Restart DeciFlow after changing credentials. Deployment settings below cannot be changed by a process restart alone in Docker.','caption'),credentials);
+    for(const field of data.environment){
+      const details=element('details','','runtime-reference');details.append(element('summary',field.key),element('p',`${field.value} · ${field.application}`,'caption'),element('p',field.help,'caption'));environment.append(details);
+    }
+    $('save-results-settings').disabled=false;
+  }catch(error){handleMessage('results-settings-message',error.message,true);}
+}
+$('restart-deciflow').onclick=async()=>{
+  if(resettingDeciFlow)return;
+  try{
+    const response=await fetch('/api/reset/status',{method:'POST'});const status=await readApiJsonResponse(response);
+    if(!response.ok)throw new Error(status.error);
+    if(!await handleConfirmMaintenance('Restart DeciFlow?',`Application data is preserved. ${status.activeRuns || 0} active runs will be suspended and recovered under the existing recovery policy. ${configurationDirty?'Unsaved changes will be discarded. ':''}Only DeciFlow restarts; Laya and Docker containers are unchanged.`,'Restart DeciFlow','warning'))return;
+    resettingDeciFlow=true;$('restart-deciflow').disabled=$('reset-deciflow').disabled=true;
+    const restart=await fetch('/api/restart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirmation:'RESTART DECIFLOW'})});
+    const data=await readApiJsonResponse(restart);if(!restart.ok)throw new Error(data.error);
+    handleMessage('configuration-message','Restart accepted. Suspending Tasks and restarting…');
+    const deadline=Date.now()+60000;
+    while(Date.now()<deadline){
+      await new Promise(resolve=>setTimeout(resolve,1000));
+      try{const check=await fetch('/api/reset/status',{method:'POST'});if(check.ok){const current=await check.json();if(current.instanceId!==data.instanceId && !current.restarting && !current.resetting){globalThis.location.reload();return;}}}catch{/* Connections close during restart. */}
+    }
+    throw new Error('The server has not returned yet. Refresh after checking server logs.');
+  }catch(error){handleMessage('configuration-message',error.message,true);}
+  finally{resettingDeciFlow=false;handleLoadResetStatus();}
+};
 async function handleLoadResultSettings() {
   try {
     const response=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
@@ -2748,9 +2821,14 @@ async function handleLoadResultSettings() {
 $('results-settings-form').onsubmit=async event=>{
   event.preventDefault();$('save-results-settings').disabled=true;
   try{
-    const response=await fetch('/api/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({resultsPerPage:Number($('results-per-page').value)})});
+    const overrides=Object.fromEntries([...runtimeControls].filter(([,control])=>control.checkbox.checked).map(([key,control])=>[key,control.input.value]));
+    if(runtimeConfiguration && (overrides.DECISION_ENGINE || runtimeConfiguration.fields.find(field=>field.key==='DECISION_ENGINE').fallback)==='jev' && runtimeConfiguration.fields.find(field=>field.key==='DECISION_ENGINE').value!=='jev'){
+      if(!await handleConfirmMaintenance('Switch to Jev?','New runs will use the paid Jev API. Active runs retain their original engine.','Save Changes'))return;
+    }
+    const response=await fetch(runtimeConfiguration?'/api/configuration':'/api/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({resultsPerPage:Number($('results-per-page').value),...(runtimeConfiguration?{runtimeOverrides:overrides}:{})})});
     const data=await readApiJsonResponse(response);if(!response.ok)throw new Error(data.error);
-    resultsPerPage=data.resultsPerPage;handleMessage('results-settings-message','Settings saved.');
+    resultsPerPage=data.resultsPerPage;configurationDirty=false;handleMessage('results-settings-message',runtimeConfiguration?'Settings saved. New runs use the updated configuration.':'Settings saved.');
+    if(runtimeConfiguration){globalThis.location.reload();return;}
     if(pagedView){page=0;pagedView.cursors=[null];await handleRefreshResults(true);}
   }catch(error){handleMessage('results-settings-message',error.message,true);}
   finally{$('save-results-settings').disabled=false;}

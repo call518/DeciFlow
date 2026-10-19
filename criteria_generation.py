@@ -14,6 +14,7 @@ from config import get_engine
 from configured_sources import read_configured
 from profiles import validate_profiles
 from remote_sources import read_remote
+from runtime_config import effective_values
 from source_settings import parse_source_settings, resolve_configured_sources
 
 MAX_SAMPLE_BYTES = 150_000
@@ -236,10 +237,11 @@ async def generate_criteria(body: dict[str, Any]) -> dict[str, Any]:
             f"{MAX_SAMPLE_BYTES:,} bytes."
         )
     key = os.getenv("OPENAI_API_KEY", "").strip()
-    model = os.getenv("OPENAI_CRITERIA_MODEL", "gpt-5.6-terra").strip()
+    runtime = effective_values()
+    model = runtime["OPENAI_CRITERIA_MODEL"].strip()
     if not key or not model:
         raise ValueError("Configure OPENAI_API_KEY and OPENAI_CRITERIA_MODEL in .env.")
-    engine = get_engine()
+    engine = get_engine(runtime)
     budget = (
         f"Laya question head budget: {engine.head_tokens} tokens; "
         "each option definition has a separate 48-token cap. Keep rules concise."

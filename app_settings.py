@@ -2,6 +2,7 @@
 
 from classifier import Result
 from config_store import load_records, save_record
+from runtime_config import validate_overrides
 
 
 def load_settings() -> Result:
@@ -17,6 +18,8 @@ def save_settings(value: object) -> Result:
         raise ValueError("Select a valid Results per Page value.")
     if value["resultsPerPage"] not in {10, 30, 50, 100}:
         raise ValueError("Results per Page must be 10, 30, 50, or 100.")
-    settings = {"resultsPerPage": value["resultsPerPage"]}
+    settings = {**load_settings(), "resultsPerPage": value["resultsPerPage"]}
+    if "runtimeOverrides" in value:
+        settings["runtimeOverrides"] = validate_overrides(value["runtimeOverrides"])
     save_record("settings", "application", settings)
     return settings

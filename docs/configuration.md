@@ -2,7 +2,10 @@
 
 [English](configuration.md) | [한국어](configuration.ko.md) | [Documentation](README.md) | [README](../README.md)
 
-DeciFlow settings live in `.env`; process environment variables take precedence.
+DeciFlow operational settings can be edited in **Settings → Configurations**.
+Saved UI overrides take precedence over `.env`/process environment values, then
+code defaults. Clearing **Use UI Override** restores the environment/default value.
+The initial environment setup remains in `.env`.
 Laya server settings are managed on the Laya host; Compose shares `LAYA_API_KEY`
 with DeciFlow. `COMPOSE_PROFILES` selects `cpu` or `cuda`; empty starts only the UI.
 
@@ -30,9 +33,9 @@ with DeciFlow. `COMPOSE_PROFILES` selects `cpu` or `cuda`; empty starts only the
 include `https://*.ngrok-free.app`. Existing `.env` values
 are not overwritten. For native DeciFlow or an external Laya host, set the reachable
 URL explicitly. Both CPU and CUDA publish port 8000.
-At UI startup, explicit `DECISION_ENGINE`, `LAYA_*`, and `JEV_*` entries in the
-mounted `.env` override the inherited engine environment. After changing them,
-use Docker Desktop Restart on DeciFlow-UI (or `docker compose restart ui`), then
+UI overrides remain authoritative after restart. At UI startup, explicit `DECISION_ENGINE`, `LAYA_*`, and `JEV_*` entries in the
+mounted `.env` override the inherited engine environment. After changing environment engine settings or credentials,
+use **Restart DeciFlow**, Docker Desktop Restart on DeciFlow-UI, or `docker compose restart ui`, then
 refresh the browser. Missing entries retain inherited values. Other settings retain
 environment precedence. Changes to ports, mounts, Compose profiles, or the Laya
 service require `docker compose up -d` to recreate affected containers. For native
@@ -146,3 +149,51 @@ the same trusted-origin boundary as file and Action management; do not expose it
 to untrusted users.
 
 In **Settings → Configurations**, edit settings and select **Save Changes** at the bottom to apply them together. **Reset DeciFlow** is a separate immediate action with its own confirmation.
+
+## Runtime configurations
+
+**Configurations → Save Changes** saves results per page and enabled runtime overrides
+atomically in SQLite. Runtime fields cover Decision Engine, Laya URL/model/total and
+question token budgets/concurrency, Jev model/request byte budget/concurrency, and
+OpenAI Criteria authoring model. Each field shows its environment identifier, source,
+application timing, concise help, and the English reference comments from `.env.example`.
+Both engines' effective configuration is validated before saving. Switching to Jev
+requires a configured `JEV_API_KEY` and an explicit cost confirmation; there is no fallback.
+The browser reloads to reflect saved runtime settings; the server need not restart.
+
+New runs use the saved configuration. Active runs retain their engine, model, URL,
+budgets and concurrency. Recoverable new runs persist these non-secret settings and
+restore them even if Configurations changed. Existing legacy runs without such a
+snapshot still stop recovery if the engine/model changed. Credentials are read from
+the environment and never saved in run snapshots. AI Criteria generation uses the
+settings captured when that request starts.
+
+API keys (`LAYA_API_KEY`, `JEV_API_KEY`, `OPENAI_API_KEY`) remain in `.env`; the UI
+shows only whether they are set. Server port, data/log directories, trusted origins,
+and Compose profiles stay under deployment control. The Environment and Deployment
+section describes them without offering edits. Remote Laya model loading, GPU, workers,
+ports and mounts remain settings of that host/container. A UI override never edits `.env`.
+
+## Restart DeciFlow
+
+**Restart DeciFlow**, below **Reset DeciFlow**, restarts only the DeciFlow Python
+process without deleting application data. Its confirmation reports active runs and
+unsaved configuration changes. Cancel/Escape does nothing. Active jobs are suspended
+with checkpoints; eligible enabled Tasks recover under their original IDs/settings,
+paused jobs stay paused, and ordinary Task recovery rules still apply. In-flight
+external inference may already have reached the provider; Actions retain the existing
+conservative recovery behavior. This is not a guarantee of uninterrupted or exactly-once execution.
+
+The UI sends one confirmed restart request, waits up to 60 seconds for a new server
+instance, then reloads. If the server has not returned, it displays an error; check
+server logs and refresh manually. Concurrent Reset/Restart requests are rejected.
+Restart reloads engine/credential entries from the mounted `.env`; it does not restart
+Laya, reload its models, or apply Docker port/mount/profile/GPU changes. Recreate the
+affected containers for those changes. External process invocation must support
+DeciFlow's original-command process replacement; use one process per data directory.
+
+`POST /api/configuration` reads safe metadata. `PUT /api/configuration` accepts
+`resultsPerPage` and `runtimeOverrides` (only supported non-secret environment identifiers).
+`POST /api/restart` requires `{ "confirmation": "RESTART DECIFLOW" }` and returns 202.
+All use the existing trusted-origin boundary, which is not login authentication;
+protect the management UI with proxy authentication for untrusted networks.

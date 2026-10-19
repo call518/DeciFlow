@@ -85,7 +85,9 @@ def main() -> None:
     load_dotenv(ROOT / ".env")
     engine = get_engine()
     if engine.name != "laya":
-        parser.error("Select DECISION_ENGINE=laya; this script never calls paid Jev.")
+        parser.error(
+            "Select Laya in Configurations (or .env without a UI override); this script never calls paid Jev."
+        )
     cases = json.loads(args.cases.read_text())
     if not cases or any(
         not isinstance(case, dict)

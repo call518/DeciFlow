@@ -1507,6 +1507,9 @@ button.task-toggle:focus-visible { outline: 2px solid #24634a; outline-offset: 3
 .configuration-row p { overflow-wrap: anywhere; }
 #results-settings-message:empty { display: none; }
 @media(max-width:700px) { .configuration-row { grid-template-columns: minmax(0, 1fr) auto; } .configuration-row p { grid-column: 1 / -1; } }
+button.warning { padding: 7px 12px; background: #b45309; border: 1px solid #b45309; color: #fff; }
+button.warning:hover:not(:disabled) { background: #92400e; border-color: #92400e; }
+button.warning:focus-visible { outline: 2px solid #b45309; outline-offset: 3px; }
 button.danger { padding: 7px 12px; background: #b93f34; border: 1px solid #b93f34; color: #fff; }
 button.danger:hover:not(:disabled) { background: #9c3028; border-color: #9c3028; }
 #reset-description { color: #a82b25; }
@@ -1620,3 +1623,14 @@ a.quiet[aria-disabled="true"] { opacity: .5; cursor: default; pointer-events: no
 .decision-option .option-review { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; color: #607d70; }
 .decision-option .option-review input { width: auto; margin: 0; }
 .decision-option .option-review[hidden] { display: none; }
+
+.runtime-section { margin: 18px 0; }
+.runtime-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; padding: 14px; }
+.runtime-field { min-width: 0; }
+.runtime-field > label { display: grid; gap: 5px; }
+.runtime-field .runtime-override { display: flex; align-items: center; gap: 7px; margin-top: 8px; font-weight: 400; }
+.runtime-field p { margin: 7px 0; overflow-wrap: anywhere; }
+.runtime-reference { margin: 8px 0; font-size: 12px; }
+.runtime-reference p { white-space: pre-line; overflow-wrap: anywhere; }
+.runtime-environment { border-block: 1px solid #dce6df; padding: 14px 0; margin: 14px 0; }
+@media(max-width:700px) { .runtime-fields { grid-template-columns: minmax(0, 1fr); } }

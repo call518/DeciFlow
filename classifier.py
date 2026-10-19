@@ -12,7 +12,7 @@ from typing import Any, NoReturn
 
 import httpx
 
-from config import Engine, get_jev_input_bytes
+from config import Engine
 from decisions import (  # noqa: F401
     OPERATIONAL_QUESTIONS,
     URGENCY_CRITERIA,
@@ -133,7 +133,7 @@ async def classify_log(
     content = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode(
         "utf-8"
     )
-    byte_limit = get_jev_input_bytes() if engine.name == "jev" else None
+    byte_limit = engine.input_bytes if engine.name == "jev" else None
     metadata: Result = {
         "requestedModel": engine.model,
         "engine": engine.name,

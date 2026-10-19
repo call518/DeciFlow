@@ -256,13 +256,16 @@ The browser updates only new results and reuses existing cards. Rendering pauses
 while Main or the tab is hidden; Tasks keep running and all results are retained.
 
 Main groups Source, Criteria, Actions, and Tasks; Settings groups SSH Keys and
-SSH Hosts and Configurations (result page size, default 30, and maintenance). Returning through the sidebar opens lists and discards unsaved drafts.
+SSH Hosts and Configurations (engine/model/budget/concurrency overrides, AI authoring model, result page size, and maintenance). Returning through the sidebar opens lists and discards unsaved drafts.
 [Usage](docs/usage.md) covers navigation, result controls, and reconnecting.
 Settings and results share `DECIFLOW_DATA_DIR/deciflow.sqlite3`; only SSH key material, known_hosts and Action execution files remain on disk. This test-stage storage change does not import earlier JSON registries or databases: reset application data before use.
 
 A bundled **Sample Elasticsearch** Action is registered on fresh initialization/reset (Python 3.12, module `elasticsearch`). Startup automatically prepares its script, venv, Python and module before Tasks start (download access is required). Setup failures appear in Actions and can be retried by saving or restarting. It is not assigned to Tasks automatically.
 
 Action execution files use `actions/<Action UUID>/`; changing the Name does not create another venv. Action and SSH Key names are editable. Task Action selections and SSH Host key selections use UUIDs; renaming preserves assignments, key files, and Action environments.
+
+**Settings → Configurations** lets you save non-secret operational overrides without restarting the server. New runs use them; active/recovered runs retain their snapshots. UI overrides take precedence over `.env`; clear Use UI Override to restore its fallback. API keys and deployment settings remain in `.env`. See [configuration](docs/configuration.md).
+**Restart DeciFlow**, below Reset, preserves data and suspends/recovers eligible Tasks before replacing the UI process; Docker/Laya deployment changes require their own restart/recreation.
 
 **Settings → Configurations → Reset DeciFlow** permanently clears application data
 and restarts the UI server after explicit confirmation. Back up data first; see
@@ -469,7 +472,7 @@ use an address reachable from the container. `127.0.0.1` refers to the UI contai
 Sidebar host/OS/IP information describes the container.
 For `.env` engine settings (`DECISION_ENGINE`, `LAYA_*`, `JEV_*`), use Docker
 Desktop Restart on DeciFlow-UI or `docker compose restart ui`, then refresh the
-browser. The UI reloads explicit engine settings from the mounted file at startup.
+browser. **Restart DeciFlow** is also available in Configurations. UI overrides take precedence; clear them to use changed `.env` values. The UI reloads explicit engine settings from the mounted file at startup.
 Ports, mounts, Compose profiles, and Laya service settings still require
 `docker compose up -d` to recreate affected containers.
 For source changes, run `docker compose restart ui` and refresh the browser after UI

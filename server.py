@@ -54,7 +54,6 @@ from config import (
     JEV_REQUEST_TOKENS,
     Engine,
     get_engine,
-    get_jev_input_bytes,
     load_startup_settings,
 )
 from config_store import get_data_directory
@@ -72,7 +71,8 @@ from profiles import (
 )
 from reset import reset_data, reset_directory, restart_process
 from result_payload import compact_result
-from result_store import open_result_store
+from result_store import close_result_store, open_result_store
+from runtime_config import configuration_description
 from source_registry import (
     ensure_central_gov_source,
     ensure_local_gov_source,
@@ -184,7 +184,7 @@ async def handle_status(request: Request) -> Response:
             "profiles": {key: value["label"] for key, value in PROFILES.items()},
             "host": await anyio.to_thread.run_sync(_host_info),
             "limits": {
-                "max_jev_input_bytes": get_jev_input_bytes(),
+                "max_jev_input_bytes": engine.input_bytes,
                 "context_tokens": JEV_CONTEXT_TOKENS,
                 "request_tokens": JEV_REQUEST_TOKENS,
             }
@@ -590,6 +590,10 @@ async def prepare_file_execution(
     mode: str, values: object
 ) -> tuple[Result, AsyncGenerator[str, None]]:
     """Resolve settings once for both direct file requests and saved Tasks."""
+    if getattr(app.state, "restart_requested", False) or getattr(
+        app.state, "reset_requested", False
+    ):
+        raise EngineUnavailableError("Application maintenance is in progress.")
     specs = parse_source_settings(values)
     profile_snapshot = deepcopy(PROFILES)
     actions = load_actions() if any(spec.get("actionId") for spec in specs) else []
@@ -627,6 +631,7 @@ async def prepare_file_execution(
         "actionSnapshot": actions,
         "engine": engine.name,
         "model": engine.model,
+        "runtimeSnapshot": dict(engine.runtime or {}),
     }
     return settings, handle_file_events(
         values, paths, mode, engine, specs, actions, profile_snapshot
@@ -735,7 +740,7 @@ async def restore_task_runs() -> set[str]:
                     error="Task was disabled or removed before recovery.",
                 )
                 raise ValueError(snapshot["error"])
-            engine = get_engine()
+            engine = get_engine(settings.get("runtimeSnapshot"))
             if engine.name != settings["engine"] or engine.model != settings["model"]:
                 raise ValueError(
                     "Decision engine or model changed; recovery was stopped to preserve execution settings."
@@ -1315,6 +1320,25 @@ async def handle_settings(request: Request) -> Response:
         return _json(400, {"error": str(error)})
 
 
+async def handle_configuration(request: Request) -> Response:
+    """Read safe runtime metadata or atomically save application preferences."""
+    if not _allowed_origin(request, files=True):
+        return _json(403, {"error": "Configurations require a trusted UI origin."})
+    if getattr(request.app.state, "reset_requested", False) or getattr(
+        request.app.state, "restart_requested", False
+    ):
+        return _json(409, {"error": "Application maintenance is in progress."})
+    try:
+        values = await request.json() if request.method == "PUT" else None
+        settings = await anyio.to_thread.run_sync(
+            partial(save_settings, values) if request.method == "PUT" else load_settings
+        )
+        metadata = await anyio.to_thread.run_sync(configuration_description)
+        return _json(200, {**settings, **metadata})
+    except (ValueError, TypeError, OSError) as error:
+        return _json(400, {"error": str(error)})
+
+
 async def handle_result_page(request: Request) -> Response:
     """Query bounded result pages, save corrections, or stream a complete export."""
     if not _allowed_origin(request, files=True):
@@ -1433,6 +1457,8 @@ async def handle_reset_status(request: Request) -> Response:
             {
                 "instanceId": INSTANCE_ID,
                 "resetting": getattr(request.app.state, "reset_requested", False),
+                "restarting": getattr(request.app.state, "restart_requested", False),
+                "activeRuns": sum(not job.task.done() for job in JOBS.values()),
                 "dataDirectory": str(reset_directory()),
                 "resetError": RESET_ERROR,
             },
@@ -1451,8 +1477,10 @@ async def handle_reset(request: Request) -> Response:
     """Accept explicit confirmation, then reset during graceful shutdown."""
     if not _allowed_origin(request, files=True):
         return _json(403, {"error": "Reset requires a trusted UI origin."})
-    if getattr(request.app.state, "reset_requested", False):
-        return _json(409, {"error": "A reset is already in progress."})
+    if getattr(request.app.state, "reset_requested", False) or getattr(
+        request.app.state, "restart_requested", False
+    ):
+        return _json(409, {"error": "Application maintenance is already in progress."})
     try:
         body = await request.json()
         if not isinstance(body, dict) or body.get("confirmation") != "RESET DECIFLOW":
@@ -1460,9 +1488,40 @@ async def handle_reset(request: Request) -> Response:
         request.app.state.reset_root = reset_directory()
     except (ValueError, TypeError) as error:
         return _json(400, {"error": str(error)})
+    if getattr(request.app.state, "reset_requested", False) or getattr(
+        request.app.state, "restart_requested", False
+    ):
+        return _json(409, {"error": "Application maintenance is already in progress."})
     request.app.state.reset_requested = True
     return JSONResponse(
         {"resetting": True, "instanceId": INSTANCE_ID},
+        status_code=202,
+        headers=HEADERS,
+        background=BackgroundTask(handle_reset_shutdown),
+    )
+
+
+async def handle_restart(request: Request) -> Response:
+    """Restart only DeciFlow after explicit confirmation, preserving its data."""
+    if not _allowed_origin(request, files=True):
+        return _json(403, {"error": "Restart requires a trusted UI origin."})
+    if getattr(request.app.state, "reset_requested", False) or getattr(
+        request.app.state, "restart_requested", False
+    ):
+        return _json(409, {"error": "Application maintenance is already in progress."})
+    try:
+        body = await request.json()
+        if not isinstance(body, dict) or body.get("confirmation") != "RESTART DECIFLOW":
+            raise ValueError("Confirm Restart DeciFlow before continuing.")
+    except (ValueError, TypeError) as error:
+        return _json(400, {"error": str(error)})
+    if getattr(request.app.state, "reset_requested", False) or getattr(
+        request.app.state, "restart_requested", False
+    ):
+        return _json(409, {"error": "Application maintenance is already in progress."})
+    request.app.state.restart_requested = True
+    return JSONResponse(
+        {"restarting": True, "instanceId": INSTANCE_ID},
         status_code=202,
         headers=HEADERS,
         background=BackgroundTask(handle_reset_shutdown),
@@ -1473,6 +1532,7 @@ async def handle_reset(request: Request) -> Response:
 async def lifespan(application: Starlette) -> AsyncIterator[None]:
     """Recover executions before serving and suspend them on ordinary shutdown."""
     application.state.reset_requested = False
+    application.state.restart_requested = False
     load_profiles()
     ensure_voc_source()
     ensure_voc_task()
@@ -1511,6 +1571,9 @@ async def lifespan(application: Starlette) -> AsyncIterator[None]:
                 os.environ["_DECIFLOW_RESET_ERROR"] = (
                     "Reset was incomplete. Check the server logs before retrying."
                 )
+        if application.state.restart_requested:
+            close_result_store(get_data_directory())
+        if application.state.reset_requested or application.state.restart_requested:
             restart_process()
 
 
@@ -1542,6 +1605,8 @@ app = Starlette(
     routes=[
         Route("/api/reset/status", handle_reset_status, methods=["POST"]),
         Route("/api/reset", handle_reset, methods=["POST"]),
+        Route("/api/configuration", handle_configuration, methods=["POST", "PUT"]),
+        Route("/api/restart", handle_restart, methods=["POST"]),
         Route("/api/settings", handle_settings, methods=["POST", "PUT"]),
         Route("/api/jobs/{job_id}/results", handle_result_page, methods=["POST"]),
         Route("/api/jobs/{job_id}/review", handle_result_page, methods=["POST"]),

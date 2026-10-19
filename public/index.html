@@ -103,20 +103,27 @@
         <div class="settings-links">
           <a class="settings-link" href="/settings/ssh-keys"><strong>SSH Keys</strong><span class="caption">Manage authentication keys for SSH connections.</span></a>
           <a class="settings-link" href="/settings/ssh-hosts"><strong>SSH Hosts</strong><span class="caption">Manage remote hosts and test SSH connections.</span></a>
-          <a class="settings-link" href="/settings/configuration"><strong>Configurations</strong><span class="caption">Manage result display and application maintenance settings.</span></a>
+          <a class="settings-link" href="/settings/configuration"><strong>Configurations</strong><span class="caption">Manage decision engines, AI assistance, result display, and application maintenance.</span></a>
         </div>
       </section>
       <section id="settings-configuration" class="card" hidden>
         <form id="results-settings-form">
+          <div id="runtime-configuration" aria-live="polite"></div>
           <div class="configuration-row">
             <label for="results-per-page"><strong>Results per Page</strong></label>
             <select id="results-per-page"><option value="10">10</option><option value="30" selected>30</option><option value="50">50</option><option value="100">100</option></select>
             <p class="caption">Controls displayed results only. Stored results are retained.</p>
           </div>
+        <details id="environment-configuration" class="runtime-environment"><summary>Environment and Deployment</summary><div id="environment-settings"></div></details>
         <div class="configuration-row">
           <strong>Reset DeciFlow</strong>
           <button id="reset-deciflow" class="danger" type="button" disabled>Reset DeciFlow</button>
           <p class="caption">Permanently delete application data and restart DeciFlow. Data directory: <span id="reset-data-directory">Loading…</span></p>
+        </div>
+        <div class="configuration-row">
+          <strong>Restart DeciFlow</strong>
+          <button id="restart-deciflow" class="warning" type="button" disabled>Restart DeciFlow</button>
+          <p class="caption">Preserve data and restart the DeciFlow process. Active Tasks are suspended and recovered under the existing recovery policy. Laya and Docker deployment settings are not restarted.</p>
         </div>
         <p id="configuration-message" class="caption" role="status" aria-live="polite"></p>
           <button id="save-results-settings" class="primary" type="submit">Save Changes</button>
@@ -269,6 +276,13 @@
         <p>DeciFlow will restart with its default configuration. The data directory itself, application files, .env, input files outside this directory, and logs outside this directory are retained.</p>
       </div>
       <footer class="ssh-trust-actions"><button type="submit" value="cancel" class="quiet" autofocus>Cancel</button><button id="confirm-reset" type="submit" value="reset" class="danger">Yes, Reset DeciFlow</button></footer>
+    </form>
+  </dialog>
+  <dialog id="maintenance-dialog" class="ssh-trust-dialog" aria-labelledby="maintenance-title">
+    <form method="dialog">
+      <header class="ssh-trust-header"><h2 id="maintenance-title">Restart DeciFlow?</h2><button type="submit" value="cancel" class="quiet ssh-trust-close" aria-label="Cancel">×</button></header>
+      <div class="ssh-trust-body"><p id="maintenance-description"></p></div>
+      <footer class="ssh-trust-actions"><button type="submit" value="cancel" class="quiet" autofocus>Cancel</button><button id="maintenance-approve" type="submit" value="approve" class="quiet">Restart DeciFlow</button></footer>
     </form>
   </dialog>
   <div id="task-monitor-tooltip" class="task-monitor-tooltip" role="tooltip" hidden></div>
