@@ -57,7 +57,8 @@ async def test_assets_and_status(monkeypatch: pytest.MonkeyPatch) -> None:
             assert response.headers["x-content-type-options"] == "nosniff"
             if path == "/":
                 assert '<html lang="en">' in response.text
-                assert 'id="powered-by"' in response.text
+                assert 'AI-Assisted Decisions' in response.text
+                assert 'Fast decisions. Faster flow.' in response.text
                 assert 'src="/logo.png" alt="DeciFlow"' in response.text
                 assert (
                     'href="https://github.com/call518/DeciFlow" target="_blank" '

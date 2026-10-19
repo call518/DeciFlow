@@ -2952,7 +2952,6 @@ fetch('/api/status').then(async response => {
   $('status').append(element('span', ' · Model: '));
   $('status').append(element('strong', data.model, 'selected-model'));
   if (!data.configured) $('status').append(element('span', ' · API key required'));
-  $('powered-by').textContent = `Powered by ${engineLabel}`;
   renderTaskMonitor();
   await sourceLoadPromise;
   (routeLocation()==='/' && !globalThis.location?.hash?handleRestoreJob():Promise.resolve()).then(()=>{monitoringReady=true;handleLoadTasks();}).catch(error => { $('message').className = 'error-message'; handleMessage('message',error.message,true); });
