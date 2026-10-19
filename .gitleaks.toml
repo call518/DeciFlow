@@ -1,0 +1,12 @@
+title = "DeciFlow secret detection"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "Public UUID identifiers are not generic API keys"
+regexTarget = "secret"
+regexes = ['''(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$''']
