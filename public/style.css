@@ -1685,3 +1685,8 @@ a.quiet[aria-disabled="true"] { opacity: .5; cursor: default; pointer-events: no
 .reference-table td { font-weight: 400; }
 
 .reference-table td:nth-child(-n+2) { font-weight: 600; }
+
+.criteria-sample-list { max-height: min(55vh, 480px); overflow-y: auto; overscroll-behavior: contain; padding-right: 6px; }
+.criteria-sample-pagination { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; margin-bottom: 8px; }
+.criteria-sample-pagination .caption { text-align: center; }
+.criteria-sample-pagination button { margin: 0; }

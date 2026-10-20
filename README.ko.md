@@ -175,7 +175,9 @@ Automatic (ChatGPT)이며 목적을 직접 지정하려면 Manual을 선택합�
 저장 전에 제안한 목적과 생성된 Criteria를 확인하세요.
 Events Per Sample은 미리보기 샘플 하나에 묶을 TEXT 이벤트 수입니다.
 JSONL은 입력칸 대신 레코드 하나가 샘플 하나라는 안내를 표시합니다. 목적 작성 안내에서 판단 항목, 판단 시점, 규칙과 예시를 확인할 수 있습니다.
-수정한 샘플, 목적, 작성 규칙이 OpenAI에 전송되며 API 요금이 발생합니다.
+생성·수정은 Automatic/Manual 목적 모드와 선택 사항인 **Additional Instructions**를
+공유하며, 충돌하는 요청보다 앱의 내장 지침을 우선합니다. 수정한 샘플·목적·추가 지침·
+작성 규칙과 수정 시 현재 초안을 OpenAI에 전송하며 API 요금이 발생합니다.
 검증된 전체 초안을 검토하고 **Save Changes**로 저장하세요.
 실제 분류는 계속 Laya 또는 Jev가 수행하며 Task에 자동 할당하지 않습니다.
 [AI Criteria 생성](docs/criteria.ko.md#ai로-criteria-생성)을 참고하세요.

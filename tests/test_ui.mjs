@@ -136,7 +136,7 @@ function decisionCards(row) {
 }
 
 function logs(nodes) {
-  return nodes.get('results').children.map(row => row.children[1].textContent);
+  return nodes.get('results').children.map(row => row.children[1].children[1].textContent);
 }
 
 test('arrival order, filtering, corrections, pagination and restart', async () => {
@@ -3688,7 +3688,7 @@ test('Token warnings distinguish truncated input, shortened Criteria and unsent 
     events[3].result={...events[3].result,engine,log:'ordinary failure',error:'Could not inspect token limits.',providerResponse:{usage:{truncated:false,criteria_tokens_dropped:{category:0}}}};
     const {nodes,context}=workspace(events);
     await runTask(nodes);
-    const row=log=>nodes.get('results').children.find(item=>item.children[1].textContent===log);
+    const row=log=>nodes.get('results').children.find(item=>item.children[1].children[1].textContent===log);
     const warning=log=>row(log).children[0].children.find(item=>item.className==='result-token-warning');
     assert.equal(warning('truncated input').children[0].textContent,'Input Token Limit');
     assert.match(warning('truncated input').children[1].textContent,/prediction was rejected/);
@@ -3832,7 +3832,7 @@ test('AI sample guidance explains TEXT grouping, fixed JSONL records, SSH select
     assert.ok(walk(details).some(node=>node.textContent?.includes('randomly selects up to the selected Sample Count')));
   }
   assert.match(field('Analysis Purpose').attributes['aria-description'],/priority rules, exclusions/);
-  assert.ok(walk(details).some(node=>node.textContent?.includes('Count promised callbacks as outstanding work')));
+  assert.ok(walk(details).some(node=>node.textContent?.includes('Classify failures, urgency')));
 });
 
 test('Analysis purpose defaults to automatic and preserves manual input when switching',async()=>{
@@ -4288,7 +4288,7 @@ test('Every result shows a copyable Response with exact bodies and failure diagn
   await runTask(nodes);
   const disclosure=row=>row.children.find(child=>child.children[0]?.textContent==='Response');
   for(let index=0;index<cases.length;index++){
-    const row=nodes.get('results').children.find(row=>row.children.some(child=>child.textContent===`log-${index}`));
+    const row=nodes.get('results').children.find(row=>row.children[1].children[1].textContent===`log-${index}`);
     assert.ok(row, `Missing result ${index}: ${nodes.get("message").textContent}`);
     const response=disclosure(row);
     assert.ok(response);
@@ -4337,7 +4337,7 @@ test('Result metadata is collapsed under Details while Action failures stay visi
   Object.assign(failure.result,{source:'ssh://host/logs',line:7,hostName:'Remote Host',hostAddress:'host',hostPort:22,actionExecution:{name:'Notify',status:'failed',elapsedMs:12,exitCode:7,error:'Connection refused'}});
   const {nodes,context}=workspace([{type:'start',engine:'laya',total:3},success,failure,plain]);
   await runTask(nodes);
-  const row=index=>nodes.get('results').children.find(row=>row.children[1].textContent===`log-${index}`);
+  const row=index=>nodes.get('results').children.find(row=>row.children[1].children[1].textContent===`log-${index}`);
   const details=index=>row(index).children.find(child=>child.children[0]?.textContent==='Details');
   assert.equal(details(0).open,false);
   assert.equal(details(1).open,false);
@@ -4752,10 +4752,10 @@ test('Existing Criteria can be revised with AI without changing identity or savi
   vm.runInContext("criteriaFields.instructions.value='Unsaved local rules.'",context);
   const walk=node=>[node,...(node.children || []).flatMap(child=>typeof child==='object'?walk(child):[])];
   const generator=walk(nodes.get('criteria-editor')).find(node=>node.className?.includes('criteria-generator'));
-  assert.equal(generator.children[0].textContent,'Revise With AI');
-  const purpose=walk(generator).find(node=>node.attributes?.['aria-label']==='Revision Request');
-  const generate=walk(generator).find(node=>node.textContent==='Revise Criteria' && node.onclick);
-  assert.equal(generate.disabled,true);purpose.value='Clarify missing evidence.';purpose.oninput();assert.equal(generate.disabled,false);
+  assert.equal(generator.children[0].textContent,'Generate With AI');
+  const purpose=walk(generator).find(node=>node.attributes?.['aria-label']==='Additional Instructions');
+  const generate=walk(generator).find(node=>node.textContent==='Generate Criteria' && node.onclick);
+  assert.equal(generate.disabled,false);purpose.value='Clarify missing evidence.';
   const originalFetch=context.fetch;let body;
   context.fetch=async(path,options)=>{
     if(path==='/api/criteria/generate'){body=JSON.parse(options.body);return {ok:true,json:async()=>({profile:revised,analysisPurpose:purpose.value})};}
@@ -4779,10 +4779,10 @@ test('AI revision ignores replies for changed or reopened editor drafts',async()
     await nodes.get('nav-criteria').onclick();vm.runInContext('handleEditCriteria(sampleProfileIds.general)',context);
     const walk=node=>[node,...(node.children || []).flatMap(child=>typeof child==='object'?walk(child):[])];
     const generator=walk(nodes.get('criteria-editor')).find(node=>node.className?.includes('criteria-generator'));
-    const purpose=walk(generator).find(node=>node.attributes?.['aria-label']==='Revision Request');purpose.value='Revise rules';purpose.oninput();
+    const purpose=walk(generator).find(node=>node.attributes?.['aria-label']==='Additional Instructions');purpose.value='Revise rules';
     let finish;const originalFetch=context.fetch;
     context.fetch=(path,options)=>path==='/api/criteria/generate'?new Promise(resolve=>{finish=resolve;}):originalFetch(path,options);
-    const pending=walk(generator).find(node=>node.textContent==='Revise Criteria' && node.onclick).onclick();
+    const pending=walk(generator).find(node=>node.textContent==='Generate Criteria' && node.onclick).onclick();
     if(reopen)vm.runInContext('handleCloseCriteria();handleEditCriteria(sampleProfileIds.general)',context);
     vm.runInContext("criteriaFields.instructions.value='Latest manual rules.'",context);
     finish({ok:true,json:async()=>({profile:revised,analysisPurpose:'Revise rules'})});await pending;
@@ -4871,4 +4871,84 @@ test('List searches survive refresh within a tab and tolerate unavailable storag
   for(const id of ['source-search','criteria-search','action-search','task-search','ssh-key-search','ssh-host-search'])assert.equal(second.nodes.get(id).value,'Selected name');
   const blocked=workspace([],undefined,undefined,undefined,null,{getItem:()=>{throw Error('Blocked');},setItem:()=>{throw Error('Blocked');}});
   blocked.nodes.get('criteria-search').value='Search';assert.doesNotThrow(()=>blocked.nodes.get('criteria-search').oninput());
+});
+
+for(const revising of [false,true])test(`${revising?'Revision':'Generation'} samples paginate by 10 and submit edits across all pages`,async()=>{
+  const profile=readProfileTemplate('general');const {nodes,context}=workspace([],undefined,undefined,{[sampleProfileIds.general]:profile});
+  await nodes.get('nav-criteria').onclick();vm.runInContext(`handleEditCriteria(${revising?'sampleProfileIds.general':"''"})`,context);
+  const walk=node=>[node,...(node.children || []).flatMap(child=>typeof child==='object'?walk(child):[])];
+  const generator=walk(nodes.get('criteria-editor')).find(node=>node.className?.includes('criteria-generator'));
+  const find=label=>walk(generator).find(node=>node.attributes?.['aria-label']===label);
+  const button=text=>walk(generator).find(node=>node.textContent===text && node.onclick);
+  let previews=0,submitted;const original=context.fetch;
+  context.fetch=async(path,options)=>{
+    if(path==='/api/criteria/samples'){previews++;return {ok:true,json:async()=>({samples:Array.from({length:21},(_,i)=>`sample-${i+1}`)})};}
+    if(path==='/api/criteria/generate'){submitted=JSON.parse(options.body);return {ok:false,json:async()=>({error:'Test response'})};}
+    return original(path,options);
+  };
+  generator.open=true;await generator.ontoggle();await button('Preview Source Samples').onclick();
+  const list=walk(generator).find(node=>node.className==='criteria-sample-list');
+  assert.equal(list.children.length,10);assert.equal(find('Previous Samples').disabled,true);
+  find('Sample 1').value='edited-first';find('Next Samples').onclick();
+  assert.equal(list.children.length,10);assert.equal(find('Sample 1'),undefined);find('Sample 11').value='edited-eleventh';
+  find('Next Samples').onclick();assert.equal(list.children.length,1);assert.equal(find('Next Samples').disabled,true);
+  button('Remove Sample').onclick();assert.equal(list.children.length,10);assert.equal(find('Next Samples').disabled,true);
+  assert.ok(find('Sample 11'));assert.equal(find('Sample 11').value,'edited-eleventh');
+  find('Previous Samples').onclick();assert.equal(find('Sample 1').value,'edited-first');assert.equal(previews,1);
+  if(revising){find('Additional Instructions').value='Keep the decisions';}
+  await button('Generate Criteria').onclick();
+  assert.equal(submitted.samples.length,20);assert.equal(submitted.samples[0],'edited-first');assert.equal(submitted.samples[10],'edited-eleventh');
+  assert.equal(submitted.samples.includes('sample-21'),false);
+  find('Sample Count').value='12';find('Sample Count').oninput();
+  assert.equal(walk(generator).find(node=>node.className==='criteria-samples').hidden,true);
+});
+
+for(const revising of [false,true])test(`${revising?'Edit':'Create'} shares automatic/manual modes and optional additional instructions`,async()=>{
+  const profile=readProfileTemplate('general');const {nodes,context}=workspace([],undefined,undefined,{[sampleProfileIds.general]:profile});
+  await nodes.get('nav-criteria').onclick();vm.runInContext(`handleEditCriteria(${revising?'sampleProfileIds.general':"''"})`,context);
+  const walk=node=>[node,...(node.children || []).flatMap(child=>typeof child==='object'?walk(child):[])];
+  const generator=walk(nodes.get('criteria-editor')).find(node=>node.className?.includes('criteria-generator'));
+  const field=label=>walk(generator).find(node=>node.attributes?.['aria-label']===label);
+  const generate=walk(generator).find(node=>node.textContent===('Generate Criteria') && node.onclick);
+  const mode=field('Analysis Purpose Mode'),purpose=field('Analysis Purpose'),extra=field('Additional Instructions');
+  assert.equal(mode.value,'automatic');assert.notEqual(mode.parentElement.hidden,true);assert.equal(purpose.parentElement.hidden,true);
+  let submitted;const original=context.fetch;
+  context.fetch=async(path,options)=>{
+    if(path==='/api/criteria/samples')return {ok:true,json:async()=>({samples:['Sample input']})};
+    if(path==='/api/criteria/generate'){submitted=JSON.parse(options.body);return {ok:false,json:async()=>({error:'Mock response'})};}
+    return original(path,options);
+  };
+  if(!revising){generator.open=true;await generator.ontoggle();await walk(generator).find(node=>node.textContent==='Preview Source Samples').onclick();}
+  assert.equal(generate.disabled,false);await generate.onclick();assert.equal(submitted.purposeMode,'automatic');assert.equal(submitted.additionalInstructions,undefined);
+  mode.value='manual';mode.onchange();assert.equal(purpose.parentElement.hidden,false);assert.equal(generate.disabled,true);
+  purpose.value='Classify operational issues';purpose.oninput();assert.equal(generate.disabled,false);
+  extra.value='  Write Korean labels.  ';await generate.onclick();assert.equal(submitted.additionalInstructions,'Write Korean labels.');assert.equal(submitted.purpose,purpose.value);
+  mode.value='automatic';mode.onchange();await generate.onclick();assert.equal(submitted.purpose,'');assert.equal(submitted.additionalInstructions,'Write Korean labels.');assert.equal(purpose.value,'Classify operational issues');
+});
+
+for(const format of ['text','jsonl'])test(`${format} Input has a consistent disclosure and remembers manual state`,async()=>{
+  const success=result(0,false),failure=result(1,false);success.result.inputFormat=format;failure.result.inputFormat=format;failure.result.error='Failed request';
+  const {nodes,context}=workspace([success,failure]);await runTask(nodes);
+  const input=()=>nodes.get('results').children[0].children.find(node=>node.className==='original-input');
+  for(const row of nodes.get('results').children){
+    const section=row.children.find(node=>node.className==='original-input');
+    assert.equal(section.tagName,'details');assert.equal(section.children[0].textContent,'Input');assert.equal(section.open,format==='text');
+  }
+  input().open=format!=='text';input().ontoggle();
+  vm.runInContext('render()',context);assert.equal(input().open,format!=='text');
+  input().open=format==='text';input().ontoggle();
+  vm.runInContext('render()',context);assert.equal(input().open,format==='text');
+});
+
+test('Default-expanded TEXT Input does not rewrite URLs and preserves manual collapse across paged object replacements',async()=>{
+  const navigation={pathname:'/',search:'',hash:''};const {context,nodes}=workspace([result(0,false)],undefined,undefined,undefined,navigation);
+  await runTask(nodes);const writes=enableCleanRoutes(context,navigation);navigation.pathname='/runs/scope';
+  vm.runInContext("activeJobId='scope';resultCursors.set(results[0],1);render()",context);
+  const input=()=>nodes.get('results').children[0].children.find(node=>node.className==='original-input');
+  assert.equal(input().open,true);input().ontoggle();assert.equal(writes.length,0);
+  input().open=false;input().ontoggle();
+  vm.runInContext('results=results.map(item=>({...item}));resultCursors.set(results[0],1);render()',context);
+  assert.equal(input().open,false);
+  input().open=true;input().ontoggle();assert.match(navigation.search,/detail=input/);
+  vm.runInContext('render()',context);assert.equal(input().open,true);
 });

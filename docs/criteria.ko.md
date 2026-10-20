@@ -61,7 +61,7 @@ OpenAI 키 없이도 이 가이드를 따라 Criteria를 직접 작성·수정·
 4. **Analysis Purpose Mode**의 기본값 **Automatic (ChatGPT)**를 유지하면 샘플에서
    목적을 추론합니다. 직접 지정하려면 **Manual**을 선택해 **Analysis Purpose**를
    입력하세요. **Generate Criteria**를 누르면 화면의 샘플, 모드, 수동 목적(입력한 경우),
-   앱의 작성 규칙을 OpenAI에 전달합니다.
+   추가 지침(입력한 경우), 앱의 작성 규칙을 OpenAI에 전달합니다.
    민감한 내용은 먼저 제거하세요. OpenAI API 요금이 발생합니다.
 5. 자동 모드의 **Suggested Analysis Purpose** 또는 수동 모드의 **Analysis Purpose**와
    자동 입력된 이름, 공통 지침, 순서대로 구성된 Decisions, 선택지·단계,
@@ -322,9 +322,24 @@ Choice 정의는 `reviewOptions`를 명시적으로 저장합니다. 공통 지�
 
 ## AI로 기존 Criteria 수정
 
-Edit에서 **Revise With AI**를 펼치고 **Revision Request**에 수정 요청을 입력합니다.
-현재 편집 중인 초안과 요청을 OpenAI로 보내며, Source 샘플은 선택 사항입니다.
+Edit에서 **Generate With AI**를 펼칩니다. 최초 생성과 동일하게 **Analysis Purpose Mode**와
+**Additional Instructions**를 제공합니다. **Automatic (ChatGPT)**는 현재 초안을 검토하고
+기존 목적을 추론하며, **Manual**은 **Analysis Purpose** 입력이 필요합니다.
+현재 편집 중인 초안을 OpenAI로 보내며, Source 샘플은 선택 사항입니다.
 OpenAI API 요금이 발생합니다. 반환된 초안을 검토하고 **Save Changes**를 눌러
 같은 Criteria ID로 저장합니다. 생성만으로 자동 저장하지 않습니다.
 기존 실행은 원래 Criteria를 유지합니다. 요청 대기 중 편집기를 닫거나 다시 열거나
 내용을 변경하면 해당 응답은 적용하지 않습니다.
+
+샘플 미리보기는 내부 스크롤 영역에 페이지당 10개씩 표시합니다. Previous/Next는
+표시 페이지만 바꾸며 수정·삭제 내용은 유지합니다. 생성 시 모든 페이지의 남은 샘플을
+전송하며, 페이지 이동은 추가 조회나 샘플 재추출을 하지 않습니다.
+
+## 추가 작성 지침
+
+최초 생성과 수정 모두 Automatic·Manual 모드에서 선택 사항인 **Additional Instructions**
+(최대 4,000자)를 제공합니다. 공란이면 앱의 내장 작성 지침만 사용합니다. 표시 언어,
+변경 요청 등 작성 요구를 입력할 수 있습니다. 별도 사용자 입력으로 전달하며 앱의
+내장 지침·작성 가이드·스키마·예산을 우선하고 충돌하는 부분은 무시하도록 지시합니다.
+별도의 분류 규칙으로 저장하지 않으며, 호환되는 업무 규칙이 반영된 생성 결과를
+검토한 뒤 저장하세요.

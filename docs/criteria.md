@@ -61,7 +61,7 @@ representative model names and links to the official catalog for availability.
 4. Leave **Analysis Purpose Mode** on **Automatic (ChatGPT)** (the default) to
    infer a purpose from the samples, or choose **Manual** and enter your purpose.
    Select **Generate Criteria**. The shown samples, mode, manual purpose (if any),
-   and application authoring rules are sent to OpenAI.
+   any Additional Instructions, and application authoring rules are sent to OpenAI.
    Remove sensitive content first. Generation incurs OpenAI API charges.
 5. Review **Suggested Analysis Purpose** in automatic mode, or **Analysis Purpose**
    in manual mode, plus the populated Name, shared instructions, Decisions, options or
@@ -333,9 +333,25 @@ for per-decision uncertainty and review reasons.
 
 ## Revise Existing Criteria With AI
 
-In Edit, expand **Revise With AI** and enter a **Revision Request**. The current
-editor draft and request are sent to OpenAI; Source samples are optional. This
+In Edit, expand **Generate With AI**. The same **Analysis Purpose Mode** and
+**Additional Instructions** fields are available as in creation. **Automatic (ChatGPT)**
+reviews the current draft and infers its existing objective; **Manual** requires an
+**Analysis Purpose**. The current draft is sent to OpenAI; Source samples are optional. This
 incurs OpenAI API charges. Review the returned draft and select **Save Changes**
 to persist it under the same Criteria ID. Generation does not save automatically.
 Existing runs retain their original Criteria. Replies are discarded if the editor
 is closed, reopened, or changed while the request is pending.
+
+Sample previews show 10 items per page in a scrollable area. Previous/Next
+changes only the visible page; edits and removals persist. Generation sends all
+remaining samples across every page, without fetching or resampling on page changes.
+
+## Additional Authoring Instructions
+
+Creation and revision both provide optional **Additional Instructions** (up to
+4,000 characters) in Automatic and Manual modes. Leave blank to use only the
+application authoring rules. Use this field for label language, requested changes,
+or other authoring preferences. It is sent separately as user input; application
+instructions, the authoring guide, schema, and budgets take precedence. Conflicting
+parts must be ignored. This field is not saved as a separate classification rule;
+review the generated Criteria for compatible business rules before saving.

@@ -180,7 +180,10 @@ suggested purpose and generated Criteria before saving.
 Events Per Sample groups TEXT events for preview only; JSONL shows an explanation
 that one record is one sample. Purpose guidance explains the desired decisions,
 judgment time, and rules.
-OpenAI receives the edited samples, purpose, and authoring rules; generation incurs
+Creation and editing share Automatic/Manual purpose modes and optional
+**Additional Instructions**; application rules take precedence over conflicting requests.
+OpenAI receives the edited samples, purpose, additions, authoring rules, and current
+draft when editing; generation incurs
 API charges. Review the complete validated draft and select **Save Changes**.
 Classification continues to use Laya or Jev; generation does not assign a Task.
 See [AI Criteria generation](docs/criteria.md#generate-criteria-with-ai).

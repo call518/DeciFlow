@@ -67,14 +67,18 @@ function hasReviewerChange(result) {
 const expandedResultDetails=new Map();
 const expandedUnpagedDetails=new WeakMap();
 let detailRunId;
-function handleResultDisclosure(node,result,kind) {
+function handleResultDisclosure(node,result,kind,initialOpen=false) {
   const paged=resultCursors.has(result);
   const store=paged?expandedResultDetails:expandedUnpagedDetails;
   const key=paged?`${activeJobId}:${resultCursors.get(result)}`:result;
-  node.open=store.get(key)?.has(kind) || resultRouteOpen(result,kind);
+  const closed=`closed:${kind}`;
+  node.open=Boolean(store.get(key)?.has(kind) || resultRouteOpen(result,kind) || (initialOpen && !store.get(key)?.has(closed)));
+  let previousOpen=node.open;
   node.ontoggle=()=>{
+    if(node.open===previousOpen)return;previousOpen=node.open;
     const opened=store.get(key) || new Set();
-    if(node.open)opened.add(kind);else opened.delete(kind);
+    if(node.open){opened.add(kind);opened.delete(closed);}
+    else{opened.delete(kind);if(initialOpen)opened.add(closed);}
     if(opened.size)store.set(key,opened);else store.delete(key);
     if(node.isConnected!==false)handleResultRoute(result,kind,node.open);
   };
@@ -1585,17 +1589,33 @@ function handleCloneCriteria(id) {
 function renderCriteriaGenerator(criteriaId = null) {
   const revising=Boolean(criteriaId);
   const details=element('details','','criteria-section criteria-generator');
-  details.append(element('summary',revising?'Revise With AI':'Generate With AI'));
+  details.append(element('summary','Generate With AI'));
   const panel=element('fieldset','','action-registration');details.append(panel);
-  panel.append(element('p',revising?'Send the current editor draft and your revision request to OpenAI. Source samples are optional. API charges apply. Review the revised draft, then select Save Changes; the Criteria ID stays unchanged.':'Preview and edit the samples before sending them to OpenAI. Generation uses the configured API key and incurs API charges. Review the generated draft, then select Save Changes.','criteria-help'));
+  panel.append(element('p',revising?'Send the current editor draft to OpenAI for automatic review or a manual analysis purpose. Source samples are optional. API charges apply. Review the revised draft, then select Save Changes; the Criteria ID stays unchanged.':'Preview and edit the samples before sending them to OpenAI. Generation uses the configured API key and incurs API charges. Review the generated draft, then select Save Changes.','criteria-help'));
   const source=element('select','');source.setAttribute('aria-label','Sample Source');
   const host=element('select','');host.setAttribute('aria-label','Sample SSH Host');
   const count=element('input','');count.type='number';count.min='1';count.value='1';count.setAttribute('aria-label','Events Per Sample');
   const sampleCount=element('input','');sampleCount.type='number';sampleCount.min='1';sampleCount.step='1';sampleCount.value='10';sampleCount.setAttribute('aria-label','Sample Count');
-  const purpose=element('textarea','');purpose.rows=3;purpose.maxLength=4000;purpose.setAttribute('aria-label',revising?'Revision Request':'Analysis Purpose');purpose.placeholder=revising?'Describe what to change and what to preserve.':'Describe what to judge, when to judge it, and any rules or exclusions.';
-  const samples=element('div','','criteria-samples');const sampleInputs=[];
+  const purpose=element('textarea','');purpose.rows=3;purpose.maxLength=4000;purpose.setAttribute('aria-label','Analysis Purpose');purpose.placeholder='Describe what to judge, when to judge it, and any rules or exclusions.';
+  const samples=element('div','','criteria-samples');samples.hidden=true;const sampleInputs=[];
+  const sampleList=element('div','','criteria-sample-list');sampleList.setAttribute('aria-label','Source Samples');sampleList.tabIndex=0;
+  const samplePager=element('div','','criteria-sample-pagination');
+  const previousSamples=element('button','Previous','quiet');previousSamples.type='button';previousSamples.setAttribute('aria-label','Previous Samples');
+  const nextSamples=element('button','Next','quiet');nextSamples.type='button';nextSamples.setAttribute('aria-label','Next Samples');
+  const samplePageInfo=element('span','','caption');samplePageInfo.setAttribute('role','status');
+  samplePager.append(previousSamples,samplePageInfo,nextSamples);samples.append(samplePager,sampleList);
+  let samplePage=0;
+  const renderSamplePage=()=>{
+    const pages=Math.max(1,Math.ceil(sampleInputs.length/10));samplePage=Math.min(samplePage,pages-1);
+    const offset=samplePage*10;
+    sampleList.replaceChildren(...sampleInputs.slice(offset,offset+10).map(input=>input.parentElement));sampleList.scrollTop=0;
+    samples.hidden=!sampleInputs.length;previousSamples.disabled=samplePage===0;nextSamples.disabled=samplePage>=pages-1;
+    samplePageInfo.textContent=`${offset+1}–${Math.min(offset+10,sampleInputs.length)} of ${sampleInputs.length} · Page ${samplePage+1} of ${pages}`;
+  };
+  previousSamples.onclick=()=>{if(samplePage>0){samplePage--;renderSamplePage();}};
+  nextSamples.onclick=()=>{if((samplePage+1)*10<sampleInputs.length){samplePage++;renderSamplePage();}};
   const preview=element('button','Preview Source Samples','quiet');preview.type='button';
-  const generate=element('button',revising?'Revise Criteria':'Generate Criteria','primary');generate.type='button';generate.disabled=true;
+  const generate=element('button','Generate Criteria','primary');generate.type='button';generate.disabled=true;
   const message=element('p','','criteria-help');message.setAttribute('role','status');
   const addField=(caption,input,help='')=>{const label=element('label',caption);label.append(input);if(help){label.append(element('span',help,'criteria-help'));input.setAttribute('aria-description',help);}panel.append(label);return label;};
   addField('Source',source,'Select a registered Local File, Remote File (SSH), or HDFS Source. Its input format determines how samples are grouped.');
@@ -1604,18 +1624,19 @@ function renderCriteriaGenerator(criteriaId = null) {
   addField('Sample Count',sampleCount,'Enter a positive whole number (default: 10). More samples consume more tokens and may increase API charges. Events Per Sample controls the grouping within each sample.');
   const sampleHelp=element('p','','criteria-help');sampleHelp.setAttribute('role','status');panel.append(sampleHelp);
   const purposeMode=element('select','');purposeMode.setAttribute('aria-label','Analysis Purpose Mode');
-  purposeMode.append(new Option('Automatic (ChatGPT)','automatic'),new Option('Manual','manual'));purposeMode.value=revising?'manual':'automatic';
-  const purposeModeLabel=addField('Analysis Purpose Mode',purposeMode,'Automatic: AI suggests an analysis purpose and Criteria from the samples. Manual: describe your own objective. Review the suggested purpose before saving.');
-  purposeModeLabel.hidden=revising;
-  const purposeLabel=addField(revising?'Revision Request':'Analysis Purpose',purpose,revising?'Describe the requested changes. Existing decision and option IDs are preserved unless you explicitly request a change.':'Tell AI what decisions this Criteria should make. Describe the input, the questions or categories you need, when to judge them, and any priority rules, exclusions, or handling of missing evidence. Plain language is enough; you do not need to write JSON or fill in every Criteria field.');
-  purposeLabel.append(element('span',revising?'Example: Keep the current decisions and result keys. Clarify how missing evidence is handled.':'Example: For customer consultations, classify inquiry type, urgency, and whether staff owe a follow-up at the end of the conversation. Count promised callbacks as outstanding work; exclude actions owed only by the customer. Use Unknown when evidence is insufficient. Write labels and rules in Korean.','criteria-help'));
+  purposeMode.append(new Option('Automatic (ChatGPT)','automatic'),new Option('Manual','manual'));purposeMode.value='automatic';
+  addField('Analysis Purpose Mode',purposeMode,'Automatic: infer the objective from samples or the current Criteria. Manual: enter your analysis objective. Review the suggested purpose before saving.');
+  const purposeLabel=addField('Analysis Purpose',purpose,'Describe the decisions this Criteria should make, priority rules, exclusions, and handling of missing evidence.');
+  purposeLabel.append(element('span','Example: Classify failures, urgency, and whether operator intervention is needed. Use explicit evidence only.','criteria-help'));
+  const additional=element('textarea','');additional.rows=3;additional.maxLength=4000;additional.setAttribute('aria-label','Additional Instructions');additional.placeholder='Optional preferences or changes, such as label language or decisions to refine.';
+  addField('Additional Instructions',additional,'Optional in both modes, up to 4,000 characters. Leave blank to use only the application authoring instructions. Conflicting requests are ignored in favor of those instructions. This request is sent to OpenAI; it is not saved as a separate classification instruction.');
   const updatePurposeMode=()=>{purposeLabel.hidden=purposeMode.value==='automatic';purpose.disabled=purposeLabel.hidden;};
   purposeMode.onchange=updatePurposeMode;updatePurposeMode();
   panel.append(preview,samples,generate,message);
   let initialized=false;let availableSources=[];
-  const updateGenerate=()=>{generate.disabled=revising?!purpose.value.trim():!sampleInputs.length;};
-  purpose.oninput=updateGenerate;
-  const resetSamples=()=>{sampleInputs.length=0;samples.replaceChildren();updateGenerate();message.textContent='';};
+  const updateGenerate=()=>{generate.disabled=(!revising && !sampleInputs.length) || (purposeMode.value==='manual' && !purpose.value.trim());};
+  purpose.oninput=updateGenerate;purposeMode.onchange=()=>{updatePurposeMode();updateGenerate();};updateGenerate();
+  const resetSamples=()=>{sampleInputs.length=0;samplePage=0;renderSamplePage();updateGenerate();message.textContent='';};
   const updateSource=()=>{
     resetSamples();const selected=availableSources.find(item=>item.id===source.value);
     const jsonl=selected?.format==='jsonl';hostLabel.hidden=selected?.type!=='ssh';
@@ -1650,23 +1671,23 @@ function renderCriteriaGenerator(criteriaId = null) {
       const data=await readApiJsonResponse(response);if(!response.ok)throw new Error(data.error);
       for(const [index,text] of data.samples.entries()){
         const label=element('label',`Sample ${index+1}`);const input=element('textarea','');input.rows=4;input.value=text;input.setAttribute('aria-label',`Sample ${index+1}`);
-        const remove=element('button','Remove Sample','quiet');remove.type='button';remove.onclick=()=>{sampleInputs.splice(sampleInputs.indexOf(input),1);label.remove();updateGenerate();};
-        label.append(input,remove);samples.append(label);sampleInputs.push(input);
+        const remove=element('button','Remove Sample','quiet');remove.type='button';remove.onclick=()=>{sampleInputs.splice(sampleInputs.indexOf(input),1);label.remove();renderSamplePage();updateGenerate();};
+        label.append(input,remove);sampleInputs.push(input);
       }
-      updateGenerate();message.textContent=`Loaded ${data.samples.length} of up to ${requestedCount} requested samples. Only the samples shown here and your analysis purpose will be sent to OpenAI. Remove or redact sensitive content before generating.`;
+      renderSamplePage();updateGenerate();message.textContent=`Loaded ${data.samples.length} of up to ${requestedCount} requested samples. All remaining samples across all pages, your analysis purpose, and any additional instructions will be sent to OpenAI. Remove or redact sensitive content before generating.`;
     } catch(error){message.textContent=error.message;}
     finally{panel.disabled=false;}
   };
   generate.onclick=async()=>{
     if(purposeMode.value==='manual' && !purpose.value.trim()){message.textContent='Enter an analysis purpose.';return;}
-    const draftId=criteriaDraftId, editVersion=criteriaEditVersion;panel.disabled=true;message.textContent=revising?'Revising Criteria…':'Generating Criteria…';
+    const draftId=criteriaDraftId, editVersion=criteriaEditVersion;panel.disabled=true;message.textContent='Generating Criteria…';
     try {
       const currentProfile=revising?readDecisionProfile():null;
-      const response=await fetch('/api/criteria/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({purposeMode:purposeMode.value,purpose:purposeMode.value==='manual'?purpose.value:'',samples:sampleInputs.map(input=>input.value),...(revising?{currentProfile}:{})})});
+      const response=await fetch('/api/criteria/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({purposeMode:purposeMode.value,purpose:purposeMode.value==='manual'?purpose.value:'',samples:sampleInputs.map(input=>input.value),...(additional.value.trim()?{additionalInstructions:additional.value.trim()}:{}),...(revising?{currentProfile}:{})})});
       const data=await readApiJsonResponse(response);if(!response.ok)throw new Error(data.error);
       if(criteriaDraftId!==draftId || criteriaEditVersion!==editVersion)return;
       if(revising && JSON.stringify(readDecisionProfile())!==JSON.stringify(currentProfile)){message.textContent='The editor draft changed while AI was working. The AI result was not applied; revise again using the current draft.';return;}
-      handleEditCriteria(criteriaId || '',data.profile,{text:data.analysisPurpose,automatic:purposeMode.value==='automatic',revision:revising});
+      handleEditCriteria(criteriaId || '',data.profile,{text:data.analysisPurpose,automatic:purposeMode.value==='automatic'});
       handleMessage('criteria-message','Generated all Criteria fields. Review the draft and token estimates, then select Save Changes.');
     } catch(error){message.textContent=error.message;}
     finally{panel.disabled=false;}
@@ -1758,7 +1779,7 @@ function handleEditCriteria(id, template = null, generatedPurpose = null) {
   if(id)editorHeader.append(referenceField('Criteria',id,profile.label));
   $('criteria-editor').replaceChildren(editorHeader,criteriaTokenPanel,profilePanel,list,add);
   handleEditUsage('Criteria',id,profilePanel);
-  if(generatedPurpose){const review=element('div','','criteria-token-estimate');review.append(element('h4',generatedPurpose.revision?'Revision Request':generatedPurpose.automatic?'Suggested Analysis Purpose':'Analysis Purpose'),element('p',generatedPurpose.text));$('criteria-editor').insertBefore(review,profilePanel);}
+  if(generatedPurpose){const review=element('div','','criteria-token-estimate');review.append(element('h4',generatedPurpose.automatic?'Suggested Analysis Purpose':'Analysis Purpose'),element('p',generatedPurpose.text));$('criteria-editor').insertBefore(review,profilePanel);}
   $('criteria-editor').insertBefore(renderCriteriaGenerator(id),profilePanel);
   if(!id)$('criteria-editor').insertBefore(element('hr','','criteria-authoring-divider'),profilePanel);
   if(!id && Object.keys(criteriaTemplates).length) {
@@ -2544,8 +2565,8 @@ function render(updateList = true, incremental = false) {
     const tokenWarning=renderTokenWarning(result);
     if(tokenWarning){row.className+=' token-limited';top.prepend(tokenWarning);}
     row.append(top);
-    if(result.inputFormat==='jsonl'){const original=element('details','','original-input');original.append(element('summary','Input'),element('p',result.log,'log'));handleResultDisclosure(original,result,'input');row.append(original);}
-    else row.append(element('p',result.log,'log'));
+    const original=element('details','','original-input');original.append(element('summary','Input'),element('p',result.log,'log'));
+    handleResultDisclosure(original,result,'input',result.inputFormat!=='jsonl');row.append(original);
     const fields=[];
     if (result.actionExecution) {
       const execution=result.actionExecution;
