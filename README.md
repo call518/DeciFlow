@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="images/DeciFlow-Logo.png" alt="DeciFlow" width="480">
+  <a href="https://youtu.be/bXuBJs4Hf70" target="_blank" rel="noopener noreferrer"><img src="images/DeciFlow-Logo.png" alt="DeciFlow" width="480"></a>
 </p>
 
 # DeciFlow
@@ -7,6 +7,10 @@
 [English](README.md) | [한국어](README.ko.md)
 
 **Make fast AI decisions across diverse datasets and automate follow-up workflows your way.**
+
+<p align="left">
+  <a href="https://youtu.be/bXuBJs4Hf70" target="_blank" rel="noopener noreferrer">Demo Video - YouTube</a>
+</p>
 
 ## Architecture
 
