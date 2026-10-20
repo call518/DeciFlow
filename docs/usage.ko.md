@@ -193,7 +193,7 @@ Main의 Task 결과는 약 1초마다 현재 페이지의 새 결과만 조회�
 | Export Reviewed JSON | 어떤 항목이든 AI와 다른 수정값이 있는 성공 결과를 원래 답변·reviewerDecisions와 함께 내보냅니다. 비우거나 원래 값과 같은 수정은 제외하며 화면 필터는 무시합니다. |
 
 여러 분류 체계가 있으면 **Criteria**로 선택한 뒤 **Decision**에서 모든 판단 항목의 집계를 볼 수 있습니다. Criteria나 판단
-항목이 하나면 텍스트로 표시합니다. 기본 선택은 Default Chart Decision이며 **Set as Default**로 재분석 없이 변경합니다. Choice는 선택지별 건수, Score는 가중 점수를 가장 가까운 수준으로 반올림한
+Criteria가 하나면 굵은 텍스트로 표시하며, Decision은 항목이 하나여도 굵은 값의 풀다운 메뉴를 유지합니다. 기본 선택은 Default Chart Decision이며 **Set as Default**로 재분석 없이 변경합니다. Choice는 선택지별 건수, Score는 가중 점수를 가장 가까운 수준으로 반올림한
 분포(중간값 올림), Noul은 Yes 확률의 [0%, 25%), [25%, 50%), [50%, 75%), [75%, 100%] 구간을 표시합니다. 누락
 답변과 실패는 제외합니다. All / Certain / Uncertain은 선택한 Choice 기준입니다. 근거가 없으면 Certain이 아닌
 **Not Assessed**로 표시합니다. Score·Noul에는 확실성 그룹을 적용하지 않습니다. 항목 전환은 저장된 결과만 사용하며

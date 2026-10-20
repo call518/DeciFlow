@@ -1636,10 +1636,10 @@ a.quiet[aria-disabled="true"] { opacity: .5; cursor: default; pointer-events: no
 .chart-fields { grid-template-columns: minmax(0, 1fr); gap: 8px; margin: 12px 0; padding: 10px 0; border-top: 1px solid #e1e9e4; border-bottom: 1px solid #e1e9e4; background: transparent; }
 .chart-fields > div { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: baseline; gap: 12px; padding: 0; border: 0; }
 .chart-fields dt { margin: 0; }
+.chart-fields dt label { font-weight: 700; }
 .chart-fields dd { color: #284438; }
-.chart-fields select { width: 100%; min-width: 0; max-width: 100%; margin: 0; padding: 6px 9px; font: inherit; color: #245c46; background: #f1f6f2; border: 1px solid #cbdcd2; border-radius: 6px; }
+.chart-fields select { width: 100%; min-width: 0; max-width: 100%; margin: 0; padding: 6px 9px; font: inherit; font-weight: 600; color: #245c46; background: #f1f6f2; border: 1px solid #cbdcd2; border-radius: 6px; }
 .chart-decision-control { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.chart-decision-control #chart-decision-name:empty { display: none; }
 .chart-decision-control select { flex: 1 1 0; width: 0; }
 .chart-decision-control #set-chart-default { flex: 0 0 auto; padding: 4px 0; border: 0; background: transparent; font-size: 11px; white-space: nowrap; }
 @container (max-width: 280px) { .chart-fields > div { grid-template-columns: minmax(0, 1fr); gap: 4px; } }

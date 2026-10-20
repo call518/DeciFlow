@@ -201,8 +201,7 @@ continue. Older pages stay fixed; Latest Results returns to current results.
 | Export Reviewed JSON | Export successful results with any human correction different from its AI value, including original answers and reviewerDecisions. Cleared and unchanged corrections are excluded; display filters are ignored. |
 
 Use **Criteria** to select a classification scheme when several are present, then
-**Decision** to chart any of its decisions. A single Criteria or decision is shown as
-text. Default Chart Decision is selected initially; **Set as Default** saves a new preference without inference. Choice counts selected options; Score
+**Decision** to chart any of its decisions. A single Criteria is shown as bold text. Decision always uses a dropdown with bold selected values, including a single item. Default Chart Decision is selected initially; **Set as Default** saves a new preference without inference. Choice counts selected options; Score
 rounds weighted scores to the nearest level (half up); Noul groups Yes probabilities in
 [0%, 25%), [25%, 50%), [50%, 75%), and [75%, 100%]. Missing answers and failures are
 excluded. All / Certain / Uncertain refers to the selected Choice. Missing evidence is

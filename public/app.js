@@ -2272,8 +2272,8 @@ function renderCategoryChart() {
   $('chart-criteria-name').textContent=identities.length<2?(selected?.criteria || 'No Results'):'';
   select.replaceChildren();
   for(const [id,entry] of Object.entries(entries))if(entry.identity===selected?.identity)select.append(new Option(`${entry.label}${isDefaultChartEntry(entry)?' (Default)':''}`,id));
-  select.value=chartClassification;select.hidden=select.children.length<2;
-  $('chart-decision-name').textContent=select.children.length<2?(selected?.label || 'Category'):'';
+  if(!selected)select.append(new Option('No Decisions',''));
+  select.value=selected?chartClassification:'';select.disabled=!selected;
   if(selected && selected.type!=='choice')chartCertainty='all';
   const options=selected?Object.fromEntries(selected.options.map(key=>[key,key])):Object.fromEntries(Object.keys(labels).map(key=>[key,key]));
   const counts=selected?.counts[chartCertainty] || Object.fromEntries(Object.keys(options).map(key=>[key,0]));

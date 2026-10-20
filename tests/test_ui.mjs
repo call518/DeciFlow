@@ -4053,16 +4053,16 @@ test('Overview selects every decision without inference and restores paged aggre
   assert.deepEqual(values(),['0 (0.0%)','0 (0.0%)','0 (0.0%)','1 (100.0%)']);
 });
 
-test('Overview Criteria selector chooses the default decision and single decisions use text',async()=>{
+test('Overview Criteria selector chooses the default decision and single decisions keep dropdowns',async()=>{
   const first=result(0,false),second=result(1,false);
   for(const [item,identity] of [[first,'one'],[second,'two']])Object.assign(item.result,{criteriaGroup:identity,profileLabel:identity,defaultDecision:'category',decisionDefinitions:{category:{label:'Category',type:'choice',criteria:{normal:'Normal'}}},decisions:{category:{choice:'normal',probabilities:{normal:1}}}});
   const {nodes}=workspace([first,second]);await runTask(nodes);
-  assert.equal(nodes.get('chart-criteria').hidden,false);
+  assert.notEqual(nodes.get('chart-criteria').hidden,true);
   assert.equal(nodes.get('chart-criteria').children.length,2);
   nodes.get('chart-criteria').value='two';nodes.get('chart-criteria').onchange();
   assert.equal(nodes.get('classification-group').value,'two:category');
-  assert.equal(nodes.get('classification-group').hidden,true);
-  assert.equal(nodes.get('chart-decision-name').textContent,'Category');
+  assert.notEqual(nodes.get('classification-group').hidden,true);
+  assert.equal(nodes.get('classification-group').children.length,1);
   assert.equal(nodes.get('category-chart').children[0].children[2].textContent,'1 (100.0%)');
 });
 
