@@ -267,7 +267,7 @@ Task 정의·실행 상태·설정 스냅샷·결과·Action 실행 결과를
 | Success / Failed / Total | 유효한 판정 성공 청크 / 실패 청크 / 처리 완료 전체 청크(성공 + 실패). 연결 오류·시간 초과·입력 거절·응답 검증 실패를 실패에 포함 |
 | Action Success / Failed / Total | 완료된 Action 성공 / 실패 / 전체 실행 수. Action 미할당·의사결정 실패 청크는 제외하며 의사결정 집계와 독립 |
 | Needs Review | 항목별·기록 전체 검토 사유가 있는 성공 청크를 중복 없이 집계. 실패·거절 제외 |
-| Throughput | 선택한 실행의 전체 성공 결과 수 ÷ 전체 경과 초; 유휴시간·Action 전달 대기 포함, 중지·완료 시 마지막 값 유지 |
+| Throughput | 선택한 실행의 전체 성공 결과 수 ÷ Active Processing Time(초); 유휴시간·Action 전달 시간 제외, 동시 요청 시간은 중복 없이 계산, 활성 처리 전에는 0 표시 |
 | Total Elapsed Time | 실행 시작 이후 전체 경과시간; 유휴시간 포함 |
 | Active Processing Time | 요청이 하나 이상 진행 중인 구간을 중복 없이 합산; 전체 경과시간 대비 비율 |
 | Processing Time | 다른 지표와 같은 크기의 작은 박스 안에 Avg·Min·Max·P(50)·P(95)·P(99) 라벨과 값을 나란히 표시합니다. 실패를 포함한 전체 완료 레코드 기준이며 Action 시간은 제외합니다. Avg는 산술평균, P(50)은 가운데 값의 평균, P(95)·P(99)는 nearest-rank 방식입니다. |
@@ -349,9 +349,10 @@ Settings의 **Configurations**은 유지보수 항목을 제공합니다. **Rese
 | Configurations | `/settings/configuration` |
 | 특정 실행 | `/runs/{run-id}` |
 
-실행 URL에는 결과 필터·커서 페이지·특정 결과의 펼친 영역을 쿼리 매개변수
+실행 URL에는 차트 Decision·Criteria 선택, 확실성 그룹, Show Decisions, 표시 중인 필터,
+결과 필터·커서 페이지·특정 결과의 펼친 영역을 쿼리 매개변수
 (`review`, `processing`, `host`, `source`, `search`, `cursors`, `through`, `result`,
-`detail`)로 유지합니다. Source Hosts Detail은 `dialog=hosts`를 사용합니다.
+`detail`, `chart`, `certainty`, `show`, `filter`)로 유지합니다. Source Hosts Detail은 `dialog=hosts`를 사용합니다.
 자동 갱신은 현재 주소를 교체하며 갱신마다 방문 기록을 쌓지 않습니다.
 Run·Stop·Pause/Resume·Delete·Save·Export는 명시적 명령으로 유지하여 링크를 여는
 것만으로 실행되지 않습니다. 미저장 입력값·인증 정보는 URL에 넣지 않습니다.
@@ -361,3 +362,7 @@ Run·Stop·Pause/Resume·Delete·Save·Export는 명시적 명령으로 유지�
 모든 경로가 DeciFlow로 전달된다면 별도 프록시 rewrite는 필요 없습니다. 공유 링크에도
 기존 접근·Origin 규칙이 적용됩니다. 미저장 초안이나 삭제된 Task를 별도 보관하는
 기능은 아닙니다.
+
+Source·Criteria·Action·Task·SSH Key·SSH Host 목록 검색어는 같은 브라우저 탭에서
+새로고침해도 유지합니다. 미저장 편집 내용은 복원하지 않습니다. 다른 실행을 열면
+URL에 표시 선택값이 없는 한 해당 실행의 차트 기본값으로 시작합니다.

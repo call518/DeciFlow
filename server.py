@@ -9,8 +9,8 @@ import re
 import signal
 import socket
 import sqlite3
-from collections.abc import AsyncGenerator, AsyncIterator
-from contextlib import aclosing, asynccontextmanager
+from collections.abc import AsyncGenerator, AsyncIterator, Iterator
+from contextlib import aclosing, asynccontextmanager, contextmanager
 from copy import deepcopy
 from datetime import UTC, datetime
 from functools import partial
@@ -31,6 +31,7 @@ from starlette.routing import Route
 from uvicorn.config import LOGGING_CONFIG
 
 from actions import (
+    ACTION_USERS,
     ensure_actions_available,
     get_action_status,
     initialize_default_action,
@@ -59,6 +60,7 @@ from config import (
 from config_store import get_data_directory
 from configured_sources import follow_configured, read_configured
 from criteria_generation import generate_criteria, preview_samples
+from hdfs_sources import prepare_hdfs_sources, read_hdfs_sources, test_hdfs_source
 from host_sources import host_metadata, read_host_sources
 from jobs import JOBS, Job, read_archived_run, replay_archived_run
 from profiles import (
@@ -81,9 +83,10 @@ from source_registry import (
     load_sources,
     save_sources,
     source_patterns,
+    validate_sources,
 )
 from source_settings import parse_source_settings, resolve_configured_sources
-from sources import follow_sources, read_sources
+from sources import follow_sources, merge_batch, read_sources
 from ssh_hosts import delete_host, load_hosts, save_host, test_host_connection
 from ssh_keys import (
     add_key,
@@ -344,37 +347,38 @@ async def handle_events(
                 "lineCount": sum(len(event.splitlines()) for event in events),
             }
 
-    total = (len(logs) + chunk_events - 1) // chunk_events
-    clock = _ProcessingClock()
-    yield _encode({"type": "start", "total": total, "engine": engine.name})
-    async with httpx.AsyncClient(timeout=engine.timeout) as client:
+    with use_source_snapshot([{"profile": profile}]):
+        total = (len(logs) + chunk_events - 1) // chunk_events
+        clock = _ProcessingClock()
+        yield _encode({"type": "start", "total": total, "engine": engine.name})
+        async with httpx.AsyncClient(timeout=engine.timeout) as client:
 
-        async def handle_classify(log: str) -> Result:
-            clock.begin()
-            try:
-                with use_profile_snapshot(snapshot):
-                    decision = (
-                        await classify_log(log, engine, client)
-                        if profile == GENERAL_PROFILE_ID
-                        else await classify_log(log, engine, client, profile)
+            async def handle_classify(log: str) -> Result:
+                clock.begin()
+                try:
+                    with use_profile_snapshot(snapshot):
+                        decision = (
+                            await classify_log(log, engine, client)
+                            if profile == GENERAL_PROFILE_ID
+                            else await classify_log(log, engine, client, profile)
+                        )
+                        return decision
+                finally:
+                    clock.end()
+
+            async with (
+                aclosing(
+                    classify_stream(
+                        handle_records(),
+                        handle_classify,
+                        engine.concurrency,
                     )
-                    return decision
-            finally:
-                clock.end()
-
-        async with (
-            aclosing(
-                classify_stream(
-                    handle_records(),
-                    handle_classify,
-                    engine.concurrency,
-                )
-            ) as results,
-            aclosing(_timed_results(results, clock)) as events,
-        ):
-            async for event in events:
-                yield event
-    yield _encode({"type": "done", **clock.snapshot()})
+                ) as results,
+                aclosing(_timed_results(results, clock)) as events,
+            ):
+                async for event in events:
+                    yield event
+        yield _encode({"type": "done", **clock.snapshot()})
 
 
 def _matches_origin(origin: str, pattern: str) -> bool:
@@ -474,6 +478,20 @@ async def handle_recovered_records(
             yield record
 
 
+ACTIVE_SOURCE_SNAPSHOTS: dict[str, list[Result]] = {}
+
+
+@contextmanager
+def use_source_snapshot(specs: list[Result]) -> Iterator[None]:
+    """Protect inputs used by persistent and direct streaming executions."""
+    identity = uuid4().hex
+    ACTIVE_SOURCE_SNAPSHOTS[identity] = specs
+    try:
+        yield
+    finally:
+        ACTIVE_SOURCE_SNAPSHOTS.pop(identity, None)
+
+
 async def handle_file_events(
     values: object,
     paths: list[Path] | dict[Path, Result],
@@ -485,7 +503,7 @@ async def handle_file_events(
     previous: Result | None = None,
 ) -> AsyncGenerator[str, None]:
     """Stream classifications from a file without buffering its full contents."""
-    with use_actions(actions or []):
+    with use_actions(actions or []), use_source_snapshot(specs or []):
         snapshot = (
             profile_snapshot if profile_snapshot is not None else deepcopy(PROFILES)
         )
@@ -513,7 +531,11 @@ async def handle_file_events(
         )
         if specs is not None and mode == "realtime":
             records = follow_configured(
-                [spec for spec in specs if spec.get("type") != "ssh"]
+                [
+                    spec
+                    for spec in specs
+                    if spec.get("type") not in {"ssh", "hdfs", "webhdfs"}
+                ]
             )
         elif isinstance(paths, dict):
             records = read_configured(paths)
@@ -525,6 +547,8 @@ async def handle_file_events(
             records = read_host_sources(
                 records, specs, live=mode == "realtime", statuses=host_states
             )
+        if specs and any(spec.get("type") in {"hdfs", "webhdfs"} for spec in specs):
+            records = merge_batch([records, read_hdfs_sources(specs)])
         control = EXECUTION_CONTROL.get()
         if control is not None and control.replay is not None:
             records = handle_recovered_records(records, control)
@@ -599,6 +623,7 @@ async def prepare_file_execution(
     ):
         raise EngineUnavailableError("Application maintenance is in progress.")
     specs = parse_source_settings(values)
+    await prepare_hdfs_sources(specs, mode)
     profile_snapshot = deepcopy(PROFILES)
     actions = load_actions() if any(spec.get("actionId") for spec in specs) else []
     identities = {action["id"] for action in actions}
@@ -671,6 +696,7 @@ async def handle_file_source(request: Request) -> Response:
 
 
 TASK_STARTING: set[str] = set()
+TASK_STARTING_SOURCES: dict[str, list[Result]] = {}
 
 
 def active_task_job(identity: str) -> Job | None:
@@ -704,6 +730,7 @@ async def launch_task(task: Result, trigger: str) -> Result:
     TASK_STARTING.add(identity)
     try:
         try:
+            TASK_STARTING_SOURCES[identity] = parse_source_settings(task["sources"])
             settings, events = await prepare_file_execution(
                 task["mode"], task["sources"]
             )
@@ -722,6 +749,7 @@ async def launch_task(task: Result, trigger: str) -> Result:
             return record_unstarted_run(task, "failed", trigger, str(error))
     finally:
         TASK_STARTING.discard(identity)
+        TASK_STARTING_SOURCES.pop(identity, None)
 
 
 async def restore_task_runs() -> set[str]:
@@ -796,11 +824,13 @@ async def restore_task_runs() -> set[str]:
 SCHEDULER = TaskScheduler(launch_task, restore_task_runs)
 
 
-def deletion_dependencies(kind: str, identity: str) -> list[str]:
-    """Describe saved and live references that prevent deleting an item."""
+def reference_details(kind: str, identity: str) -> list[Result]:
+    """Describe the same live and saved references used by deletion protection."""
     if kind not in {"Task", "Source", "Criteria", "Action", "SSH Key", "SSH Host"}:
         raise ValueError("Invalid item type.")
-    references: set[str] = set()
+    references: dict[tuple[str, str], Result] = {}
+    tasks = load_tasks()
+    source_names = {item["id"]: item["name"] for item in load_sources()}
 
     def matches(source: Result) -> bool:
         if kind == "Source":
@@ -815,28 +845,178 @@ def deletion_dependencies(kind: str, identity: str) -> list[str]:
             )
         return kind == "SSH Key" and source.get("keyId") == identity
 
+    def add(
+        relation: str,
+        reference_id: str,
+        name: str,
+        status: str,
+        description: str,
+        sources: list[Result] | None = None,
+        task_id: str = "",
+        mode: str = "",
+    ) -> None:
+        selected = [source for source in sources or [] if matches(source)]
+        references[
+            (
+                "Run" if relation in {"Active Run", "Recoverable Run"} else relation,
+                reference_id or name,
+            )
+        ] = {
+            "relation": relation,
+            "id": reference_id,
+            "name": name,
+            "status": status,
+            "description": description,
+            "taskId": task_id,
+            "mode": mode,
+            "sourceIds": list(
+                dict.fromkeys(
+                    source["sourceId"] for source in selected if source.get("sourceId")
+                )
+            ),
+            "sourceNames": list(
+                dict.fromkeys(
+                    source.get("sourceName")
+                    or source_names.get(
+                        source.get("sourceId"), source.get("sourceId", "")
+                    )
+                    for source in selected
+                )
+            ),
+        }
+
     if kind != "Task":
-        for task in load_tasks():
+        for task in tasks:
             if any(matches(source) for source in task["sources"]):
-                references.add(f"Task: {task['name']}")
+                add(
+                    "Task Assignment",
+                    task.get("id", ""),
+                    task["name"],
+                    "Enabled" if task.get("enabled") else "Disabled",
+                    f"Task: {task['name']}",
+                    task["sources"],
+                    mode=task.get("mode", ""),
+                )
     if kind in {"SSH Key", "SSH Host"}:
         for source in load_sources():
             if matches(source):
-                references.add(f"Source: {source['name']}")
+                add(
+                    "Source",
+                    source["id"],
+                    source["name"],
+                    "Registered",
+                    f"Source: {source['name']}",
+                )
     if kind == "SSH Key":
         for host in load_hosts():
             if matches(host):
-                references.add(f"SSH Host: {host['name']}")
+                add(
+                    "SSH Host",
+                    host["id"],
+                    host["name"],
+                    "Registered",
+                    f"SSH Host: {host['name']}",
+                )
+    live_ids: set[str] = set()
+    live_sources: set[int] = set()
     for job_id, job in list(JOBS.items()):
         if job.state not in {"running", "pausing", "paused"}:
             continue
+        sources = job.settings.get("sources", [])
         if (kind == "Task" and job.settings.get("taskId") == identity) or any(
-            matches(source) for source in job.settings.get("sources", [])
+            matches(source) for source in sources
         ):
-            references.add(f"Running task: {job.settings.get('taskName', job_id)}")
-    if kind == "Task" and identity in TASK_STARTING:
-        references.add("Task execution is starting")
-    return sorted(references, key=str.casefold)
+            name = job.settings.get("taskName", job_id)
+            add(
+                "Active Run",
+                job_id,
+                name,
+                job.state.title(),
+                f"Running task: {name}",
+                sources,
+                job.settings.get("taskId", ""),
+                job.settings.get("mode", ""),
+            )
+            live_ids.add(job_id)
+            live_sources.add(id(sources))
+    if kind == "Action" and ACTION_USERS[identity] and not live_ids:
+        add(
+            "Active Execution",
+            "",
+            "Action Execution",
+            "Running",
+            "Active Action execution",
+        )
+    for execution_id, sources in list(ACTIVE_SOURCE_SNAPSHOTS.items()):
+        if id(sources) not in live_sources and any(
+            matches(source) for source in sources
+        ):
+            add(
+                "Active Execution",
+                execution_id,
+                "Source Stream",
+                "Running",
+                "Active Source execution",
+                sources,
+            )
+    for task_id, sources in list(TASK_STARTING_SOURCES.items()):
+        if any(matches(source) for source in sources) or (
+            kind == "Task" and task_id == identity
+        ):
+            name = next(
+                (task["name"] for task in tasks if task.get("id") == task_id), task_id
+            )
+            add(
+                "Starting Task",
+                task_id,
+                name,
+                "Starting",
+                f"Starting task: {task_id}",
+                sources,
+            )
+    for snapshot in open_result_store(get_data_directory()).recoverable_runs():
+        settings = snapshot.get("settings", {})
+        run_id = snapshot.get("jobId", "")
+        if run_id in live_ids:
+            continue
+        if (kind == "Task" and settings.get("taskId") == identity) or any(
+            matches(source) for source in settings.get("sources", [])
+        ):
+            name = settings.get("taskName", run_id or "Unknown Run")
+            add(
+                "Recoverable Run",
+                run_id,
+                name,
+                snapshot["state"].title(),
+                f"Recoverable run: {name}",
+                settings.get("sources", []),
+                settings.get("taskId", ""),
+                settings.get("mode", ""),
+            )
+    if (
+        kind == "Task"
+        and identity in TASK_STARTING
+        and identity not in TASK_STARTING_SOURCES
+    ):
+        add(
+            "Starting Task",
+            identity,
+            identity,
+            "Starting",
+            "Task execution is starting",
+        )
+    return sorted(
+        references.values(),
+        key=lambda item: (item["relation"], item["name"].casefold(), item["id"]),
+    )
+
+
+def deletion_dependencies(kind: str, identity: str) -> list[str]:
+    """Use the reference inspector as the authoritative deletion check."""
+    return sorted(
+        {item["description"] for item in reference_details(kind, identity)},
+        key=str.casefold,
+    )
 
 
 def require_unused(kind: str, identity: object) -> None:
@@ -860,10 +1040,11 @@ async def handle_delete_check(request: Request) -> Response:
             or not isinstance(body.get("kind"), str)
         ):
             raise TypeError("Select an item to check.")
-        references = await anyio.to_thread.run_sync(
-            deletion_dependencies, body["kind"], body["id"]
+        details = await anyio.to_thread.run_sync(
+            reference_details, body["kind"], body["id"]
         )
-        return _json(200, {"references": references})
+        references = sorted({item["description"] for item in details}, key=str.casefold)
+        return _json(200, {"references": references, "details": details})
     except (ValueError, TypeError, OSError) as error:
         return _json(400, {"error": str(error)})
 
@@ -876,8 +1057,6 @@ async def handle_tasks(request: Request) -> Response:
         if request.method == "PUT":
             body = await request.json()
             identity = body.get("id") if isinstance(body, dict) else None
-            if identity and (identity in TASK_STARTING or active_task_job(identity)):
-                return _json(409, {"error": "Stop the Task before editing it."})
             saved = save_task(body)
             if not saved["enabled"]:
                 SCHEDULER.due.pop(saved["id"], None)
@@ -889,8 +1068,10 @@ async def handle_tasks(request: Request) -> Response:
             if not isinstance(body, dict) or not isinstance(body.get("id"), str):
                 raise ValueError("Select a Task.")
             identity = body["id"]
-            if identity in TASK_STARTING or active_task_job(identity):
-                return _json(409, {"error": "Stop the Task before deleting it."})
+            if deletion_dependencies("Task", identity):
+                return _json(
+                    409, {"error": "Cannot delete while in use. Stop the Task first."}
+                )
             await anyio.to_thread.run_sync(delete_task, identity)
             for job_id, job in list(JOBS.items()):
                 if job.settings.get("taskId") == identity:
@@ -1127,6 +1308,24 @@ async def handle_sources(request: Request) -> Response:
     except (ValueError, TypeError, OSError) as error:
         return _json(400, {"error": str(error)})
     return _json(200, {"sources": sources})
+
+
+async def handle_hdfs_test(request: Request) -> Response:
+    """Test draft HDFS settings only on an explicit trusted-origin request."""
+    if not _allowed_origin(request, files=True):
+        return _json(403, {"error": "HDFS testing requires a trusted UI origin."})
+    try:
+        body = await request.json()
+        spec = validate_sources([body])[0]
+        if spec["type"] not in {"hdfs", "webhdfs"}:
+            raise ValueError("Select an HDFS Source.")
+        async with asyncio.timeout(20):
+            result = await test_hdfs_source(spec)
+        return _json(200, result)
+    except TimeoutError:
+        return _json(400, {"error": "HDFS connection test timed out."})
+    except (ValueError, TypeError, OSError) as error:
+        return _json(400, {"error": str(error)})
 
 
 async def handle_criteria_generation(request: Request) -> Response:
@@ -1630,6 +1829,7 @@ app = Starlette(
         Route("/api/ssh-hosts/test", handle_test_ssh_host, methods=["POST"]),
         Route("/api/ssh-hosts", handle_ssh_hosts, methods=["POST", "PUT", "DELETE"]),
         Route("/api/sources", handle_sources, methods=["POST", "PUT"]),
+        Route("/api/sources/hdfs-test", handle_hdfs_test, methods=["POST"]),
         Route("/api/criteria", handle_criteria, methods=["POST", "PUT"]),
         Route("/api/criteria/samples", handle_criteria_generation, methods=["POST"]),
         Route("/api/criteria/generate", handle_criteria_generation, methods=["POST"]),

@@ -55,7 +55,9 @@ async def multi(
         "chunkEvents": 1,
         "hostIds": [host["id"] for host in hosts],
     }
-    task = save_task({"name": "Fleet", "mode": "batch", "sources": [selection]})
+    task = save_task(
+        {"name": "Fleet", "enabled": True, "mode": "batch", "sources": [selection]}
+    )
     yield {"hosts": hosts, "source": source, "selection": selection, "task": task}
     await asyncio.gather(*(job.stop() for job in JOBS.values()))
     JOBS.clear()
@@ -84,7 +86,7 @@ async def test_target_validation_and_resolved_settings_are_authoritative(
     with pytest.raises(ValueError, match="only once"):
         save_task({**multi["task"], "sources": [selection, selection]})
     local = save_sources([{"name": "Local", "type": "local", "path": "/local"}])[0]
-    with pytest.raises(ValueError, match="Local File"):
+    with pytest.raises(ValueError, match="Only Remote File"):
         parse_source_settings(
             [{"sourceId": local["id"], "hostIds": selection["hostIds"]}]
         )

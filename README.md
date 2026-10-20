@@ -34,8 +34,10 @@ metadata is provided by the local adapter; external servers may omit it. The cur
 provider contract has no separate output-truncation signal.
 
 The **Processing Time** card groups Avg, Min, Max, P(50), P(95), and P(99). Throughput shows
-successful results per total elapsed second. All metrics cover the selected run;
+successful results per active classification second, excluding idle time and Action delivery. All metrics cover the selected run;
 filters and pagination do not change them.
+Run URLs retain chart selections, Show Decisions, and result filters on reload;
+list searches persist within the same browser tab.
 
 **DeciFlow** runs on the node containing your logs, reads events, and displays
 results in a browser. The **Laya server** runs the decision model on the same or a separate
@@ -107,7 +109,9 @@ Open **http://127.0.0.1:4000** on the same host. In **Sources**, edit
 **Sample HTTP access** to use `/host-logs/sample-logs/access-100.log` and save.
 In **Tasks**, add a named **Batch / Manual** Task, select **Sample HTTP access**,
 **Sample HTTP access** criteria, **Events/Chunk: 1**, and **Action: None**, then save.
-Click **Run** in Tasks to open Main and view its results automatically. Use **Pause / Resume** in Tasks to continue the same execution later. New active executions also recover after a server restart; paused executions stay paused. See [recovery limits](docs/tasks.md#recovery-after-a-server-restart).
+New Tasks default to Disabled. Enable the Task, then click **Run** in Tasks to open Main and view its results automatically. Use **Pause / Resume** in Tasks to continue the same execution later. New active executions also recover after a server restart; paused executions stay paused. See [recovery limits](docs/tasks.md#recovery-after-a-server-restart).
+
+Referenced Sources, Criteria, Tasks, and SSH settings remain editable; existing runs retain their snapshots. Stop active runs before changing Action code or environments, or resetting them. Deletion is blocked while referenced or in use.
 
 For optional GPU acceleration, see [Docker deployment details](#laya-docker);
 for a paid API, see [Jev](#jev).
@@ -141,6 +145,10 @@ Use this workflow as an alternative to the log example; both remain supported.
 The Overview **Decision** selector includes every decision.
 Every Criteria profile has a UUID, shown with a copy button as **Criteria ID** in
 View and Edit. Names can change without changing IDs; cloning creates a new ID.
+Source, Criteria, and Action lists provide **Manage → Ref.**, Edit provides a **References** link, and View displays reference details inline
+for inspecting Task assignments and execution dependencies. Existing Criteria can
+be revised with AI in Edit; review the draft before saving.
+
 Default Chart Decision selects one item of any type and can be changed without changing
 AI answers or filters. Choice charts count selected options; Score charts round weighted scores to the
 nearest level; Noul charts group Yes probabilities into 25% intervals. Certainty groups
@@ -282,7 +290,7 @@ require approval in an in-app dialog. Approved host keys persist only in
 See [Sources and SSH settings](docs/sources.md) for setup and trust management.
 
 - **Tasks:** Save Source/Criteria/chunk/Action settings. Run Batch manually or with cron; run Realtime continuously. Disable stops the current run and blocks future starts. Main prioritizes running Tasks and shows compact Source details with full hover tooltips. See [Tasks](docs/tasks.md).
-- **Batch:** Analyze registered local or SSH files. Docker maps host `/var/log` to `/host-logs/var/log`.
+- **Batch:** Analyze registered local, SSH, or HDFS files. Docker maps host `/var/log` to `/host-logs/var/log`.
 - **Realtime:** Follow new logs; choose criteria and chunk size per source.
 - **Processing status:** Success / Failed / Total shows classified, failed, and total completed chunks. Action Success / Failed / Total counts follow-up executions separately. Needs Review
   counts successful classifications only. On page load, an HTTP-only check shows Reachable when the engine responds. New classification requests then update the status to Operational or an error. Historical results do not change it.
@@ -411,7 +419,7 @@ For external Laya or Jev, set `COMPOSE_PROFILES=` and start only the UI:
 docker compose up -d ui
 ```
 
-Compose uses the published `call518/deciflow-ui:0.0.1` image from Docker Hub.
+Compose uses the published `call518/deciflow-ui:0.0.2` image from Docker Hub.
 The image provides Python, uv, and operational utilities. The repository is mounted
 read-only at `/app`; `uv sync --frozen` installs dependencies into `deciflow-venv`
 on startup. Initial startup needs network access. Compose passes `.env` to the UI;
@@ -423,11 +431,35 @@ All Compose services map `host.docker.internal` to the Docker host gateway via `
 
 [`Dockerfile`](Dockerfile) builds the UI runtime from `python:3.12-slim`, installs
 uv `0.7.20` and operational tools, and sets `/app` as the working directory.
+The runtime also includes Java and the Apache Hadoop `3.5.0` client libraries
+(`libhdfs`) for PyArrow `23.0.1`, plus `hdfs` and `hadoop` CLI commands on PATH. Hadoop archives are verified with pinned SHA-512
+checksums; Linux amd64 and arm64 binaries are selected during the build.
+Standard Hadoop configuration templates are installed at `/etc/hadoop/conf`,
+including `core-site.xml`, `hdfs-site.xml`, environment scripts, policies, and SSL
+examples. Logging defaults to WARN on stderr. Cluster endpoints and credentials
+are not preconfigured.
 It does not copy application source or preinstall project dependencies. Its startup
 command runs `uv sync --frozen --no-dev --no-install-project --no-cache`, then starts
 `server.main(host='0.0.0.0')`. The published UI image therefore still needs the cloned
 repository mounted at `/app`. UI inference runs on Laya or Jev, not inside this image.
 For SSH Key management and remote file requirements, see [Sources](docs/sources.md).
+
+HDFS Sources offer **HDFS (Native)** and **HDFS (WebHDFS)** for Batch reads of
+UTF-8 TEXT and JSONL files. See
+[HDFS configuration and limits](docs/sources.md#hdfs) for cluster mounts, authentication,
+and execution behavior.
+To check PyArrow/JVM/libhdfs loading and file I/O without an HDFS server, run the
+following against a locally built image (the temporary container uses its own venv):
+
+```bash
+docker build --tag deciflow-ui:hdfs-runtime-check .
+docker run --rm --mount type=bind,src="$PWD",dst=/app,readonly \
+  deciflow-ui:hdfs-runtime-check sh -c \
+  'uv sync --frozen --no-dev --no-install-project --no-cache && /opt/deciflow-venv/bin/python scripts/check_hdfs_runtime.py'
+```
+
+The check uses Hadoop's local filesystem through JNI and `hdfs dfs -ls`. It does not verify HDFS
+connectivity, Kerberos authentication, or cluster compatibility.
 
 [`docker-compose.yml`](docker-compose.yml) supplies the runtime configuration:
 
@@ -479,7 +511,7 @@ Ports, mounts, Compose profiles, and Laya service settings still require
 `docker compose up -d` to recreate affected containers.
 For source changes, run `docker compose restart ui` and refresh the browser after UI
 changes. If you modify the Dockerfile, build the UI image explicitly with
-`docker build --tag call518/deciflow-ui:0.0.1 .`, then run
+`docker build --tag call518/deciflow-ui:0.0.2 .`, then run
 `docker compose up -d --force-recreate ui`.
 Stop DeciFlow before switching source versions.
 

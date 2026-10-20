@@ -74,7 +74,7 @@ async def chunk_records(
 def source_records(
     records: AsyncGenerator[Result, None], spec: Result, *, live: bool = False
 ) -> AsyncGenerator[Result, None]:
-    """Select shared TEXT chunking or isolated JSONL parsing for local and SSH input."""
+    """Select shared TEXT chunking or isolated JSONL parsing for every Source type."""
     if spec.get("format", "text") == "text":
         return chunk_records(records, spec["profile"], spec["chunkEvents"], live=live)
     return _jsonl_records(records, spec)

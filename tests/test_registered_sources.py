@@ -630,11 +630,11 @@ async def test_sftp_jsonl_retains_multiline_text_duplicates_and_invalid_rows(
 
 @pytest.mark.parametrize("original_type", ["local", "ssh"])
 @pytest.mark.parametrize("enabled", [False, True])
-def test_referenced_source_type_is_locked_but_other_fields_remain_editable(
+def test_referenced_source_type_remains_editable(
     original_type: str,
     enabled: bool,
 ) -> None:
-    """Even disabled Tasks lock Type; a rejected edit leaves all Sources intact."""
+    """References do not lock edits; future runs validate the updated Source type."""
     from config_store import save_records
 
     source = {
@@ -655,9 +655,7 @@ def test_referenced_source_type_is_locked_but_other_fields_remain_editable(
         },
     )
     changed = {**source, "type": "ssh" if original_type == "local" else "local"}
-    with pytest.raises(ValueError, match="Log Monitor"):
-        save_sources([changed])
-    assert load_sources() == [source]
+    assert save_sources([changed]) == [changed]
     edited = {**source, "name": "Renamed Logs", "path": "/other/log"}
     assert save_sources([edited]) == [edited]
     save_records("tasks", {})

@@ -25,7 +25,7 @@ x-laya: &laya
 
 services:
   ui:
-    image: call518/deciflow-ui:0.0.1
+    image: call518/deciflow-ui:0.0.2
     container_name: DeciFlow-UI
     hostname: DeciFlow-UI
     init: true

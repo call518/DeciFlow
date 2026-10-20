@@ -114,7 +114,7 @@ def test_invalid_generation_is_rejected(
 @pytest.mark.parametrize("engine", ["laya", "jev"])
 @pytest.mark.parametrize("mode", ["automatic", "manual"])
 @pytest.mark.parametrize("model", [None, "gpt-5.4"])
-@pytest.mark.parametrize("sample_count", [1, 10, 20, 30, 50, 100])
+@pytest.mark.parametrize("sample_count", [1, 10, 20, 30, 50, 100, 101])
 async def test_generate_then_save_and_reload(
     monkeypatch: pytest.MonkeyPatch,
     generated: dict[str, Any],
@@ -216,7 +216,7 @@ async def test_generate_then_save_and_reload(
 @pytest.mark.anyio
 @pytest.mark.parametrize(
     ("sample_count", "record_count"),
-    [(None, 12), (10, 12), (20, 60), (30, 60), (30, 12), (50, 120), (100, 150)],
+    [(101, 120), (1000, 120), (None, 12), (1, 12), (15, 60), (31, 60), (10, 12), (20, 60), (30, 60), (30, 12), (50, 120), (100, 150)],
 )
 async def test_source_preview_respects_content_field(
     tmp_path: Path,
@@ -329,7 +329,7 @@ async def test_bad_provider_response_never_changes_profiles(
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("sample_count", [10, 20, 30, 50, 100])
+@pytest.mark.parametrize("sample_count", [1, 7, 10, 15, 20, 30, 31, 50, 100, 101])
 async def test_ssh_preview_closes_reader(
     monkeypatch: pytest.MonkeyPatch, sample_count: int
 ) -> None:
@@ -504,7 +504,7 @@ def test_generated_review_options_must_reference_real_options(
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("sample_count", [0, 1, 15, 31, 101, -1, 1.5, "10", True, None])
+@pytest.mark.parametrize("sample_count", [0, -1, 1.5, "10", True, None])
 async def test_preview_rejects_invalid_sample_count(sample_count: object) -> None:
     with pytest.raises(ValueError, match="Sample Count"):
         await generation.preview_samples(
@@ -536,11 +536,11 @@ async def test_preview_byte_limit_preserves_complete_samples(
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("samples", [["sample"] * 101, ["가" * 50_001]])
+@pytest.mark.parametrize("samples", [["sample"] * 25_001, ["가" * 50_001]])
 async def test_generation_rejects_excess_samples_or_utf8_bytes(
     samples: list[str],
 ) -> None:
-    with pytest.raises(ValueError, match="1–100"):
+    with pytest.raises(ValueError, match="150,000 bytes"):
         await generation.generate_criteria({"samples": samples})
 
 
@@ -616,3 +616,96 @@ async def test_random_preview_timeout_never_returns_a_prefix(
     with pytest.raises(TimeoutError):
         await generation.preview_samples({"sourceId": "registered"})
     assert closed == [True]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("engine", ["laya", "jev"])
+async def test_revision_uses_current_profile_without_samples_and_does_not_save(
+    monkeypatch: pytest.MonkeyPatch, generated: dict[str, Any], engine: str
+) -> None:
+    monkeypatch.setenv("DECISION_ENGINE", engine)
+    monkeypatch.setenv("OPENAI_API_KEY", "private-test-key")
+    current = generation.convert_generated_profile(generated)
+    current["normalization"] = "single_line_syslog_header"
+    before = deepcopy(PROFILES)
+    original_client = httpx.AsyncClient
+    calls = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        calls.append(payload)
+        value = json.loads(payload["input"])
+        assert value["currentProfile"] == current
+        assert value["samples"] == []
+        assert "Preserve the profile name" in payload["instructions"]
+        assert "revision requests or editing commentary" in payload["instructions"]
+        return httpx.Response(
+            200,
+            json={
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": json.dumps(
+                                    {
+                                        "analysisPurpose": "Clarify unknown cases.",
+                                        "profile": generated,
+                                    }
+                                ),
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+
+    monkeypatch.setattr(
+        generation.httpx,
+        "AsyncClient",
+        lambda **kwargs: original_client(
+            transport=httpx.MockTransport(handle), **kwargs
+        ),
+    )
+    result = await generation.generate_criteria(
+        {
+            "purposeMode": "manual",
+            "purpose": "Clarify unknown cases.",
+            "currentProfile": current,
+            "samples": [],
+        }
+    )
+    assert result["profile"]["normalization"] == current["normalization"]
+    assert list(result["profile"]["questions"]) == list(current["questions"])
+    assert PROFILES == before
+    assert len(calls) == 1
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"currentProfile": {}},
+        {"purpose": ""},
+        {"purposeMode": "automatic"},
+        {"currentProfile": {"instructions": "x" * (generation.MAX_SAMPLE_BYTES + 1)}},
+    ],
+)
+async def test_revision_rejects_invalid_input_before_api(
+    monkeypatch: pytest.MonkeyPatch, generated: dict[str, Any], changes: dict
+) -> None:
+    def unexpected(**kwargs):
+        pytest.fail("Invalid revisions must not call OpenAI")
+
+    monkeypatch.setattr(generation.httpx, "AsyncClient", unexpected)
+    body = {
+        "purposeMode": "manual",
+        "purpose": "Clarify rules.",
+        "samples": [],
+        "currentProfile": generation.convert_generated_profile(generated),
+        **changes,
+    }
+    with pytest.raises((ValueError, TypeError)):
+        await generation.generate_criteria(body)

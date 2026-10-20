@@ -4,9 +4,9 @@
 
 A **Task** saves an execution configuration; each start creates a separate **run**.
 Register Sources first, then add a Task with a name, mode, and Source assignments
-(Criteria, Events/Chunk, optional Action, and source Hosts for Remote File). Save does not start a run.
+(Criteria, Events/Chunk, optional Action, and source Hosts for Remote File). New Tasks default to **Disabled**. Enable a Task before running it. Save does not start a run.
 
-A Source assignment can be set to **None** to temporarily release its dependency. Tasks with no Sources can be saved but cannot run. Stop a Starting, Running, Pausing, or Paused Task before editing it.
+A Source assignment can be set to **None** to temporarily release its dependency. Tasks with no Sources can be saved but cannot run. Tasks remain editable while starting, running, or paused. Edits apply to new runs; existing runs keep their settings. Disabling a Task still stops its current run. Deletion is blocked while in use, including persisted recoverable runs.
 
 Main lists enabled Tasks with running/starting Tasks first, then name order within each group. Click a Task to display its current or latest run; a fresh page has no selection. Disabled Tasks remain available in the Tasks management list. The Tasks list
 provides an Enabled switch and Run, Stop, Pause / Resume, View, Edit, History, and Delete.
@@ -75,8 +75,9 @@ List refreshes preserve the expanded detail in place.
 
 ## Multiple Source Hosts
 
-Each Remote File Source row selects one or more SSH Hosts. Local File has no SSH
-Host selector. At run start, Source × Host expands into frozen connection snapshots.
+Each Remote File Source row selects one or more SSH Hosts. Local File and HDFS
+have no SSH Host selector. HDFS supports Batch only and displays its configured
+NameNode or WebHDFS endpoint as the Source Host; see [HDFS](sources.md#hdfs). At run start, Source × Host expands into frozen connection snapshots.
 
 Collection runs independently per host. Prepared records are submitted in rotating
 host order, skipping empty slots without additional remote availability probes.

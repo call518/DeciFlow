@@ -1,5 +1,12 @@
 # Python Actions
 
+목록의 **Manage → Ref.** 버튼과 Edit의 **References** 링크는 참조 대화상자를 엽니다.
+View는 세부 정보 위 **References**에 같은 내용을 직접 표시합니다.
+Task 할당, 실행 중 작업, 복구 가능한 실행의 종류·이름·ID만 표시합니다.
+상세 화면이 있는 항목의 ID 링크는 새 탭으로 열리며,
+열 때 현재 참조를 조회합니다.
+
+
 [English](actions.md) | [한국어](actions.ko.md) | [문서 안내](README.ko.md) | [README](../README.ko.md)
 
 ## 기본 샘플 Action

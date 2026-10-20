@@ -55,6 +55,7 @@ def test_compose_deployment(profile: str, tmp_path: Path) -> None:
     services = config["services"]
     assert set(services) == ({"ui", f"laya-{profile}"} if profile else {"ui"})
     ui = services["ui"]
+    assert ui["image"] == "call518/deciflow-ui:0.0.2"
     assert ui["ports"][0]["target"] == 4567
     assert ui["ports"][0]["published"] == "4567"
     assert ui["environment"]["DECIFLOW_DATA_DIR"] == "/custom/data"

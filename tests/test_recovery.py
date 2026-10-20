@@ -28,7 +28,12 @@ async def recovery_task(
     path.write_text("one\ntwo\nthree\n")
     source = save_sources([{"name": "Input", "type": "local", "path": str(path)}])[0]
     task = save_task(
-        {"name": "Recover", "mode": "batch", "sources": [{"sourceId": source["id"]}]}
+        {
+            "name": "Recover",
+            "enabled": True,
+            "mode": "batch",
+            "sources": [{"sourceId": source["id"]}],
+        }
     )
     try:
         yield {"task": task, "path": path, "source": source}

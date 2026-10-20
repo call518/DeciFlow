@@ -1,5 +1,12 @@
 # Criteria 관리
 
+목록의 **Manage → Ref.** 버튼과 Edit의 **References** 링크는 참조 대화상자를 엽니다.
+View는 세부 정보 위 **References**에 같은 내용을 직접 표시합니다.
+Task 할당, 실행 중 작업, 복구 가능한 실행의 종류·이름·ID만 표시합니다.
+상세 화면이 있는 항목의 ID 링크는 새 탭으로 열리며,
+열 때 현재 참조를 조회합니다.
+
+
 [English](criteria.md) | [한국어](criteria.ko.md) | [문서 안내](README.ko.md) | [README](../README.ko.md)
 
 **Criteria**에서 판정 프로필을 관리합니다. Laya와 Jev에 같은 정의와 응답 검증을
@@ -38,8 +45,8 @@ OpenAI 키 없이도 이 가이드를 따라 Criteria를 직접 작성·수정·
 기본 모델은 지능과 비용의 균형을 고려한 선택이며, 생성한 기준은 대표 샘플로
 검토하세요. `.env.example`의 모델명 예시와 공식 목록에서 사용 가능 여부를 확인하세요.
 
-1. 등록된 Source를 선택합니다. Remote File Source는 SSH Host 하나도 선택합니다.
-2. **Sample Count**(10개 기본값, 20개·30개·50개·100개)를 지정하고, TEXT 입력은 Events Per Sample도
+1. 등록된 Local File·Remote File (SSH)·HDFS (Native / WebHDFS) Source를 선택합니다. Remote File Source는 SSH Host 하나도 선택합니다.
+2. **Sample Count**(양의 정수 직접 입력, 기본값 10, 개수 상한 없음)를 지정하고, TEXT 입력은 Events Per Sample도
    지정한 뒤 **Preview Source Samples**를 누릅니다. Sample Count는 입력 샘플 개수,
    Events Per Sample는 각 샘플에 묶는 TEXT 이벤트 개수입니다. 샘플이 많을수록
    토큰 소비와 API 비용이 늘어날 수 있습니다.
@@ -311,3 +318,13 @@ Laya는 본문 한도와 별도로 질문 지시문·선택지의 head 예산을
 Choice 정의는 `reviewOptions`를 명시적으로 저장합니다. 공통 지침은 모든 Decision에 적용합니다.
 결과와 Action은 AI 답변에 `decisions`, 항목별 불확실성과 검토 사유에
 `decisionAssessments`를 사용합니다.
+
+
+## AI로 기존 Criteria 수정
+
+Edit에서 **Revise With AI**를 펼치고 **Revision Request**에 수정 요청을 입력합니다.
+현재 편집 중인 초안과 요청을 OpenAI로 보내며, Source 샘플은 선택 사항입니다.
+OpenAI API 요금이 발생합니다. 반환된 초안을 검토하고 **Save Changes**를 눌러
+같은 Criteria ID로 저장합니다. 생성만으로 자동 저장하지 않습니다.
+기존 실행은 원래 Criteria를 유지합니다. 요청 대기 중 편집기를 닫거나 다시 열거나
+내용을 변경하면 해당 응답은 적용하지 않습니다.

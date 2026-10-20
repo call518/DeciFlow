@@ -320,7 +320,7 @@ Task 실행 정보와 호스트별 수집 상태는 실행 이력에 별도로 �
 | `sourceId` / `sourceName` / `sourceType` | 등록 소스 ID·이름 스냅샷·local 또는 ssh 타입. 명시적 경로 API 입력에는 생략. |
 | `hostId` / `hostName` / `hostAddress` / `hostPort` | 원격 호스트 식별·이름·접속 주소 스냅샷. Action 입력에도 포함. |
 | `chunkSequence` / `sourceFailure` | 원격 Source/Host별 청크 순번. sourceFailure는 엔진 판정 없이 발생한 접속·읽기 실패. |
-| `sourcePatterns` | 해당 파일을 선택한 로컬 경로·패턴 또는 호스트를 포함한 SSH 패턴. |
+| `sourcePatterns` | 해당 파일을 선택한 로컬 경로·패턴 또는 호스트를 포함한 SSH·HDFS 패턴. |
 | `line` / `lineEnd` | 원본 시작·끝 줄 번호. Batch는 파일 줄 번호, Realtime은 감시 시작·회전 이후 관찰 순번. |
 | `lineCount` | 실제 포함된 줄 수. 시작·끝 줄 번호 차이와 다를 수 있음. |
 | `eventCount` | 청크에 포함된 실제 이벤트 수. 현재 비어 있지 않은 한 줄이 한 이벤트. |
@@ -387,3 +387,9 @@ Jev도 같은 최상위 결과 구조를 사용하며, `providerResponse`는 엔
 빈 배열이며 `total`/`completed`는 원래 실행 전체의 값입니다. 모델별 미세조정
 형식으로 변환하는 기능은 아닙니다. Task 삭제 시 리뷰도 삭제되므로 보존하려면 먼저
 내려받으세요.
+
+Native HDFS 결과의 Source URI는 `hdfs://namenode[:port]/path`이며 WebHDFS는
+`webhdfs://host[:port]/path`, HTTPS는 `swebhdfs://host[:port]/path`입니다.
+Host 메타데이터는 실제 블록을 제공하는 DataNode가 아닌 설정한 NameNode/nameservice
+또는 WebHDFS 엔드포인트를 나타냅니다. User·티켓 캐시·위임 토큰·CA 파일 설정은
+결과나 AI 입력에 포함하지 않습니다.

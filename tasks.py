@@ -276,6 +276,10 @@ def save_task(value: object) -> Result:
         if identities
         else []
     )
+    if mode != "batch" and any(
+        spec.get("type") in {"hdfs", "webhdfs"} for spec in specs
+    ):
+        raise ValueError("HDFS Sources support Batch Tasks only.")
     if len({item["sourceId"] for item in identities}) != len(identities):
         raise ValueError("Select each Source only once per Task.")
     selections: dict[str, Result] = {}
@@ -309,7 +313,7 @@ def save_task(value: object) -> Result:
         raise ValueError(
             "Enter a five-field cron expression: minute hour day month weekday."
         )
-    enabled = value.get("enabled", True)
+    enabled = value.get("enabled", False)
     resume = value.get("resumeOnRestart", False)
     if type(enabled) is not bool or type(resume) is not bool:
         raise TypeError("Automatic execution settings must be booleans.")

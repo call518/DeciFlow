@@ -41,6 +41,7 @@ async def task_setup(
     task = save_task(
         {
             "name": "Logs",
+            "enabled": True,
             "mode": "batch",
             "sources": [
                 {
@@ -682,7 +683,12 @@ async def test_paused_task_does_not_block_other_tasks_or_inflight_action(
         [*load_sources(), {"name": "Other", "type": "local", "path": str(other_path)}]
     )[-1]
     other = save_task(
-        {"name": "Other", "mode": "batch", "sources": [{"sourceId": source["id"]}]}
+        {
+            "name": "Other",
+            "enabled": True,
+            "mode": "batch",
+            "sources": [{"sourceId": source["id"]}],
+        }
     )
     second = JOBS[(await server.launch_task(other, "manual"))["jobId"]]
     await asyncio.wait_for(second.task, 3)
@@ -712,23 +718,28 @@ async def test_task_without_sources_can_be_saved_but_not_run(
 
 
 @pytest.mark.parametrize("state", ["running", "pausing", "paused", "starting"])
-async def test_active_task_cannot_be_edited(
+async def test_active_task_can_be_edited(
     task_setup: Result, monkeypatch: pytest.MonkeyPatch, state: str
 ) -> None:
     task = task_setup["task"]
     if state == "starting":
         server.TASK_STARTING.add(task["id"])
     else:
-        monkeypatch.setattr(server, "active_task_job", lambda identity: object())
+        from types import SimpleNamespace
+
+        monkeypatch.setattr(
+            server,
+            "active_task_job",
+            lambda identity: SimpleNamespace(snapshot=lambda: {"state": state}),
+        )
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=server.app),
         base_url="http://localhost",
         headers={"Origin": "http://localhost"},
     ) as client:
         response = await client.put("/api/tasks", json={**task, "sources": []})
-    assert response.status_code == 409
-    assert "Stop the Task before editing" in response.json()["error"]
-    assert load_tasks()[0]["sources"] == task["sources"]
+    assert response.status_code == 200
+    assert load_tasks()[0]["sources"] == []
 
 
 async def test_task_without_criteria_can_be_saved_but_not_run(
@@ -741,3 +752,17 @@ async def test_task_without_criteria_can_be_saved_but_not_run(
     with pytest.raises(ValueError, match="Select Criteria for every Source"):
         await server.launch_task(saved, "manual")
     assert not server.TASK_STARTING
+
+
+async def test_new_task_defaults_to_disabled(task_setup: Result) -> None:
+    values = {
+        key: value
+        for key, value in task_setup["task"].items()
+        if key not in {"id", "enabled"}
+    }
+    values["name"] = "New Disabled Task"
+    task = save_task(values)
+    assert task["enabled"] is False
+    states = {item["id"]: item["enabled"] for item in load_tasks()}
+    assert states[task["id"]] is False
+    assert states[task_setup["task"]["id"]] is True

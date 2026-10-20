@@ -83,7 +83,7 @@
               <label id="task-trigger-field">Execution<select id="task-trigger"><option value="manual">Manual — run once</option><option value="cron">Cron Schedule</option></select></label>
               <label id="task-cron-field" hidden>Cron Expression<input id="task-cron" type="text" placeholder="*/15 * * * *"></label>
               <label id="task-timezone-field" hidden>Timezone (IANA)<input id="task-timezone" type="text" placeholder="Asia/Seoul"></label>
-              <label id="task-enabled-field" class="task-checkbox"><input id="task-enabled" type="checkbox" checked>Enable Task</label>
+              <label id="task-enabled-field" class="task-checkbox"><input id="task-enabled" type="checkbox">Enable Task</label>
               <label id="task-resume-field" class="task-checkbox" hidden><input id="task-resume" type="checkbox">Start Realtime If No Recoverable Execution Exists</label>
             </div>
             <p id="task-mode-note" class="caption"></p>
@@ -248,6 +248,13 @@
         <p class="caption">If you trust this key, DeciFlow will remember it for future connections.</p>
       </div>
       <footer class="ssh-trust-actions"><button id="ssh-trust-cancel" type="submit" value="cancel" class="quiet" autofocus>Cancel</button><button id="ssh-trust-approve" type="submit" value="approve" class="primary">Trust &amp; Connect</button></footer>
+    </form>
+  </dialog>
+  <dialog id="references-dialog" class="ssh-trust-dialog references-dialog" aria-labelledby="references-title" aria-describedby="references-summary">
+    <form method="dialog">
+      <header class="ssh-trust-header"><h2 id="references-title">References</h2><button type="submit" value="close" class="quiet ssh-trust-close" aria-label="Close references">×</button></header>
+      <div class="ssh-trust-body"><strong id="references-name"></strong><p id="references-summary" role="status" class="caption"></p><div id="references-content"></div></div>
+      <footer class="ssh-trust-actions"><button type="submit" value="close" class="quiet" autofocus>Close</button></footer>
     </form>
   </dialog>
   <dialog id="delete-dialog" class="ssh-trust-dialog delete-dialog" aria-labelledby="delete-title" aria-describedby="delete-description">

@@ -1,9 +1,16 @@
 # Sources
 
+목록의 **Manage → Ref.** 버튼과 Edit의 **References** 링크는 참조 대화상자를 엽니다.
+View는 세부 정보 위 **References**에 같은 내용을 직접 표시합니다.
+Task 할당, 실행 중 작업, 복구 가능한 실행의 종류·이름·ID만 표시합니다.
+상세 화면이 있는 항목의 ID 링크는 새 탭으로 열리며,
+열 때 현재 참조를 조회합니다.
+
+
 [English](sources.md) | [한국어](sources.ko.md) | [문서 안내](README.ko.md) | [README](../README.ko.md)
 
 사이드바 **Source**에서 재사용할 데이터 입력을 등록합니다.
-**Add Source**로 Type·Name·Input Format·File Path / Pattern 순서로 입력하고 **Save Changes**로 저장하세요.
+**Add Source**로 Name·Type·File Path / Pattern·Input Format을 입력하고 **Save Changes**로 저장하세요.
 이름·경로로 검색하고 View·Edit·Delete로 관리합니다. 삭제는 저장 시 적용하며,
 로그 파일·SSH Host·SSH 키·known_hosts 파일을 삭제하지 않습니다.
 Remote File에는 재사용할 경로를 지정합니다. Task의 Source별로 검색 가능한 체크박스에서
@@ -14,8 +21,10 @@ Remote File에는 재사용할 경로를 지정합니다. Task의 Source별로 �
 | --- | --- |
 | Local File | DeciFlow 노드의 읽기 가능한 UTF-8 일반 파일. 상대 경로는 작업 디렉터리 기준 |
 | Remote File (SSH) | SSH/SFTP 호스트의 UTF-8 일반 파일. 절대 POSIX 경로·키 인증·호스트 키 검증 필요 |
+| HDFS (Native) | 네이티브 Hadoop 클라이언트. Batch 전용 UTF-8 TEXT·JSONL, 절대 HDFS 경로 |
+| HDFS (WebHDFS) | HTTP(S) WebHDFS 클라이언트; 동일한 Batch 형식·경로 규칙 |
 
-경로는 `*`·`?`·`[abc]`·재귀 `**` 패턴을 지원하며 등록 하나로 여러 파일을 선택할 수
+Local·SSH 경로는 `*`·`?`·`[abc]`·재귀 `**` 패턴을 지원하며 등록 하나로 여러 파일을 선택할 수
 있습니다. 초기 예시는 Sample System Messages·Sample HTTP access·Sample SSH authentication입니다.
 환경에 맞게 편집하세요. 이름·ID는 중복할 수 없으며 이름을 바꿔도 ID는 유지합니다.
 
@@ -180,6 +189,110 @@ Realtime은 SFTP 디렉터리·패턴 탐색에서 받은 파일 속성을 재�
 줄 처리·호스트별 공정성·청크·실행 전체의 엔진 동시 요청 제한은 유지합니다.
 확인 사이에 빠르게 회전하는 파일은 여전히 이벤트가 누락될 수 있습니다.
 
+## HDFS
+
+Source Type에서 **HDFS (Native)** 또는 **HDFS (WebHDFS)**를 선택합니다. 두 방식 모두
+Batch 읽기·연결 테스트·AI Criteria 샘플 미리보기를 지원합니다. 지정한 방식으로만
+접속하며 실패 시 다른 방식으로 자동 전환하지 않습니다.
+
+### Native
+
+`call518/deciflow-ui:0.0.2`로 네이티브 Hadoop Batch 읽기를 사용합니다. 네이티브
+DeciFlow 실행에는 PyArrow·Java·`libhdfs`와 Dockerfile의 Hadoop 환경 변수 설정이
+필요합니다. 앱의 파일 읽기에는 셸 명령을 사용하지 않습니다.
+
+이미지는 Hadoop의 표준 `etc/hadoop` 템플릿을 `/etc/hadoop/conf`에 제공합니다.
+`core-site.xml`·`hdfs-site.xml`·`hadoop-env.sh`·정책·메트릭·SSL 예제를 포함합니다.
+클러스터별 속성을 지정하거나 실제 클러스터 파일을 마운트하세요. 디렉터리 마운트는 이미지의
+설정 디렉터리 전체를 가리므로, 나머지 기본 파일을 유지하려면 XML 파일을 개별 마운트하세요.
+템플릿에는 클러스터 주소·인증 정보가 없으며 `default`를 쓰려면 `fs.defaultFS`에 HDFS URI를
+지정해야 합니다.
+
+**File Path / Pattern**에는 `/warehouse/events/part-*.jsonl` 같은 HDFS 내부 경로를
+입력하며 `hdfs://` 접두사는 붙이지 않습니다. 접속 설정은 별도 필드에 입력합니다.
+
+HDFS (Native)는 하나의 **Endpoint**와 선택 항목인 **User**·**Kerberos Ticket Cache**로
+등록합니다.
+
+- `hdfs://namenode.example.test:8020`: NameNode와 RPC 포트를 명시합니다.
+- `hdfs://nameservice1`: 논리 HA nameservice입니다. 클러스터 XML 설정이 필요합니다.
+- `default`: `HADOOP_CONF_DIR`(이미지 기본값 `/etc/hadoop/conf`)의 XML 파일에서
+  `fs.defaultFS`를 읽습니다. 기본 파일시스템은 `hdfs://`여야 합니다.
+
+URI에서 포트를 생략하면 Hadoop 기본값 또는 HA 설정을 사용합니다. 파일 경로는
+Endpoint가 아닌 **File Path / Pattern**에 입력합니다. DeciFlow가 URI를 파싱해
+네이티브 클라이언트에 필요한 호스트·포트로 전달합니다. UI 컨테이너 설정 마운트 예시는
+다음과 같습니다. `services.ui.volumes`에 환경에 맞는 호스트 경로로 추가하세요.
+
+```yaml
+- /path/to/core-site.xml:/etc/hadoop/conf/core-site.xml:ro
+- /path/to/hdfs-site.xml:/etc/hadoop/conf/hdfs-site.xml:ro
+- /path/to/krb5.conf:/etc/krb5.conf:ro
+- /path/to/ticket-cache:/run/hdfs-ticket:ro
+```
+
+Kerberos 사용 시 캐시 경로에 `/run/hdfs-ticket`을 지정합니다. 티켓은 외부에서 발급·
+갱신해야 하며 DeciFlow는 비밀번호 저장·`kinit` 실행·티켓 갱신을 하지 않습니다. User는
+Hadoop simple 인증에서 선택 사항입니다. UI 컨테이너에서 NameNode와 클러스터가 알려주는
+DataNode 주소를 해석하고 접근할 수 있어야 합니다. **Test Connection**은 파일 목록과
+첫 파일의 1바이트 읽기를 확인하며 저장·View 표시는 접속하지 않습니다.
+
+이미지에는 수동 점검용 `hdfs`·`hadoop` 명령도 포함합니다. 클러스터 XML을
+마운트했다면 UI 컨테이너에서 HDFS 루트를 확인할 수 있습니다.
+
+```bash
+docker compose exec ui hdfs dfs -ls /
+```
+
+`fs.defaultFS` 설정이 없으면 엔드포인트를 명시하세요.
+
+```bash
+docker compose exec ui hdfs dfs -fs hdfs://namenode.example.test:8020 -ls /
+```
+
+SQLite의 Source 설정은 CLI에 자동 적용되지 않습니다. CLI simple 인증은 프로세스
+사용자나 `HADOOP_USER_NAME`을 사용하며, Kerberos는 `KRB5CCNAME`으로 마운트한 티켓
+캐시를 지정할 수 있습니다. 클러스터 설정이나 `-fs`가 없으면 Hadoop 기본값은 로컬
+파일시스템이므로 `/`가 컨테이너의 로컬 루트일 수 있습니다.
+
+### WebHDFS
+
+**Endpoint**에 NameNode 또는 HttpFS의 기본 URL을 지정합니다.
+예: `http://namenode.example.test:9870`, `https://gateway.example.test:14000`.
+`/webhdfs/v1` 접미사도 허용합니다. HDFS 경로는 **File Path / Pattern**에 별도로
+입력합니다. Hadoop XML이나 네이티브 JVM 클라이언트를 사용하지 않습니다.
+DeciFlow에서 엔드포인트와 OPEN 리다이렉트로 전달되는 DataNode HTTP 주소에 모두
+접근할 수 있어야 합니다. HTTPS에서 HTTP로 내려가는 리다이렉트는 거절합니다.
+
+**User**는 선택적인 Hadoop simple 인증 사용자명입니다. 보안 클러스터에서는 외부에서
+발급한 WebHDFS 위임 토큰을 파일로 마운트하고 **Delegation Token File**에 DeciFlow
+내부 절대 경로를 입력하세요. 토큰이 User보다 우선하며 토큰 내용은 Source 설정이나
+결과에 저장하지 않습니다. 토큰 발급·갱신과 직접 Kerberos SPNEGO는 지원하지 않습니다.
+토큰을 설정한 서비스에 전송하므로 신뢰하는 엔드포인트만 사용하세요.
+HTTPS 인증서는 항상 검증합니다. 사설 CA를 사용하면 PEM CA 파일을 마운트하고
+**Trusted CA File**에 지정합니다. 실행·재개 중에도 토큰·CA 파일이 필요합니다.
+엔드포인트 URL에 토큰을 직접 넣지 마세요.
+
+### 공통 동작
+
+절대 파일 경로, 디렉터리(재귀 읽기), 경로 구성 요소별 `*`·`?`·`[abc]` 패턴을 한 줄에
+하나씩 지정합니다. `**` 대신 디렉터리를 사용하세요. 압축하지 않은 UTF-8 TEXT·JSONL만
+지원하며 Parquet·ORC는 지원하지 않습니다. 물리적 한 줄은 최대 16 MiB입니다.
+JSONL 파싱·Criteria·Action은 기존 공통 처리 경로를 사용합니다.
+
+Batch 시작 시 파일 목록을 확정하고 중복 경로를 제거하며 같은 URI에 충돌하는 설정은
+거절합니다. 최대 4개 HDFS 파일을 제한된 버퍼로 동시에 읽고 분류는 엔진 동시성 제한을
+사용합니다. 실행 중 파일을 변경하지 마세요. 재개 시 파일 목록을 유지하고 메타데이터와
+체크포인트의 파일 앞부분을 확인합니다. 변경·누락 파일은 실패로 표시하며 새 파일은
+제외합니다. 새 실행은 처음부터 읽습니다. 장애 전후 외부 Action의 정확히 1회 실행까지
+보장하지는 않습니다.
+
+샘플 미리보기는 전체 Source 스캔과 20초·바이트 제한을 유지하므로 대규모 Source에서는
+시간 초과가 발생할 수 있습니다. 필요한 경우 미리보기 경로 범위를 좁히세요. AI Criteria
+생성에는 편집한 샘플만 전송합니다. Realtime·분산 작업자는 이번 구현에 포함하지 않습니다.
+`POST /api/sources/hdfs-test`는 미저장 Source를 검사하며 Source 관리와 동일한 신뢰
+Origin 정책을 사용합니다.
+
 ## 저장과 API
 
 SSH Host 목록·등록/수정·삭제는 `/api/ssh-hosts`의 `POST`·`PUT`·`DELETE`를 사용하며
@@ -222,10 +335,11 @@ Tasks에 소스 ID·hostIds·실행 설정을 저장합니다. 직접 파일 API
 중복 추가하지 않습니다. 비활성 수동 VOC Task도 제공하며 자동 실행하지 않습니다. 경로는 Compose
 샘플 마운트 기준이므로 다른 실행 환경에서는 수정하세요.
 
-저장된 Task가 참조하는 Source는 Task의 활성·실행 여부와 무관하게 **Type**을
-변경할 수 없습니다. 편집기에 참조 Task 이름을 표시하며 서버도 변경을 차단합니다.
-이름·경로는 계속 수정할 수 있습니다. 타입을 바꾸려면 새 Source를 만들어 Task에서
-교체하거나 모든 Task 참조를 먼저 제거하세요. 미사용 Source의 타입은 변경할 수 있습니다.
+Task가 참조하거나 사용 중인 Source도 Type을 포함해 수정할 수 있습니다. 편집기에
+사용 현황을 표시하며 현재 실행은 시작 시 확정한 Source 설정을 유지하고 새 실행부터
+수정본을 사용합니다. Type 변경 후 Task의 호스트 할당을 검토하세요. SSH에는 SSH Hosts가
+필요하며 다른 Type은 허용하지 않습니다. 잘못된 구성은 실행 전 검증으로 차단합니다.
+저장된 참조·시작 중/실행 중 작업·저장된 복구 대상 실행이 있으면 삭제를 차단합니다.
 
 정부기관 샘플의 Source·한국어 Criteria·비활성 Batch Task도 시작 시 자동 제공됩니다.
 [Sample VOC Central Gov Consulting QnA 설정](voc.ko.md#정부기관-qna-샘플)을 참고하세요.

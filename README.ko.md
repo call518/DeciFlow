@@ -32,9 +32,11 @@ DeciFlow는 TEXT 로그 청크 또는 JSONL 개별 레코드의 본문을 읽어
 [토큰 경고](docs/usage.ko.md#토큰-경고)를 참고하세요. Criteria 축약 메타데이터는 로컬 어댑터가
 제공하며 외부 서버는 생략할 수 있습니다. 현재 제공자 계약에는 별도의 출력 잘림 신호가 없습니다.
 
-**Processing Time** 박스에 Avg·Min·Max·P(50)·P(95)·P(99)를 함께 표시합니다. Throughput은 전체
-경과시간당 성공 건수입니다. 모두 선택한 실행 전체 기준이며 필터·페이지 이동으로
+**Processing Time** 박스에 Avg·Min·Max·P(50)·P(95)·P(99)를 함께 표시합니다. Throughput은 유휴시간·Action 전달 시간을 제외한
+활성 분류 시간당 성공 건수입니다. 모두 선택한 실행 전체 기준이며 필터·페이지 이동으로
 집계 범위가 바뀌지 않습니다.
+실행 URL은 새로고침 시 차트 선택·Show Decisions·결과 필터를 복원하며,
+목록 검색어는 같은 브라우저 탭에서 유지합니다.
 
 **DeciFlow**는 로그가 있는 노드에서 실행해 이벤트를 읽고 브라우저에 결과를 표시합니다.
 **Laya 서버**는 같은 호스트 또는 별도 호스트에서 판정 모델을 실행하며, **Jev 서비스**는 대신 선택할 수
@@ -105,7 +107,9 @@ docker compose logs --follow laya-cpu
 **Sample HTTP access** 경로를 `/host-logs/sample-logs/access-100.log`로 수정하고 저장합니다.
 **Tasks**에서 이름을 지정한 **Batch / Manual** Task를 추가하고
 **Sample HTTP access**, **Sample HTTP access** 기준, **Events/Chunk: 1**,
-**Action: None**을 선택해 저장합니다. Tasks에서 **Run**을 누르면 Main으로 자동 이동해 결과를 표시합니다. Tasks의 **Pause / Resume**으로 같은 실행을 잠시 멈췄다가 이어갈 수 있습니다. 새 실행은 서버 재시작 후에도 복구하며 일시정지 상태도 유지합니다. [복구 제한](docs/tasks.ko.md#서버-재시작-후-복구)을 확인하세요.
+**Action: None**을 선택해 저장합니다. 새 Task는 기본 Disabled이므로 활성화한 뒤 Tasks에서 **Run**을 누르면 Main으로 자동 이동해 결과를 표시합니다. Tasks의 **Pause / Resume**으로 같은 실행을 잠시 멈췄다가 이어갈 수 있습니다. 새 실행은 서버 재시작 후에도 복구하며 일시정지 상태도 유지합니다. [복구 제한](docs/tasks.ko.md#서버-재시작-후-복구)을 확인하세요.
+
+참조 중인 Source·Criteria·Task·SSH 설정도 편집할 수 있으며 기존 실행은 설정 사본을 유지합니다. Action 코드·실행 환경 수정이나 Reset 전에는 사용 중인 실행을 중지해야 합니다. 참조·사용 중에는 삭제를 차단합니다.
 
 선택 사항인 GPU 가속은 [Docker 배포 상세](#laya-docker),
 유료 API를 사용하려면 [Jev](#jev)를 참고하세요.
@@ -139,6 +143,10 @@ Choice·Score·Noul 중 하나라도 사람이 정정한 결과만 내려받을 
 Overview의 **Decision**에서 모든 판단 항목을 집계할 수 있습니다.
 모든 Criteria 프로필은 UUID를 사용하며 View·Edit의 **Criteria ID**에서 확인·복사합니다.
 이름을 바꿔도 ID는 유지되고 복제하면 새 ID를 발급합니다.
+Source·Criteria·Action 목록의 **Manage → Ref.**, Edit의 **References** 링크와 View 상단의 참조 내역으로 Task 할당 및
+실행 참조를 확인할 수 있습니다. 기존 Criteria도 Edit에서 AI로 수정할 수 있으며,
+초안을 검토한 뒤 저장합니다.
+
 Default Chart Decision은 모든 유형 중 하나를 지정하며 AI 답변·필터를 바꾸지 않고 변경합니다. Choice는 선택지별,
 Score는 가중 점수를 가장 가까운 수준으로 반올림하여, Noul은 Yes 확률을 25% 구간으로
 집계합니다. 확실성 그룹은 선택한 Choice 기준이며 Score·Noul에는 적용하지 않습니다.
@@ -275,7 +283,7 @@ SSH와 별개인 `DECIFLOW_DATA_DIR/ssh-hosts/known_hosts`에만 보존합니다
 설정·신뢰 관리는 [Sources와 SSH 설정](docs/sources.ko.md)을 참고하세요.
 
 - **Tasks:** Source·Criteria·청크·Action 설정을 저장합니다. Batch는 수동·Cron, Realtime은 연속 실행합니다. Disable은 현재 실행과 이후 시작을 막습니다. Main은 실행 중인 Task를 우선 표시하고 Source 요약·전체 설정 말풍선을 제공합니다. [Tasks](docs/tasks.ko.md)를 참고하세요.
-- **Batch:** 등록한 로컬·SSH 파일을 분석합니다. Docker에서 호스트 `/var/log`는 `/host-logs/var/log`입니다.
+- **Batch:** 등록한 로컬·SSH·HDFS 파일을 분석합니다. Docker에서 호스트 `/var/log`는 `/host-logs/var/log`입니다.
 - **Realtime:** 새 로그를 감시합니다. 소스별 판정 기준과 청크 크기를 선택합니다.
 - **처리 지표:** Success / Failed / Total로 성공·실패·처리 완료 전체 청크를 표시합니다. Action Success / Failed / Total은 후속 작업을 별도 집계합니다. Needs Review는 성공 판정만 집계합니다.
   페이지 로드 시 HTTP 점검에서 엔진이 응답하면 Reachable을 표시합니다. 이후 새 분류 요청 결과에 따라 Operational 또는 오류 상태로 갱신하며, 과거 결과 조회는 상태를 바꾸지 않습니다.
@@ -404,7 +412,7 @@ Compose가 포함된 Docker가 필요하며 로컬 Python·uv·CUDA는 필요하
 docker compose up -d ui
 ```
 
-Compose는 Docker Hub에 공개된 `call518/deciflow-ui:0.0.1` 이미지를 사용합니다.
+Compose는 Docker Hub에 공개된 `call518/deciflow-ui:0.0.2` 이미지를 사용합니다.
 이미지는 Python·uv와 운영 유틸리티를 제공합니다. 저장소는 `/app`에 읽기 전용으로
 마운트하며, 시작할 때 `uv sync --frozen`으로 `deciflow-venv` 볼륨에 의존성을 설치합니다.
 최초 실행에는 네트워크 연결이 필요합니다. Compose가 `.env`를 UI에 전달하며
@@ -415,11 +423,33 @@ Compose는 Docker Hub에 공개된 `call518/deciflow-ui:0.0.1` 이미지를 사�
 #### Dockerfile과 Compose의 역할
 
 [`Dockerfile`](Dockerfile)은 `python:3.12-slim`을 기반으로 uv `0.7.20`과 운영 도구를
-설치하고 작업 디렉터리를 `/app`으로 지정합니다. 앱 소스나 프로젝트 의존성은 이미지에
+설치하고 작업 디렉터리를 `/app`으로 지정합니다. PyArrow `23.0.1`에서 사용할 Java와
+Apache Hadoop `3.5.0` 클라이언트 라이브러리(`libhdfs`), PATH의 `hdfs`·`hadoop` 명령도 포함합니다. Hadoop 배포 파일은
+고정한 SHA-512 체크섬으로 검증하며 빌드 시 Linux amd64·arm64 바이너리를 선택합니다.
+`core-site.xml`·`hdfs-site.xml`·환경 스크립트·정책·SSL 예제를 포함한 표준 Hadoop 설정
+템플릿은 `/etc/hadoop/conf`에 설치합니다. 로깅 기본값은 stderr의 WARN이며 클러스터
+주소와 인증 정보는 미리 설정하지 않습니다.
+앱 소스나 프로젝트 의존성은 이미지에
 미리 포함하지 않습니다. 시작 명령은 `uv sync --frozen --no-dev --no-install-project --no-cache`
 이후 `server.main(host='0.0.0.0')`을 실행합니다. 따라서 공개된 UI 이미지에도 복제한
 저장소를 `/app`에 마운트해야 합니다. 추론은 UI 이미지가 아닌 Laya 또는 Jev가 처리합니다.
 SSH 키 관리와 원격 파일 요구사항은 [Sources](docs/sources.ko.md)를 참고하세요.
+
+HDFS Source는 **HDFS (Native)**·**HDFS (WebHDFS)** 방식으로 UTF-8 TEXT·JSONL 파일의
+Batch 읽기를 지원합니다. 클러스터 마운트,
+인증과 실행 제한은 [HDFS 설정](docs/sources.ko.md#hdfs)을 참고하세요.
+HDFS 서버 없이 PyArrow/JVM/libhdfs 로딩과 파일 읽기를 확인하려면 로컬에서 빌드한
+이미지로 다음을 실행하세요. 임시 컨테이너는 자체 가상환경을 사용합니다.
+
+```bash
+docker build --tag deciflow-ui:hdfs-runtime-check .
+docker run --rm --mount type=bind,src="$PWD",dst=/app,readonly \
+  deciflow-ui:hdfs-runtime-check sh -c \
+  'uv sync --frozen --no-dev --no-install-project --no-cache && /opt/deciflow-venv/bin/python scripts/check_hdfs_runtime.py'
+```
+
+이 검사는 JNI와 `hdfs dfs -ls`로 Hadoop의 로컬 파일시스템을 사용합니다. HDFS 연결, Kerberos 인증,
+실제 클러스터와의 호환성을 검증하지는 않습니다.
 
 [`docker-compose.yml`](docker-compose.yml)은 실행 구성을 제공합니다:
 
@@ -472,7 +502,7 @@ Configurations의 **Restart DeciFlow**, DeciFlow-UI Restart 또는 `docker compo
 포트·마운트·Compose 프로필·Laya 서비스 설정은 `docker compose up -d`로
 해당 컨테이너를 재생성해야 합니다.
 소스 변경은 `docker compose restart ui`로 적용하고 UI 변경 후 브라우저를 새로고침하세요.
-Dockerfile을 수정한 경우에만 `docker build --tag call518/deciflow-ui:0.0.1 .`로
+Dockerfile을 수정한 경우에만 `docker build --tag call518/deciflow-ui:0.0.2 .`로
 UI 이미지를 직접 빌드한 뒤 `docker compose up -d --force-recreate ui`로 적용합니다.
 소스 버전 전환 전에는 DeciFlow를 중지하세요.
 

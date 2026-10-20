@@ -1,5 +1,12 @@
 # Criteria Management
 
+The list’s **Manage → Ref.** button and Edit’s **References** link open a
+reference dialog. View displays the same details directly above its configuration
+under **References**. Task assignments, active executions, and recoverable runs
+show only type, name, and ID. Available ID links open details in a new tab;
+references are fetched when opened.
+
+
 [English](criteria.md) | [한국어](criteria.ko.md) | [Documentation](README.md) | [README](../README.md)
 
 Manage decision profiles under **Criteria**. Laya and Jev use the same definitions
@@ -39,8 +46,8 @@ manually using this guide. The default model balances intelligence and cost;
 review generated rules against representative samples. `.env.example` lists
 representative model names and links to the official catalog for availability.
 
-1. Select a registered Source; select one SSH Host for a Remote File Source.
-2. Set **Sample Count** (10 by default, or 20, 30, 50, or 100) and Events Per Sample for TEXT input,
+1. Select a registered Local File, Remote File (SSH), or HDFS (Native / WebHDFS) Source; select one SSH Host for a Remote File Source.
+2. Set **Sample Count** (enter a positive integer; default: 10; no count limit) and Events Per Sample for TEXT input,
    then select **Preview Source Samples**. Sample Count counts inputs; Events Per Sample
    groups TEXT events within each input. More samples consume more tokens and may increase API charges.
    JSONL shows a read-only explanation: one record is one sample, using the configured content field.
@@ -322,3 +329,13 @@ All profiles use `questions` and `defaultDecision`; Choice definitions explicitl
 store `reviewOptions`. Shared instructions apply to every decision.
 Results and Actions use `decisions` for AI answers and `decisionAssessments`
 for per-decision uncertainty and review reasons.
+
+
+## Revise Existing Criteria With AI
+
+In Edit, expand **Revise With AI** and enter a **Revision Request**. The current
+editor draft and request are sent to OpenAI; Source samples are optional. This
+incurs OpenAI API charges. Review the returned draft and select **Save Changes**
+to persist it under the same Criteria ID. Generation does not save automatically.
+Existing runs retain their original Criteria. Replies are discarded if the editor
+is closed, reopened, or changed while the request is pending.

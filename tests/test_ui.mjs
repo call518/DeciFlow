@@ -41,7 +41,7 @@ function runTask(nodes) {
   return vm.runInContext('handleRunTask(selectedTaskId)', workspaceContexts.get(nodes));
 }
 
-function workspace(events, status, storage = { getItem: () => null, setItem() {} }, criteria = null, navigation = null) {
+function workspace(events, status, storage = { getItem: () => null, setItem() {} }, criteria = null, navigation = null, session = undefined) {
   const nodes = new Map();
   const requests = [];
   const listeners = new Map();
@@ -77,11 +77,12 @@ function workspace(events, status, storage = { getItem: () => null, setItem() {}
     },
     Option: function(text, value) { return { text, value }; },
     localStorage: storage,
+    ...(session ? {sessionStorage:session} : {}),
     AbortController,
     setTimeout: () => 1,
     clearTimeout() {},
     fetch: async (path, options) => {
-      if (path === '/api/delete-check') return {ok:true,json:async()=>({references:[]})};
+      if (path === '/api/delete-check') return {ok:true,json:async()=>({references:[],details:[]})};
       if (path === '/api/settings') return {ok:true,json:async()=>options.method==='PUT'?JSON.parse(options.body):({resultsPerPage:50})};
       if (path === '/api/criteria') {
         if (!criteria) return { ok: false, json: async () => ({ error: 'Unavailable' }) };
@@ -270,9 +271,10 @@ test('connection status shares the title row without a breadcrumb header', () =>
   assert.equal((html.match(/id="status"/g) || []).length, 1);
 });
 
-test('New Tasks default to one-time Batch and do not auto-resume', async () => {
+test('New Tasks default to Disabled one-time Batch and do not auto-resume', async () => {
   const {nodes,context}=workspace([]);await vm.runInContext('handleEditTask()',context);
   assert.equal(nodes.get('source-mode').value,'batch');assert.equal(nodes.get('task-trigger').value,'manual');
+  assert.equal(nodes.get('task-enabled').checked,false);
   assert.equal(nodes.get('task-resume').checked,false);assert.equal(nodes.get('task-cron-field').hidden,true);
 });
 
@@ -740,27 +742,33 @@ test('chart bars and result badges share the same category colors', () => {
 });
 
 
-test('throughput uses all successful results and total elapsed time, then resets', async () => {
+test('throughput uses active time, excludes failures, ignores idle time and resets', async () => {
   const success = (index, elapsedMs) => ({ ...result(index), elapsedMs });
   const failed = success(3, 5600);
   failed.result.error = 'timeout';
   const events = [{ type: 'start', engine: 'laya', total: null },
     success(0, 1000), success(1, 2000), success(2, 5500), failed,
-    { type: 'timing', elapsedMs: 7000 }];
+    { type: 'timing', elapsedMs: 7000, activeProcessingMs: 3000 }];
   const { nodes } = workspace(events);
   const rate = () => nodes.get('summary').children[2].children[0].textContent;
   await runTask(nodes);
-  assert.equal(rate(), '0.429 chunks/s');
+  assert.equal(rate(), '1.000 chunks/s');
   nodes.get('review-filter').value = 'no-review';
   nodes.get('review-filter').onchange();
-  assert.equal(rate(), '0.429 chunks/s');
-  events.push({ type: 'timing', elapsedMs: 11000 });
-  await runTask(nodes);
-  assert.equal(rate(), '0.273 chunks/s');
-  events.splice(0, events.length, { type: 'start', engine: 'jev', total: 1 },
-    success(0, 1000));
+  assert.equal(rate(), '1.000 chunks/s');
+  events.push({ type: 'timing', elapsedMs: 11000, activeProcessingMs: 3000 });
   await runTask(nodes);
   assert.equal(rate(), '1.000 chunks/s');
+  events.push({ type: 'timing', elapsedMs: 12000, activeProcessingMs: 4000 });
+  await runTask(nodes);
+  assert.equal(rate(), '0.750 chunks/s');
+  events.splice(0, events.length, { type: 'start', engine: 'jev', total: 1 },
+    success(0, 1000), {type:'timing',elapsedMs:2000,activeProcessingMs:500});
+  await runTask(nodes);
+  assert.equal(rate(), '2.000 chunks/s');
+  events.splice(0,events.length,{type:'start',engine:'laya',total:0},{type:'timing',elapsedMs:5000,activeProcessingMs:0});
+  await runTask(nodes);
+  assert.equal(rate(),'0.000 chunks/s');
 });
 
 
@@ -876,17 +884,17 @@ test('Action list edits one handler, cancels drafts, and saves deletion without 
   const table = () => nodes.get('action-registry').children[0];
   assert.equal(table().children.length, 3);
   assert.equal(table().children[2].children[0].textContent, 'Second');
-  table().children[2].children[4].children[1].onclick();
+  table().children[2].children.at(-1).children[1].onclick();
   assert.equal(nodes.get('action-editor').children.length, 1);
   nodes.get('action-editor').children[0].children[0].children[0].value = 'Discard';
   nodes.get('cancel-action').onclick();
   assert.equal(table().children[2].children[0].textContent, 'Second');
-  table().children[2].children[4].children[1].onclick();
+  table().children[2].children.at(-1).children[1].onclick();
   assert.equal(nodes.get('action-editor').children[0].children[0].children[0].readOnly, false);
   nodes.get('action-editor').children[0].children[0].children[0].value = 'Edited';
   let sent;
   context.fetch = async (path, options) => {
-    if(path==='/api/delete-check')return {ok:true,json:async()=>({references:[]})};
+    if(path==='/api/delete-check')return {ok:true,json:async()=>({references:[],details:[]})};
     sent = JSON.parse(options.body);
     return {ok:true, json:async () => ({actions:sent})};
   };
@@ -895,7 +903,7 @@ test('Action list edits one handler, cancels drafts, and saves deletion without 
   assert.equal(sent[0].name, 'First');
   assert.equal(sent[1].name, 'Edited');
   assert.equal(nodes.get('action-editor').hidden, true);
-  await table().children.find(row=>row.children[0].textContent==='First').children[4].children[3].onclick();
+  await table().children.find(row=>row.children[0].textContent==='First').children.at(-1).children[3].onclick();
   await nodes.get('save-actions').onclick();
   assert.equal(sent.length, 1);
   assert.equal(sent[0].name, 'Edited');
@@ -914,10 +922,10 @@ test('Action name search ignores case and retains original edit and delete targe
   const table = nodes.get('action-registry').children[0];
   assert.equal(table.children.length, 2);
   assert.equal(table.children[1].children[0].textContent, 'Notify admin');
-  table.children[1].children[4].children[1].onclick();
+  table.children[1].children.at(-1).children[1].onclick();
   assert.equal(nodes.get('action-editor').children[0].children[0].children[0].value, 'Notify admin');
   nodes.get('cancel-action').onclick();
-  await nodes.get('action-registry').children[0].children[1].children[4].children[3].onclick();
+  await nodes.get('action-registry').children[0].children[1].children.at(-1).children[3].onclick();
   assert.equal(nodes.get('action-registry').children[0].textContent, 'No Actions match your search.');
   search.value = ''; search.oninput();
   assert.equal(nodes.get('action-registry').children[0].children.length, 3);
@@ -1116,7 +1124,7 @@ test('Criteria management resets drafts on menu entry, saves edits, and clears d
   assert.equal(nodes.get('criteria-page').hidden, false);
   assert.equal(nodes.get('main-page').hidden, true);
   assert.equal(nodes.get('save-criteria').disabled, false);
-  assert.equal(criteriaRow(nodes, 'Sample General System').children[1].children[0].textContent, 'View');
+  assert.equal(criteriaRow(nodes, 'Sample General System').children.at(-1).children[0].textContent, 'View');
   assert.equal(nodes.get('criteria-registry').children[0].children[1].children[0].textContent, 'Custom');
   nodes.get('add-criteria').onclick();
   vm.runInContext("criteriaFields.label.value='New profile'; criteriaFields.instructions.value='New instructions';", context);
@@ -1164,10 +1172,10 @@ test('View shows read-only Action configuration without editing or losing drafts
   const { nodes, context, requests } = workspace([]);
   await new Promise(resolve => setImmediate(resolve));
   vm.runInContext("registeredActions=[{id:'notify', name:'Notify', pythonVersion:'3.12', modules:['httpx'], code:'print(1)'}]; renderActions();", context);
-  const controls = () => nodes.get('action-registry').children[0].children[1].children[4].children;
-  assert.deepEqual(controls().map(button => button.textContent), ['View', 'Edit', 'Reset venv', 'Delete']);
+  const controls = () => nodes.get('action-registry').children[0].children[1].children.at(-1).children;
+  assert.deepEqual(controls().map(button => button.textContent), ['View', 'Edit', 'Reset venv', 'Delete', 'Ref.']);
   controls()[0].onclick();
-  const values = () => nodes.get('action-view').children[1].children.map(field => field.children[1]);
+  const values = () => nodes.get('action-view').children.find(node=>node.className?.includes('view-details')).children.map(field => field.children[1]);
   assert.equal(nodes.get('action-view').hidden, false);
   assert.ok(values().every(value => value.className !== 'action-code'));
   assert.equal(values().at(-1).textContent, 'print(1)');
@@ -1197,10 +1205,10 @@ test('View shows all Criteria definitions and preserves the edit draft', async (
   const profiles = { [sampleProfileIds.general]: profileFixture('Sample General System','Saved instructions',definitions), custom: profileFixture('Custom','Saved instructions',definitions) };
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await nodes.get('nav-criteria').onclick();
-  const controls = () => nodes.get('criteria-registry').children[0].children[1].children[1].children;
-  assert.deepEqual(controls().map(button => button.textContent), ['View', 'Edit', 'Clone', 'Delete']);
+  const controls = () => nodes.get('criteria-registry').children[0].children[1].children.at(-1).children;
+  assert.deepEqual(controls().map(button => button.textContent), ['View', 'Edit', 'Clone', 'Delete', 'Ref.']);
   controls()[0].onclick();
-  const values = () => nodes.get('criteria-view').children[1].children.map(field => field.children[1]);
+  const values = () => nodes.get('criteria-view').children.find(node=>node.className?.includes('view-details')).children.map(field => field.children[1]);
   assert.ok(values().every(value => value.className !== 'action-code'));
   assert.equal(values()[3].textContent,'Category');assert.ok(values()[4].textContent.includes('normal: normal evidence'));
   assert.equal(vm.runInContext('editingCriteria', context), null);
@@ -1234,7 +1242,7 @@ test('Add closes View in both managers and enables the new editor', async () => 
   assert.equal(nodes.get('action-editor').hidden, false);
   assert.equal(nodes.get('save-actions').disabled, false);
   await nodes.get('nav-criteria').onclick();
-  criteriaRow(nodes, 'General').children[1].children[0].onclick();
+  criteriaRow(nodes, 'General').children.at(-1).children[0].onclick();
   nodes.get('add-criteria').onclick();
   assert.equal(nodes.get('criteria-view').hidden, true);
   assert.equal(nodes.get('criteria-editor').hidden, false);
@@ -1310,14 +1318,14 @@ test('All Criteria share one searchable editable list without a required default
   await nodes.get('nav-criteria').onclick();
   assert.equal(nodes.get('criteria-registry').children[0].children.length, 3);
   const row = criteriaRow(nodes, 'Sample General System');
-  assert.deepEqual(row.children[1].children.map(button => button.textContent), ['View', 'Edit', 'Clone', 'Delete']);
-  row.children[1].children[0].onclick();
-  assert.equal(nodes.get('criteria-view').children[1].children[0].children[1].textContent, 'Sample General System');
+  assert.deepEqual(row.children.at(-1).children.map(button => button.textContent), ['View', 'Edit', 'Clone', 'Delete', 'Ref.']);
+  row.children.at(-1).children[0].onclick();
+  assert.equal(nodes.get('criteria-view').children.find(node=>node.className?.includes('view-details')).children[0].children[1].textContent, 'Sample General System');
   nodes.get('criteria-search').value = 'missing'; nodes.get('criteria-search').oninput();
   assert.equal(nodes.get('criteria-registry').children[0].textContent, 'No profiles match your search.');
   nodes.get('criteria-search').value = 'general'; nodes.get('criteria-search').oninput();
   assert.equal(criteriaRow(nodes, 'Sample General System').children[0].textContent, 'Sample General System');
-  criteriaRow(nodes, 'Sample General System').children[1].children[1].onclick();
+  criteriaRow(nodes, 'Sample General System').children.at(-1).children[1].onclick();
   assert.equal(vm.runInContext('editingCriteria', context), '4e6d5417-611e-49e0-8e23-2444a0f49ee4');
   nodes.get('cancel-criteria').onclick();
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
@@ -1349,7 +1357,7 @@ test('Add and Edit show only the form and restore each manager list on cancel or
   assert.equal(nodes.get('action-list').hidden, false);
   assert.equal(nodes.get('action-editor').hidden, true);
   await nodes.get('nav-criteria').onclick();
-  criteriaRow(nodes, 'General').children[1].children[0].onclick();
+  criteriaRow(nodes, 'General').children.at(-1).children[0].onclick();
   nodes.get('add-criteria').onclick();
   assert.equal(nodes.get('criteria-list').hidden, true);
   assert.equal(nodes.get('criteria-view').hidden, true);
@@ -1376,7 +1384,7 @@ test('Reset venv rebuilds a saved managed Action and reports maintenance errors'
   const { nodes, context } = workspace([]);
   await new Promise(resolve => setImmediate(resolve));
   vm.runInContext("registeredActions=[{id:'a'.repeat(32), name:'Notify', pythonVersion:'3.12', modules:[], code:'pass'}]; renderActions();", context);
-  const controls = () => nodes.get('action-registry').children[0].children[1].children[4].children;
+  const controls = () => nodes.get('action-registry').children[0].children[1].children.at(-1).children;
   let finish;
   let requested;
   context.fetch = (path, options) => {
@@ -1386,7 +1394,7 @@ test('Reset venv rebuilds a saved managed Action and reports maintenance errors'
   const resetting = controls()[2].onclick();
   assert.equal(requested.path, `/api/actions/${'a'.repeat(32)}/reset`);
   assert.equal(requested.options.method, 'POST');
-  assert.ok(controls().every(button => button.disabled));
+  assert.ok(controls().filter(button => button.textContent !== 'Ref.').every(button => button.disabled));
   assert.equal(nodes.get('save-actions').disabled, true);
   finish({ ok: true, json: async () => ({ action: { id:'a'.repeat(32), name:'Notify', pythonVersion:'3.12', modules:[], code:'pass' } }) });
   await resetting;
@@ -1408,7 +1416,7 @@ test('Action status distinguishes saved readiness, reset progress, and other Act
   assert.deepEqual(statuses(), ['External', 'Not ready', 'Ready']);
   let finish;
   context.fetch = () => new Promise(resolve => { finish = resolve; });
-  const resetting = nodes.get('action-registry').children[0].children[3].children[4].children[2].onclick();
+  const resetting = nodes.get('action-registry').children[0].children[3].children.at(-1).children[2].onclick();
   assert.deepEqual(statuses(), ['External', 'Not ready', 'Preparing...']);
   finish({ok:true, json:async () => ({action:{id:'a'.repeat(32), name:'Ready action', pythonVersion:'3.12', environmentStatus:'ready'}})});
   await resetting;
@@ -1552,7 +1560,7 @@ test('Sources navigation and SSH registration feed searchable Main choices by ID
   assert.equal(navigation.hash, '#sources');
   nodes.get('add-registered-source').onclick();
   vm.runInContext(`sourceFields.name.value='Production logs'; sourceFields.type.value='ssh'; sourceFields.type.onchange(); sourceFields.path.value='/var/log/app/*.log';`, context);
-  assert.equal(vm.runInContext('Object.keys(sourceFields).join(",")',context),'type,name,format,contentField,path');
+  assert.equal(vm.runInContext('Object.keys(sourceFields).join(",")',context),'name,type,endpoint,path,format,contentField,username,ticketCache,tokenFile,caFile');
   let saved;
   context.fetch = async (path,options) => {
     if (path === '/api/sources') {
@@ -1591,7 +1599,7 @@ test('Saved source edits keep identity, and source search filters host and path'
   await new Promise(resolve=>setImmediate(resolve));
   nodes.get('source-search').value='access-1k'; nodes.get('source-search').oninput();
   assert.equal(nodes.get('source-registry').children[0].children.length,2);
-  const controls=nodes.get('source-registry').children[0].children[1].children[2];
+  const controls=nodes.get('source-registry').children[0].children[1].children.at(-1);
   controls.children[1].onclick();
   vm.runInContext("sourceFields.name.value='Renamed HTTP'; sourceFields.path.value='/new/access*.log';",context);
   await nodes.get('save-sources').onclick();
@@ -1750,6 +1758,7 @@ test('SSH Hosts CRUD and Remote File selection share saved connection settings',
   get('ssh-host-key').value='key-logs';
   const requests=[];
   context.fetch=async(path,options)=>{
+    if(path==='/api/delete-check')return {ok:true,json:async()=>({references:[],details:[]})};
     requests.push({path,options});
     if(options.method==='DELETE')return {ok:true,json:async()=>({hosts:[]})};
     return {ok:true,json:async()=>({hosts:[{...JSON.parse(options.body),id:'host-1'}]})};
@@ -1767,7 +1776,7 @@ test('SSH Hosts CRUD and Remote File selection share saved connection settings',
   await get('ssh-host-form').onsubmit({preventDefault(){}});
   assert.equal(JSON.parse(requests[1].options.body).id,'host-1');
   vm.runInContext('handleEditSource(registeredSources.length)',context);
-  assert.equal(vm.runInContext('Object.keys(sourceFields).join(",")',context),'type,name,format,contentField,path');
+  assert.equal(vm.runInContext('Object.keys(sourceFields).join(",")',context),'name,type,endpoint,path,format,contentField,username,ticketCache,tokenFile,caFile');
   context.handleConfirmDelete=async()=>false;
   await row.children[4].children[2].onclick(); assert.equal(requests.length,2);
   context.handleConfirmDelete=async()=>true;
@@ -2530,8 +2539,8 @@ test('Source Criteria Action SSH Key SSH Host and Task Views share compact detai
     const fields=nodes.get(id).children[1];assert.ok(fields.className.includes('view-details'),id);
     assert.ok(fields.children.every(field=>field.children.length===2),id);
   }
-  assert.equal(nodes.get('action-view').children[1].children[1].children[1].textContent,'print(1)\nprint(2)');
-  assert.equal(nodes.get('action-view').children[1].children[1].children[1].className,'view-value-code');
+  assert.equal(nodes.get('action-view').children.find(node=>node.className?.includes('view-details')).children[1].children[1].textContent,'print(1)\nprint(2)');
+  assert.equal(nodes.get('action-view').children.find(node=>node.className?.includes('view-details')).children[1].children[1].className,'view-value-code');
   assert.equal(nodes.get('ssh-key-view').children[1].children[3].children[1].textContent,'****');
   assert.ok(nodes.get('task-view').children[0].children[1].children[0].children[0].className.includes('view-details'));
 });
@@ -2586,7 +2595,7 @@ test('Code View and editor use the same programming font stack',()=>{
 test('Criteria View uses compact full-width rows for instructions and category descriptions',()=>{
   const {context,nodes}=workspace([]);
   vm.runInContext("criteriaProfiles={[sampleProfileIds.application]:profileFixture('Application','Distinguish retries from final failures.',{normal:'Successful operation.',warning:'Recoverable issue.',error:'Final failure.',security:'Unauthorized action.',other:'Insufficient context.'})};handleViewCriteria('617706a3-c4ee-426f-81cf-7f5d80ecf67a')",context);
-  const fields=nodes.get('criteria-view').children[1];
+  const fields=nodes.get('criteria-view').children.find(node=>node.className?.includes('view-details'));
   assert.ok(fields.className.includes('criteria-details'));
   assert.deepEqual(fields.children.map(field=>field.children[0].textContent),['Name','Criteria ID','Decision Instructions','Default Chart Decision','Category (Choice)','Urgency (Score)','Work Ticket (Noul)']);
   const css=readFileSync(new URL('../public/style.css',import.meta.url),'utf8');
@@ -2804,8 +2813,8 @@ test('Clone Criteria opens an unsaved Add Profile draft and preserves source met
   const { nodes, context } = workspace([], undefined, undefined, profiles);
   await new Promise(resolve => setImmediate(resolve));
   await nodes.get('nav-criteria').onclick();
-  nodes.get('criteria-registry').children[0].children[1].children[1].children[2].onclick();
-  assert.equal(nodes.get('criteria-editor').children[0].textContent, 'Add Profile');
+  nodes.get('criteria-registry').children[0].children[1].children.at(-1).children[2].onclick();
+  assert.equal(nodes.get('criteria-editor').children[0].children[0].textContent, 'Add Profile');
   assert.match(vm.runInContext('criteriaDraftId', context), /^[0-9a-f-]{36}$/);
   assert.equal(vm.runInContext('criteriaFields.id', context), undefined);
   assert.equal(vm.runInContext('criteriaFields.label.value', context), 'Authentication (Clone)');
@@ -2813,7 +2822,7 @@ test('Clone Criteria opens an unsaved Add Profile draft and preserves source met
   for (const key of Object.keys(criteria)) assert.equal(vm.runInContext(`decisionRows[0].options.find(option=>option.key.value==='${key}').text.value`, context), criteria[key]);
   assert.equal(vm.runInContext('Object.keys(criteriaProfiles).length', context), 2);
   nodes.get('cancel-criteria').onclick();
-  criteriaRow(nodes, 'General').children[1].children[2].onclick();
+  criteriaRow(nodes, 'General').children.at(-1).children[2].onclick();
   assert.equal(vm.runInContext('criteriaFields.label.value', context), 'General (Clone)');
   nodes.get('cancel-criteria').onclick();
   vm.runInContext("handleCloneCriteria('custom'); decisionRows[0].options[0].text.value='Edited definition';", context);
@@ -2988,7 +2997,7 @@ test('Criteria editor adds, reorders and saves typed decisions without editing t
 });
 
 for(const engine of ['laya','jev']) {
-  test(`${engine} screenshot metrics separate request time, Action time and idle output rate`,async()=>{
+  test(`${engine} screenshot metrics separate request time, Action time and active throughput`,async()=>{
     const durations=[299,270,183,214],arrivals=[18319,24444,28936,37917];
     const events=[{type:'start',engine,total:null},...durations.map((duration,index)=>{
       const item=result(index,false);item.elapsedMs=arrivals[index];item.result.elapsedMs=duration;
@@ -2998,9 +3007,9 @@ for(const engine of ['laya','jev']) {
     assert.equal(elapsedValues(nodes)[0],'55 sec');
     assert.equal(elapsedValues(nodes)[1],'966 ms (1.8%)');
     assert.equal(processingValues(nodes).Avg,'241.5 ms');
-    assert.equal(nodes.get('summary').children[2].children[0].textContent,'0.073 chunks/s');
+    assert.equal(nodes.get('summary').children[2].children[0].textContent,'4.141 chunks/s');
     vm.runInContext('elapsedMs=40000;render()',context);
-    assert.equal(nodes.get('summary').children[2].children[0].textContent,'0.100 chunks/s');
+    assert.equal(nodes.get('summary').children[2].children[0].textContent,'4.141 chunks/s');
   });
 }
 
@@ -3008,7 +3017,7 @@ test('Paged metrics use whole-run counts and server percentiles independently of
   const {nodes,context}=workspace([]);
   vm.runInContext(`
     results=[{log:'visible',category:'normal',elapsedMs:9999}];completionOrder=[0];completed=100;
-    elapsedMs=10000;
+    elapsedMs=10000;activeProcessingMs=10000;
     const stats=updateResultStatistics(false);
     pagedView={summary:{...stats,total:100,failed:5,processingMs:20000,
       processingPercentiles:{minMs:12,maxMs:700,medianMs:180,p95Ms:300,p99Ms:500}},snapshotTotal:100,hasNext:false};
@@ -3020,8 +3029,8 @@ test('Paged metrics use whole-run counts and server percentiles independently of
   assert.equal(metric(7),'300 ms');assert.equal(metric(8),'500 ms');assert.equal(metric(9),'9.500 chunks/s');
   nodes.get('review-filter').value='needs-review';vm.runInContext('render()',context);
   assert.equal(metric(5),'200 ms');assert.equal(metric(9),'9.500 chunks/s');
-  vm.runInContext('elapsedMs=20000;render()',context);assert.equal(metric(9),'4.750 chunks/s');
-  vm.runInContext('elapsedMs=100000000;render()',context);assert.equal(metric(9),'<0.001 chunks/s');
+  vm.runInContext('elapsedMs=20000;render()',context);assert.equal(metric(9),'9.500 chunks/s');
+  vm.runInContext('elapsedMs=100000000;activeProcessingMs=100000000;render()',context);assert.equal(metric(9),'<0.001 chunks/s');
 });
 
 for(const values of [[],[7],[183,214,270,299],Array.from({length:100},(_,i)=>i+1)]) {
@@ -3111,7 +3120,7 @@ test('Decision headers track names, types and positions through editor changes',
 test('Profile settings and Decisions share the same section design',()=>{
   const {context,nodes}=workspace([]);
   vm.runInContext("criteriaProfiles={[sampleProfileIds.general]:profileFixture('General','Use evidence.',{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'})};handleEditCriteria('4e6d5417-611e-49e0-8e23-2444a0f49ee4')",context);
-  const profile=nodes.get('criteria-editor').children[2];
+  const profile=nodes.get('criteria-editor').children.find(node=>node.className==='criteria-section profile-settings');
   assert.equal(profile.className,'criteria-section profile-settings');
   assert.equal(profile.children[0].textContent,'Profile Settings');
   assert.equal(profile.children[1].className,'view-details');
@@ -3148,7 +3157,7 @@ test('Criteria field help explains scope, IDs and answer types',()=>{
   const {context,nodes}=workspace([]);
   context.vocHelpFixture=readProfileTemplate('consultation');
   vm.runInContext("criteriaProfiles={[sampleProfileIds.general]:vocHelpFixture,[sampleProfileIds.consultation]:vocHelpFixture};handleEditCriteria('41bbe1dc-85cb-4ab0-ab79-cd7c4e6f8e72')",context);
-  const profile=nodes.get('criteria-editor').children[2].children[2];
+  const profile=nodes.get('criteria-editor').children.find(node=>node.className==='criteria-section profile-settings').children[2];
   assert.match(profile.children[0].children.at(-1).textContent,/Profile name/);
   assert.match(profile.children[1].children.at(-1).textContent,/Changing it does not change AI answers, uncertainty or filters/);
   assert.match(profile.children[2].children.at(-1).textContent,/Rules shared by every decision/);
@@ -3173,21 +3182,16 @@ test('Running a Task opens Main',async()=>{
 });
 
 
-test('Sources used by Tasks lock Type and explain which Tasks reference them',async()=>{
+test('Sources in use allow editing and show dependency warnings',async()=>{
   const {nodes,context}=workspace([]);
   await new Promise(resolve=>setImmediate(resolve));
-  vm.runInContext(`
-    registeredSources=[{id:'local-source',name:'Logs',type:'local',path:'/logs'},{id:'unused',name:'Unused',type:'ssh',path:'/logs'}];
-    registeredTasks=[{id:'task',name:'My Monitor',enabled:false,sources:[{sourceId:'local-source'}]}];
-    handleEditSource(0);
-  `,context);
-  assert.equal(vm.runInContext('sourceFields.type.disabled',context),true);
-  assert.match(vm.runInContext("sourceFields.type.attributes['aria-description']",context),/My Monitor/);
-  assert.notEqual(vm.runInContext('sourceFields.path.disabled',context),true);
+  context.fetch=async()=>({ok:true,json:async()=>({references:['Task: My Monitor']})});
+  vm.runInContext(`registeredSources=[{id:'local-source',name:'Logs',type:'local',path:'/logs'}];handleEditSource(0);`,context);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.notEqual(vm.runInContext('sourceFields.type.disabled',context),true);
+  assert.ok(nodes.get('source-editor').children[0].children.some(node=>node.textContent.includes('In use: Task: My Monitor')));
   context.fetch=async()=>({ok:false,json:async()=>({error:'Save failed'})});
   await nodes.get('save-sources').onclick();
-  assert.equal(vm.runInContext('sourceFields.type.disabled',context),true);
-  vm.runInContext('handleCloseSource();handleEditSource(1)',context);
   assert.equal(vm.runInContext('sourceFields.type.disabled',context),false);
 });
 
@@ -3480,7 +3484,7 @@ test('Reopening a completed execution at its base URL clears stale expanded sect
 });
 
 
-test('Task Source None clears its dependency and active Tasks disable editing', async () => {
+test('Task Source None clears its dependency and active Tasks allow editing', async () => {
   const {nodes,context}=workspace([]);
   await new Promise(resolve=>setImmediate(resolve));
   vm.runInContext(`
@@ -3494,7 +3498,7 @@ test('Task Source None clears its dependency and active Tasks disable editing', 
     vm.runInContext(`registeredTasks=[{id:'task',name:'Logs',mode:'batch',sources:[],activeRun:{state:'${state}'}}];renderTasks()`,context);
     const table=nodes.get('task-list').children[0];
     const controls=table.children[1].children.at(-1).children;
-    assert.equal(controls.find(button=>button.textContent==='Edit').disabled,true);
+    assert.notEqual(controls.find(button=>button.textContent==='Edit').disabled,true);
     assert.equal(controls.find(button=>button.textContent==='Run').disabled,true);
   }
 });
@@ -3631,7 +3635,7 @@ test('Source list separates input metadata and paths and keeps inline View on re
   const remote=table().children[2].children[1];
   assert.deepEqual(remote.children[0].children.map(tag=>tag.textContent),['Remote File (SSH)','JSONL (Line)']);
   assert.equal(remote.children[1].children[0].textContent,'/data/<archive>/government-consultations.jsonl');
-  table().children[1].children[2].children[0].onclick();
+  table().children[1].children.at(-1).children[0].onclick();
   vm.runInContext('renderSources()',context);
   assert.equal(table().children[2].className,'inline-view-row');
   assert.equal(nodes.get('source-view').hidden,false);
@@ -3664,7 +3668,7 @@ test('Manager lists sort English and Korean names naturally without changing edi
       const collection={source:'registeredSources',action:'registeredActions',task:'registeredTasks'}[manager];
       assert.equal(vm.runInContext(`JSON.stringify(${collection}.map(item=>item.name))`,context),JSON.stringify(names));
     }else{
-      assert.deepEqual(criteriaRow(nodes,'Sample General System').children[1].children.map(button=>button.textContent),['View','Edit','Clone','Delete']);
+      assert.deepEqual(criteriaRow(nodes,'Sample General System').children.at(-1).children.map(button=>button.textContent),['View','Edit','Clone','Delete','Ref.']);
     }
     const selected=rows.find(row=>row.children[0].textContent==='alpha 2');
     const edit=selected.children.at(-1).children.find(button=>button.textContent==='Edit');
@@ -3750,21 +3754,21 @@ test('AI Criteria preserves generated decisions through save without legacy visi
   const button=caption=>walk(details).find(node=>node.textContent===caption && node.onclick);
   const sampleCount=findLabel('Sample Count');
   assert.equal(sampleCount.value,'10');
-  assert.deepEqual(sampleCount.children.map(option=>option.value),['10','20','30','50','100']);
+  assert.equal(sampleCount.type,'number');assert.equal(sampleCount.min,'1');assert.ok(!sampleCount.max);assert.equal(sampleCount.step,'1');
   let previewBody;const previewFetch=context.fetch;
   context.fetch=async(path,options)=>{
     if(path==='/api/criteria/samples')previewBody=JSON.parse(options.body);
     return previewFetch(path,options);
   };
-  sampleCount.value='51';await button('Preview Source Samples').onclick();
+  sampleCount.value='0';await button('Preview Source Samples').onclick();
   assert.equal(previewBody,undefined);
-  for(const value of ['30','50','100']){
-    sampleCount.value=value;sampleCount.onchange();
+  for(const value of ['1','15','30','51','101','1000']){
+    sampleCount.value=value;sampleCount.oninput();
     await button('Preview Source Samples').onclick();
     assert.equal(previewBody.sampleCount,Number(value));
   }
   assert.equal(button('Generate Criteria').disabled,false);
-  sampleCount.value='10';sampleCount.onchange();
+  sampleCount.value='10';sampleCount.oninput();
   assert.equal(button('Generate Criteria').disabled,true);
   assert.equal(findLabel('Sample 1'),undefined);
   await button('Preview Source Samples').onclick();
@@ -4205,7 +4209,7 @@ test('Criteria can be empty and created with AI without a General profile', asyn
   assert.ok(nodes.get('criteria-editor').children.some(child=>child.className.includes('criteria-generator')));
   nodes.get('cancel-criteria').onclick();
   vm.runInContext("criteriaProfiles={[sampleProfileIds.general]:profileFixture('General','Evidence.',{normal:'Normal',warning:'Warning',error:'Error',security:'Security',other:'Other'})};renderCriteria();", context);
-  await criteriaRow(nodes, 'General').children[1].children.find(button=>button.textContent==='Delete').onclick();
+  await criteriaRow(nodes, 'General').children.at(-1).children.find(button=>button.textContent==='Delete').onclick();
   assert.equal(vm.runInContext('Object.keys(criteriaProfiles).length', context), 0);
   let saved;
   context.fetch=async (_path,options)=>{saved=JSON.parse(options.body);return {ok:true,json:async()=>({profiles:saved})};};
@@ -4449,7 +4453,7 @@ test('Criteria ID is read-only and copyable in View and Edit; rename keeps it an
   await nodes.get('nav-criteria').onclick();
   const copied=[];context.navigator={clipboard:{writeText:async value=>copied.push(value)}};
   vm.runInContext('handleViewCriteria(sampleProfileIds.general)',context);
-  const identity=nodes.get('criteria-view').children[1].children.find(field=>field.children[0].textContent==='Criteria ID').children[1].children[0];
+  const identity=nodes.get('criteria-view').children.find(node=>node.className?.includes('view-details')).children.find(field=>field.children[0].textContent==='Criteria ID').children[1].children[0];
   assert.equal(identity.children[0].textContent,id);
   assert.equal(identity.children[0].attributes['aria-label'],'Criteria ID');
   await identity.children[1].onclick();
@@ -4526,7 +4530,7 @@ test('Archived display changes preserve paging and avoid server requests while p
   const select=nodes.get('processing-filter');select.value='successful';await select.onchange();
   assert.equal(queries.at(-1).processing,'successful');
   assert.equal(Object.hasOwn(queries.at(-1),'decision'),false);
-  await vm.runInContext("handleApplyRunRoute('/runs/scope?processing=successful')",context);
+  await vm.runInContext("handleApplyRunRoute('/runs/scope?processing=successful&show=%5B%22stable%3Aresponse%22%2C%22stable%3Aurgency%22%5D')",context);
   assert.equal(select.value,'successful');
   assert.equal(decisionCards(nodes.get('results').children[0]).length,2);
 });
@@ -4675,4 +4679,196 @@ test('Selected Source paths use the same plain multiline format before and after
   assert.equal(path.textContent,'/var/log/app.log');
   vm.runInContext("sourceRows[0].name.value='multi';sourceRows[0].name.onchange()",context);
   assert.equal(path.textContent,context.multipleSourcePaths);
+});
+
+test('HDFS Source exposes connection settings without connecting on edit or View', async () => {
+  const {nodes,context}=workspace([],null);
+  await new Promise(resolve=>setImmediate(resolve));
+  context.hdfsSource={id:'00000000000000000000000000000009',name:'HDFS Data',type:'hdfs',endpoint:'hdfs://namenode.example.test:8020',host:'namenode.example.test',port:8020,path:'/data/*.jsonl',format:'jsonl',contentField:'text',username:'reader',ticketCache:'/run/hdfs-ticket'};
+  vm.runInContext('registeredSources=[hdfsSource];sourcesLoaded=true;registeredTasks=[];',context);
+  const requests=[];
+  context.fetch=async(path,options)=>{if(path==='/api/delete-check')return {ok:true,json:async()=>({references:[],details:[]})};requests.push({path,options});return {ok:true,json:async()=>({connected:true,fileCount:3})};};
+  vm.runInContext('handleEditSource(0)',context);
+  assert.equal(requests.length,0);
+  assert.equal(vm.runInContext('sourceFields.endpoint.parentElement.hidden',context),false);
+  assert.equal(vm.runInContext('sourceFields.endpoint.value',context),'hdfs://namenode.example.test:8020');
+  assert.equal(vm.runInContext('sourceFields.host',context),undefined);
+  assert.equal(vm.runInContext('sourceFields.port',context),undefined);
+  const hostHelp=vm.runInContext('sourceFields.endpoint.parentElement.children[0].textContent',context);
+  assert.ok(hostHelp.includes('hdfs://hostname:port'));
+  assert.ok(hostHelp.includes('fs.defaultFS'));
+  assert.ok(hostHelp.includes('HADOOP_CONF_DIR'));
+  assert.ok(hostHelp.includes('/etc/hadoop/conf'));
+  assert.match(vm.runInContext('sourceFields.path.placeholder',context),/^\/warehouse\//);
+  assert.ok(vm.runInContext('sourceFields.path.parentElement.children[0].textContent',context).includes('without hdfs://'));
+  assert.equal(vm.runInContext('sourceFields.ticketCache.value',context),'/run/hdfs-ticket');
+  const form=nodes.get('source-editor').children[0];
+  const button=form.children.find(item=>item.textContent==='Test Connection');
+  assert.equal(button.hidden,false);
+  await button.onclick();
+  assert.equal(requests[0].path,'/api/sources/hdfs-test');
+  assert.equal(JSON.parse(requests[0].options.body).endpoint,'hdfs://namenode.example.test:8020');
+  assert.ok(form.children.some(item=>item.textContent.includes('Connected (HDFS (Native))')));
+  let rejectTest;context.fetch=()=>new Promise((resolve,reject)=>{rejectTest=reject;});
+  const pending=button.onclick();
+  vm.runInContext('sourceFields.endpoint.value="hdfs://changed.example.test:8020";sourceFields.endpoint.oninput()',context);
+  rejectTest(new Error('Stale connection failure'));await pending;
+  assert.equal(form.children.some(item=>item.textContent.includes('Stale connection failure')),false);
+  vm.runInContext('sourceFields.type.value="local";sourceFields.type.onchange()',context);
+  assert.equal(button.hidden,true);
+  assert.equal(vm.runInContext('sourceFields.endpoint.parentElement.hidden',context),true);
+  assert.match(vm.runInContext('sourceFields.path.placeholder',context),/^\/var\/log\//);
+  vm.runInContext('handleCloseSource();renderSources()',context);
+  const table=nodes.get('source-registry').children[0];
+  table.children[1].children.at(-1).children[0].onclick();
+  assert.equal(requests.length,1);
+  assert.equal(vm.runInContext('sourceTypeLabel(hdfsSource)',context),'HDFS (Native)');
+});
+
+ test('WebHDFS Source shows HTTP fields and shares the explicit connection test', async () => {
+  const {nodes,context}=workspace([],null);
+  await new Promise(resolve=>setImmediate(resolve));
+  context.webSource={id:'00000000000000000000000000000009',name:'Web Data',type:'webhdfs',endpoint:'https://nn.test:9871',host:'nn.test',port:9871,path:'/data',format:'text',username:'reader',tokenFile:'/run/token',caFile:'/run/ca.pem'};
+  vm.runInContext('registeredSources=[webSource];sourcesLoaded=true;registeredTasks=[];handleEditSource(0)',context);
+  for(const field of ['endpoint','username','tokenFile','caFile'])assert.equal(vm.runInContext(`sourceFields.${field}.parentElement.hidden`,context),false);
+  for(const field of ['ticketCache'])assert.equal(vm.runInContext(`sourceFields.${field}.parentElement.hidden`,context),true);
+  assert.match(vm.runInContext('sourceFields.path.placeholder',context),/^\/warehouse\//);
+  assert.ok(vm.runInContext('sourceFields.path.parentElement.children[0].textContent',context).includes('HTTP(S) endpoint'));
+  const requests=[];context.fetch=async(path,options)=>{requests.push({path,options});return {ok:true,json:async()=>({connected:true,fileCount:2})};};
+  const form=nodes.get('source-editor').children[0];
+  await form.children.find(item=>item.textContent==='Test Connection').onclick();
+  assert.equal(JSON.parse(requests[0].options.body).endpoint,'https://nn.test:9871');
+  assert.ok(form.children.some(item=>item.textContent.includes('Connected (HDFS (WebHDFS))')));
+  assert.equal(vm.runInContext('sourceTypeLabel(webSource)',context),'HDFS (WebHDFS)');
+});
+
+
+test('Existing Criteria can be revised with AI without changing identity or saving automatically', async()=>{
+  const original=readProfileTemplate('general');
+  const revised=structuredClone(original);revised.instructions='AI revised rules.';
+  const id=sampleProfileIds.general;
+  const {nodes,context}=workspace([],undefined,undefined,{[id]:original});
+  await nodes.get('nav-criteria').onclick();vm.runInContext('handleEditCriteria(sampleProfileIds.general)',context);
+  vm.runInContext("criteriaFields.instructions.value='Unsaved local rules.'",context);
+  const walk=node=>[node,...(node.children || []).flatMap(child=>typeof child==='object'?walk(child):[])];
+  const generator=walk(nodes.get('criteria-editor')).find(node=>node.className?.includes('criteria-generator'));
+  assert.equal(generator.children[0].textContent,'Revise With AI');
+  const purpose=walk(generator).find(node=>node.attributes?.['aria-label']==='Revision Request');
+  const generate=walk(generator).find(node=>node.textContent==='Revise Criteria' && node.onclick);
+  assert.equal(generate.disabled,true);purpose.value='Clarify missing evidence.';purpose.oninput();assert.equal(generate.disabled,false);
+  const originalFetch=context.fetch;let body;
+  context.fetch=async(path,options)=>{
+    if(path==='/api/criteria/generate'){body=JSON.parse(options.body);return {ok:true,json:async()=>({profile:revised,analysisPurpose:purpose.value})};}
+    return originalFetch(path,options);
+  };
+  await generate.onclick();
+  assert.equal(body.currentProfile.instructions,'Unsaved local rules.');assert.deepEqual(body.samples,[]);
+  assert.equal(vm.runInContext('editingCriteria',context),id);
+  assert.equal(vm.runInContext('criteriaDraftId',context),id);
+  assert.equal(vm.runInContext('criteriaFields.instructions.value',context),'AI revised rules.');
+  assert.equal(vm.runInContext('criteriaProfiles[sampleProfileIds.general].instructions',context),original.instructions);
+  await nodes.get('save-criteria').onclick();
+  assert.equal(vm.runInContext('Object.keys(criteriaProfiles).length',context),1);
+  assert.equal(vm.runInContext('criteriaProfiles[sampleProfileIds.general].instructions',context),'AI revised rules.');
+});
+
+test('AI revision ignores replies for changed or reopened editor drafts',async()=>{
+  const original=readProfileTemplate('general');const revised={...original,instructions:'Stale AI rules.'};
+  for(const reopen of [false,true]){
+    const {nodes,context}=workspace([],undefined,undefined,{[sampleProfileIds.general]:original});
+    await nodes.get('nav-criteria').onclick();vm.runInContext('handleEditCriteria(sampleProfileIds.general)',context);
+    const walk=node=>[node,...(node.children || []).flatMap(child=>typeof child==='object'?walk(child):[])];
+    const generator=walk(nodes.get('criteria-editor')).find(node=>node.className?.includes('criteria-generator'));
+    const purpose=walk(generator).find(node=>node.attributes?.['aria-label']==='Revision Request');purpose.value='Revise rules';purpose.oninput();
+    let finish;const originalFetch=context.fetch;
+    context.fetch=(path,options)=>path==='/api/criteria/generate'?new Promise(resolve=>{finish=resolve;}):originalFetch(path,options);
+    const pending=walk(generator).find(node=>node.textContent==='Revise Criteria' && node.onclick).onclick();
+    if(reopen)vm.runInContext('handleCloseCriteria();handleEditCriteria(sampleProfileIds.general)',context);
+    vm.runInContext("criteriaFields.instructions.value='Latest manual rules.'",context);
+    finish({ok:true,json:async()=>({profile:revised,analysisPurpose:'Revise rules'})});await pending;
+    assert.equal(vm.runInContext('criteriaFields.instructions.value',context),'Latest manual rules.');
+  }
+});
+
+test('Reference dialogs fetch fresh details only when clicked and distinguish loading failures',async()=>{
+  const {nodes,context}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
+  const dialog=context.document.getElementById('references-dialog');dialog.showModal=()=>{dialog.open=true;};
+  const calls=[];let details=[{relation:'Task Assignment',id:'task-id',name:'Worker',status:'Disabled',mode:'batch',sourceIds:['source-id'],sourceNames:['Logs']}];
+  context.fetch=async(path,options)=>{calls.push({path,body:JSON.parse(options.body)});return {ok:true,json:async()=>({references:['Task: Worker'],details})};};
+  const button=vm.runInContext("referenceButton('Source','source-id','Logs')",context);
+  assert.equal(calls.length,0);await button.onclick();
+  assert.equal(calls[0].path,'/api/delete-check');assert.deepEqual(calls[0].body,{kind:'Source',id:'source-id'});
+  assert.equal(nodes.get('references-title').textContent,'Source References');
+  assert.match(nodes.get('references-summary').textContent,/1 reference/);
+  const table=nodes.get('references-content').children[0];
+  assert.deepEqual(table.children[0].children.map(cell=>cell.textContent),['Type','Name','ID']);
+  const row=table.children[1];assert.equal(row.children[0].textContent,'Task');
+  assert.equal(row.children[1].textContent,'Worker');
+  assert.equal(row.children[1].children.length,0);
+  assert.equal(row.children[2].children[0].textContent,'task-id');
+  for(const cell of row.children.slice(2)){
+    assert.equal(cell.children[0].attributes.href,'/tasks/task-id');
+    assert.equal(cell.children[0].attributes.target,'_blank');
+  }
+  details=[];await button.onclick();assert.equal(nodes.get('references-summary').textContent,'No references.');
+  context.fetch=async()=>({ok:false,json:async()=>({error:'Unavailable'})});await button.onclick();
+  assert.match(nodes.get('references-summary').textContent,/Could not load references/);
+});
+
+test('Views show reference details above configuration and isolate late replies',async()=>{
+  const {nodes,context}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
+  let finish;
+  context.fetch=()=>new Promise(resolve=>{finish=resolve;});
+  vm.runInContext("handleViewConfiguration('source-view','Logs',[['Name','Logs']],{kind:'Source',id:'logs'})",context);
+  const view=nodes.get('source-view');const old=view.children[1];
+  assert.equal(view.children[0].children.length,1);
+  assert.equal(old.children[0].textContent,'References');
+  assert.equal(old.children[1].textContent,'Loading references…');
+  finish({ok:true,json:async()=>({details:[{relation:'Task Assignment',name:'Worker',id:'task-id',status:'Disabled'}]})});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(old.children[2].children[0].children[1].children[1].textContent,'Worker');
+  vm.runInContext("handleViewConfiguration('source-view','Other',[['Name','Other']],{kind:'Source',id:'other'})",context);
+  const pending=finish;
+  vm.runInContext("handleViewConfiguration('source-view','Latest',[['Name','Latest']],{kind:'Source',id:'latest'})",context);
+  pending({ok:true,json:async()=>({details:[]})});await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(view.children[1].children[1].textContent,'Loading references…');
+  finish({ok:false,json:async()=>({error:'Unavailable'})});await new Promise(resolve=>setImmediate(resolve));
+  assert.match(view.children[1].children[1].textContent,/Could not load references/);
+});
+
+
+test('Run URLs restore chart choices, certainty, visible decisions and filter controls without inference',async()=>{
+  const navigation={pathname:'/',search:'',hash:''};
+  const {context,nodes}=workspace([assessmentFixture()],undefined,undefined,undefined,navigation);
+  await runTask(nodes);enableCleanRoutes(context,navigation);navigation.pathname='/runs/test-job';
+  vm.runInContext("const summary=updateResultStatistics();pagedView={id:'test-job',summary,cursors:[null],items:[],through:1};currentView='main';",context);
+  nodes.get('classification-group').value='stable:response';nodes.get('classification-group').onchange();
+  nodes.get('chart-uncertain').onclick();showDecisions(context,['stable:response']);
+  nodes.get('result-filter-type').value='review-filter';nodes.get('result-filter-type').onchange();
+  const path=navigation.pathname+navigation.search;const params=new URLSearchParams(navigation.search);
+  assert.equal(params.get('chart'),'stable:response');assert.equal(params.get('certainty'),'uncertain');
+  assert.deepEqual(JSON.parse(params.get('show')),['stable:response']);assert.equal(params.get('filter'),'review-filter');
+  let fetches=0;context.fetch=async()=>{fetches++;throw Error('Unexpected request');};
+  vm.runInContext("handleResetChart();handleRefreshResults=async()=>render(false,true)",context);
+  await vm.runInContext(`handleApplyRunRoute(${JSON.stringify(path)})`,context);
+  assert.equal(nodes.get('classification-group').value,'stable:response');
+  assert.equal(vm.runInContext('chartCertainty',context),'uncertain');
+  assert.equal(vm.runInContext('[...shownDecisionKeys].join()',context),'stable:response');
+  assert.equal(nodes.get('result-filter-type').value,'review-filter');assert.equal(fetches,0);
+  await vm.runInContext("handleApplyRunRoute('/runs/test-job?chart=deleted&show=broken')",context);
+  assert.equal(vm.runInContext('shownDecisionKeys',context),null);
+  assert.equal(vm.runInContext('chartSelectionExplicit',context),false);
+});
+
+test('List searches survive refresh within a tab and tolerate unavailable storage',async()=>{
+  const data=new Map();const session={getItem:key=>data.get(key) || null,setItem:(key,value)=>data.set(key,value)};
+  const first=workspace([],undefined,undefined,undefined,null,session);
+  await new Promise(resolve=>setImmediate(resolve));
+  for(const id of ['source-search','criteria-search','action-search','task-search','ssh-key-search','ssh-host-search']){
+    first.nodes.get(id).value='Selected name';first.nodes.get(id).oninput();
+  }
+  const second=workspace([],undefined,undefined,undefined,null,session);
+  for(const id of ['source-search','criteria-search','action-search','task-search','ssh-key-search','ssh-host-search'])assert.equal(second.nodes.get(id).value,'Selected name');
+  const blocked=workspace([],undefined,undefined,undefined,null,{getItem:()=>{throw Error('Blocked');},setItem:()=>{throw Error('Blocked');}});
+  blocked.nodes.get('criteria-search').value='Search';assert.doesNotThrow(()=>blocked.nodes.get('criteria-search').oninput());
 });

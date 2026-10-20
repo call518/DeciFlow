@@ -1,5 +1,12 @@
 # Python Actions
 
+The list’s **Manage → Ref.** button and Edit’s **References** link open a
+reference dialog. View displays the same details directly above its configuration
+under **References**. Task assignments, active executions, and recoverable runs
+show only type, name, and ID. Available ID links open details in a new tab;
+references are fetched when opened.
+
+
 [English](actions.md) | [한국어](actions.ko.md) | [Documentation](README.md) | [README](../README.md)
 
 ## Default Sample Action

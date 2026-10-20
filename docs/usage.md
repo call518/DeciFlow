@@ -283,7 +283,7 @@ checks still apply; file access requires a local/trusted UI Origin.
 | Success / Failed / Total | Valid classifications / failed chunks / total completed chunks (success + failure); failures include connection errors, timeouts, rejected inputs, and invalid responses |
 | Action Success / Failed / Total | Completed Action successes / failures / total; excludes unassigned sources and failed decisions; independent of decision counts |
 | Needs Review | Successful chunks with any decision/record review reason; counted once per chunk; failures excluded |
-| Throughput | All successful results divided by total elapsed seconds in the selected run, including idle time and Action delivery; freezes when stopped/completed |
+| Throughput | All successful results divided by Active Processing Time in seconds; excludes idle time and Action delivery, counts overlapping request time once, and shows zero before active processing |
 | Total Elapsed Time | Time since the run started, including idle periods |
 | Active Processing Time | Time with at least one request in flight, counting overlap once; percentage of total elapsed time |
 | Processing Time | One compact card, the same size as the other metrics, showing Avg, Min, Max, P(50), P(95), and P(99) with small inline labels. All completed record durations, including failures; Action time excluded. Avg is the arithmetic mean; P(50) averages the central values; P(95)/P(99) use nearest rank. |
@@ -369,9 +369,10 @@ Existing `/#tasks` and `/#settings/...` links are converted automatically.
 | Configurations | `/settings/configuration` |
 | A specific execution | `/runs/{run-id}` |
 
-Execution URLs retain result filters, cursor pages, and an expanded result section
+Execution URLs retain chart Decision/Criteria selection, chart certainty, Show Decisions,
+the active filter control, result filters, cursor pages, and an expanded result section
 using query parameters (`review`, `processing`, `host`, `source`, `search`, `cursors`,
-`through`, `result`, `detail`). Source Hosts Detail uses `dialog=hosts`.
+`through`, `result`, `detail`, `chart`, `certainty`, `show`, `filter`). Source Hosts Detail uses `dialog=hosts`.
 Automatic polling replaces the current URL rather than creating a history entry
 for every update. Run, Stop, Pause/Resume, Delete, Save, and Export remain explicit
 commands: visiting a link never runs those commands. Unsaved form contents and
@@ -381,3 +382,8 @@ Restart the DeciFlow UI server/container once to enable direct clean-path reques
 no proxy rewrite is needed when all paths are forwarded to DeciFlow. URL sharing
 uses the same access/origin rules as the application and does not preserve unsaved
 drafts or create permanent archives of deleted Tasks.
+
+List search text for Sources, Criteria, Actions, Tasks, SSH Keys, and SSH Hosts
+is retained across reloads in the same browser tab. Unsaved editor fields are not
+restored. Opening another run starts with its own chart defaults unless its URL
+includes display selections.

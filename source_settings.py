@@ -62,7 +62,7 @@ def parse_source_settings(
             spec["chunkEvents"] = 1
         if definition.get("type") != "ssh":
             if value.get("hostIds"):
-                raise ValueError("Local File Sources cannot select SSH Hosts.")
+                raise ValueError("Only Remote File (SSH) Sources can select SSH Hosts.")
             sources.append(spec)
             continue
         host_ids = value.get("hostIds")
@@ -102,7 +102,7 @@ def resolve_configured_sources(
     """Deduplicate files; reject overlapping patterns with conflicting settings."""
     result: dict[Path, dict[str, Any]] = {}
     for spec in specs:
-        if spec.get("type") == "ssh":
+        if spec.get("type") in {"ssh", "hdfs", "webhdfs"}:
             continue
         for pattern in source_paths(spec["path"]):
             for path in resolve_sources(pattern, follow=follow):

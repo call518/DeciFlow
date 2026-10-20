@@ -190,6 +190,62 @@ function renderDecisionReview(result,jsonView,jsonText) {
   return container;
 }
 
+let referencesRequest = 0;
+function referenceButton(kind, identity, name, compact = false) {
+  const button=element('button',compact?'Ref.':'View References',compact?'quiet reference-button':'reference-link');button.type='button';
+  button.setAttribute('aria-haspopup','dialog');button.setAttribute('aria-label',`View References for ${name}`);
+  button.onclick=()=>handleShowReferences(kind,identity,name);return button;
+}
+function referenceField(kind, identity, name) {
+  const field=element('div','','reference-field');
+  field.append(element('span','References','caption'),referenceButton(kind,identity,name));return field;
+}
+function renderReferenceDetails(container, details) {
+  container.replaceChildren();if(!details.length)return;
+  const table=element('table','','reference-table');const header=element('tr','');
+  for(const label of ['Type','Name','ID'])header.append(element('th',label));table.append(header);
+  for(const item of details){
+    const type={'Task Assignment':'Task','Starting Task':'Task','Active Run':'Run','Recoverable Run':'Run','Active Execution':'Execution'}[item.relation] || item.relation;
+    const base={'Task':'/tasks','Source':'/sources','Criteria':'/criteria','Action':'/actions','SSH Host':'/settings/ssh-hosts','SSH Key':'/settings/ssh-keys','Run':'/runs'}[type];
+    const row=element('tr','');row.append(element('td',type));
+    for(const [index,value] of [item.name,item.id || 'Not Assigned'].entries()){
+      const cell=element('td','');
+      if(index===1 && base && item.id){
+        const link=element('a',value);link.setAttribute('href',`${base}/${encodeURIComponent(item.id)}`);
+        link.setAttribute('target','_blank');link.setAttribute('rel','noopener');link.title='Open Details in a New Tab';cell.append(link);
+      }else cell.textContent=value;
+      row.append(cell);
+    }
+    table.append(row);
+  }
+  container.append(table);
+}
+async function handleLoadViewReferences(container, reference) {
+  const summary=element('p','Loading references…','caption');summary.setAttribute('role','status');
+  const content=element('div','');container.append(element('h3','References'),summary,content);
+  try {
+    const response=await fetch('/api/delete-check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:reference.kind,id:reference.id})});
+    const data=await readApiJsonResponse(response);if(!response.ok)throw new Error(data.error);
+    if(!Array.isArray(data.details))throw new Error('Invalid reference details response.');
+    summary.textContent=data.details.length?`${data.details.length} ${data.details.length===1?'reference':'references'}`:'No references.';
+    renderReferenceDetails(content,data.details);
+  } catch(error){summary.textContent=`Could not load references. ${error.message}`;}
+}
+async function handleShowReferences(kind, identity, name) {
+  const request=++referencesRequest;const dialog=$('references-dialog');
+  $('references-title').textContent=`${kind} References`;$('references-name').textContent=name;
+  $('references-summary').textContent='Loading references…';$('references-content').replaceChildren();
+  dialog.onclose=()=>{referencesRequest++;};if(!dialog.open)dialog.showModal();
+  try {
+    const response=await fetch('/api/delete-check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,id:identity})});
+    const data=await readApiJsonResponse(response);if(!response.ok)throw new Error(data.error);
+    if(!Array.isArray(data.details))throw new Error('Invalid reference details response.');
+    if(request!==referencesRequest || !dialog.open)return;
+    $('references-summary').textContent=data.details.length?`${data.details.length} ${data.details.length===1?'reference':'references'}`:'No references.';
+    renderReferenceDetails($('references-content'),data.details);
+  } catch(error){if(request===referencesRequest && dialog.open)$('references-summary').textContent=`Could not load references. ${error.message}`;}
+}
+
 let deleteConfirmationQueue = Promise.resolve();
 function handleConfirmDelete(kind, name, description, identity=name) {
   const confirmation = deleteConfirmationQueue.then(async () => {
@@ -517,7 +573,7 @@ function detailFields(fields) {
   return list;
 }
 
-function handleViewConfiguration(id, title, fields) {
+function handleViewConfiguration(id, title, fields, reference = null) {
   const container = $(id);
   if (id === 'source-view') {
     $('source-editor').hidden = true; $('cancel-source').hidden = true; $('save-sources').disabled = true;
@@ -533,7 +589,9 @@ function handleViewConfiguration(id, title, fields) {
   if(id==='criteria-view')row.className+=' criteria-details';
   const header = element('div', '', 'card-title');
   header.append(element('h3', title));
-  container.replaceChildren(); container.append(header, row);
+  container.replaceChildren(); container.append(header);
+  if(reference){const references=element('section','','view-references');container.append(references);handleLoadViewReferences(references,reference);}
+  container.append(row);
   container.hidden = false;
 }
 let sshKeys = [];
@@ -558,6 +616,7 @@ function handleAddKey(key = null) {
   if (key) for (const id of ['ssh-key-file','ssh-key-path','ssh-key-paste']) $(id).required = false;
   $('ssh-key-registry').hidden = true; $('ssh-key-editor').hidden = false;
   handleMessage('ssh-key-message','');
+  handleEditUsage('SSH Key',key?.id,$('ssh-key-editor'));
 }
 function handleViewKey(key) {
   handleCloseKey();
@@ -805,6 +864,7 @@ function handleEditHost(host = null) {
   if (host?.keyId && !sshKeys.some(key => key.id === host.keyId)) keys.append(new Option('Unavailable Key', host.keyId));
   keys.value = host?.keyId || ''; handleMessage('ssh-host-message','');
   renderHostTestResult(null,'');
+  handleEditUsage('SSH Host',host?.id,$('ssh-host-editor'));
 }
 function handleViewHost(host) {
   handleCloseHost();
@@ -908,7 +968,8 @@ function renderTaskMonitor() {
         const port=saved?.port || frozen?.port;
         return {id,label:`${hostName}${address?` · ${user?`${user}@`:''}${address}:${port || 22}`:''}`};
       }):[{id:'local',label:'DeciFlow (Local)'}];
-      return {name:definition?.name || 'Unavailable source',path:definition?.path,type:remote?'Remote File (SSH)':'Local File',action:actionName(source.actionId),hosts,profile:profileLabels[source.profile] || source.profile || 'None',chunkEvents:definition?.format==='jsonl'?1:source.chunkEvents || 1};
+      if(isHdfsSource(definition))hosts.splice(0,hosts.length,{id:`${definition.type}:${hdfsEndpoint(definition)}`,label:hdfsEndpoint(definition)});
+      return {name:definition?.name || 'Unavailable source',path:definition?.path,type:sourceTypeLabel(definition || {type:remote?'ssh':'local'}),action:actionName(source.actionId),hosts,profile:profileLabels[source.profile] || source.profile || 'None',chunkEvents:definition?.format==='jsonl'?1:source.chunkEvents || 1};
     });
     const hostCount=new Set(definitions.flatMap(source=>source.hosts.map(host=>host.id))).size;
     const summary=element('span',`Source: ${definitions.map(source=>source.name).join(', ') || 'None'} · Source Hosts: ${hostCount}`,'caption monitor-task-sources');
@@ -959,7 +1020,6 @@ function renderTasks() {
     for(const [label,handler] of [['Run',()=>handleRunTask(task.id)],['Stop',()=>handleStopTask(task.id)],[paused?'Resume':'Pause',()=>handlePauseTask(task.id,paused?'resume':'pause')],['View',()=>handleViewTask(task)],['Edit',()=>handleEditTask(task)],['History',()=>handleTaskHistory(task)],['Delete',()=>handleDeleteTask(task)]]) {
       const button=element(['View','Edit','History'].includes(label)?'a':'button',label,'quiet'); button.type='button';button.onclick=handler;
       if(label==='Run')button.disabled=task.enabled===false || (!task.sources.length || task.sources.some(source=>!source.profile)) || Boolean(task.activeRun || task.starting);
-      if(label==='Edit'){button.disabled=Boolean(task.activeRun || task.starting);if(button.disabled)button.title='Stop the Task before editing it.';}
       if(label==='Stop')button.disabled=!task.activeRun;
       if(label==='Pause')button.disabled=task.activeRun?.state!=='running';
       if(label==='Resume')button.disabled=!['paused','pausing'].includes(task.activeRun?.state);
@@ -1017,8 +1077,22 @@ function handleTaskMode() {
   $('task-resume-field').hidden=!realtime;
   $('task-mode-note').textContent=realtime ? 'Realtime watches new lines. Active executions recover from saved positions after restart; Paused executions stay paused. The optional startup setting starts a new run only when no execution can be recovered.' : cron ? 'Each scheduled Batch reads files from the beginning and can repeat Actions for the same data. Overlapping occurrences are skipped. Missed schedules are not replayed. Active executions recover after a server restart.' : 'Manual Batch reads files from the beginning once, then finishes as Completed or Failed. A server restart recovers an active execution from its saved position.';
 }
+const editUsageNotes = new Map();
+function handleEditUsage(kind, identity, container) {
+  editUsageNotes.get(kind)?.remove();
+  if(!identity)return;
+  const note=element('p','Checking usage…','caption connection-warning edit-usage-note');
+  note.setAttribute('role','status');container.append(note);editUsageNotes.set(kind,note);
+  fetch('/api/delete-check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,id:identity})})
+    .then(async response=>{const data=await readApiJsonResponse(response);if(!response.ok || !Array.isArray(data.references))throw new Error('Usage check failed.');return data.references;})
+    .then(references=>{
+      if(editUsageNotes.get(kind)!==note)return;
+      const policy=kind==='Action'?'Stop active runs before changing code or dependencies or resetting the environment. Delete is blocked while referenced or in use.':`Editing is allowed. Changes apply to new runs; existing runs retain their original settings. Delete is blocked while referenced or in use.${kind==='Task'?' Disabling the Task stops its current run.':''}`;
+      note.textContent=references.length?`In use: ${references.join('; ')}. ${policy}`:kind==='Action'?'Actions can be edited while idle. Stop active runs before changing code or dependencies or resetting the environment.':'Changes apply to new runs. Existing runs retain their original settings.';
+    })
+    .catch(()=>{if(editUsageNotes.get(kind)===note)note.textContent=kind==='Action'?'Could not check current usage. The server blocks code and environment changes while running.':'Could not check current usage. Editing is allowed; deletion is checked separately.';});
+}
 async function handleEditTask(task=null) {
-  if(task?.activeRun || task?.starting){handleMessage('task-message','Stop the Task before editing it.',true);return;}
   const target=task?`/tasks/${encodeURIComponent(task.id)}/edit`:'/tasks/new';
   handleWriteRoute(target);
   await sourceLoadPromise;
@@ -1030,7 +1104,8 @@ async function handleEditTask(task=null) {
   $('task-editor-title').textContent=task?'Edit Task':'Add Task';$('task-name').value=task?.name || '';
   $('source-mode').value=task?.mode || 'batch';$('task-trigger').value=task?.cron?'cron':'manual';
   $('task-cron').value=task?.cron || '';$('task-timezone').value=task?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  $('task-enabled').checked=task?.enabled ?? true;$('task-resume').checked=task?.resumeOnRestart || false;
+  handleEditUsage('Task',task?.id,$('task-editor'));
+  $('task-enabled').checked=task?.enabled ?? false;$('task-resume').checked=task?.resumeOnRestart || false;
   sourcePreferences.clear();
   for(const source of task?.sources || [])sourcePreferences.set(source.sourceId,{profile:source.profile,chunkEvents:source.chunkEvents,actionId:source.actionId || '',hostIds:[...(source.hostIds || [])]});
   const paths=task?.sources.map(source=>source.sourceId) || registeredSources.slice(0,1).map(source=>source.id);
@@ -1064,7 +1139,7 @@ function handleViewTask(task) {
     for(const [label,value,wide] of [
       ['Source Name',definition?.name || source.sourceId,false],
       ['File Path / Pattern',definition?.path || 'Source unavailable',false],
-      ['Source Type',definition?.type==='ssh' || source.hostIds?.length?'Remote File (SSH)':'Local File',false],
+      ['Source Type',sourceTypeLabel(definition || {type:source.hostIds?.length?'ssh':'local'}),false],
       ['Input Format',definition?.format==='jsonl'?'JSONL (Line)':'TEXT (Chunk)',false],
       ...(definition?.format==='jsonl'?[['Content Field',definition.contentField,false]]:[]),
       ['Criteria',profileLabels[source.profile] || source.profile || 'None',false],
@@ -1082,7 +1157,7 @@ function handleViewTask(task) {
         const host=sshHosts.find(item=>item.id===id);
         hosts.append(element('span',host?.name || id,'task-target-host'));
       }
-    }else hosts.append(element('span','DeciFlow (Local)','task-target-host'));
+    }else hosts.append(element('span',isHdfsSource(definition)?hdfsEndpoint(definition):'DeciFlow (Local)','task-target-host'));
     targets.append(hosts);fields.insertBefore(targets,fields.children[3]);card.append(fields);sources.append(card);
   }
   container.append(sources);view.append(container);view.hidden=false;
@@ -1262,7 +1337,7 @@ function renderActions() {
   $('action-registry').replaceChildren();
   const query = $('action-search').value.trim().toLowerCase();
   let matches = 0;
-  const table = element('table', '', 'action-list');
+  const table = element('table', '', 'action-list reference-list');
   const header = element('tr', '');
   for (const title of ['Name', 'Python', 'Modules', 'Status', 'Manage']) header.append(element('th', title));
   table.append(header);
@@ -1280,7 +1355,7 @@ function renderActions() {
     row.append(status);
     const controls = element('td', '', 'action-list-controls');
     for (const [caption, handler] of [
-      ['View', () => handleViewConfiguration('action-view', action.name, [['Name', action.name], ['ID', action.id], ['Python Version', action.pythonVersion], ['Modules', action.modules || []], ['Python Executable', action.python], ['Script Path', action.script], ['Python Code', action.code]])],
+      ['View', () => handleViewConfiguration('action-view', action.name, [['Name', action.name], ['ID', action.id], ['Python Version', action.pythonVersion], ['Modules', action.modules || []], ['Python Executable', action.python], ['Script Path', action.script], ['Python Code', action.code]],{kind:'Action',id:action.id})],
       ['Edit', () => handleEditAction(index)],
       ['Reset venv', () => handleResetAction(index)],
       ['Delete', async () => { if (!await handleConfirmDelete('Action', action.name, 'This Action and its managed script and environment will be deleted when you save changes.', action.id)) return; registeredActions.splice(registeredActions.indexOf(action), 1); handleCloseConfiguration('action-view'); renderActions(); handleMessage('action-message','Deletion pending. Save Changes to apply.'); }],
@@ -1289,6 +1364,7 @@ function renderActions() {
       button.type = 'button'; button.disabled = preparingActions || (caption !== 'View' && editingAction !== null) || (caption === 'Reset venv' && (!action.id || !action.pythonVersion));
       button.onclick = handler; controls.append(button);
     }
+    controls.append(referenceButton('Action',action.id,action.name,true));
     row.append(controls); handleAppendViewRow(table,row,'action-view',action.id || action.name);
   });
   $('action-registry').append(matches ? table : element('p', registeredActions.length ? 'No Actions match your search.' : 'No Actions registered. Click Add Action to create one.', 'caption'));
@@ -1359,6 +1435,8 @@ function handleEditAction(index) {
   $('action-editor').hidden = false;
   $('cancel-action').hidden = false;
   renderActions();
+  if(action.id)row.append(referenceField('Action',action.id,action.name));
+  handleEditUsage('Action',action.id,row);
   $('action-editor').scrollIntoView?.({ block: 'nearest' });
 }
 function handleCloseAction() {
@@ -1463,14 +1541,14 @@ function handleViewCriteria(id) {
       `${q.label} (${titleLabel(q.type)})`,
       `${q.instructions}\n${q.type === 'noul' ? 'Yes probability' : Object.entries(q.criteria).map(([key,text])=>`${key}: ${text}`).join('\n')}${q.type==='choice'?`\nNeeds Review When Selected: ${decisionReviewOptions(q).join(', ') || 'None'}`:''}`,
     ]), ['Normalization',profile.normalization],
-  ]);
+  ],{kind:'Criteria',id});
 
 }
 function renderCriteria() {
   handleClearRouteLinks('/criteria');
   handleParkInlineView('criteria-view');
   $('criteria-list').hidden = editingCriteria !== null;
-  const table = element('table', '', 'action-list');
+  const table = element('table', '', 'action-list reference-list');
   const header = element('tr', '');
   for (const title of ['Name', 'Manage']) header.append(element('th', title));
   table.append(header);
@@ -1493,6 +1571,7 @@ function renderCriteria() {
       button.disabled = savingCriteria || (caption !== 'View' && editingCriteria !== null);
       button.onclick = handler; controls.append(button);
     }
+    controls.append(referenceButton('Criteria',id,profile.label,true));
     row.append(controls); handleAppendViewRow(table,row,'criteria-view',id);
   }
   $('criteria-registry').replaceChildren();
@@ -1503,37 +1582,40 @@ function handleCloneCriteria(id) {
   const profile = criteriaProfiles[id];
   handleEditCriteria('', { ...profile, label: `${profile.label} (Clone)`, questions:structuredClone(profile.questions) });
 }
-function renderCriteriaGenerator() {
+function renderCriteriaGenerator(criteriaId = null) {
+  const revising=Boolean(criteriaId);
   const details=element('details','','criteria-section criteria-generator');
-  details.append(element('summary','Generate With AI'));
+  details.append(element('summary',revising?'Revise With AI':'Generate With AI'));
   const panel=element('fieldset','','action-registration');details.append(panel);
-  panel.append(element('p','Preview and edit the samples before sending them to OpenAI. Generation uses the configured API key and incurs API charges. Review the generated draft, then select Save Changes.','criteria-help'));
+  panel.append(element('p',revising?'Send the current editor draft and your revision request to OpenAI. Source samples are optional. API charges apply. Review the revised draft, then select Save Changes; the Criteria ID stays unchanged.':'Preview and edit the samples before sending them to OpenAI. Generation uses the configured API key and incurs API charges. Review the generated draft, then select Save Changes.','criteria-help'));
   const source=element('select','');source.setAttribute('aria-label','Sample Source');
   const host=element('select','');host.setAttribute('aria-label','Sample SSH Host');
   const count=element('input','');count.type='number';count.min='1';count.value='1';count.setAttribute('aria-label','Events Per Sample');
-  const sampleCount=element('select','');sampleCount.setAttribute('aria-label','Sample Count');
-  for(const value of [10,20,30,50,100])sampleCount.append(new Option(String(value),String(value)));sampleCount.value='10';
-  const purpose=element('textarea','');purpose.rows=3;purpose.maxLength=4000;purpose.setAttribute('aria-label','Analysis Purpose');purpose.placeholder='Describe what to judge, when to judge it, and any rules or exclusions.';
+  const sampleCount=element('input','');sampleCount.type='number';sampleCount.min='1';sampleCount.step='1';sampleCount.value='10';sampleCount.setAttribute('aria-label','Sample Count');
+  const purpose=element('textarea','');purpose.rows=3;purpose.maxLength=4000;purpose.setAttribute('aria-label',revising?'Revision Request':'Analysis Purpose');purpose.placeholder=revising?'Describe what to change and what to preserve.':'Describe what to judge, when to judge it, and any rules or exclusions.';
   const samples=element('div','','criteria-samples');const sampleInputs=[];
   const preview=element('button','Preview Source Samples','quiet');preview.type='button';
-  const generate=element('button','Generate Criteria','primary');generate.type='button';generate.disabled=true;
+  const generate=element('button',revising?'Revise Criteria':'Generate Criteria','primary');generate.type='button';generate.disabled=true;
   const message=element('p','','criteria-help');message.setAttribute('role','status');
   const addField=(caption,input,help='')=>{const label=element('label',caption);label.append(input);if(help){label.append(element('span',help,'criteria-help'));input.setAttribute('aria-description',help);}panel.append(label);return label;};
-  addField('Source',source,'Select a registered Local File or Remote File (SSH) Source. Its input format determines how samples are grouped.');
+  addField('Source',source,'Select a registered Local File, Remote File (SSH), or HDFS Source. Its input format determines how samples are grouped.');
   const hostLabel=addField('SSH Host',host,'Select one registered SSH Host to read this remote Source. The existing SSH key and host verification settings are used.');
   const countLabel=addField('Events Per Sample',count);const countHelp=element('span','','criteria-help');countLabel.append(countHelp);
-  addField('Sample Count',sampleCount,'Choose 10, 20, 30, 50, or 100 samples (default: 10). More samples consume more tokens and may increase API charges. Events Per Sample controls the grouping within each sample.');
+  addField('Sample Count',sampleCount,'Enter a positive whole number (default: 10). More samples consume more tokens and may increase API charges. Events Per Sample controls the grouping within each sample.');
   const sampleHelp=element('p','','criteria-help');sampleHelp.setAttribute('role','status');panel.append(sampleHelp);
   const purposeMode=element('select','');purposeMode.setAttribute('aria-label','Analysis Purpose Mode');
-  purposeMode.append(new Option('Automatic (ChatGPT)','automatic'),new Option('Manual','manual'));purposeMode.value='automatic';
-  addField('Analysis Purpose Mode',purposeMode,'Automatic: AI suggests an analysis purpose and Criteria from the samples. Manual: describe your own objective. Review the suggested purpose before saving.');
-  const purposeLabel=addField('Analysis Purpose',purpose,'Tell AI what decisions this Criteria should make. Describe the input, the questions or categories you need, when to judge them, and any priority rules, exclusions, or handling of missing evidence. Plain language is enough; you do not need to write JSON or fill in every Criteria field.');
-  purposeLabel.append(element('span','Example: For customer consultations, classify inquiry type, urgency, and whether staff owe a follow-up at the end of the conversation. Count promised callbacks as outstanding work; exclude actions owed only by the customer. Use Unknown when evidence is insufficient. Write labels and rules in Korean.','criteria-help'));
+  purposeMode.append(new Option('Automatic (ChatGPT)','automatic'),new Option('Manual','manual'));purposeMode.value=revising?'manual':'automatic';
+  const purposeModeLabel=addField('Analysis Purpose Mode',purposeMode,'Automatic: AI suggests an analysis purpose and Criteria from the samples. Manual: describe your own objective. Review the suggested purpose before saving.');
+  purposeModeLabel.hidden=revising;
+  const purposeLabel=addField(revising?'Revision Request':'Analysis Purpose',purpose,revising?'Describe the requested changes. Existing decision and option IDs are preserved unless you explicitly request a change.':'Tell AI what decisions this Criteria should make. Describe the input, the questions or categories you need, when to judge them, and any priority rules, exclusions, or handling of missing evidence. Plain language is enough; you do not need to write JSON or fill in every Criteria field.');
+  purposeLabel.append(element('span',revising?'Example: Keep the current decisions and result keys. Clarify how missing evidence is handled.':'Example: For customer consultations, classify inquiry type, urgency, and whether staff owe a follow-up at the end of the conversation. Count promised callbacks as outstanding work; exclude actions owed only by the customer. Use Unknown when evidence is insufficient. Write labels and rules in Korean.','criteria-help'));
   const updatePurposeMode=()=>{purposeLabel.hidden=purposeMode.value==='automatic';purpose.disabled=purposeLabel.hidden;};
   purposeMode.onchange=updatePurposeMode;updatePurposeMode();
   panel.append(preview,samples,generate,message);
   let initialized=false;let availableSources=[];
-  const resetSamples=()=>{sampleInputs.length=0;samples.replaceChildren();generate.disabled=true;message.textContent='';};
+  const updateGenerate=()=>{generate.disabled=revising?!purpose.value.trim():!sampleInputs.length;};
+  purpose.oninput=updateGenerate;
+  const resetSamples=()=>{sampleInputs.length=0;samples.replaceChildren();updateGenerate();message.textContent='';};
   const updateSource=()=>{
     resetSamples();const selected=availableSources.find(item=>item.id===source.value);
     const jsonl=selected?.format==='jsonl';hostLabel.hidden=selected?.type!=='ssh';
@@ -1542,7 +1624,7 @@ function renderCriteriaGenerator() {
     count.setAttribute('aria-description',countHelp.textContent);
     sampleHelp.textContent=(jsonl?'One JSONL record is one sample; only the configured content field is read. ':'')+'Preview scans the entire Source (up to 20 seconds) and randomly selects up to the selected Sample Count, totaling at most 150,000 UTF-8 bytes. Empty or oversized inputs are excluded. Fewer samples may be available due to Source size or the byte limit. A scan timeout returns no preview. Review the samples before sending them to OpenAI.';
   };
-  source.onchange=updateSource;host.onchange=count.oninput=sampleCount.onchange=resetSamples;
+  source.onchange=updateSource;host.onchange=count.oninput=sampleCount.oninput=resetSamples;
   details.ontoggle=async()=>{
     if(!details.open || initialized)return;initialized=true;panel.disabled=true;
     try {
@@ -1550,7 +1632,7 @@ function renderCriteriaGenerator() {
       const data=await Promise.all(responses.map(readApiJsonResponse));
       if(responses.some(response=>!response.ok))throw new Error('Could not load Sources or SSH Hosts.');
       source.replaceChildren(new Option('None',''));
-      for(const item of data[0].sources)source.append(new Option(`${item.name} · ${item.type==='ssh'?'Remote File (SSH)':'Local File'} · ${item.format==='jsonl'?'JSONL':'TEXT'}`,item.id));
+      for(const item of data[0].sources)source.append(new Option(`${item.name} · ${sourceTypeLabel(item)} · ${item.format==='jsonl'?'JSONL':'TEXT'}`,item.id));
       availableSources=data[0].sources;
       host.replaceChildren(new Option('None',''));
       for(const item of data[1].hosts)host.append(new Option(item.name,item.id));
@@ -1561,42 +1643,46 @@ function renderCriteriaGenerator() {
   preview.onclick=async()=>{
     resetSamples();
     const requestedCount=Number(sampleCount.value);
-    if(![10,20,30,50,100].includes(requestedCount)){message.textContent='Sample Count must be 10, 20, 30, 50, or 100.';return;}
+    if(!Number.isInteger(requestedCount) || requestedCount<1){message.textContent='Sample Count must be a positive integer.';return;}
     panel.disabled=true;message.textContent=`Scanning the entire Source to randomly select up to ${requestedCount} complete samples (150,000 bytes total)…`;
     try {
       const response=await fetch('/api/criteria/samples',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceId:source.value,hostIds:hostLabel.hidden?[]:[host.value],chunkEvents:Number(count.value),sampleCount:requestedCount})});
       const data=await readApiJsonResponse(response);if(!response.ok)throw new Error(data.error);
       for(const [index,text] of data.samples.entries()){
         const label=element('label',`Sample ${index+1}`);const input=element('textarea','');input.rows=4;input.value=text;input.setAttribute('aria-label',`Sample ${index+1}`);
-        const remove=element('button','Remove Sample','quiet');remove.type='button';remove.onclick=()=>{sampleInputs.splice(sampleInputs.indexOf(input),1);label.remove();generate.disabled=!sampleInputs.length;};
+        const remove=element('button','Remove Sample','quiet');remove.type='button';remove.onclick=()=>{sampleInputs.splice(sampleInputs.indexOf(input),1);label.remove();updateGenerate();};
         label.append(input,remove);samples.append(label);sampleInputs.push(input);
       }
-      generate.disabled=false;message.textContent=`Loaded ${data.samples.length} of up to ${requestedCount} requested samples. Only the samples shown here and your analysis purpose will be sent to OpenAI. Remove or redact sensitive content before generating.`;
+      updateGenerate();message.textContent=`Loaded ${data.samples.length} of up to ${requestedCount} requested samples. Only the samples shown here and your analysis purpose will be sent to OpenAI. Remove or redact sensitive content before generating.`;
     } catch(error){message.textContent=error.message;}
     finally{panel.disabled=false;}
   };
   generate.onclick=async()=>{
     if(purposeMode.value==='manual' && !purpose.value.trim()){message.textContent='Enter an analysis purpose.';return;}
-    const draftId=criteriaDraftId;panel.disabled=true;message.textContent='Generating Criteria…';
+    const draftId=criteriaDraftId, editVersion=criteriaEditVersion;panel.disabled=true;message.textContent=revising?'Revising Criteria…':'Generating Criteria…';
     try {
-      const response=await fetch('/api/criteria/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({purposeMode:purposeMode.value,purpose:purposeMode.value==='manual'?purpose.value:'',samples:sampleInputs.map(input=>input.value)})});
+      const currentProfile=revising?readDecisionProfile():null;
+      const response=await fetch('/api/criteria/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({purposeMode:purposeMode.value,purpose:purposeMode.value==='manual'?purpose.value:'',samples:sampleInputs.map(input=>input.value),...(revising?{currentProfile}:{})})});
       const data=await readApiJsonResponse(response);if(!response.ok)throw new Error(data.error);
-      if(criteriaDraftId!==draftId)return;
-      handleEditCriteria('',data.profile,{text:data.analysisPurpose,automatic:purposeMode.value==='automatic'});
+      if(criteriaDraftId!==draftId || criteriaEditVersion!==editVersion)return;
+      if(revising && JSON.stringify(readDecisionProfile())!==JSON.stringify(currentProfile)){message.textContent='The editor draft changed while AI was working. The AI result was not applied; revise again using the current draft.';return;}
+      handleEditCriteria(criteriaId || '',data.profile,{text:data.analysisPurpose,automatic:purposeMode.value==='automatic',revision:revising});
       handleMessage('criteria-message','Generated all Criteria fields. Review the draft and token estimates, then select Save Changes.');
     } catch(error){message.textContent=error.message;}
     finally{panel.disabled=false;}
   };
   return details;
 }
+let criteriaEditVersion = 0;
 function handleEditCriteria(id, template = null, generatedPurpose = null) {
+  criteriaEditVersion++;
   handleWriteRoute(id?`/criteria/${encodeURIComponent(id)}/edit`:'/criteria/new');
   criteriaTokenPanel=null;criteriaTokenDetailsOpen=false;
   handleCloseConfiguration('criteria-view');
   editingCriteria = id; criteriaTemplate = template;
   const bytes=crypto.getRandomValues(new Uint8Array(16));bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;const hex=Array.from(bytes,value=>value.toString(16).padStart(2,'0')).join('');
   criteriaDraftId=id || `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
-  const profile = criteriaProfiles[id] || template || {label:'',instructions:'Use only observed evidence.',questions:{
+  const profile = template || criteriaProfiles[id] || {label:'',instructions:'Use only observed evidence.',questions:{
     category:{label:'Category',type:'choice',instructions:'Select the best matching category.',criteria:{first:'First category.',other:'Other or insufficient information.'},reviewOptions:['other']},
   },defaultDecision:'category'};
   const addHelp=(label,input,text)=>{
@@ -1668,9 +1754,12 @@ function handleEditCriteria(id, template = null, generatedPurpose = null) {
   const add=element('button','Add Decision','quiet');add.type='button';add.onclick=()=>{if(savingCriteria)return;let index=decisionRows.length+1;while(decisionRows.some(row=>row.id.value===`decision_${index}`))index++;appendQuestion(`decision_${index}`,{label:'',type:'choice',instructions:'',criteria:{first:'',other:''}});};
   criteriaTokenPanel=element('div','','criteria-token-estimate');
   criteriaTokenPanel.setAttribute('role','status');criteriaTokenPanel.setAttribute('aria-live','polite');
-  $('criteria-editor').replaceChildren(element('h3',id?'Edit Profile':'Add Profile'),criteriaTokenPanel,profilePanel,list,add);
-  if(generatedPurpose){const review=element('div','','criteria-token-estimate');review.append(element('h4',generatedPurpose.automatic?'Suggested Analysis Purpose':'Analysis Purpose'),element('p',generatedPurpose.text));$('criteria-editor').insertBefore(review,profilePanel);}
-  if(!id)$('criteria-editor').insertBefore(renderCriteriaGenerator(),profilePanel);
+  const editorHeader=element('div','','card-title');editorHeader.append(element('h3',id?'Edit Profile':'Add Profile'));
+  if(id)editorHeader.append(referenceField('Criteria',id,profile.label));
+  $('criteria-editor').replaceChildren(editorHeader,criteriaTokenPanel,profilePanel,list,add);
+  handleEditUsage('Criteria',id,profilePanel);
+  if(generatedPurpose){const review=element('div','','criteria-token-estimate');review.append(element('h4',generatedPurpose.revision?'Revision Request':generatedPurpose.automatic?'Suggested Analysis Purpose':'Analysis Purpose'),element('p',generatedPurpose.text));$('criteria-editor').insertBefore(review,profilePanel);}
+  $('criteria-editor').insertBefore(renderCriteriaGenerator(id),profilePanel);
   if(!id)$('criteria-editor').insertBefore(element('hr','','criteria-authoring-divider'),profilePanel);
   if(!id && Object.keys(criteriaTemplates).length) {
     const label=element('label','Start From Template','criteria-template-start');const select=element('select','');select.setAttribute('aria-label','Start From Template');select.append(new Option('Custom Decisions',''));
@@ -1703,6 +1792,7 @@ function handleValidateCriteria(showMessage = true) {
   return errors.length === 0;
 }
 function handleCloseCriteria() {
+  criteriaEditVersion++;
   criteriaTokenPanel=null;
   editingCriteria = null; criteriaFields = {}; criteriaTemplate = null; criteriaDraftId = null;
   $('criteria-editor').replaceChildren(); $('criteria-editor').hidden = true;
@@ -1773,13 +1863,19 @@ let sourcesLoaded = false;
 let editingSource = null;
 let sourceFields = {};
 let savingSources = false;
+function isHdfsSource(source) { return ['hdfs','webhdfs'].includes(source?.type); }
+function hdfsEndpoint(source) { return source.endpoint; }
+function sourceTypeLabel(source) {
+  return source?.type==='webhdfs'?'HDFS (WebHDFS)':source?.type==='hdfs'?'HDFS (Native)':source?.type==='ssh'?'Remote File (SSH)':'Local File';
+}
 function sourceDescription(source) {
-  return `${source.type === 'ssh' ? 'Remote File (SSH)' : 'Local File'} · ${source.format==='jsonl'?'JSONL (Line)':'TEXT (Chunk)'} · ${source.path.split('\n').join(' · ')}`;
+  return `${sourceTypeLabel(source)}${isHdfsSource(source)?` · ${hdfsEndpoint(source)} · Batch Only`:''} · ${source.format==='jsonl'?'JSONL (Line)':'TEXT (Chunk)'} · ${source.path.split('\n').join(' · ')}`;
 }
 function renderSourceInput(source) {
   const cell=element('td','','source-input');
   const metadata=element('div','','source-input-metadata');
-  metadata.append(element('span',source.type==='ssh'?'Remote File (SSH)':'Local File','source-input-tag'),element('span',source.format==='jsonl'?'JSONL (Line)':'TEXT (Chunk)','source-input-tag'));
+  metadata.append(element('span',sourceTypeLabel(source),'source-input-tag'),element('span',source.format==='jsonl'?'JSONL (Line)':'TEXT (Chunk)','source-input-tag'));
+  if(isHdfsSource(source))metadata.append(element('span',hdfsEndpoint(source),'source-input-tag'));
   const paths=element('div','','source-input-paths');
   for(const path of source.path.split('\n').filter(path=>path.trim()))paths.append(element('code',path));
   cell.append(metadata,paths);return cell;
@@ -1788,7 +1884,7 @@ function renderSources() {
   handleClearRouteLinks('/sources');
   handleParkInlineView('source-view');
   $('source-list').hidden = editingSource !== null;
-  const table = element('table', '', 'action-list source-list');
+  const table = element('table', '', 'action-list source-list reference-list');
   const header = element('tr', '');
   for (const caption of ['Name', 'Input', 'Manage']) header.append(element('th', caption));
   table.append(header);
@@ -1799,7 +1895,7 @@ function renderSources() {
     row.append(element('td', source.name), renderSourceInput(source));
     const controls = element('td', '', 'action-list-controls');
     for (const [caption, handler] of [
-      ['View', () => handleViewConfiguration('source-view', source.name, [['Type', source.type === 'ssh' ? 'Remote File (SSH)' : 'Local File'], ['Name', source.name], ['Input Format',source.format==='jsonl'?'JSONL (Line)':'TEXT (Chunk)'],['Content Field',source.format==='jsonl'?source.contentField:undefined], ['Path / Pattern', source.path]])],
+      ['View', () => handleViewConfiguration('source-view', source.name, [['Type', sourceTypeLabel(source)], ['Name', source.name], ['Input Format',source.format==='jsonl'?'JSONL (Line)':'TEXT (Chunk)'],['Content Field',source.format==='jsonl'?source.contentField:undefined], ['Path / Pattern', source.path], ...(source.type==='hdfs'?[['Endpoint',source.endpoint],['User',source.username || 'Process User'],['Kerberos Ticket Cache',source.ticketCache || 'Default Cache']]:source.type==='webhdfs'?[['Endpoint',source.endpoint],['User',source.username || 'Unspecified'],['Delegation Token File',source.tokenFile || 'Not Set'],['Trusted CA File',source.caFile || 'System Trust Store']]:[])],{kind:'Source',id:source.id})],
       ['Edit', () => handleEditSource(index)],
       ['Delete', async () => { if (!await handleConfirmDelete('Source', source.name, 'This Source registration will be deleted when you save changes. Original source files are kept.', source.id)) return; registeredSources.splice(registeredSources.indexOf(source), 1); handleCloseConfiguration('source-view'); renderSources(); handleMessage('source-message','Deletion pending. Save Changes to apply.'); }],
     ]) {
@@ -1807,45 +1903,75 @@ function renderSources() {
       button.disabled = !sourcesLoaded || savingSources || (caption !== 'View' && editingSource !== null);
       button.onclick = handler; controls.append(button);
     }
+    controls.append(referenceButton('Source',source.id,source.name,true));
     row.append(controls); handleAppendViewRow(table,row,'source-view',source.id);
   }
   $('source-registry').replaceChildren(); $('source-registry').append(table);
   $('add-registered-source').disabled = !sourcesLoaded || savingSources || editingSource !== null;
 }
-function sourceTypeTasks(identity) {
-  return registeredTasks.filter(task=>task.sources.some(source=>source.sourceId===identity));
-}
 function handleEditSource(index) {
   handleWriteRoute(registeredSources[index]?`/sources/${encodeURIComponent(registeredSources[index].id)}/edit`:'/sources/new');
   handleCloseConfiguration('source-view'); editingSource = index;
-  const source = registeredSources[index] || { name: '', type: 'local', path: '', port: 22 };
+  const source = registeredSources[index] || { name: '', type: 'local', path: '' };
   const form = element('div', '', 'action-registration'); sourceFields = {};
-  for (const [key, caption] of [['type', 'Type'], ['name', 'Name'], ['format','Input Format'], ['contentField','Content Field'], ['path', 'File Path / Pattern']]) {
+  const pathHelp=element('span','','caption');
+  const endpointHelp=element('span','','caption');
+  for (const [key, caption] of [['name', 'Name'], ['type', 'Type'], ['endpoint','Endpoint'], ['path', 'File Path / Pattern'], ['format','Input Format'], ['contentField','Content Field'], ['username','User'], ['ticketCache','Kerberos Ticket Cache'], ['tokenFile','Delegation Token File'], ['caFile','Trusted CA File']]) {
     const label = element('label', caption);
     const input = element(['type','format'].includes(key) ? 'select' : key === 'path' ? 'textarea' : 'input', '');
-    if (key === 'type') { input.append(new Option('Local File', 'local'), new Option('Remote File (SSH)', 'ssh')); }
+    if (key === 'type') { input.append(new Option('Local File', 'local'), new Option('Remote File (SSH)', 'ssh'),new Option('HDFS (Native)','hdfs'),new Option('HDFS (WebHDFS)','webhdfs')); }
     else if(key==='format'){input.append(new Option('TEXT (Chunk)','text'),new Option('JSONL (Line)','jsonl'));}
-    else if(key==='path'){input.rows=3;input.placeholder='/var/log/app/*.log\n/var/log/system.log';}
+    else if(key==='path'){input.rows=3;}
     else input.type = 'text';
     input.value = String(source[key] ?? (key === 'format' ? 'text' : '')); input.setAttribute('aria-label', caption);
-    label.append(input);if(key==='path')label.append(element('span','One file path or pattern per line. Overlapping matches are read once.','caption')); form.append(label); sourceFields[key] = input;
-    if(key==='type') {
-      const tasks=sourceTypeTasks(source.id);
-      input.disabled=tasks.length>0;
-      if(tasks.length) {
-        const help=`Type is locked while used by Tasks: ${tasks.map(task=>task.name).join(', ')}. Create another Source or remove those Task assignments first.`;
-        input.setAttribute('aria-description',help);label.append(element('span',help,'caption'));
-      }
-    }
+    if(key==='path')label.append(pathHelp);
+    if(key==='endpoint')label.append(endpointHelp);
+    if(key==='tokenFile')label.append(element('span','Optional path inside DeciFlow to a file containing a delegation token. Takes precedence over User.','caption'));
+    if(key==='caFile')label.append(element('span','Optional PEM CA file inside DeciFlow. HTTPS certificates are always verified.','caption'));
     if(key==='contentField'){input.placeholder='consulting_content';label.append(element('span','Literal top-level field containing text. Each JSONL object is processed independently.','caption'));}
+    label.append(input); form.append(label); sourceFields[key] = input;
   }
+  const hdfsTest=element('button','Test Connection','quiet');hdfsTest.type='button';
+  const hdfsStatus=element('p','','caption ssh-connection-result');hdfsStatus.setAttribute('role','status');hdfsStatus.hidden=true;
+  const hdfsHelp=element('p','HDFS supports Batch only: UTF-8 TEXT or JSONL, with up to four concurrent file readers. Use default for cluster XML settings or hdfs://nameservice for HA. Optional User uses Hadoop simple authentication; Kerberos uses the ticket cache mounted inside DeciFlow. Keep input files unchanged during a run.','caption');
+  const webHelp=element('p','WebHDFS uses HTTP(S) and supports Batch only, with up to four concurrent file readers. Enter the NameNode or HttpFS base URL. DeciFlow must also reach redirected DataNodes. Supports simple User or a delegation token file; direct Kerberos SPNEGO is not supported. Keep input files unchanged during a run.','caption');
+  const sshHelp=element('p','Remote File (SSH) defines a common path or pattern. Select one or more SSH Hosts per Source in Tasks. Approve host fingerprints in Settings → SSH Hosts.','caption');
+  hdfsTest.onclick=async()=>{
+    const fields=sourceFields;const draft=Object.fromEntries(Object.entries(fields).map(([key,input])=>[key,input.value]));
+    hdfsTest.disabled=true;hdfsStatus.hidden=false;hdfsStatus.className='caption ssh-connection-result connection-checking';hdfsStatus.textContent='Checking HDFS listing and file access…';
+    const unchanged=()=>fields===sourceFields && Object.entries(draft).every(([key,value])=>value===fields[key].value);
+    try {
+      const response=await fetch('/api/sources/hdfs-test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(draft)});
+      const data=await readApiJsonResponse(response);if(!response.ok)throw new Error(data.error);
+      if(!unchanged())return;
+      hdfsStatus.className='caption ssh-connection-result connection-ok';hdfsStatus.textContent=`Connected (${sourceTypeLabel(draft)}) · ${data.fileCount} files · File Read Verified`;
+    }catch(error){if(unchanged()){hdfsStatus.className='caption ssh-connection-result connection-failed';hdfsStatus.textContent=error.message;}}
+    finally{hdfsTest.disabled=false;}
+  };
+  for(const input of Object.values(sourceFields))input.oninput=()=>{hdfsStatus.textContent='';hdfsStatus.hidden=true;};
   const updateFields = () => {
+    const type=sourceFields.type.value;
+    const hdfs=isHdfsSource({type});
+    sourceFields.path.placeholder=hdfs?'/warehouse/events/part-*.jsonl\n/data/application/logs/':'/var/log/app/*.log\n/var/log/system.log';
+    pathHelp.textContent=(hdfs?(type==='hdfs'?'Enter absolute paths inside HDFS, without hdfs://. Use the HDFS endpoint above. ':'Enter absolute paths inside HDFS, without a URI or HTTP URL. Use the HTTP(S) endpoint above. '):'')+'One file path or pattern per line. Overlapping matches are read once.';
     sourceFields.contentField.parentElement.hidden=sourceFields.format.value!=='jsonl';
+    sourceFields.ticketCache.parentElement.hidden=type!=='hdfs';
+    sourceFields.endpoint.parentElement.hidden=!hdfs;
+    sourceFields.endpoint.placeholder=type==='hdfs'?'hdfs://namenode.example.test:8020 or default':'http://namenode.example.test:9870';
+    endpointHelp.textContent=type==='hdfs'?'Enter hdfs://hostname:port, for example hdfs://namenode.example.test:8020. For HA use hdfs://nameservice1 without a port. Enter default to use fs.defaultFS from HADOOP_CONF_DIR (image default: /etc/hadoop/conf). Omitted ports use Hadoop defaults or HA configuration. Enter file paths separately.':'Enter the NameNode or HttpFS HTTP(S) base URL, for example http://namenode.example.test:9870. Enter file paths separately.';
+    sourceFields.username.parentElement.hidden=!isHdfsSource({type:sourceFields.type.value});
+    for(const key of ['tokenFile','caFile'])sourceFields[key].parentElement.hidden=sourceFields.type.value!=='webhdfs';
+    hdfsTest.hidden=!isHdfsSource({type:sourceFields.type.value});
+    webHelp.hidden=sourceFields.type.value!=='webhdfs';
+    hdfsStatus.textContent='';hdfsStatus.hidden=true;
+    hdfsHelp.hidden=sourceFields.type.value!=='hdfs';sshHelp.hidden=sourceFields.type.value!=='ssh';
   };
   sourceFields.type.onchange = updateFields; sourceFields.format.onchange = updateFields; updateFields();
-  form.append(element('p', 'Remote File defines a common path or pattern. Select one or more SSH Hosts per Source in Tasks. Approve host fingerprints in Settings → SSH Hosts.', 'caption'));
+  form.append(hdfsTest,hdfsStatus,hdfsHelp,webHelp,sshHelp);
   $('source-editor').replaceChildren(); $('source-editor').append(form);
   $('source-editor').hidden = false; $('cancel-source').hidden = false; renderSources();
+  if(source.id)form.append(referenceField('Source',source.id,source.name));
+  handleEditUsage('Source',source.id,form);
 }
 function handleCloseSource() {
   editingSource = null; sourceFields = {}; $('source-editor').replaceChildren();
@@ -1861,7 +1987,7 @@ $('save-sources').onclick = async () => {
   try {
     const values = registeredSources.map(source => ({ ...source }));
     if (editingSource !== null) {
-      const fields = Object.fromEntries(Object.entries(sourceFields).map(([key, input]) => [key, key === 'port' ? Number(input.value) : input.value]));
+      const fields = Object.fromEntries(Object.entries(sourceFields).map(([key, input]) => [key, input.value]));
       values[editingSource] = { ...values[editingSource], ...fields };
     }
     const response = await fetch('/api/sources', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values) });
@@ -1870,7 +1996,7 @@ $('save-sources').onclick = async () => {
     if (!busy) updateSourceSettings(sourceRows.map(row => row.path));
     handleMessage('source-message','Sources saved. Changes apply to new runs. Select replacements for deleted sources in Tasks.');
   } catch (error) { handleMessage('source-message',error.message,true); }
-  finally { savingSources = false; $('save-sources').disabled = false; for (const [key,input] of Object.entries(sourceFields)) input.disabled=key==='type' && sourceTypeTasks(registeredSources[editingSource]?.id).length>0; renderSources(); }
+  finally { savingSources = false; $('save-sources').disabled = false; for (const input of Object.values(sourceFields)) input.disabled=false; renderSources(); }
 };
 function compareNames(left, right) {
   return left.name.localeCompare(right.name, 'ko', {numeric:true, sensitivity:'base'});
@@ -2106,7 +2232,7 @@ function renderDecisionDisplay(entries) {
 }
 function handleDecisionDisplayChange() {
   renderedRows.clear();renderedPage=null;
-  render(true);
+  render(true);handleSyncRunRoute();
 }
 $('show-all-decisions').onclick=()=>{shownDecisionKeys=null;handleDecisionDisplayChange();};
 function handleDecisionDisplayOutsideClick(event) {
@@ -2204,12 +2330,12 @@ $('set-chart-default').onclick=async()=>{
   }catch(error){handleMessage('chart-default-message',error.message,true);}
   finally{savingChartDefault=false;renderCategoryChart();}
 };
-$('chart-criteria').onchange=()=>{chartSelectionExplicit=true;const identity=$('chart-criteria').value;const entries=updateResultStatistics().decisionGroups || {};chartClassification=Object.keys(entries).find(key=>entries[key].identity===identity && isDefaultChartEntry(entries[key])) || Object.keys(entries).find(key=>entries[key].identity===identity);renderCategoryChart();};
-$('classification-group').onchange=()=>{chartSelectionExplicit=true;chartClassification=$('classification-group').value;renderCategoryChart();};
+$('chart-criteria').onchange=()=>{chartSelectionExplicit=true;const identity=$('chart-criteria').value;const entries=updateResultStatistics().decisionGroups || {};chartClassification=Object.keys(entries).find(key=>entries[key].identity===identity && isDefaultChartEntry(entries[key])) || Object.keys(entries).find(key=>entries[key].identity===identity);renderCategoryChart();handleSyncRunRoute();};
+$('classification-group').onchange=()=>{chartSelectionExplicit=true;chartClassification=$('classification-group').value;renderCategoryChart();handleSyncRunRoute();};
 for (const key of ['all', 'certain', 'uncertain', 'unassessed']) {
   $(`chart-${key}`).onclick = () => {
     chartCertainty = key;
-    renderCategoryChart();
+    renderCategoryChart();handleSyncRunRoute();
   };
 }
 renderCategoryChart();
@@ -2314,7 +2440,7 @@ function render(updateList = true, incremental = false) {
   const averageMs = stats.total ? processingMs / stats.total : 0;
   const percentiles=processingPercentiles(stats);
   const duration=value=>value===null?'N/A':formatDuration(value);
-  const throughput = elapsedMs > 0 ? (stats.total-stats.failed)*1000/elapsedMs : 0;
+  const throughput = activeProcessingMs > 0 ? (stats.total-stats.failed)*1000/activeProcessingMs : 0;
   const throughputText=throughput>0 && throughput<.001?'<0.001':throughput.toFixed(3);
   const actionSuccess = stats.actionSuccess;
   const actionFailed = stats.actionFailed;
@@ -2323,7 +2449,7 @@ function render(updateList = true, incremental = false) {
     const metric = element('div', label, 'metric');
     if (label === 'Success / Failed / Total') metric.title = 'Successfully classified / failed / total completed chunks. Total is success plus failure, not planned requests. Failures include connection errors, timeouts, rejected inputs, and invalid responses. Action failures do not change classification counts.';
     if (label === 'Action Success / Failed / Total') metric.title = 'Completed Action executions: success / failed / total. Unassigned sources and failed decisions do not run Actions. Action failures do not change decision counts.';
-    if (label === 'Throughput') metric.title = 'Successful results divided by total elapsed seconds for the entire run, including idle time and Action delivery. Independent of filters and pages; not maximum engine capacity.';
+    if (label === 'Throughput') metric.title = 'Successful results divided by active classification seconds for the entire run. Overlapping requests count time once; idle time and Action delivery are excluded. Independent of filters and pages; not maximum engine capacity.';
     if(label==='Processing Time')metric.title='All completed record durations in this run, including failures and network/server wait; excludes Action time and waiting for input. Avg is the arithmetic mean; P(50) averages the central values; P(95)/P(99) use nearest rank. Independent of filters and pages.';
     if (label === 'Active Processing Time') metric.title = 'Time with at least one request in flight, counting overlapping requests once. Includes network/server wait, excludes idle time; not CPU utilization.';
     if(label==='Processing Time') {
@@ -2685,7 +2811,7 @@ function handleResultFilter() {
 $('processing-filter').onchange=handleResultFilter;
 $('review-filter').onchange=handleResultFilter;
 let resultSearchTimer;
-$('result-filter-type').onchange=renderResultFilters;
+$('result-filter-type').onchange=()=>{renderResultFilters();handleSyncRunRoute();};
 renderResultFilters();
 $('log-search').oninput = () => {
   if(!pagedView)return handleResultFilter();
@@ -2741,7 +2867,7 @@ $('reset-deciflow').onclick=async()=>{
     handleMessage('configuration-message','Reset accepted. Stopping Tasks, deleting data, and restarting…');
     for(const storage of [globalThis.localStorage,globalThis.sessionStorage]){
       if(!storage)continue;
-      try{for(const key of ['deciflow-source-preferences','deciflow-job-id'])storage.removeItem?.(key);}catch{/* Browser storage may be disabled. */}
+      try{for(const key of ['deciflow-source-preferences','deciflow-job-id','deciflow-view-preferences'])storage.removeItem?.(key);}catch{/* Browser storage may be disabled. */}
     }
     const deadline=Date.now()+60000;
     while(Date.now()<deadline){
@@ -2864,6 +2990,11 @@ function handleSyncRunRoute(poll=false) {
     const value=$(id).value;
     if(value && value!=='all')params.set(key,value);else params.delete(key);
   }
+  if(chartSelectionExplicit)params.set('chart',chartClassification);else params.delete('chart');
+  if(chartCertainty!=='all')params.set('certainty',chartCertainty);else params.delete('certainty');
+  if(shownDecisionKeys!==null)params.set('show',JSON.stringify([...shownDecisionKeys]));else params.delete('show');
+  const filter=$('result-filter-type').value;
+  if(Object.hasOwn(resultFilterLabels,filter) && filter!=='log-search')params.set('filter',filter);else params.delete('filter');
   if(page>0){params.set('cursors',pagedView.cursors.slice(1).join(','));params.set('through',String(pagedView.through));}
   else{params.delete('cursors');params.delete('through');}
   const query=params.toString();handleWriteRoute(`/runs/${pagedView.id}${query?`?${query}`:''}`,poll);
@@ -2935,6 +3066,16 @@ async function handleApplyRunRoute(path) {
     for(const key of ['result','detail','cursors','through'])params.delete(key);
     const query=params.toString();handleWriteRoute(`/runs/${pagedView.id}${query?`?${query}`:''}`,true);
   }
+  const entries=updateResultStatistics().decisionGroups || {};
+  const chart=params.get('chart');
+  chartSelectionExplicit=Boolean(chart && entries[chart]);
+  chartClassification=chartSelectionExplicit?chart:'system';
+  chartCertainty=['certain','uncertain','unassessed'].includes(params.get('certainty'))?params.get('certainty'):'all';
+  shownDecisionKeys=null;
+  if(params.has('show')){
+    try{const keys=JSON.parse(params.get('show'));if(Array.isArray(keys) && keys.every(key=>typeof key==='string')){const valid=keys.filter(key=>Object.hasOwn(entries,key));shownDecisionKeys=keys.length && !valid.length?null:new Set(valid);}}catch{/* Ignore malformed display preferences. */}
+  }
+  $('result-filter-type').value=Object.hasOwn(resultFilterLabels,params.get('filter'))?params.get('filter'):'log-search';
   renderCategoryChart();
   for(const [key,id] of Object.entries(routeFilters))$(id).value=params.get(key) || (key==='search'?'':'all');
   const cursors=(params.get('cursors') || '').split(',').filter(Boolean).map(Number);
@@ -3055,11 +3196,30 @@ async function handleRoute() {
     const add={'/sources':()=>handleEditSource(registeredSources.length),'/actions':()=>handleEditAction(registeredActions.length),'/criteria':()=>handleEditCriteria(''),'/tasks':()=>handleEditTask(),'/settings/ssh-keys':()=>handleAddKey(),'/settings/ssh-hosts':()=>handleEditHost()}[base];
     if(add){await add();return;}
   }
-  const open=routeOpeners.get(pathname);
+  let open=routeOpeners.get(pathname);
+  const searches={'sources':['source-search',renderSources],'criteria':['criteria-search',renderCriteria],'actions':['action-search',renderActions],'tasks':['task-search',renderTasks],'ssh-keys':['ssh-key-search',renderSSHKeys],'ssh-hosts':['ssh-host-search',renderSSHHosts]};
+  const search=searches[section || view];
+  if(!open && search && $(search[0]).value){
+    const previous=$(search[0]).value;$(search[0]).value='';search[1]();open=routeOpeners.get(pathname);
+    if(!open){$(search[0]).value=previous;search[1]();}
+  }
   if(open){await open();return;}
   handleMessage(view==='settings'?(section==='ssh-keys'?'ssh-key-message':'ssh-host-message'):`${view==='sources'?'source':view==='actions'?'action':view==='criteria'?'criteria':'task'}-message`,'The linked item is unavailable or has been deleted.',true);
 }
 function handleRouteEvent(){return handleRoute().catch(error=>handleMessage('message',error.message,true));}
+// Keep list searches within this tab without persisting unsaved editor fields.
+const listSearchIds=['source-search','criteria-search','action-search','task-search','ssh-key-search','ssh-host-search'];
+let listSearchPreferences={};
+try{const stored=JSON.parse(globalThis.sessionStorage?.getItem('deciflow-view-preferences') || '{}');if(stored && typeof stored==='object' && !Array.isArray(stored))listSearchPreferences=stored;}catch{/* Storage may be unavailable. */}
+for(const id of listSearchIds){
+  const input=$(id);if(typeof listSearchPreferences[id]==='string')input.value=listSearchPreferences[id];
+  const handleSearch=input.oninput;
+  input.oninput=event=>{
+    listSearchPreferences[id]=input.value;
+    try{globalThis.sessionStorage?.setItem('deciflow-view-preferences',JSON.stringify(listSearchPreferences));}catch{/* Searches still work without storage. */}
+    handleSearch?.(event);
+  };
+}
 if(globalThis.location){
   globalThis.addEventListener('hashchange',handleRouteEvent);
   globalThis.addEventListener('popstate',handleRouteEvent);

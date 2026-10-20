@@ -326,7 +326,7 @@ and per-host collection status are stored separately in run history; see [Tasks]
 | `sourceId` / `sourceName` / `sourceType` | Registered source ID, name snapshot, and local or ssh type; omitted for explicit-path API input. |
 | `hostId` / `hostName` / `hostAddress` / `hostPort` | Remote host identity and connection-address snapshot; also included in Action input. |
 | `chunkSequence` / `sourceFailure` | Remote Source/Host chunk order; sourceFailure marks a read/connect failure without an engine decision. |
-| `sourcePatterns` | Local paths/patterns or qualified SSH patterns matching this file. |
+| `sourcePatterns` | Local paths/patterns or qualified SSH/HDFS patterns matching this file. |
 | `line` / `lineEnd` | First/last source line; Batch uses file lines, Realtime uses observed sequence numbers. |
 | `lineCount` | Number of lines included, not the span between line and lineEnd. |
 | `eventCount` | Actual events in this chunk; currently one nonempty line per event. |
@@ -394,3 +394,9 @@ the complete matching result objects. No matches produces an empty `results`
 array. Run-level `total`/`completed` still describe the original run. This is a
 reviewed-result export, not a model-specific fine-tuning file. Task deletion also
 deletes these reviews; download them first if they must be retained.
+
+Native HDFS results use `hdfs://namenode[:port]/path`; WebHDFS uses
+`webhdfs://host[:port]/path` or `swebhdfs://host[:port]/path` for HTTPS.
+Host metadata identifies the configured NameNode/nameservice or WebHDFS endpoint,
+not the DataNode serving a block. User, ticket cache, delegation token, and CA file
+settings are not included in results or AI inputs.

@@ -1,9 +1,16 @@
 # Sources
 
+The list’s **Manage → Ref.** button and Edit’s **References** link open a
+reference dialog. View displays the same details directly above its configuration
+under **References**. Task assignments, active executions, and recoverable runs
+show only type, name, and ID. Available ID links open details in a new tab;
+references are fetched when opened.
+
+
 [English](sources.md) | [한국어](sources.ko.md) | [Documentation](README.md) | [README](../README.md)
 
 Use **Source** in the sidebar to register reusable data inputs. Choose
-**Add Source**, enter Type, Name, Input Format, and File Path / Pattern in that order, then **Save Changes**. Search by name,
+**Add Source**, enter Name, Type, File Path / Pattern, and Input Format, then **Save Changes**. Search by name,
 or path; use View, Edit, or Delete to manage entries. Deletion takes effect
 when saved and does not delete log files, SSH Hosts, SSH Keys, or known_hosts files.
 For Remote File, enter a reusable remote path; choose source **SSH Hosts** per
@@ -14,8 +21,10 @@ connection credentials are managed in **Settings → SSH Hosts**.
 | --- | --- |
 | Local File | Readable UTF-8 regular files on the DeciFlow node; relative paths start at its working directory |
 | Remote File (SSH) | UTF-8 regular files on an SSH/SFTP host; absolute POSIX paths, key authentication, and host-key verification |
+| HDFS (Native) | Native Hadoop client; Batch-only UTF-8 TEXT/JSONL with absolute HDFS paths |
+| HDFS (WebHDFS) | HTTP(S) WebHDFS client; the same Batch formats and path rules |
 
-Paths accept `*`, `?`, `[abc]`, and recursive `**` patterns. A registration can
+Local and SSH paths accept `*`, `?`, `[abc]`, and recursive `**` patterns. A registration can
 match multiple files. Initial examples are Sample System Messages, Sample HTTP access,
 and Sample SSH authentication; edit them for your environment. Registered names
 and IDs must be unique. Renaming preserves the ID.
@@ -189,6 +198,113 @@ precision hides a change. File offsets, partial-line handling, host fairness,
 chunking, and the shared engine concurrency limit are unchanged. Very rapid
 rotation between checks can still lose events.
 
+## HDFS
+
+Choose **HDFS (Native)** or **HDFS (WebHDFS)** in Source Type. Both support Batch
+reading, connection tests, and AI Criteria sample previews. DeciFlow uses the selected
+transport and never automatically switches between them.
+
+### Native
+
+Use `call518/deciflow-ui:0.0.2` for native Hadoop Batch reads. Native DeciFlow
+installations need PyArrow, Java, `libhdfs`, and the Hadoop environment variables
+shown in the Dockerfile. Shell commands are not used for application reads.
+
+The image supplies Hadoop's standard `etc/hadoop` templates in `/etc/hadoop/conf`,
+including `core-site.xml`, `hdfs-site.xml`, `hadoop-env.sh`, policies, metrics, and
+SSL examples. Set your cluster-specific properties or mount your cluster files.
+A directory mount replaces the image's entire configuration directory; mount
+individual XML files to retain the other bundled defaults. Templates contain no
+cluster address or credentials; `fs.defaultFS` still needs an HDFS URI when using
+`default`.
+
+For **File Path / Pattern**, enter HDFS paths such as `/warehouse/events/part-*.jsonl`,
+without an `hdfs://` prefix; connection settings are separate.
+
+Register HDFS (Native) with one **Endpoint**, optional **User**, and optional
+**Kerberos Ticket Cache**:
+
+- `hdfs://namenode.example.test:8020`: explicit NameNode and RPC port.
+- `hdfs://nameservice1`: logical HA nameservice; cluster XML configuration is required.
+- `default`: use `fs.defaultFS` from XML files in `HADOOP_CONF_DIR`
+  (image default: `/etc/hadoop/conf`). The configured default filesystem must use `hdfs://`.
+
+Ports omitted from a URI use Hadoop defaults or HA configuration. File paths belong
+in **File Path / Pattern**, not in Endpoint. DeciFlow parses the URI into the host
+and port required by the native client. Mount the configuration
+in the UI container, for example with these additional `services.ui.volumes` entries:
+
+```yaml
+- /path/to/core-site.xml:/etc/hadoop/conf/core-site.xml:ro
+- /path/to/hdfs-site.xml:/etc/hadoop/conf/hdfs-site.xml:ro
+- /path/to/krb5.conf:/etc/krb5.conf:ro
+- /path/to/ticket-cache:/run/hdfs-ticket:ro
+```
+
+For Kerberos, enter `/run/hdfs-ticket` as the cache path. Provision and renew tickets
+externally; DeciFlow does not store passwords, run `kinit`, or renew tickets. User is
+optional for Hadoop simple authentication. The UI container must resolve and reach
+both the NameNode and advertised DataNode addresses. **Test Connection** lists files
+and reads one byte from the first file; saving and opening Views never connect.
+
+The image also includes `hdfs` and `hadoop` for manual diagnostics. With the
+cluster XML configuration mounted, list the HDFS root from the UI container:
+
+```bash
+docker compose exec ui hdfs dfs -ls /
+```
+
+Without `fs.defaultFS` configured, specify the endpoint explicitly:
+
+```bash
+docker compose exec ui hdfs dfs -fs hdfs://namenode.example.test:8020 -ls /
+```
+
+Source settings in SQLite are not automatically applied to CLI commands. CLI
+simple authentication uses the process user or `HADOOP_USER_NAME`; Kerberos can
+use `KRB5CCNAME` for the mounted ticket cache. Without cluster configuration or
+an explicit `-fs`, Hadoop defaults to the local filesystem, so `/` may be local.
+
+### WebHDFS
+
+Set **Endpoint** to the NameNode or HttpFS base URL, for example
+`http://namenode.example.test:9870` or `https://gateway.example.test:14000`.
+An optional `/webhdfs/v1` suffix is accepted. Set HDFS paths separately in
+**File Path / Pattern**. Hadoop XML files and the native JVM client are not used.
+DeciFlow must reach both the endpoint and the DataNode HTTP addresses returned by
+OPEN redirects. HTTPS-to-HTTP redirects are rejected.
+
+**User** optionally supplies Hadoop simple authentication. For secured clusters,
+mount a file containing an externally issued WebHDFS delegation token and set
+**Delegation Token File** to its absolute path inside DeciFlow. The token takes
+precedence over User; its contents are not stored in Source settings or results.
+DeciFlow does not issue or renew tokens, and direct Kerberos SPNEGO is unsupported.
+Only use trusted endpoints, since the token is sent to the configured service.
+HTTPS certificate verification is always enabled; optionally mount a PEM CA bundle
+and set **Trusted CA File** for a private CA. Token and CA files must remain
+available for active runs and recovery. Never place tokens in the endpoint URL.
+
+### Shared Behavior
+
+Use absolute file paths, directories (recursive reads), or component patterns
+`*`, `?`, `[abc]`, one per line. Use a directory instead of `**`. Only uncompressed
+UTF-8 TEXT and JSONL are supported; Parquet and ORC are unsupported. Physical lines
+are limited to 16 MiB. JSONL parsing, Criteria, and Actions use the shared pipeline.
+
+Batch freezes its file list, removes overlapping matches, and rejects conflicting
+assignments for the same URI. Up to four HDFS files are read concurrently with
+bounded buffers; classification uses the engine concurrency limit. Keep files
+unchanged during execution. Recovery retains the file list and checks file metadata
+and checkpoint prefixes before resuming. Changed or missing files produce failures;
+new files are excluded. New runs read from the beginning again. Exactly-once external
+Actions across crashes are not guaranteed.
+
+Sample preview retains the whole-Source scan, 20-second deadline, and byte budget;
+large Sources may time out, requiring narrower preview paths. Only edited samples
+are sent for AI Criteria generation. Realtime and distributed workers are outside
+this implementation. `POST /api/sources/hdfs-test` tests a draft Source with the same
+trusted-origin policy as Source management.
+
 ## Storage and API
 
 SSH Host listing, registration/editing, and deletion use `POST`, `PUT`, and
@@ -232,11 +348,12 @@ Field `consulting_content`. Existing registrations are preserved; an equivalent
 local path is reused. A disabled manual VOC Task is also provided; it never starts automatically. The path assumes
 the Compose sample mount; adjust it for other installations.
 
-A Source referenced by any saved Task has its **Type** locked, including when
-the Task is disabled or stopped. The editor lists referencing Task names; the
-server also rejects Type changes. Name and path remain editable. To switch Type,
-create another Source and replace the Task assignment, or remove all referencing
-Task assignments first. Unassigned Sources can change Type.
+Sources remain editable, including Type, while Tasks reference or use them. The
+editor shows usage; current runs keep their resolved Source snapshots and new runs
+use saved edits. Review Task host assignments after changing Type: SSH requires
+SSH Hosts, while other Types do not accept them. Validation blocks invalid starts.
+Deletion remains blocked by saved references, starting/active runs, and persisted
+recoverable runs.
 
 The government sample also provides a Source, Korean Criteria, and a disabled
 Batch Task at startup. See [Sample VOC Central Gov Consulting QnA](voc.md#government-qna-sample).

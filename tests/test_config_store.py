@@ -400,3 +400,16 @@ def test_central_gov_sample_and_localized_profiles() -> None:
         "urgency",
         "follow_up_required",
     }
+
+
+def test_sample_source_ids_are_stable_unique_uuids(tmp_path, monkeypatch):
+    from uuid import UUID
+
+    from source_registry import DEFAULT_SOURCES, load_sources
+
+    monkeypatch.setenv("DECIFLOW_DATA_DIR", str(tmp_path))
+    expected = {source["name"]: source["id"] for source in DEFAULT_SOURCES}
+    assert len(set(expected.values())) == len(expected)
+    assert all(UUID(hex=identity).version == 5 for identity in expected.values())
+    assert {source["name"]: source["id"] for source in load_sources()} == expected
+    assert {source["name"]: source["id"] for source in load_sources()} == expected
