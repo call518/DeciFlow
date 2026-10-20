@@ -164,7 +164,8 @@ misclassifications and review workload before treating the thresholds as an
 operating policy.
 
 Filter **All Results / Needs Review / No Review Needed**. Both review groups include
-only successful classifications. To inspect failures, choose All Results and **Processing Status → Failed**. Processing status
+only successful classifications. Dropdown counts cover the entire run, independent
+of filters and pages; All Results also includes failures. To inspect failures, choose All Results and **Processing Status → Failed**. Processing status
 and case-insensitive literal search of original log text combine with the review
 filter. **Source**, after Search data, filters by an entered path/pattern and shows
 completed counts, including failures. Overlapping patterns retain all matches in

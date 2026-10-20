@@ -16,6 +16,8 @@
 Default Chart Decision은 존재하는 판단 항목 중 정확히 하나를 지정하는 표시 설정입니다.
 AI 답변·불확실성·필터는 바꾸지 않습니다. 모든 항목을 Overview에서
 선택할 수 있습니다. Overview의 **Set as Default**나 Criteria 편집에서 변경합니다.
+Criteria별 기본값은 SQLite에 저장하고 Main 새로고침·실행 다시 열기에도 적용합니다.
+저장하지 않은 차트 선택은 임시이며 과거 결과의 메타데이터는 바꾸지 않습니다.
 Score는 가중 점수를 가장 가까운 수준으로 반올림하며 중간값은 올립니다. Noul은 Yes 확률 구간입니다.
 
 Choice 선택지의 **Needs Review**를 체크하면 Unknown/Other처럼 사람이 검토해야 하는

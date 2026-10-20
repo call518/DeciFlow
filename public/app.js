@@ -2054,8 +2054,10 @@ function addResultStatistics(result) {
 }
 let chartCertainty = 'all';
 let chartClassification='system';
+let chartDefaults={};
+let chartSelectionExplicit=false;
 function handleResetChart() {
-  chartClassification='system';chartCertainty='all';$('chart-default-message').hidden=true;
+  chartClassification='system';chartCertainty='all';chartSelectionExplicit=false;$('chart-default-message').hidden=true;
   shownDecisionKeys=null;$('decision-display-menu').open=false;
 }
 let savingChartDefault=false;
@@ -2110,9 +2112,15 @@ if(document.addEventListener){
   document.addEventListener('click',handleDecisionDisplayOutsideClick);
   document.addEventListener('keydown',handleDecisionDisplayKeydown);
 }
+function handleChartDefaults(defaults) {
+  chartDefaults=defaults;
+  if(!chartSelectionExplicit)chartClassification='system';
+  if(completed)renderCategoryChart();
+}
 function isDefaultChartEntry(entry) {
   const profile=criteriaProfiles[entry.profileId] || Object.values(criteriaProfiles).find(profile=>profile.label===entry.criteria);
-  return profile?.defaultDecision?entry.question===profile.defaultDecision:entry.default;
+  const decision=profile?.defaultDecision || chartDefaults[entry.profileId];
+  return decision?entry.question===decision:entry.default;
 }
 function renderCategoryChart() {
   const stats = updateResultStatistics();
@@ -2181,12 +2189,12 @@ $('set-chart-default').onclick=async()=>{
     const profiles={...data.profiles,[id]:{...profile,defaultDecision:entry.question}};
     const saved=await fetch('/api/criteria',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(profiles)});
     const body=await readApiJsonResponse(saved);if(!saved.ok)throw new Error(body.error);
-    criteriaProfiles=body.profiles;criteriaLoaded=true;handleMessage('chart-default-message','Default chart saved. AI answers are unchanged.');
+    criteriaProfiles=body.profiles;criteriaLoaded=true;handleMessage('chart-default-message','Chart default saved for this Criteria. Used when opening runs; AI answers and filters are unchanged.');
   }catch(error){handleMessage('chart-default-message',error.message,true);}
   finally{savingChartDefault=false;renderCategoryChart();}
 };
-$('chart-criteria').onchange=()=>{const identity=$('chart-criteria').value;const entries=updateResultStatistics().decisionGroups || {};chartClassification=Object.keys(entries).find(key=>entries[key].identity===identity && isDefaultChartEntry(entries[key])) || Object.keys(entries).find(key=>entries[key].identity===identity);renderCategoryChart();};
-$('classification-group').onchange=()=>{chartClassification=$('classification-group').value;renderCategoryChart();};
+$('chart-criteria').onchange=()=>{chartSelectionExplicit=true;const identity=$('chart-criteria').value;const entries=updateResultStatistics().decisionGroups || {};chartClassification=Object.keys(entries).find(key=>entries[key].identity===identity && isDefaultChartEntry(entries[key])) || Object.keys(entries).find(key=>entries[key].identity===identity);renderCategoryChart();};
+$('classification-group').onchange=()=>{chartSelectionExplicit=true;chartClassification=$('classification-group').value;renderCategoryChart();};
 for (const key of ['all', 'certain', 'uncertain', 'unassessed']) {
   $(`chart-${key}`).onclick = () => {
     chartCertainty = key;
@@ -2288,6 +2296,7 @@ function render(updateList = true, incremental = false) {
     renderedCount = completed;
     renderedHosts = runHosts;
   }
+  renderReviewFilter(stats);
   renderResultFilters();
   $('summary').replaceChildren();
   const processingMs = stats.processingMs;
@@ -2617,6 +2626,13 @@ async function handleProcessing(job) {
     }
   }
 }
+function renderReviewFilter(stats) {
+  const select=$('review-filter'),selected=select.value || 'all';
+  const entries=[['all','All Results',stats.total],['needs-review','Needs Review',stats.review],['no-review','No Review Needed',stats.total-stats.failed-stats.review]];
+  select.replaceChildren(...entries.map(([value,label,count])=>new Option(`${label} (${count.toLocaleString('en-US')})`,value)));
+  select.value=selected;
+  select.title='Counts cover the entire run. Review groups exclude processing failures.';
+}
 function renderResultFilters() {
   const selected=$('result-filter-type').value || 'log-search';
   $('result-filter-type').value=selected;
@@ -2627,7 +2643,7 @@ function renderResultFilters() {
     const value=control.value;
     if(!value || (id!=='log-search' && value==='all'))continue;
     const option=id==='log-search'?value:Array.from(control.options).find(option=>option.value===value)?.text || value;
-    const description=id==='log-search' || id==='source-filter'?value:option.replace(/ \(\d+\)$/,'');
+    const description=id==='log-search' || id==='source-filter'?value:option.replace(/ \([\d,]+\)$/,'');
     items.push({id,label,description});
   }
   const signature=JSON.stringify(items);
@@ -2964,6 +2980,7 @@ fetch('/api/status').then(async response => {
     for (const key of Object.keys(profileLabels)) delete profileLabels[key];
     Object.assign(profileLabels, data.profiles);
   }
+  if(data.chartDefaults)handleChartDefaults(data.chartDefaults);
   engine = data.engine;
   criteriaTokenLimits=data.limits || {};criteriaTokenModel=data.model || '';
   engineLabel = engine === 'laya' ? 'Laya' : 'Jev';

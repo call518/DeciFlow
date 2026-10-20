@@ -16,7 +16,9 @@ identifies one question within it. Sample UUIDs are fixed in the bundled JSON fi
 Default Chart Decision selects exactly one existing decision of any type. It is only a
 display preference and does not change AI answers, uncertainty, or filters. Every
 decision is available in Overview. Use **Set as Default** in
-Overview or change it in the Criteria editor. Score charts round weighted scores to
+Overview or change it in the Criteria editor. This saves a preference per Criteria
+in SQLite and applies when reopening runs or refreshing Main. Selecting a chart
+without saving is temporary; historical result metadata remains unchanged. Score charts round weighted scores to
 the nearest level (half up); Noul charts show Yes probability ranges.
 
 For each Choice option, **Needs Review** explicitly marks selections requiring human

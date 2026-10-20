@@ -4577,3 +4577,70 @@ test('Run status uses Task badge styles beside original engine metadata for ever
   }
   vm.runInContext("handleRunProgress('unknown','batch')",context);assert.equal(badge.hidden,true);
 });
+
+
+test('Review Status shows whole-run counts and excludes processing failures from both review groups',async()=>{
+  const failed=result(2,true);failed.result.error='timeout';
+  const {context,nodes}=workspace([result(0,false),result(1,true),failed]);await runTask(nodes);
+  const select=nodes.get('review-filter');
+  const labels=()=>select.options.map(option=>option.text);
+  assert.deepEqual(labels(),['All Results (3)','Needs Review (1)','No Review Needed (1)']);
+  select.value='needs-review';select.onchange();
+  assert.equal(select.value,'needs-review');assert.deepEqual(logs(nodes),['log-1']);
+  assert.deepEqual(labels(),['All Results (3)','Needs Review (1)','No Review Needed (1)']);
+  context.largeReviewCounts={total:4000,failed:20,review:3261};
+  vm.runInContext('renderReviewFilter(largeReviewCounts);renderResultFilters()',context);
+  assert.deepEqual(labels(),['All Results (4,000)','Needs Review (3,261)','No Review Needed (719)']);
+  assert.equal(select.value,'needs-review');
+  assert.equal(nodes.get('active-result-filters').children[0].textContent,'Review Status: Needs Review ×');
+});
+
+test('Paged Review Status counts use the whole archived run rather than its current page',async()=>{
+  const {context,nodes}=pagedWorkspace(1000);
+  await vm.runInContext("handlePagedProcessing({jobId:'paged',state:'completed',settings:{mode:'batch'},pagedResults:true})",context);
+  assert.equal(nodes.get('results').children.length,50);
+  assert.deepEqual(nodes.get('review-filter').options.map(option=>option.text),['All Results (1,000)','Needs Review (0)','No Review Needed (1,000)']);
+});
+
+
+test('Saving a chart default survives a fresh Main page without opening Criteria',async()=>{
+  let profiles={custom:{label:'Review Fixture',instructions:'Use evidence.',defaultDecision:'area',questions:assessmentFixture().result.decisionDefinitions}};
+  const first=workspace([assessmentFixture()],undefined,undefined,profiles);await runTask(first.nodes);
+  const original=first.context.fetch;
+  first.context.fetch=async(path,options)=>{
+    if(path==='/api/criteria'){
+      if(options.method==='PUT')profiles=JSON.parse(options.body);
+      return {ok:true,json:async()=>({profiles})};
+    }
+    return original(path,options);
+  };
+  first.nodes.get('classification-group').value='stable:response';first.nodes.get('classification-group').onchange();
+  await first.nodes.get('set-chart-default').onclick();assert.equal(profiles.custom.defaultDecision,'response');
+  const status={host:{hostname:'host',addresses:[],os:'Linux'},engine:'laya',configured:true,model:'test',chartDefaults:{custom:profiles.custom.defaultDecision}};
+  const fresh=workspace([assessmentFixture()],status);await runTask(fresh.nodes);await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(vm.runInContext('Object.keys(criteriaProfiles).length',fresh.context),0);
+  assert.equal(fresh.nodes.get('classification-group').value,'stable:response');
+  assert.equal(fresh.nodes.get('classification-group').options.find(option=>option.value==='stable:response').text,'Response (Default)');
+  assert.equal(fresh.nodes.get('set-chart-default').hidden,true);
+  assert.equal(vm.runInContext('results[0].defaultDecision',fresh.context),'area');
+});
+
+test('Late default metadata corrects snapshot defaults without overriding a manual chart choice',async()=>{
+  for(const manual of [false,true]){
+    let release;const status=new Promise(resolve=>{release=resolve;});
+    const {context,nodes}=workspace([assessmentFixture()],status);await runTask(nodes);
+    assert.equal(nodes.get('classification-group').value,'stable:area');
+    if(manual){nodes.get('classification-group').value='stable:urgency';nodes.get('classification-group').onchange();}
+    release({host:{hostname:'host',addresses:[],os:'Linux'},engine:'laya',configured:true,model:'test',chartDefaults:{custom:'response'}});
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(nodes.get('classification-group').value,manual?'stable:urgency':'stable:response');
+    assert.equal(nodes.get('classification-group').options.find(option=>option.value==='stable:response').text,'Response (Default)');
+    assert.equal(vm.runInContext('results[0].defaultDecision',context),'area');
+  }
+});
+
+
+test('Chart default action shares the Decision control row',()=>{
+  const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
+  assert.match(html,/<dd class="chart-decision-control">[^]*?id="classification-group"[^]*?id="set-chart-default"[^>]*>Set as Default<\/button><\/dd>/);
+});

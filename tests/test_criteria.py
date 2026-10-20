@@ -342,3 +342,25 @@ async def test_general_is_optional_but_task_assignments_still_block_deletion(
         assert empty.json()["profiles"] == {}
         assert load_records("criteria") == {}
         assert (await client.get("/api/status")).status_code == 200
+
+
+@pytest.mark.anyio
+async def test_main_status_reads_persisted_chart_default_after_reload(
+    criteria_storage: Path,
+) -> None:
+    identity = "efb7c8ca-61c1-4785-b38d-0a86764ca758"
+    values = deepcopy(PROFILES)
+    values[identity]["defaultDecision"] = "response_type"
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=server.app), base_url="http://localhost"
+    ) as client:
+        response = await client.put(
+            "/api/criteria", headers={"Origin": "http://localhost"}, json=values
+        )
+        assert response.status_code == 200
+        PROFILES.clear()
+        load_profiles()
+        status = await client.get("/api/status")
+        assert status.status_code == 200
+        assert status.json()["chartDefaults"][identity] == "response_type"
+        assert load_records("criteria")[identity]["defaultDecision"] == "response_type"

@@ -183,6 +183,9 @@ async def handle_status(request: Request) -> Response:
             "model": engine.model,
             "workingDirectory": str(Path.cwd()),
             "profiles": {key: value["label"] for key, value in PROFILES.items()},
+            "chartDefaults": {
+                key: value["defaultDecision"] for key, value in PROFILES.items()
+            },
             "host": await anyio.to_thread.run_sync(_host_info),
             "limits": {
                 "max_jev_input_bytes": engine.input_bytes,

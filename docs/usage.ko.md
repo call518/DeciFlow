@@ -156,7 +156,8 @@ DeciFlow는 예측을 유지하면서 검토 표시를 붙입니다. 정식 reje
 임계값을 운영 정책으로 사용하기 전에 정답이 있는 로그로 오분류와 검토량을 평가하세요.
 
 **All Results / Needs Review / No Review Needed**로 필터링합니다.
-Needs Review와 No Review Needed는 성공 판정만 표시합니다. 실패는 All Results와
+Needs Review와 No Review Needed는 성공 판정만 표시합니다. 풀다운의 건수는 필터·페이지와
+무관한 전체 실행 기준이며 All Results에는 실패도 포함합니다. 실패는 All Results와
 Processing Status → Failed를 함께 선택해 확인하세요.
 처리 상태 필터와 원본 로그의 대소문자 구분 없는 문자열 검색을 함께 적용할 수 있습니다.
 목록에만 적용하며 지표·차트·JSON 내보내기는 전체 결과 기준입니다.
