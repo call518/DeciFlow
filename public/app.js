@@ -675,7 +675,18 @@ function hostDraft() {
 function connectionStatus(result) {
   if(!result)return 'Not checked';
   if(result.checking)return 'Checking…';
-  return `${result.connected?'Connected (SSH + SFTP)':'Failed'} · ${result.checkedAt ? new Date(result.checkedAt).toLocaleString() : ''}${result.elapsedMs!==undefined ? ` · ${result.elapsedMs}ms` : ''}${result.error ? ` · ${result.error}` : ''}`;
+  return `${result.connected?'Connected (SSH + SFTP)':result.hostKey?'Approval Required':'Failed'} · ${result.checkedAt ? new Date(result.checkedAt).toLocaleString() : ''}${result.elapsedMs!==undefined ? ` · ${result.elapsedMs}ms` : ''}${result.error ? ` · ${result.error}` : ''}`;
+}
+function connectionStatusClass(result) {
+  if(!result)return 'connection-unchecked';
+  if(result.checking)return 'connection-checking';
+  if(result.hostKey || result.changed)return 'connection-warning';
+  return result.connected?'connection-ok':'connection-failed';
+}
+function renderHostTestResult(result,text=connectionStatus(result)) {
+  const node=$('ssh-host-test-result');
+  node.className=`caption ssh-connection-result ${connectionStatusClass(result)}`;
+  node.textContent=text;
 }
 let hostApprovalQueue = Promise.resolve();
 function handleApproveHostKey(presented) {
@@ -695,7 +706,7 @@ async function handleTestHost(host=null, automatic=false) {
   const draft=host || hostDraft(); const key=hostConnectionKey(draft);
   if(sshHostChecks.get(key)?.checking)return;
   sshHostChecks.set(key,{checking:true});renderSSHHosts();
-  if(!host){$('test-ssh-host').disabled=true;$('ssh-host-test-result').textContent='Checking SSH authentication and SFTP…';}
+  if(!host){$('test-ssh-host').disabled=true;renderHostTestResult({checking:true},'Checking SSH authentication and SFTP…');}
   let result;
   try {
     const payload=host?{id:host.id}:draft;
@@ -715,7 +726,7 @@ async function handleTestHost(host=null, automatic=false) {
     }
   }catch(error){result={connected:false,error:error.message};}
   sshHostChecks.set(key,result);renderSSHHosts();
-  if(!host){$('test-ssh-host').disabled=false;$('ssh-host-test-result').textContent=hostConnectionKey(hostDraft())===key ? connectionStatus(result) : 'Connection settings changed. Test again.';}
+  if(!host){$('test-ssh-host').disabled=false;if(hostConnectionKey(hostDraft())===key)renderHostTestResult(result);else renderHostTestResult({changed:true},'Connection settings changed. Test again.');}
 }
 let hostCheckTimer;
 let hostChecksRunning = false;
@@ -745,7 +756,7 @@ async function handleAutoCheckHosts() {
 }
 document.addEventListener?.('visibilitychange', handleScheduleHostChecks);
 $('test-ssh-host').onclick=()=>handleTestHost();
-$('ssh-host-form').oninput=()=>{$('ssh-host-test-result').textContent='';};
+$('ssh-host-form').oninput=()=>{renderHostTestResult(null,'');};
 function handleCloseHost() {
   handleCloseInlineView('ssh-host-view');
   editingSSHHost = null; $('ssh-host-registry').hidden = false;
@@ -769,7 +780,7 @@ function renderSSHHosts() {
     }
     const check=sshHostChecks.get(hostConnectionKey(host));
     const test=element('button', 'Test Connection', 'quiet'); test.type='button';test.disabled=Boolean(check?.checking);test.onclick=()=>handleTestHost(host);controls.append(test);
-    row.append(element('td',connectionStatus(check),check?.connected?'connection-ok':check && !check.checking?'connection-failed':''),controls); handleAppendViewRow(body,row,'ssh-host-view',host.id);
+    row.append(element('td',connectionStatus(check),connectionStatusClass(check)),controls); handleAppendViewRow(body,row,'ssh-host-view',host.id);
   }
   table.append(body); list.append(table);
   if (!body.children.length) list.append(element('p', 'No matching SSH Hosts.', 'caption'));
@@ -793,7 +804,7 @@ function handleEditHost(host = null) {
   for (const key of sshKeys) keys.append(new Option(key.name, key.id));
   if (host?.keyId && !sshKeys.some(key => key.id === host.keyId)) keys.append(new Option('Unavailable Key', host.keyId));
   keys.value = host?.keyId || ''; handleMessage('ssh-host-message','');
-  $('ssh-host-test-result').textContent='';
+  renderHostTestResult(null,'');
 }
 function handleViewHost(host) {
   handleCloseHost();
@@ -1928,7 +1939,7 @@ function updateSourceSettings(paths = $('file-path').value.split('\n').map(s => 
     const name = selectionInput(registeredSources.map(source => ({ id: source.id, name: source.name, label: sourceDescription(source) })), definition?.id || '', 'Registered source', 'None');
     name.className = 'source-path-input';
     const pathLabel = element('label', 'Source ', 'source-path');
-    const selectedPath = element('span', definition?.path ? `Path: ${definition.path}` : '', 'source-selected-path');
+    const selectedPath = element('span', definition?.path || '', 'source-selected-path');
     selectedPath.hidden = !definition?.path;
     selectedPath.setAttribute('aria-live', 'polite');
     pathLabel.append(name, selectedPath);
@@ -1959,7 +1970,7 @@ function updateSourceSettings(paths = $('file-path').value.split('\n').map(s => 
     name.onchange = () => {
       const selected = registeredSources.find(item => item.id === name.value);
       source.path = selected?.id || '';
-      selectedPath.textContent = selected?.path ? `Path: ${selected.path}` : '';
+      selectedPath.textContent = selected?.path || '';
       selectedPath.hidden = !selected?.path;
       size.disabled=selected?.format==='jsonl';if(size.disabled)size.value='1';
       hosts.hidden=selected?.type!=='ssh';

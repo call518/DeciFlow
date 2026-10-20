@@ -1369,7 +1369,11 @@ footer {
   #main-page .input-column { align-content: start; }
 }
 
-.connection-ok { color: #24634a; }
+.connection-unchecked { color: #738a81; }
+.connection-checking { color: #285079; }
+.connection-warning { color: #946615; overflow-wrap: anywhere; }
+.ssh-connection-result { font-weight: 600; overflow-wrap: anywhere; }
+.connection-ok { color: #00852b; }
 .connection-failed { color: #9a443c; overflow-wrap: anywhere; }
 
 .ssh-trust-dialog { width: min(560px, calc(100% - 32px)); max-height: calc(100dvh - 48px); overflow-y: auto; padding: 0; border: 1px solid #cbdcd2; border-radius: 12px; color: #172b28; background: #fff; box-shadow: 0 24px 80px #102e2738; }

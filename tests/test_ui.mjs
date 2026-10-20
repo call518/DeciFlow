@@ -1781,10 +1781,10 @@ test('Selected Source shows its path or pattern and updates without stale text',
   vm.runInContext("registeredSources=[{id:'one',name:'Local logs',type:'local',path:'/var/log/app/*.log'},{id:'two',name:'Remote logs',type:'ssh',path:'/srv/logs/**/*.json'}];updateSourceSettings(['one'])",context);
   const label=nodes.get('source-settings').children[0].children[0];
   const input=label.children[0]; const path=label.children[1];
-  assert.equal(path.textContent,'Path: /var/log/app/*.log');
+  assert.equal(path.textContent,'/var/log/app/*.log');
   assert.equal(path.hidden,false);
   input.value='two'; input.onchange();
-  assert.equal(path.textContent,'Path: /srv/logs/**/*.json');
+  assert.equal(path.textContent,'/srv/logs/**/*.json');
   input.value='Unregistered'; input.onchange();
   assert.equal(path.textContent,''); assert.equal(path.hidden,true);
 });
@@ -1993,6 +1993,7 @@ test('SSH connection tests work from unsaved editor and saved rows with status f
   assert.equal(calls[0].path,'/api/ssh-hosts/test');
   assert.equal(calls[0].body.port,2222);
   assert.match(nodes.get('ssh-host-test-result').textContent,/Connected \(SSH \+ SFTP\)/);
+  assert.match(nodes.get('ssh-host-test-result').className,/connection-ok/);
   assert.equal(vm.runInContext('sshHosts.length',context),0);
   vm.runInContext("sshHosts=[{...hostDraft(),id:'saved'}];renderSSHHosts()",context);
   let row=nodes.get('ssh-host-list').children[0].children[1].children[0];
@@ -2002,6 +2003,7 @@ test('SSH connection tests work from unsaved editor and saved rows with status f
   assert.deepEqual(calls[1].body,{id:'saved'});
   row=nodes.get('ssh-host-list').children[0].children[1].children[0];
   assert.match(row.children[3].textContent,/Failed.*Permission denied/);
+  assert.equal(row.children[3].className,'connection-failed');
   vm.runInContext("sshHosts[0].port=22;renderSSHHosts()",context);
   assert.equal(nodes.get('ssh-host-list').children[0].children[1].children[0].children[3].textContent,'Not checked');
 });
@@ -4643,4 +4645,34 @@ test('Late default metadata corrects snapshot defaults without overriding a manu
 test('Chart default action shares the Decision control row',()=>{
   const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
   assert.match(html,/<dd class="chart-decision-control">[^]*?id="classification-group"[^]*?id="set-chart-default"[^>]*>Set as Default<\/button><\/dd>/);
+});
+
+
+test('SSH test results share success, failure, checking and approval colors across editor and list',()=>{
+  const {context,nodes}=workspace([]);
+  const cases=[[null,'connection-unchecked'],[{checking:true},'connection-checking'],[{connected:true},'connection-ok'],[{connected:false,error:'Denied'},'connection-failed'],[{connected:false,hostKey:{fingerprint:'SHA256:test'}},'connection-warning'],[{changed:true},'connection-warning']];
+  for(const [result,expected] of cases){
+    context.connectionFixture=result;
+    assert.equal(vm.runInContext('connectionStatusClass(connectionFixture)',context),expected);
+    vm.runInContext('renderHostTestResult(connectionFixture)',context);
+    assert.equal(nodes.get('ssh-host-test-result').className,`caption ssh-connection-result ${expected}`);
+  }
+  assert.match(vm.runInContext("connectionStatus({hostKey:{}})",context),/^Approval Required/);
+  nodes.get('ssh-host-form').oninput();
+  assert.equal(nodes.get('ssh-host-test-result').textContent,'');
+  assert.match(nodes.get('ssh-host-test-result').className,/connection-unchecked/);
+});
+
+
+test('Selected Source paths use the same plain multiline format before and after changing Source',()=>{
+  const {context,nodes}=workspace([]);
+  context.multipleSourcePaths='/var/log/messages\n/var/log/secure';
+  vm.runInContext(`registeredSources=[{id:'multi',name:'Remote System Log',type:'ssh',path:multipleSourcePaths},{id:'single',name:'Single',type:'local',path:'/var/log/app.log'}];updateSourceSettings(['multi'])`,context);
+  const row=nodes.get('source-settings').children[0];
+  const path=row.children[0].children[1];
+  assert.equal(path.textContent,context.multipleSourcePaths);
+  vm.runInContext("sourceRows[0].name.value='single';sourceRows[0].name.onchange()",context);
+  assert.equal(path.textContent,'/var/log/app.log');
+  vm.runInContext("sourceRows[0].name.value='multi';sourceRows[0].name.onchange()",context);
+  assert.equal(path.textContent,context.multipleSourcePaths);
 });
