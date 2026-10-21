@@ -6,16 +6,20 @@ DeciFlow 운영 설정은 **Settings → Configurations**에서 수정할 수 �
 UI 저장값 → `.env`/프로세스 환경변수 → 코드 기본값 순으로 적용합니다.
 **Use UI Override**를 해제하면 환경변수/기본값으로 복원합니다. 초기 환경은 `.env`에서 준비합니다.
 Laya 서버 설정은 Laya 호스트에서 관리하며, Compose는 `LAYA_API_KEY`를 DeciFlow와
-공유합니다. `COMPOSE_PROFILES`는 `cpu` 또는 `cuda`를 선택하며 빈 값이면 UI만 실행합니다.
+공유합니다. `COMPOSE_PROFILES`는 `cpu` 또는 `cuda`를 선택하며 빈 값이면 UI와 OAuth2-Proxy를 실행합니다.
 
 | 환경변수 | 미설정 시 코드 기본값 | 역할 |
 | --- | --- | --- |
-| `COMPOSE_PROFILES` | 미설정(UI만 실행) | Compose 전용. cpu·cuda 중 하나만 선택. .env.example은 cpu 지정 |
+| `COMPOSE_PROFILES` | 미설정(UI·OAuth2-Proxy 실행) | Compose 전용. cpu·cuda 중 하나만 선택. .env.example은 cpu 지정 |
 | `DECISION_ENGINE` | `laya` | `laya` 또는 `jev` |
 | `DECIFLOW_DATA_DIR` | `/var/lib/deciflow-data` | Sources·Tasks/이력·Actions·Criteria·SSH 키·호스트 공통 저장 루트; 쓰기 권한 필요 |
-| `DECIFLOW_CSRF_TRUSTED_ORIGINS` | 빈 값 | 쉼표로 구분한 신뢰 UI 출처. https://*.ngrok-free.app 지원. 출처 검사이며 인증 기능은 아님 |
+| `DECIFLOW_CSRF_TRUSTED_ORIGINS` | 빈 값 | 쉼표로 구분한 신뢰 UI 출처. https://*.ngrok-free.app 지원. 출처 검사이며 인증 기능은 아님. Compose는 DECIFLOW_PUBLIC_URL 사용 |
 | `DECIFLOW_LOG_DIR` | `/var/log/deciflow` | 서버·접근 로그. 빈 값은 파일 기록 비활성화. Compose는 deciflow-logs에 보존 |
-| `PORT` | `4000` | DeciFlow 웹 포트 |
+| `PORT` | `4000` | Compose의 UI 내부 포트. 네이티브 실행 시 DeciFlow 수신 포트 |
+| `DECIFLOW_PUBLIC_URL` | Compose 필수 | :4443을 포함한 공개 HTTPS 출처. 콜백·신뢰 UI 출처 설정 |
+| `OAUTH2_PROXY_CLIENT_ID` | Compose 필수 | Google 웹 애플리케이션 클라이언트 ID |
+| `OAUTH2_PROXY_CLIENT_SECRET` | Compose 필수 | Google 클라이언트 비밀값. Git 제외된 .env에 보관 |
+| `OAUTH2_PROXY_COOKIE_SECRET` | Compose 필수 | 무작위 32바이트를 Base64 인코딩한 쿠키 키 |
 | `LAYA_API_URL` | `http://127.0.0.1:8000/v1/systemone` | 프록시 접두사를 포함한 전체 Laya URL. Compose CPU·CUDA는 모두 `http://laya:8000/v1/systemone`, 네이티브 실행은 루프백 사용 |
 | `LAYA_API_KEY` | `changeme` | Laya 서버와 동일한 키 |
 | `LAYA_MODEL` | `multilingual` | 내장 모델 또는 등록한 사용자 체크포인트 이름; 서버에 모델 필요 |
@@ -28,7 +32,7 @@ Laya 서버 설정은 Laya 호스트에서 관리하며, Compose는 `LAYA_API_KE
 | `JEV_CONCURRENCY` | `4` | 실행별 최대 Jev 동시 요청 수; 양의 정수 |
 
 `.env.example`은 일부 코드 기본값을 덮어씁니다. LAYA_API_URL은 Compose 호스트
-`laya`, LAYA_MODEL은 `english`, JEV_MODEL은 `jev-latest`이며 신뢰 UI 출처에
+`laya`, LAYA_MODEL은 `multilingual`, JEV_MODEL은 `jev-latest`이며 신뢰 UI 출처에
 `https://*.ngrok-free.app`을 포함합니다. 기존 `.env` 값은
 덮어쓰지 않습니다. 네이티브 DeciFlow·외부 Laya는 접근 가능한 URL을 직접 설정하세요.
 CPU·CUDA 모두 8000 포트를 공개합니다.
@@ -40,6 +44,13 @@ CPU·CUDA 모두 8000 포트를 공개합니다.
 유지합니다. 포트·마운트·Compose 프로필·Laya 서비스 변경은 `docker compose up -d`로
 해당 컨테이너를 재생성해야 합니다. 네이티브 실행은 Python 프로세스를 재시작하세요.
 state·세 질문·출력은 [요청·결과 JSON](results.ko.md)을 참고하세요.
+
+OAuth 값은 UI 재정의가 아닌 배포 설정입니다. Google 클라이언트 ID·비밀값 또는 쿠키 키를
+바꾸면 `docker compose up -d --force-recreate oauth2-proxy`로 적용하세요.
+**Restart DeciFlow**만으로 프록시 설정은 갱신되지 않습니다.
+`DECIFLOW_PUBLIC_URL` 변경 시 Google 등록 원본·리디렉션 URI도 바꾸고
+`docker compose up -d ui oauth2-proxy`를 실행하세요. 파일·인증서 갱신은
+[인증 운영 안내](authentication.ko.md#운영)를 참고하세요.
 
 `LAYA_HEAD_TOKENS=384`이면 매 Laya 요청에 `"head_max_len": 384`를 전송합니다.
 `LAYA_MAX_TOKENS=1024`는 `"max_len": 1024`를 전송합니다. 해당 요청에서
@@ -185,5 +196,6 @@ UI는 확인한 재시작 요청을 한 번만 보내고 최대 60초 동안 새
 `POST /api/configuration`은 비밀값 없는 설정 정보를 조회합니다. `PUT /api/configuration`은
 `resultsPerPage`와 `runtimeOverrides`(지원하는 비밀값 없는 환경변수명만)를 받습니다.
 `POST /api/restart`는 `{ "confirmation": "RESTART DECIFLOW" }`를 요구하며 202를 반환합니다.
-기존 신뢰 출처 검사를 적용하며 로그인 인증을 제공하지는 않습니다. 신뢰할 수 없는 네트워크에
-관리 화면을 공개한다면 프록시 인증으로 보호하세요.
+앱은 신뢰 출처를 검사하며 기본 Compose 배포에서는 OAuth2-Proxy가 모든 UI·API 요청에
+Google 로그인을 추가로 요구합니다. Python 네이티브 실행에는 프록시 인증이 자동으로
+추가되지 않습니다. [인증 안내](authentication.ko.md)를 참고하세요.

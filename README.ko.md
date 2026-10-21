@@ -67,11 +67,14 @@ access 로그, 애플리케이션 오류, 운영 이벤트에 활용하세요.
 
 ## 빠른 시작 — Docker + Laya CPU
 
-**전제:** 같은 Linux 호스트에 Git과 Docker(Compose 플러그인 포함)가 준비되어 있어야 합니다.
+**전제:** 같은 Linux 호스트에 Git·Docker(Compose 플러그인 포함), 도메인·신뢰할 수 있는
+TLS 인증서·Google OAuth 웹 애플리케이션 클라이언트가 필요합니다.
+HTTPS 진입점은 4443이며 Google 리디렉션 URI에도 같은 포트를 등록하세요.
 호환 NVIDIA GPU가 있으면 [GPU로 실행하기(CUDA)](#laya-gpu)를 참고해
 Laya의 추론 성능을 높일 수 있습니다. 이 빠른 시작은
 다양한 환경에서 DeciFlow를 테스트할 수 있도록 CPU 기준으로 안내합니다.
-Laya는 판정 엔진 컨테이너, DeciFlow는 로그 분석·웹 UI 컨테이너입니다.
+Laya는 추론, DeciFlow는 소스 읽기·UI/API, 세 번째 컨테이너인 OAuth2-Proxy는
+HTTPS·Google 로그인·이메일 허용 목록 검사를 담당합니다.
 
 ### 1. 저장소 준비
 
@@ -98,6 +101,10 @@ PORT=4000
 
 ### 3. 컨테이너 실행
 
+먼저 [Google 로그인·HTTPS 설정](docs/authentication.ko.md)에 따라 `.env`의 OAuth 값과
+이메일 허용 목록·인증서 파일을 준비하세요. OAuth2-Proxy는 DeciFlow와 함께 기본 실행됩니다.
+인증서 발급·자동 갱신 절차는 [DNS·TLS 준비 안내](docs/dns-tls.ko.md)를 참고하세요.
+
 ```bash
 docker compose up -d
 docker compose logs --follow laya-cpu
@@ -108,7 +115,7 @@ docker compose logs --follow laya-cpu
 
 ### 4. 샘플 로그 분석
 
-같은 호스트에서 **http://127.0.0.1:4000**을 엽니다. **Sources**에서
+설정한 **HTTPS 출처**를 열고 승인된 Google 계정으로 로그인합니다. **Sources**에서
 **Sample HTTP access** 경로를 `/host-logs/sample-logs/access-100.log`로 수정하고 저장합니다.
 **Tasks**에서 이름을 지정한 **Batch / Manual** Task를 추가하고
 **Sample HTTP access**, **Sample HTTP access** 기준, **Events/Chunk: 1**,
@@ -119,6 +126,10 @@ docker compose logs --follow laya-cpu
 선택 사항인 GPU 가속은 [Docker 배포 상세](#laya-docker),
 유료 API를 사용하려면 [Jev](#jev)를 참고하세요.
 기본 키 `changeme`는 체험용입니다. 운영 전 `.env`의 키를 변경하세요.
+
+Docker Compose는 OAuth2-Proxy를 기본 실행합니다. 4443 포트의 HTTPS로 UI·API를
+보호하며 UI는 Docker 내부에서만 접근합니다. 공개 URL과 Google 인증정보는 `.env`에
+설정합니다. [Google 로그인 설정](docs/authentication.ko.md)을 참고하세요.
 
 기본 **Sample DeciFlow Server Log** Task는 `DECIFLOW_LOG_DIR/server.log` / `DECIFLOW_LOG_DIR/access.log`를 감시하며 기본 Disable 상태입니다(Run 전에 Enable로 전환). Reset 후를 포함한 서버 시작 시 누락된 기본 설정을 복구합니다. [Tasks](docs/tasks.ko.md)를 참고하세요.
 
@@ -310,6 +321,8 @@ SSH와 별개인 `DECIFLOW_DATA_DIR/ssh-hosts/known_hosts`에만 보존합니다
 Laya 호스트의 복제한 저장소에서 [docker-compose.yml](docker-compose.yml)을 사용합니다.
 `.env.example`의 기본값은 CPU이며, 호환 NVIDIA GPU가 있으면 추론 성능을 높일 수 있습니다.
 실제 성능은 하드웨어와 작업량에 따라 달라집니다.
+Laya 서비스만 선택해도 Compose는 OAuth 값을 포함한 전체 `.env`를 검증합니다.
+먼저 [배포 설정](docs/authentication.ko.md)을 완료하세요.
 
 #### CPU 실행
 
@@ -392,7 +405,7 @@ LAYA_API_KEY=changeme
 PORT=4000
 ```
 
-`docker compose up -d ui`로 UI만 실행하면 로컬 Laya는 시작하지 않습니다.
+`COMPOSE_PROFILES=`로 두고 `docker compose up -d`를 실행하면 로컬 Laya 없이 UI와 OAuth2-Proxy가 시작됩니다.
 Laya 호스트에서 DeciFlow를 네이티브로 실행하면 대신 `http://127.0.0.1:8000/v1/systemone`을 사용하세요.
 
 <a id="jev"></a>
@@ -414,19 +427,19 @@ PORT=4000
 부록의 **Python 직접 실행 대신 이 방식을 선택**합니다. DeciFlow 호스트에는
 Compose가 포함된 Docker가 필요하며 로컬 Python·uv·CUDA는 필요하지 않습니다.
 먼저 `.env`에 Laya 또는 Jev를 설정하세요. 외부 Laya 또는 Jev를 사용하면
-`COMPOSE_PROFILES=`로 두고 UI만 실행합니다:
+`COMPOSE_PROFILES=`로 두고 UI와 OAuth2-Proxy를 실행합니다:
 
 ```bash
-docker compose up -d ui
+docker compose up -d
 ```
 
 Compose는 Docker Hub에 공개된 `call518/deciflow-ui:0.0.2` 이미지를 사용합니다.
 이미지는 Python·uv와 운영 유틸리티를 제공합니다. 저장소는 `/app`에 읽기 전용으로
 마운트하며, 시작할 때 `uv sync --frozen`으로 `deciflow-venv` 볼륨에 의존성을 설치합니다.
 최초 실행에는 네트워크 연결이 필요합니다. Compose가 `.env`를 UI에 전달하며
-`PORT`로 호스트·컨테이너 포트를 함께 지정합니다(기본값: 4000).
+`PORT`는 UI 내부 포트(기본값: 4000)이며 OAuth2-Proxy가 4443에 HTTPS를 공개합니다.
 `pull_policy: always`로 `up` 실행 시마다 이미지 업데이트를 확인합니다.
-모든 Compose 서비스는 `extra_hosts`로 `host.docker.internal`을 Docker 호스트 게이트웨이에 연결합니다. 기존 컨테이너에는 재생성 후 적용됩니다.
+UI·Laya 서비스는 `extra_hosts`로 `host.docker.internal`을 Docker 호스트 게이트웨이에 연결합니다. 기존 컨테이너에는 재생성 후 적용됩니다.
 
 #### Dockerfile과 Compose의 역할
 
@@ -466,19 +479,18 @@ docker run --rm --mount type=bind,src="$PWD",dst=/app,readonly \
 | `name: deciflow` | 소문자 Compose 프로젝트·그룹 이름. 개별 컨테이너 이름은 DeciFlow 표기 유지. |
 | `ui` | 항상 활성화. 공개 UI 이미지가 없으면 다운로드하고 .env·PORT·소스·로그·데이터 마운트를 적용. 빌드 단계 없음. |
 | `laya-cpu` / `laya-cuda` | COMPOSE_PROFILES=cpu 또는 cuda로 선택. laya 네트워크 별칭·8000 포트 공유. CUDA만 GPU 요청. |
+| `oauth2-proxy` | DeciFlow-OAuth2-Proxy로 기본 실행. 4443에 HTTPS를 공개하고 승인된 사용자를 ui로 중계. |
 | `x-laya` | Laya 공통 설정을 재사용하는 YAML 앵커이며 별도 컨테이너가 아님. |
 | 이름 있는 볼륨 | deciflow-venv·deciflow-data·deciflow-logs·deciflow-laya-model-cache의 기존 이름 유지. |
 
 Compose는 `.env`를 변수 치환에 사용하고 `env_file`로 UI에 전달합니다.
 Laya에는 명시한 서버 변수만 전달하며 `LAYA_API_KEY`는 같은 설정을 공유합니다.
 변수 치환 시 프로세스 환경변수가 `.env`보다 우선합니다. `COMPOSE_PROFILES`는
-`DECISION_ENGINE`과 독립적이므로 Jev·외부 Laya 사용 시 프로필을 비우거나 `ui`만
-시작하세요. UI가 Laya 준비 전에 시작할 수 있으므로 로그 분석 전 준비 상태를
+`DECISION_ENGINE`과 독립적이므로 Jev·외부 Laya 사용 시 프로필을 비우세요. UI와 OAuth2-Proxy는 계속 실행됩니다. UI가 Laya 준비 전에 시작할 수 있으므로 로그 분석 전 준비 상태를
 확인하세요. 유료 엔진으로 자동 전환하지 않습니다.
 
-UI는 호스트의 모든 인터페이스에 공개합니다. 로컬 접속만 허용하려면 Compose의
-UI 포트 매핑을 `127.0.0.1:${PORT:-4000}:${PORT:-4000}`으로 변경하세요.
-기본 포트에서는 **http://127.0.0.1:4000**, 원격에서는 DeciFlow 호스트 IP로 접속합니다.
+웹 진입점은 OAuth2-Proxy의 HTTPS 4443만 공개합니다. `DECIFLOW_PUBLIC_URL`의
+주소로 접속하며 UI 자체는 호스트 포트를 매핑하지 않습니다. 별도 Laya API는 8000을 유지합니다.
 `deciflow-data` 볼륨은 `DECIFLOW_DATA_DIR`(기본값: `/var/lib/deciflow-data`)에
 Sources·Tasks와 실행 이력·Actions·Criteria·SSH 키 쌍·SSH Host를 저장하고, `deciflow-logs`는 서버 로그를 저장합니다.
 사용자 지정 데이터·로그 디렉터리는 컨테이너 안의 절대 경로로 설정하세요.
@@ -514,11 +526,12 @@ Dockerfile을 수정한 경우에만 `docker build --tag call518/deciflow-ui:0.0
 UI 이미지를 직접 빌드한 뒤 `docker compose up -d --force-recreate ui`로 적용합니다.
 소스 버전 전환 전에는 DeciFlow를 중지하세요.
 
-ngrok·리버스 프록시로 파일을 처리하려면 `DECIFLOW_CSRF_TRUSTED_ORIGINS`에
-정확한 UI 출처(예: `https://your-domain.ngrok-free.app`) 또는 랜덤 ngrok 주소용 `https://*.ngrok-free.app`을 지정하고
-`docker compose up -d ui`로 적용하세요(끝에 `/` 제외). 빈 값은 localhost 파일 접근만 허용합니다.
-이 설정은 CSRF Origin 검사에 사용하며 CORS·로그인 인증·CSRF 토큰 검증은 아닙니다.
-와일드카드는 다른 사용자의 하위 도메인도 신뢰하므로 공개 접속에는 프록시 인증을 적용하세요.
+Compose는 HTTPS 포트를 포함한 `DECIFLOW_PUBLIC_URL`을 UI 신뢰 출처로 지정합니다.
+이 URL을 변경하면 Google 승인 원본·리디렉션 URI도 바꾸고
+`docker compose up -d ui oauth2-proxy`로 적용하세요.
+`DECIFLOW_CSRF_TRUSTED_ORIGINS`만 수정해도 Compose 지정값은 바뀌지 않습니다.
+네이티브 실행에서 이 변수는 Origin 검사만 제어하며 로그인을 제공하지 않습니다.
+인증정보·허용 목록·인증서 변경은 [인증 운영 안내](docs/authentication.ko.md#운영)를 참고하세요.
 
 ## 제약
 
@@ -560,6 +573,10 @@ Batch·Realtime 실행은 기존 ID로 복구하며 일시정지 상태도 유�
 이미지 검사에는 비전 모델 연동도 필요합니다.
 
 ## Appendix — 호스트 직접 실행
+
+이 방식은 로컬 DeciFlow 프로세스만 시작하며 OAuth2-Proxy·Google 로그인을 자동으로
+실행하지 않습니다. `.env`에 OAuth 값이 있어도 Python 서버에 인증이 추가되지 않습니다.
+수신 포트는 로컬로 제한하고 보호된 브라우저 접속에는 기본 Compose 구성을 사용하세요.
 
 Docker 실행 대신 선택합니다. DeciFlow 호스트에 Python 3.11+와 uv가 필요합니다.
 Laya Docker 서버 또는 Jev 연결 설정은 동일하며, 별도 Laya 서버를 사용하면 DeciFlow에 GPU가 필요하지 않습니다.

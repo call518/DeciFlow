@@ -2719,6 +2719,7 @@ function renderResultContext(name,startedAt,id,settings = {}) {
   $('result-context').replaceChildren(title,element('span',` · Started: ${taskTime(startedAt)} (UTC) · Run: ${id}`),details);
 }
 async function readApiJsonResponse(response,path=response.url || 'API request') {
+  if(response.status===401)throw new Error('Sign-in is required or your session has expired. Reload this page to sign in again.');
   try { return await response.json(); }
   catch(error) {
     if(error.name==='AbortError')throw error;

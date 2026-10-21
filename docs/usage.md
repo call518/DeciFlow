@@ -2,6 +2,20 @@
 
 [English](usage.md) | [한국어](usage.ko.md) | [Documentation](README.md) | [README](../README.md)
 
+## Sign In and Access
+
+For the default Docker deployment, open the HTTPS origin in `.env`'s
+`DECIFLOW_PUBLIC_URL` (port 4443), then sign in with a Google account on the email
+allow list. This includes Workspace and other Google accounts, not only Gmail.
+A shared run link requires the same sign-in and permission; it does not grant access.
+All approved users share the installation's data and management capabilities.
+
+If the UI reports that sign-in is required or the session expired, reload to sign in
+again; it does not automatically retry write operations. Background Tasks continue.
+To sign out, open `/oauth2/sign_out` on that HTTPS origin, then reload the UI.
+This clears the proxy session, not the Google account session. See
+[authentication setup and operations](authentication.md).
+
 On wide screens, the left **40%** shows **Classification Overview → Task Monitor**;
 the right **60%** shows **Classification Results**. On wide screens, the left information panel and right results panel scroll independently. Narrow screens stack the panels and use normal page scrolling.
 The sidebar identifies the DeciFlow reader host by hostname, detected IPs, and

@@ -1,6 +1,7 @@
 .git
 .env
 .env.*
+oauth2-proxy
 .venv
 .agents
 .aws

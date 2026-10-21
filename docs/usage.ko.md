@@ -2,6 +2,20 @@
 
 [English](usage.md) | [한국어](usage.ko.md) | [문서 안내](README.ko.md) | [README](../README.ko.md)
 
+## 로그인과 접근
+
+기본 Docker 배포에서는 `.env`의 `DECIFLOW_PUBLIC_URL`에 지정한 HTTPS 출처
+(4443 포트)를 열고 이메일 허용 목록에 등록된 Google 계정으로 로그인합니다.
+Gmail뿐 아니라 Workspace 등 Google 계정도 사용할 수 있습니다.
+공유한 실행 링크에도 같은 로그인·접근 권한이 필요하며 링크 자체가 권한을 부여하지 않습니다.
+승인된 사용자는 해당 설치의 데이터와 관리 기능을 공유합니다.
+
+UI에 로그인 필요·세션 만료 메시지가 나오면 새로고침해 다시 로그인하세요.
+쓰기 작업은 자동으로 재시도하지 않으며 백그라운드 Task는 계속 실행됩니다.
+로그아웃하려면 같은 HTTPS 출처의 `/oauth2/sign_out`을 열고 UI를 새로고침하세요.
+프록시 세션을 지우는 동작이며 Google 계정에서 로그아웃하는 것은 아닙니다.
+[인증 설정·운영 안내](authentication.ko.md)를 참고하세요.
+
 넓은 화면에서는 왼쪽 **40%**에 **Classification Overview → Task Monitor**, 오른쪽
 **60%**에 **Classification Results**를 배치하고 좌우 패널을 독립적으로 스크롤합니다.
 좁은 화면은 세로 배치와 일반 페이지 스크롤을 사용합니다.

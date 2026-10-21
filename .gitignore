@@ -152,6 +152,8 @@ activemq-data/
 
 # Environments
 .env
+/oauth2-proxy/allowed-emails.txt
+/oauth2-proxy/tls/
 .envrc
 .venv
 env/

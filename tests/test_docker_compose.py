@@ -1,9 +1,10 @@
-"""Validate CPU, CUDA, and UI-only Compose deployments without starting containers."""
+"""Validate default authenticated Compose deployments without starting containers."""
 
 import json
 import os
 import shutil
 import subprocess
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -28,11 +29,16 @@ def test_compose_deployment(profile: str, tmp_path: Path) -> None:
         "LAYA_API_KEY=compose-test-key\n"
         "DECIFLOW_DATA_DIR=/custom/data\n"
         "DECIFLOW_LOG_DIR=/custom/logs\n"
+        "DECIFLOW_PUBLIC_URL=https://deciflow.example.com:4443\n"
+        "OAUTH2_PROXY_CLIENT_ID=test-client\n"
+        "OAUTH2_PROXY_CLIENT_SECRET=test-secret\n"
+        "OAUTH2_PROXY_COOKIE_SECRET=test-cookie-secret\n"
     )
     env = {
         key: value
         for key, value in os.environ.items()
-        if not key.startswith(("COMPOSE_", "LAYA_", "DECIFLOW_")) and key != "PORT"
+        if not key.startswith(("COMPOSE_", "LAYA_", "DECIFLOW_", "OAUTH2_"))
+        and key != "PORT"
     }
     result = subprocess.run(
         [
@@ -53,11 +59,12 @@ def test_compose_deployment(profile: str, tmp_path: Path) -> None:
     )
     config = json.loads(result.stdout)
     services = config["services"]
-    assert set(services) == ({"ui", f"laya-{profile}"} if profile else {"ui"})
+    assert set(services) == (
+        {"ui", "oauth2-proxy", f"laya-{profile}"} if profile else {"ui", "oauth2-proxy"}
+    )
     ui = services["ui"]
     assert ui["image"] == "call518/deciflow-ui:0.0.2"
-    assert ui["ports"][0]["target"] == 4567
-    assert ui["ports"][0]["published"] == "4567"
+    assert not ui.get("ports")
     assert ui["environment"]["DECIFLOW_DATA_DIR"] == "/custom/data"
     mounts = {mount["target"]: mount for mount in ui["volumes"]}
     assert mounts["/app"]["read_only"] is True
@@ -83,3 +90,96 @@ def test_compose_deployment(profile: str, tmp_path: Path) -> None:
         return
     devices = laya["deploy"]["resources"]["reservations"]["devices"]
     assert devices == [{"driver": "nvidia", "count": -1, "capabilities": ["gpu"]}]
+
+
+@pytest.mark.parametrize("profile", ["cpu", "cuda", ""])
+def test_google_auth_compose(profile: str, tmp_path: Path) -> None:
+    """Protect all UI routes without exposing an alternate application port."""
+    if shutil.which("docker") is None:
+        pytest.skip("Docker Compose is required for configuration validation")
+    env_file = tmp_path / "oauth2.env"
+    env_file.write_text(
+        f"COMPOSE_PROFILES={profile}\n"
+        "PORT=4567\n"
+        "DECIFLOW_PUBLIC_URL=https://deciflow.example.com:4443\n"
+        "OAUTH2_PROXY_CLIENT_ID=test-client\n"
+        "OAUTH2_PROXY_CLIENT_SECRET=test-secret\n"
+        "OAUTH2_PROXY_COOKIE_SECRET=test-cookie-secret\n"
+    )
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith(("COMPOSE_", "OAUTH2_", "DECIFLOW_")) and key != "PORT"
+    }
+    command = [
+        "docker",
+        "compose",
+        "--env-file",
+        str(env_file),
+        "-f",
+        "docker-compose.yml",
+        "config",
+        "--no-env-resolution",
+        "--format",
+        "json",
+    ]
+    result = subprocess.run(
+        command, cwd=ROOT, env=env, capture_output=True, text=True, check=True
+    )
+    services = json.loads(result.stdout)["services"]
+    expected = {"ui", "oauth2-proxy"}
+    if profile:
+        expected.add(f"laya-{profile}")
+    assert set(services) == expected
+    assert not services["ui"].get("ports")
+    assert services["ui"]["environment"]["DECIFLOW_CSRF_TRUSTED_ORIGINS"] == (
+        "https://deciflow.example.com:4443"
+    )
+    proxy = services["oauth2-proxy"]
+    assert proxy["container_name"] == "DeciFlow-OAuth2-Proxy"
+    assert proxy["image"] == "quay.io/oauth2-proxy/oauth2-proxy:v7.15.5"
+    assert "--upstream=http://ui:4567/" in proxy["command"]
+    assert proxy["environment"]["OAUTH2_PROXY_REDIRECT_URL"] == (
+        "https://deciflow.example.com:4443/oauth2/callback"
+    )
+    assert [(port["published"], port["target"]) for port in proxy["ports"]] == [
+        ("4443", 4443)
+    ]
+    assert all(mount["read_only"] for mount in proxy["volumes"])
+    assert all(not mount["bind"]["create_host_path"] for mount in proxy["volumes"])
+    assert proxy["read_only"]
+    assert proxy["cap_drop"] == ["ALL"]
+
+    # Missing credentials must stop configuration instead of enabling public access.
+    env_file.write_text(
+        env_file.read_text().replace(
+            "OAUTH2_PROXY_CLIENT_SECRET=test-secret", "OAUTH2_PROXY_CLIENT_SECRET="
+        )
+    )
+    missing = subprocess.run(
+        command, cwd=ROOT, env=env, capture_output=True, text=True, check=False
+    )
+    assert missing.returncode != 0
+    assert "OAUTH2_PROXY_CLIENT_SECRET" in missing.stderr
+
+
+def test_google_auth_policy() -> None:
+    """Keep email admission restrictive and API/streaming behavior explicit."""
+    policy = tomllib.loads((ROOT / "oauth2-proxy/oauth2-proxy.cfg").read_text())
+    assert policy["provider"] == "google"
+    assert policy["authenticated_emails_file"].endswith("/allowed-emails.txt")
+    assert policy["email_domains"] == []
+    assert policy["api_routes"] == ["^/api(?:/|$)"]
+    assert policy["cookie_secure"] and policy["cookie_httponly"]
+    assert policy["cookie_name"].startswith("__Host-")
+    assert policy["cookie_path"] == "/" and "cookie_domains" not in policy
+    assert policy["cookie_samesite"] == "lax"
+    assert policy["code_challenge_method"] == "S256"
+    assert policy["upstream_timeout"] == "0s"
+    assert policy["flush_interval"] == "100ms"
+    assert not policy["reverse_proxy"]
+    assert not policy["pass_access_token"]
+    assert not policy["pass_authorization_header"]
+    assert not policy["pass_basic_auth"]
+    assert not policy["pass_user_headers"]
+    assert not any(key.startswith(("skip_auth", "trusted_ip")) for key in policy)

@@ -7,16 +7,20 @@ Saved UI overrides take precedence over `.env`/process environment values, then
 code defaults. Clearing **Use UI Override** restores the environment/default value.
 The initial environment setup remains in `.env`.
 Laya server settings are managed on the Laya host; Compose shares `LAYA_API_KEY`
-with DeciFlow. `COMPOSE_PROFILES` selects `cpu` or `cuda`; empty starts only the UI.
+with DeciFlow. `COMPOSE_PROFILES` selects `cpu` or `cuda`; empty starts UI and OAuth2-Proxy.
 
 | Variable | Code default (when unset) | Purpose |
 | --- | --- | --- |
-| `COMPOSE_PROFILES` | Unset (UI only) | Compose only: set cpu or cuda, exactly one; .env.example selects cpu |
+| `COMPOSE_PROFILES` | Unset (UI and OAuth2-Proxy) | Compose only: set cpu or cuda, exactly one; .env.example selects cpu |
 | `DECISION_ENGINE` | `laya` | `laya` or `jev` |
 | `DECIFLOW_DATA_DIR` | `/var/lib/deciflow-data` | Shared Sources/Tasks/history/Actions/Criteria/SSH Key/host storage root; must be writable |
-| `DECIFLOW_CSRF_TRUSTED_ORIGINS` | Empty | Comma-separated trusted UI origins, including optional https://*.ngrok-free.app; origin check only, not authentication |
+| `DECIFLOW_CSRF_TRUSTED_ORIGINS` | Empty | Comma-separated trusted UI origins, including optional https://*.ngrok-free.app; origin check only, not authentication. Compose uses DECIFLOW_PUBLIC_URL |
 | `DECIFLOW_LOG_DIR` | `/var/log/deciflow` | Server/access logs; empty disables file logging. Compose persists logs in deciflow-logs |
-| `PORT` | `4000` | DeciFlow web port |
+| `PORT` | `4000` | Internal UI port in Compose; native DeciFlow listening port |
+| `DECIFLOW_PUBLIC_URL` | Required by Compose | Public HTTPS origin including :4443; sets callback and trusted UI origin |
+| `OAUTH2_PROXY_CLIENT_ID` | Required by Compose | Google Web application client ID |
+| `OAUTH2_PROXY_CLIENT_SECRET` | Required by Compose | Google client secret; keep in ignored .env |
+| `OAUTH2_PROXY_COOKIE_SECRET` | Required by Compose | Random Base64-encoded 32-byte cookie key |
 | `LAYA_API_URL` | `http://127.0.0.1:8000/v1/systemone` | Full Laya URL, including any proxy prefix. Compose CPU/CUDA both use `http://laya:8000/v1/systemone`; native execution uses loopback |
 | `LAYA_API_KEY` | `changeme` | Key matching the Laya server |
 | `LAYA_MODEL` | `multilingual` | Built-in or registered custom checkpoint name; server must provide it |
@@ -29,7 +33,7 @@ with DeciFlow. `COMPOSE_PROFILES` selects `cpu` or `cuda`; empty starts only the
 | `JEV_CONCURRENCY` | `4` | Maximum simultaneous Jev requests per run; positive integer |
 
 `.env.example` overrides some code defaults: LAYA_API_URL uses the Compose hostname
-`laya`, LAYA_MODEL is `english`, JEV_MODEL is `jev-latest`, and trusted UI origins
+`laya`, LAYA_MODEL is `multilingual`, JEV_MODEL is `jev-latest`, and trusted UI origins
 include `https://*.ngrok-free.app`. Existing `.env` values
 are not overwritten. For native DeciFlow or an external Laya host, set the reachable
 URL explicitly. Both CPU and CUDA publish port 8000.
@@ -41,6 +45,13 @@ environment precedence. Changes to ports, mounts, Compose profiles, or the Laya
 service require `docker compose up -d` to recreate affected containers. For native
 execution, restart the Python process.
 See [request/result JSON](results.md) for state, the three questions, and outputs.
+
+OAuth settings are deployment settings, not UI overrides. Changing a Google client
+ID/secret or cookie key requires `docker compose up -d --force-recreate oauth2-proxy`;
+**Restart DeciFlow** alone does not reload the proxy. After changing
+`DECIFLOW_PUBLIC_URL`, update Google's registered origin/redirect URI and run
+`docker compose up -d ui oauth2-proxy`. For files and certificate renewal, see
+[authentication operations](authentication.md#operations).
 
 `LAYA_HEAD_TOKENS=384` sends `"head_max_len": 384` in each Laya request.
 `LAYA_MAX_TOKENS=1024` similarly sends `"max_len": 1024`. Both override the
@@ -195,5 +206,6 @@ DeciFlow's original-command process replacement; use one process per data direct
 `POST /api/configuration` reads safe metadata. `PUT /api/configuration` accepts
 `resultsPerPage` and `runtimeOverrides` (only supported non-secret environment identifiers).
 `POST /api/restart` requires `{ "confirmation": "RESTART DECIFLOW" }` and returns 202.
-All use the existing trusted-origin boundary, which is not login authentication;
-protect the management UI with proxy authentication for untrusted networks.
+The application checks trusted origins; the default Compose deployment additionally
+requires Google sign-in through OAuth2-Proxy for all UI/API requests. Native Python
+execution has no automatic proxy authentication. See [authentication](authentication.md).

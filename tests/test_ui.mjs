@@ -3315,6 +3315,21 @@ test('Result context emphasizes Task name and reports non-JSON API responses', a
 });
 
 
+test('Expired proxy sessions show a sign-in message without clearing Tasks or retrying writes',async()=>{
+  const {context,nodes}=workspace([]);
+  await new Promise(resolve=>setImmediate(resolve));
+  const count=vm.runInContext('registeredTasks.length',context);
+  const requests=[];
+  context.fetch=async(path,options)=>{
+    requests.push({path,method:options?.method});
+    return {ok:false,status:401,json:async()=>{throw new SyntaxError('Not JSON');}};
+  };
+  await vm.runInContext('handleLoadTasks()',context);
+  assert.match(nodes.get('task-message').textContent,/Sign-in is required.*Reload this page/);
+  assert.equal(vm.runInContext('registeredTasks.length',context),count);
+  assert.equal(requests.length,1);
+});
+
 test('Task polling reports HTML response metadata and preserves existing Tasks',async()=>{
   const {context,nodes}=workspace([]);
   await new Promise(resolve=>setImmediate(resolve));
