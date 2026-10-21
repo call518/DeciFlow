@@ -1627,12 +1627,9 @@ async def handle_result_page(request: Request) -> Response:
         through = body.get("through")
         if through is None or (type(through) is int and through > state["sequence"]):
             body["through"] = state["sequence"]
-        page = (
-            {}
-            if body.get("onlySummary")
-            else await anyio.to_thread.run_sync(
-                store.page, identity, body, load_settings()["resultsPerPage"]
-            )
+        body["chartThrough"] = state["sequence"]
+        page = await anyio.to_thread.run_sync(
+            store.page, identity, body, load_settings()["resultsPerPage"]
         )
         return _json(200, {**state, **page})
     except (ValueError, TypeError) as error:

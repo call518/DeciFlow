@@ -382,7 +382,9 @@ def test_result_numbers_follow_completion_order_excluding_status_events(
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("filters", [{}, {"after": 100}, {"through": 10000}])
+@pytest.mark.parametrize(
+    "filters", [{}, {"after": 100}, {"through": 10000}, {"search": "record"}]
+)
 async def test_result_page_excludes_completions_after_its_summary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, filters: Result
 ) -> None:
@@ -417,6 +419,8 @@ async def test_result_page_excludes_completions_after_its_summary(
             assert response.status_code == 200
             page = response.json()
             assert page["summary"]["total"] == 244
+            if filters.get("search"):
+                assert page["chartSummary"]["total"] == 244
             assert page["items"][0]["result"]["resultNumber"] == 244
             assert all(item["sequence"] <= page["sequence"] for item in page["items"])
             next_page = (
@@ -514,3 +518,98 @@ def test_processing_status_filters_combine_with_source_host_and_paging(
     for invalid in ["unknown", 1, {}, None]:
         with pytest.raises(ValueError, match="processing status"):
             store.page(run["jobId"], {"processing": invalid}, 10)
+
+
+@pytest.mark.parametrize(
+    "filters",
+    [
+        {"host": "node-a"},
+        {"source": "/source-a"},
+        {"search": "TARGET"},
+        {"review": "needs-review"},
+        {"review": "no-review"},
+        {"processing": "failed"},
+        {
+            "host": "node-a",
+            "source": "/source-a",
+            "search": "target",
+            "processing": "successful",
+        },
+        {"host": "missing"},
+    ],
+)
+def test_filtered_chart_aggregates_all_matches_independently_of_pages(
+    tmp_path, filters
+):
+    from decisions import needs_review
+
+    store = SQLiteResultStore(tmp_path / "filtered.db")
+    run = snapshot()
+    identity = run["jobId"]
+    store.create(identity, run)
+    records = []
+    for index in range(120):
+        item = event(index)
+        value = item["result"]
+        value.update(
+            providerResponse={"usage": {"truncated": index % 17 == 0}},
+            hostId="node-a" if index % 2 else "node-b",
+            sourcePatterns=["/source-a" if index % 3 else "/source-b"],
+            log="target event" if index % 4 else "other event",
+            review=index % 5 == 0,
+        )
+        choice = "normal" if index % 2 else "warning"
+        value["decisions"]["category"].update(
+            choice=choice,
+            probabilities={
+                key: int(key == choice)
+                for key in value["decisions"]["category"]["probabilities"]
+            },
+        )
+        if index % 11 == 0:
+            value["error"] = "failed"
+        records.append(value)
+        store.append(identity, item, run)
+    expected = [
+        value
+        for value in records
+        if (filters.get("host", value["hostId"]) == value["hostId"])
+        and ("source" not in filters or filters["source"] in value["sourcePatterns"])
+        and filters.get("search", "").lower() in value["log"].lower()
+        and (filters.get("processing") != "successful" or not value.get("error"))
+        and (filters.get("processing") != "failed" or value.get("error"))
+        and (
+            "review" not in filters
+            or (
+                not value.get("error")
+                and needs_review(value) == (filters["review"] == "needs-review")
+            )
+        )
+    ]
+    page = store.page(identity, filters, 10)
+    chart = page["chartSummary"]
+    assert chart["total"] == len(expected)
+    assert chart["failed"] == sum(bool(value.get("error")) for value in expected)
+    assert chart["truncated"] == sum(
+        value.get("providerResponse", {}).get("usage", {}).get("truncated") is True
+        for value in expected
+    )
+    counts = chart["decisionGroups"]["system:category"]["counts"]["all"]
+    for choice in ["normal", "warning"]:
+        assert counts[choice] == sum(
+            not value.get("error")
+            and value["decisions"]["category"]["choice"] == choice
+            for value in expected
+        )
+    assert len(page["items"]) <= 10
+    held = store.page(
+        identity, {**filters, "onlySummary": True, "before": 3, "after": 0}, 10
+    )
+    assert held["chartSummary"] == chart
+    assert "items" not in held
+    assert (
+        store.page(identity, {**filters, "after": 10000}, 10)["chartSummary"] == chart
+    )
+    assert store.state(identity)["summary"]["total"] == 120
+    assert store.page(identity, {}, 10)["chartSummary"] is None
+    store.close()

@@ -39,7 +39,8 @@ provider contract has no separate output-truncation signal.
 
 The **Processing Time** card groups Avg, Min, Max, P(50), P(95), and P(99). Throughput shows
 successful results per active classification second, excluding idle time and Action delivery. All metrics cover the selected run;
-filters and pagination do not change them.
+filters and pagination do not change these run metrics. The Overview chart reflects
+all results matching the active filters, across pages.
 Run URLs retain chart selections, Show Decisions, and result filters on reload;
 list searches persist within the same browser tab.
 

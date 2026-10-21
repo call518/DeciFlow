@@ -164,7 +164,7 @@ Processing Status → Failed를 함께 선택해 확인하세요.
 
 **Source**는 Search data 다음에서 입력한 경로·패턴별 결과를 필터링하고 실패를 포함한
 처리 건수를 표시합니다. 중복 매칭은 JSON의 `sourcePatterns`에 모두 남기며 파일은
-한 번만 처리합니다. 필터는 목록에만 적용하고 지표·차트·내보내기에는 영향을 주지 않습니다.
+한 번만 처리합니다. 필터는 결과 목록과 좌측 Overview 차트에 적용하며, 차트는 현재 페이지가 아닌 전체 일치 결과를 집계합니다. 우측 실행 지표와 내보내기는 실행 전체 기준을 유지합니다.
 
 **Host**는 선택한 실행에 저장된 호스트별로 필터링하며 Source·범주·검토·로그 검색과
 함께 적용합니다. 지표·차트·내보내기는 바뀌지 않습니다.
@@ -367,3 +367,8 @@ Run·Stop·Pause/Resume·Delete·Save·Export는 명시적 명령으로 유지�
 Source·Criteria·Action·Task·SSH Key·SSH Host 목록 검색어는 같은 브라우저 탭에서
 새로고침해도 유지합니다. 미저장 편집 내용은 복원하지 않습니다. 다른 실행을 열면
 URL에 표시 선택값이 없는 한 해당 실행의 차트 기본값으로 시작합니다.
+
+Host·Source·Search Text·Review Status·Processing Status 필터를 적용하면 Overview에
+**Filtered Results**를 표시합니다. 건수·비율·확실성 그룹·잘림 건수는 일치 결과 기준이며,
+필터 해제 시 전체 실행 집계로 돌아갑니다. Show Decisions는 카드 표시만 바꾸고
+차트를 필터링하지 않습니다. 일치 결과가 없으면 차트의 Decision 선택은 유지하고 0건으로 표시합니다.

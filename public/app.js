@@ -2280,8 +2280,32 @@ function isDefaultChartEntry(entry) {
   const decision=profile?.defaultDecision || chartDefaults[entry.profileId];
   return decision?entry.question===decision:entry.default;
 }
+function hasResultFilters() {
+  return Object.keys(resultFilterLabels).some(id=>$(id).value && $(id).value!=='all');
+}
+function matchesResultFilters(result) {
+  const processing=$('processing-filter').value || 'all',review=$('review-filter').value || 'all';
+  const source=$('source-filter').value || 'all',host=$('host-filter').value || 'all';
+  return (review==='all' || (review==='needs-review'?needsReview(result):!result.error && !needsReview(result)))
+    && (processing==='all' || (processing==='failed'?Boolean(result.error):!result.error))
+    && result.log.toLowerCase().includes($('log-search').value.toLowerCase())
+    && (source==='all' || result.sourcePatterns?.includes(source) || result.source===source)
+    && (host==='all' || resultHostId(result)===host);
+}
+function overviewStatistics() {
+  const all=updateResultStatistics();if(!hasResultFilters())return all;
+  if(pagedView)return pagedView.chartSummary || all;
+  const stats={total:0,failed:0,truncated:0,decisionGroups:JSON.parse(JSON.stringify(all.decisionGroups || {}))};
+  for(const entry of Object.values(stats.decisionGroups))for(const counts of Object.values(entry.counts))for(const key of Object.keys(counts))counts[key]=0;
+  for(const result of results){
+    if(!result || !matchesResultFilters(result))continue;
+    stats.total++;stats.failed+=Boolean(result.error);stats.truncated+=result.providerResponse?.usage?.truncated===true;
+    addDecisionStatistics(stats,result);
+  }
+  return stats;
+}
 function renderCategoryChart() {
-  const stats = updateResultStatistics();
+  const stats = overviewStatistics();
   const entries=stats.decisionGroups || {};
   const select=$('classification-group');const criteria=$('chart-criteria');
   const identities=[...new Set(Object.values(entries).map(entry=>entry.identity))];
@@ -2298,7 +2322,7 @@ function renderCategoryChart() {
   if(selected && selected.type!=='choice')chartCertainty='all';
   const options=selected?Object.fromEntries(selected.options.map(key=>[key,key])):Object.fromEntries(Object.keys(labels).map(key=>[key,key]));
   const counts=selected?.counts[chartCertainty] || Object.fromEntries(Object.keys(options).map(key=>[key,0]));
-  $('chart-decision-note').textContent=selected?.type==='score'?'Probability-weighted scores rounded to the nearest level.':selected?.type==='noul'?'Chunks by Yes probability.':'AI selected choices per chunk.';
+  $('chart-decision-note').textContent=(hasResultFilters()?'Filtered Results · ':'')+(selected?.type==='score'?'Probability-weighted scores rounded to the nearest level.':selected?.type==='noul'?'Chunks by Yes probability.':'AI selected choices per chunk.');
   renderDecisionDisplay(entries);
   const defaultButton=$('set-chart-default');defaultButton.hidden=!selected || isDefaultChartEntry(selected);defaultButton.disabled=savingChartDefault;
   const {failed, truncated} = stats;
@@ -2333,7 +2357,7 @@ function renderCategoryChart() {
     $('category-chart').append(row);
   }
   $('chart-truncated').textContent = `Truncated: ${truncated.toLocaleString('en-US')}`;
-  $('chart-totals').textContent = `${classified.toLocaleString('en-US')} classified ${classified === 1 ? 'chunk' : 'chunks'} · ${failed.toLocaleString('en-US')} failed ${failed === 1 ? 'request' : 'requests'}`;
+  $('chart-totals').textContent = `${hasResultFilters()?'Filtered Results · ':''}${classified.toLocaleString('en-US')} classified ${classified === 1 ? 'chunk' : 'chunks'} · ${failed.toLocaleString('en-US')} failed ${failed === 1 ? 'request' : 'requests'}`;
 }
 $('set-chart-default').onclick=async()=>{
   if(savingChartDefault)return;
@@ -2450,10 +2474,10 @@ function render(updateList = true, incremental = false) {
   if (!incremental || renderedCount !== completed || renderedHosts !== runHosts) {
     renderSourceFilter();
     renderHostFilter();
-    renderCategoryChart();
     renderedCount = completed;
     renderedHosts = runHosts;
   }
+  renderCategoryChart();
   renderReviewFilter(stats);
   renderResultFilters();
   $('summary').replaceChildren();
@@ -2514,11 +2538,7 @@ function render(updateList = true, incremental = false) {
     for (; filteredResults.cursor < order.length; filteredResults.cursor++) {
       const index = order[filteredResults.cursor];
       const r = results[index];
-      if ((review === 'all' || (review === 'needs-review' ? needsReview(r) : !r.error && !needsReview(r)))
-        && (processing==='all' || (processing==='failed'?Boolean(r.error):!r.error))
-        && r.log.toLowerCase().includes(search)
-        && (source === 'all' || r.sourcePatterns?.includes(source) || r.source === source)
-        && (host === 'all' || resultHostId(r) === host)) filteredResults.indices.push(index);
+      if (matchesResultFilters(r)) filteredResults.indices.push(index);
     }
     visible = filteredResults.indices;
   }
@@ -3048,6 +3068,7 @@ async function handleRefreshResults(reset=false,poll=false) {
   const data=await readResultResponse(response,`/api/jobs/${view.id}/results`);
   if(pagedView!==view || revision!==view.revision)return;
   view.summary={...data.summary,hosts:new Map(Object.entries(data.summary.hosts)),sources:new Map(Object.entries(data.summary.sources))};
+  view.chartSummary=data.chartSummary;
   const snapshot=data.snapshot;activeJobState=snapshot.state;completed=data.summary.total;
   elapsedMs=snapshot.elapsedMs || 0;activeProcessingMs=snapshot.activeProcessingMs || 0;
   resultEngine=snapshot.settings.engine || data.summary.engine || null;resultSourceMode=snapshot.settings.mode;

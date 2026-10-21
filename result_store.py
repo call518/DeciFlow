@@ -9,6 +9,7 @@ import sqlite3
 from collections import OrderedDict
 from collections.abc import Iterator
 from contextlib import closing, contextmanager
+from copy import deepcopy
 from datetime import UTC, datetime
 from functools import lru_cache
 from hashlib import sha256
@@ -641,19 +642,21 @@ class SQLiteResultStore:
             raise ValueError("Invalid page size.")
         with self.transaction() as connection:
             row = connection.execute(
-                "SELECT summary FROM runs WHERE id=?", (run_id,)
+                "SELECT summary,sequence FROM runs WHERE id=?", (run_id,)
             ).fetchone()
             stats = json.loads(row["summary"]) if row is not None else empty_summary()
         table = "events e"
         where = ["e.run_id=?", "e.kind='result'"]
         params: list[object] = [run_id]
+        cursor_where: list[str] = []
+        cursor_params: list[object] = []
         for key, operator in (("before", "<"), ("after", ">"), ("through", "<=")):
             value = filters.get(key)
             if value is not None:
                 if type(value) is not int or not 0 <= value < 2**63:
                     raise ValueError("Invalid result cursor.")
-                where.append(f"e.sequence {operator} ?")
-                params.append(value)
+                cursor_where.append(f"e.sequence {operator} ?")
+                cursor_params.append(value)
         decision = filters.get("decision", "all")
         certainty = filters.get("certainty", "all")
         if certainty not in {"all", "certain", "uncertain", "unassessed"}:
@@ -719,6 +722,16 @@ class SQLiteResultStore:
         if search:
             where.append("instr(e.log_folded,?)>0")
             params.append(search.lower())
+        chart = None
+        if len(where) > 2:
+            boundary = filters.get("chartThrough", row["sequence"] if row else 0)
+            if type(boundary) is not int or not 0 <= boundary < 2**63:
+                raise ValueError("Invalid chart boundary.")
+            chart = self._filtered_chart(stats, where, params, boundary)
+        if filters.get("onlySummary"):
+            return {"chartSummary": chart}
+        where.extend(cursor_where)
+        params.extend(cursor_params)
         with self.reader() as connection:
             rows = connection.execute(
                 "SELECT e.run_id,e.sequence,e.payload,e.reviews, "
@@ -730,6 +743,7 @@ class SQLiteResultStore:
                 (*params, limit + 1),
             ).fetchall()
         return {
+            "chartSummary": chart,
             "items": [
                 {"sequence": row["sequence"], "result": self._result(row)}
                 for row in rows[:limit]
@@ -737,6 +751,43 @@ class SQLiteResultStore:
             "hasNext": len(rows) > limit,
             "limit": limit,
         }
+
+    def _filtered_chart(
+        self, stats: Result, where: list[str], params: list[object], boundary: int
+    ) -> Result:
+        """Aggregate matching results using decision indexes, independent of paging."""
+        chart = empty_summary()
+        chart["decisionGroups"] = deepcopy(stats["decisionGroups"])
+        for entry in chart["decisionGroups"].values():
+            for counts in entry["counts"].values():
+                for bucket in counts:
+                    counts[bucket] = 0
+        predicate = " AND ".join([*where, "e.sequence<=?"])
+        with self.reader() as connection:
+            connection.execute("BEGIN")
+            counts = connection.execute(
+                "SELECT COUNT(*) AS total,COALESCE(SUM(e.failed),0) AS failed,"
+                "COALESCE(SUM(json_extract(e.payload,"
+                "'$.result.providerResponse.usage.truncated')=1),0) AS truncated "
+                f"FROM events e WHERE {predicate}",
+                (*params, boundary),
+            ).fetchone()
+            chart.update(dict(counts))
+            groups = connection.execute(
+                "SELECT d.decision,d.bucket,d.certainty,COUNT(*) AS n "
+                "FROM result_decisions d JOIN events e "
+                "ON e.run_id=d.run_id AND e.sequence=d.sequence "
+                f"WHERE {predicate} GROUP BY d.decision,d.bucket,d.certainty",
+                (*params, boundary),
+            )
+            for group in groups:
+                entry = chart["decisionGroups"].get(group["decision"])
+                if not entry or group["bucket"] not in entry["counts"]["all"]:
+                    continue
+                entry["counts"]["all"][group["bucket"]] += group["n"]
+                if group["certainty"] in entry["counts"]:
+                    entry["counts"][group["certainty"]][group["bucket"]] += group["n"]
+        return chart
 
     def _result(self, row: sqlite3.Row) -> Result:
         result = _assessed_result(

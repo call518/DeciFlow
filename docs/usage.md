@@ -173,7 +173,7 @@ completed counts, including failures. Overlapping patterns retain all matches in
 not metrics, chart, or JSON export.
 
 **Host** filters the selected run by its saved host identity and combines with Source,
-processing status, review, and log-text filters. It does not change metrics, charts, or export.
+processing status, review, and log-text filters. The Overview chart aggregates all matching results across pages. Run metrics and exports remain whole-run.
 **Source Hosts Detail** opens a scrollable dialog with each host’s collection status
 and Success / Failed / Total counts for the entire selected run, including hosts
 with no completed records. Opening it does not reconnect to hosts.
@@ -387,3 +387,9 @@ List search text for Sources, Criteria, Actions, Tasks, SSH Keys, and SSH Hosts
 is retained across reloads in the same browser tab. Unsaved editor fields are not
 restored. Opening another run starts with its own chart defaults unless its URL
 includes display selections.
+
+Overview shows **Filtered Results** while Host, Source, Search Text, Review Status,
+or Processing Status filters are applied. Counts, percentages, certainty groups,
+and truncation counts use matching results; clearing filters restores the full run.
+Show Decisions changes card contents only and does not filter the chart. An empty
+match keeps the chart decisions available and displays zero counts.

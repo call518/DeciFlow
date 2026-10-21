@@ -452,7 +452,7 @@ test('profile selectors have visible Criteria labels', () => {
   assert.ok(html.includes('Sources and Decisions'));
 });
 
-test('category chart counts all sources, separates failures, and ignores filters and edits', async () => {
+test('category chart applies result filters and preserves original AI counts after edits', async () => {
   const events = [{ type: 'start', engine: 'laya', total: null }];
   for (const [index, category] of ['normal', 'normal', 'warning', 'error', 'security', 'other'].entries()) {
     const event = result(index, index % 2 === 0);
@@ -472,7 +472,9 @@ test('category chart counts all sources, separates failures, and ignores filters
   assert.equal(nodes.get('chart-totals').textContent, '6 classified chunks · 1 failed request');
   nodes.get('review-filter').value = 'needs-review'; nodes.get('review-filter').onchange();
   vm.runInContext("results[0].reviewerDecisions = {category:'security'}; render();", context);
-  assert.equal(values()[0], '2 (33.3%)');
+  assert.equal(values()[0], '1 (25.0%)');
+  assert.match(nodes.get('chart-totals').textContent,/Filtered Results/);
+  nodes.get('review-filter').value='all';nodes.get('review-filter').onchange();
   nodes.get('pause-updates').onclick();
   vm.runInContext("results[7] = systemResult('new');results[7].decisions.category.choice='security'; completionOrder.push(7); completed++; render(false);", context);
   assert.equal(values()[3], '2 (28.6%)');
@@ -4951,4 +4953,30 @@ test('Default-expanded TEXT Input does not rewrite URLs and preserves manual col
   assert.equal(input().open,false);
   input().open=true;input().ontoggle();assert.match(navigation.search,/detail=input/);
   vm.runInContext('render()',context);assert.equal(input().open,true);
+});
+
+test('Overview applies combined filters while metrics remain whole-run and decisions stay available for zero matches',async()=>{
+  const first=assessmentFixture(),second=assessmentFixture(1);Object.assign(first.result,{hostId:'one',source:'/a',log:'target one'});Object.assign(second.result,{hostId:'two',source:'/b',log:'target two'});
+  const {context,nodes}=workspace([first,second]);await runTask(nodes);
+  const total=()=>nodes.get('summary').children[0].children[0].children.map(node=>node.textContent).join('');
+  const metricBefore=total();nodes.get('host-filter').value='one';nodes.get('host-filter').onchange();
+  assert.match(nodes.get('chart-totals').textContent,/Filtered Results · 1 classified/);assert.equal(total(),metricBefore);
+  nodes.get('source-filter').value='/b';nodes.get('source-filter').onchange();
+  assert.match(nodes.get('chart-totals').textContent,/0 classified/);assert.ok(nodes.get('classification-group').children.length>0);
+  assert.ok(nodes.get('category-chart').children.every(row=>row.children[2].textContent==='0 (0.0%)'));
+  nodes.get('source-filter').value='all';nodes.get('source-filter').onchange();showDecisions(context,['stable:response']);
+  assert.match(nodes.get('chart-totals').textContent,/1 classified/);
+  nodes.get('host-filter').value='all';nodes.get('host-filter').onchange();assert.doesNotMatch(nodes.get('chart-totals').textContent,/Filtered Results/);
+});
+
+test('Paged Overview uses server-filtered aggregates instead of visible rows and refreshes when the count is unchanged',async()=>{
+  const {context,nodes}=workspace([assessmentFixture(),assessmentFixture(1)]);await runTask(nodes);
+  const all=vm.runInContext('updateResultStatistics()',context);const filtered=structuredClone({...all,hosts:undefined,sources:undefined});filtered.total=80;
+  for(const entry of Object.values(filtered.decisionGroups))for(const values of Object.values(entry.counts))for(const key of Object.keys(values))values[key]=0;
+  filtered.decisionGroups['stable:area'].counts.all.a=80;
+  context.filteredChart=filtered;context.allChart=all;
+  vm.runInContext("pagedView={id:'scope',summary:allChart,chartSummary:filteredChart,items:[],cursors:[null],revision:0};$('host-filter').value='one';render(false,true)",context);
+  assert.equal(nodes.get('category-chart').children[0].children[2].textContent,'80 (100.0%)');
+  vm.runInContext("pagedView.chartSummary.total=40;pagedView.chartSummary.decisionGroups['stable:area'].counts.all.a=40;render(false,true)",context);
+  assert.equal(nodes.get('category-chart').children[0].children[2].textContent,'40 (100.0%)');
 });
