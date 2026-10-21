@@ -14,6 +14,9 @@
 
 ## Architecture
 
+Start with the [Docker quick start](#quick-start--docker--laya-cpu), or choose
+[installation without Docker](docs/native.md).
+
 [![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue)](https://deepwiki.com/call518/DeciFlow)
 
 ![DeciFlow architecture](images/DeciFlow-Architecture.png)
@@ -230,8 +233,8 @@ The Korean Criteria cover local policy area, response type, follow-up owner, urg
 and follow-up required. General project schedules and improvement plans alone do not
 count as outstanding commitments for an individual inquiry. The Task uses Batch / Manual,
 Events/Chunk 1, and Action None, with Enabled and Resume on Restart off. Start
-DeciFlow-UI, enable the Task, and click Run. For native execution,
-change the Source path to the sample file's actual local path.
+DeciFlow-UI, enable the Task, and click Run. Host execution and Source paths are
+covered in the [native guide](docs/native.md).
 
 All bundled VOC Criteria are Korean-only and omit language suffixes. Saved Source
 paths and customizations are preserved; edit Source paths manually when needed.
@@ -416,7 +419,7 @@ PORT=4000
 ```
 
 Set `COMPOSE_PROFILES=` and run `docker compose up -d`; UI and OAuth2-Proxy start without local Laya.
-For native DeciFlow on the Laya host, use `http://127.0.0.1:8000/v1/systemone` instead.
+For execution without Docker, follow the [native guide](docs/native.md).
 
 <a id="jev"></a>
 
@@ -434,7 +437,7 @@ PORT=4000
 
 ### DeciFlow Docker
 
-Choose this **instead of the Python startup in the appendix**. The DeciFlow host needs
+Choose Docker or the [native installation](docs/native.md). The DeciFlow host needs
 Docker with Compose, not local Python/uv/CUDA. Configure `.env` for Laya or Jev first.
 For external Laya or Jev, set `COMPOSE_PROFILES=` and start UI and OAuth2-Proxy:
 
@@ -542,7 +545,7 @@ Compose sets the UI trusted origin from `DECIFLOW_PUBLIC_URL`, including its HTT
 port. After changing this URL, update the Google authorized origin/redirect URI too
 and run `docker compose up -d ui oauth2-proxy`. Changing
 `DECIFLOW_CSRF_TRUSTED_ORIGINS` alone does not override the Compose setting.
-For native execution, this variable controls only the Origin check, not login.
+Native networking and authentication are covered in the [native guide](docs/native.md).
 See [authentication operations](docs/authentication.md#operations) for credential,
 allow-list, and certificate changes.
 
@@ -588,30 +591,10 @@ quality decisions based on sensor and inspection data. These applications requir
 additional integration and domain validation; image inspection also requires a
 vision model.
 
-## Appendix — Run directly on the host
+## Run Without Docker
 
-Choose this instead of DeciFlow Docker startup. This starts the local DeciFlow
-process only; it does not start OAuth2-Proxy or enable Google sign-in. OAuth values
-in `.env` do not add authentication to the Python server. Keep this listener local;
-use the default Compose deployment for protected browser access.
-The DeciFlow host needs Python 3.11+
-and uv. Use the same Laya Docker server or Jev connection settings; DeciFlow needs no GPU
-when connecting to a separate Laya server. Prepare `.env` in the repository and configure
-one engine, then run:
-
-```bash
-uv sync
-uv run python server.py
-```
-
-For native DeciFlow, set `LAYA_API_URL` in `.env` to the reachable Laya server URL
-(for Laya on the same host: `http://127.0.0.1:8000/v1/systemone`). The Compose-only
-hostname `laya` does not resolve outside its Docker network.
-
-Open **http://127.0.0.1:4000**. Startup initializes settings and default Criteria in
-`DECIFLOW_DATA_DIR/deciflow.sqlite3`, so the data directory must be writable. If the default
-`/var/lib/deciflow-data` is not writable, set `DECIFLOW_DATA_DIR=./data`
-in `.env`. Restart DeciFlow after configuration changes.
+Follow [Native installation and startup](docs/native.md) for local CPU, existing
+Laya/Jev, and manual native OP execution.
 
 ## Appendix — Custom Docker images (optional)
 
@@ -668,17 +651,8 @@ Tests cover both providers without paid calls, input budgets, streaming,
 cancellation, and file discovery/rotation. Keep both READMEs and actual/example
 `.env` files synchronized; environment comments use English and Korean.
 
-For optional local Laya development (the `laya` extra specifies v0.4.1):
-
-```bash
-uv sync --extra laya
-uv run --extra laya python laya_server.py
-```
-
-Set DeciFlow's `LAYA_API_URL` to loopback and start DeciFlow in another terminal. Use this
-local adapter to reject events exceeding the configured token budget before
-inference and expose truncation metadata. Set local server options through process environment
-variables. DeciFlow nodes using a separate Laya server do not need the `laya` extra.
+Local Laya installation and execution are covered in the
+[native guide](docs/native.md#quick-start-local-cpu).
 
 [Laya](https://github.com/NandhaKishorM/laya) · [Jev](https://docs.typesafe.ai/introduction/quickstart)
 

@@ -14,6 +14,9 @@
 
 ## 아키텍처
 
+[Docker 빠른 시작](#빠른-시작--docker--laya-cpu) 또는
+[Docker 없는 설치](docs/native.ko.md) 중 하나를 선택하세요.
+
 [![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue)](https://deepwiki.com/call518/DeciFlow)
 
 ![DeciFlow architecture](images/DeciFlow-Architecture.png)
@@ -223,8 +226,8 @@ JSONL (Line), Content Field `상담내용`으로 읽습니다. 이 필드만 분
 판단합니다. 일반적인 사업 일정이나 개선 계획만으로 개별 민원의 미완료 약속으로
 판단하지 않습니다. Task는 Batch / Manual, Events/Chunk 1, Action None이며
 Enabled와 Resume on Restart는 꺼져 있습니다. DeciFlow-UI를 시작하고
-Task를 활성화한 뒤 Run으로 실행하세요. 네이티브 실행 시 Source 경로를 실제 로컬
-샘플 파일 경로로 변경하세요.
+Task를 활성화한 뒤 Run으로 실행하세요. 호스트 실행과 Source 경로는
+[네이티브 안내](docs/native.ko.md)를 참고하세요.
 
 모든 기본 VOC Criteria는 한국어만 제공하며 이름에 언어 접미사를 붙이지 않습니다.
 저장된 Source 경로와 사용자 수정은 유지하며 필요한 경로 변경은
@@ -406,7 +409,7 @@ PORT=4000
 ```
 
 `COMPOSE_PROFILES=`로 두고 `docker compose up -d`를 실행하면 로컬 Laya 없이 UI와 OAuth2-Proxy가 시작됩니다.
-Laya 호스트에서 DeciFlow를 네이티브로 실행하면 대신 `http://127.0.0.1:8000/v1/systemone`을 사용하세요.
+Docker 없이 실행하려면 [네이티브 안내](docs/native.ko.md)를 따르세요.
 
 <a id="jev"></a>
 
@@ -424,7 +427,7 @@ PORT=4000
 
 ### DeciFlow Docker
 
-부록의 **Python 직접 실행 대신 이 방식을 선택**합니다. DeciFlow 호스트에는
+Docker 또는 [네이티브 설치](docs/native.ko.md) 중 하나를 선택합니다. DeciFlow 호스트에는
 Compose가 포함된 Docker가 필요하며 로컬 Python·uv·CUDA는 필요하지 않습니다.
 먼저 `.env`에 Laya 또는 Jev를 설정하세요. 외부 Laya 또는 Jev를 사용하면
 `COMPOSE_PROFILES=`로 두고 UI와 OAuth2-Proxy를 실행합니다:
@@ -530,7 +533,7 @@ Compose는 HTTPS 포트를 포함한 `DECIFLOW_PUBLIC_URL`을 UI 신뢰 출처�
 이 URL을 변경하면 Google 승인 원본·리디렉션 URI도 바꾸고
 `docker compose up -d ui oauth2-proxy`로 적용하세요.
 `DECIFLOW_CSRF_TRUSTED_ORIGINS`만 수정해도 Compose 지정값은 바뀌지 않습니다.
-네이티브 실행에서 이 변수는 Origin 검사만 제어하며 로그인을 제공하지 않습니다.
+네이티브 네트워크·인증 설정은 [네이티브 안내](docs/native.ko.md)를 참고하세요.
 인증정보·허용 목록·인증서 변경은 [인증 운영 안내](docs/authentication.ko.md#운영)를 참고하세요.
 
 ## 제약
@@ -572,28 +575,10 @@ Batch·Realtime 실행은 기존 ID로 복구하며 일시정지 상태도 유�
 같은 흐름을 적용할 수 있습니다. 이들 활용에는 추가 연동과 분야별 검증이 필요하며,
 이미지 검사에는 비전 모델 연동도 필요합니다.
 
-## Appendix — 호스트 직접 실행
+## Docker 없이 실행
 
-이 방식은 로컬 DeciFlow 프로세스만 시작하며 OAuth2-Proxy·Google 로그인을 자동으로
-실행하지 않습니다. `.env`에 OAuth 값이 있어도 Python 서버에 인증이 추가되지 않습니다.
-수신 포트는 로컬로 제한하고 보호된 브라우저 접속에는 기본 Compose 구성을 사용하세요.
-
-Docker 실행 대신 선택합니다. DeciFlow 호스트에 Python 3.11+와 uv가 필요합니다.
-Laya Docker 서버 또는 Jev 연결 설정은 동일하며, 별도 Laya 서버를 사용하면 DeciFlow에 GPU가 필요하지 않습니다.
-저장소에서 `.env`를 준비하고 선택한 엔진을 설정한 뒤 실행하세요.
-
-```bash
-uv sync
-uv run python server.py
-```
-
-네이티브 DeciFlow에서는 실행 전에 `.env`의 `LAYA_API_URL`을 접근 가능한 Laya 서버
-주소로 설정하세요(같은 호스트: `http://127.0.0.1:8000/v1/systemone`).
-Compose 전용 호스트 이름 `laya`는 Docker 네트워크 밖에서는 사용할 수 없습니다.
-
-**http://127.0.0.1:4000**을 엽니다. 시작 시 `DECIFLOW_DATA_DIR/deciflow.sqlite3`에 설정과 기본 Criteria를
-초기화하므로 데이터 디렉터리에 쓰기 권한이 필요합니다. 기본 `/var/lib/deciflow-data`에 쓸 수 없다면 `.env`에서
-`DECIFLOW_DATA_DIR=./data`를 설정하세요. 설정 변경 후 DeciFlow를 재시작합니다.
+로컬 CPU·기존 Laya/Jev·네이티브 OP 직접 실행은
+[네이티브 설치·기동 안내](docs/native.ko.md)를 따라 진행하세요.
 
 ## Appendix — Docker 커스텀 이미지(선택)
 
@@ -649,17 +634,7 @@ node --test tests/test_ui.mjs
 확인합니다. 두 README와 실제·예제 `.env`를 함께 관리하며 환경변수 주석은
 영어와 한국어를 병기합니다.
 
-선택적 로컬 Laya 개발 환경(`laya` 추가 의존성은 v0.4.1 지정):
-
-```bash
-uv sync --extra laya
-uv run --extra laya python laya_server.py
-```
-
-DeciFlow의 `LAYA_API_URL`을 루프백으로 설정하고 다른 터미널에서 DeciFlow를 시작하세요.
-이 로컬 어댑터는 추론 전에 설정된 토큰 예산을 초과한 이벤트를 거절하고
-잘림 메타데이터를 제공합니다. 로컬 서버 옵션은 프로세스 환경변수로 지정합니다.
-별도 Laya 서버를 사용하는 DeciFlow 실행 노드에는 `laya` 추가 의존성이 필요하지 않습니다.
+로컬 Laya 설치·기동은 [네이티브 안내](docs/native.ko.md#빠른-시작-로컬-cpu)에서 설명합니다.
 
 [Laya](https://github.com/NandhaKishorM/laya) · [Jev](https://docs.typesafe.ai/introduction/quickstart)
 

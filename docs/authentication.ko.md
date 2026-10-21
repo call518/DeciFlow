@@ -15,6 +15,8 @@ DeciFlow로 중계하므로 Nginx는 필요하지 않습니다.
 설정은 `.env`에 넣고 `docker compose up -d`로 전체 구성을 시작합니다.
 UI의 호스트 포트는 공개하지 않습니다.
 
+Docker 없는 설치와 OP 직접 실행은 [네이티브 안내](native.ko.md)를 따르세요.
+
 ## 준비 사항
 
 - Compose 플러그인이 포함된 Docker와 DeciFlow `.env`.

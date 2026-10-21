@@ -5,6 +5,7 @@
 Start with the [quick start](../README.md#quick-start--docker--laya-cpu) to run
 DeciFlow and Laya. Complete [Google sign-in and HTTPS setup](authentication.md)
 before starting the default Docker deployment. Use the guides below for the task you need.
+For Docker-free local execution, start with the [native guide](native.md).
 
 For Remote File, register SSH Keys and SSH Hosts in Settings first. Then follow
 Source → Criteria → optional Actions → Tasks, and inspect current/latest Task results in Main.
@@ -29,6 +30,7 @@ Source → Criteria → optional Actions → Tasks, and inspect current/latest T
 | Reference | Contents |
 | --- | --- |
 | [DNS and TLS Certificates](dns-tls.md) | Public DNS, Certbot DNS-01/RFC2136, certificate deployment, renewal, and WSL checks |
+| [Native Installation](native.md) | Docker-free local demo, engine selection, startup/shutdown, and manual OP |
 | [Google Sign-In](authentication.md) | Default OAuth2-Proxy deployment, email allow list, HTTPS, and verification |
 | [Docker deployment](../README.md#docker-deployment-details) | Published images, CPU/CUDA profiles, ports, mounts, volumes, and lifecycle commands |
 | [Dockerfile and Compose](../README.md#dockerfile-and-compose-responsibilities) | UI runtime image and how Compose configures its services |

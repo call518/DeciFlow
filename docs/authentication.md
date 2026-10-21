@@ -15,6 +15,8 @@ does not add per-user storage or roles.
 settings belong in `.env`; `docker compose up -d` starts the complete deployment.
 The UI has no published host port.
 
+For Docker-free installation and manual OP execution, use the [native guide](native.md).
+
 ## Prerequisites
 
 - Docker with the Compose plugin, and the DeciFlow `.env`.
