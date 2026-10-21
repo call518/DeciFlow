@@ -230,7 +230,8 @@ Classification Results 우측 아래의 **▲ / ▼** 플로팅 버튼으로 결
 최상단·최하단으로 이동합니다. 결과 페이지를 바꾸거나 분석을 실행하지 않습니다.
 
 결과별 Action·Source/Host·Criteria/Chunk 정보는 **Details**에 접어 표시하고,
-Action 실패는 카드에 바로 표시합니다. 전체 정보는 **View Result JSON**에도 보존합니다.
+Action 실패는 카드에 짧은 요약으로 표시하며, **Error Details**를 펼치면
+실행 정보와 저장된 오류 출력을 확인할 수 있습니다. 전체 정보는 **View Result JSON**에도 보존합니다.
 
 모든 결과에 **Review**와 같은 접기·펼치기 형식의 **Response**를 제공합니다.
 응답 본문은 읽기 전용 패널로 표시하며 Copy로 복사할 수 있습니다.

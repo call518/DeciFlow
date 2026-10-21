@@ -236,7 +236,8 @@ Floating **▲ / ▼** buttons scroll to the top or bottom of Classification Res
 without changing result pages or starting analysis.
 
 Per-result Action, Source/Host, and Criteria/chunk metadata is collapsed under **Details**;
-Action failures remain visible. Full metadata is retained in **View Result JSON**.
+Action failures show a short summary on the card; expand **Error Details** for
+execution metadata and the recorded error output. Full metadata is retained in **View Result JSON**.
 
 Every result includes a **Response** disclosure styled like **Review**,
 with a read-only response panel and Copy. It shows the provider response and specific format-validation

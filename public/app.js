@@ -2592,9 +2592,14 @@ function render(updateList = true, incremental = false) {
     const fields=[];
     if (result.actionExecution) {
       const execution=result.actionExecution;
-      const value=`${execution.name} · ${execution.status} · ${execution.elapsedMs}ms${execution.exitCode != null ? ` · exit ${execution.exitCode}` : ''}${execution.error ? ` · ${execution.error}` : ''}`;
+      const value=`${execution.name} · ${execution.status} · ${execution.elapsedMs}ms${execution.exitCode != null ? ` · exit ${execution.exitCode}` : ''}`;
       fields.push(['Action',value]);
-      if(execution.status==='failed')row.append(element('p',`Action execution: ${value}`,'error-message'));
+      if(execution.status==='failed'){
+        row.append(element('p',`Action failed: ${execution.name}`,'error-message'));
+        const details=element('details','','result-disclosure action-error-details');
+        details.append(element('summary','Error Details'),element('pre',`${value}${execution.error ? `\n\n${execution.error}` : ''}`,'json-content'));
+        handleResultDisclosure(details,result,'action-error');row.append(details);
+      }
     }
     if (result.source) {
       const end=result.lineEnd || result.line;

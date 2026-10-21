@@ -819,8 +819,31 @@ test('file Actions are assigned in requests and execution failures are visible',
   selector.value = 'notify'; selector.onchange();
   await runTask(nodes);
   assert.equal(requests[0].sources[0].actionId, 'notify');
-  assert.ok(nodes.get('results').children[0].children.some(node => node.textContent?.includes('Action execution: notify · failed · 12ms · exit 7')));
+  assert.ok(nodes.get('results').children[0].children.some(node => node.textContent==='Action failed: notify'));
+  const details=nodes.get('results').children[0].children.find(node=>node.children[0]?.textContent==='Error Details');
+  assert.equal(details.open,false);
+  assert.equal(details.children[1].textContent,'notify · failed · 12ms · exit 7');
   assert.equal(selector.disabled, false);
+});
+
+for (const engine of ['laya','jev']) test(`${engine} Action traceback stays in collapsed Error Details`, async () => {
+  const event=result(0,false);
+  const error='Traceback (most recent call last):\n  File "/actions/send.py", line 12, in <module>\n    send()\nConnectionError: Connection refused\n';
+  event.result.actionExecution={name:'Sample Elasticsearch',status:'failed',exitCode:1,elapsedMs:25,error};
+  const {nodes,context,requests}=workspace([{type:'start',engine,total:1},event]);
+  await runTask(nodes);
+  const row=()=>nodes.get('results').children[0];
+  const details=()=>row().children.find(node=>node.children[0]?.textContent==='Error Details');
+  assert.equal(row().children.find(node=>node.className==='error-message').textContent,'Action failed: Sample Elasticsearch');
+  assert.equal(details().open,false);
+  assert.equal(details().children[1].textContent,`Sample Elasticsearch · failed · 25ms · exit 1\n\n${error}`);
+  const requestCount=requests.length;
+  details().open=true;details().ontoggle();
+  vm.runInContext('render(false)',context);
+  assert.equal(details().open,true);
+  assert.equal(requests.length,requestCount);
+  const json=row().children.at(-1);json.open=true;json.ontoggle();
+  assert.equal(JSON.parse(json.children[1].children[1].textContent).actionExecution.error,error);
 });
 
 test('Action editor sends Python Versions and module lists and recovers from preparation errors', async () => {
@@ -4350,13 +4373,18 @@ test('Result metadata is collapsed under Details while Action failures stay visi
   assert.equal(values.Source,'/host-logs/sample-logs/voc-local-gov-consulting-qna.jsonl · File line 60 · JSONL Record 60');
   assert.equal(values.Criteria,'Sample VOC Local Gov Consulting QnA · Chunk: 1 event (max 1)');
   assert.ok(!row(0).children.some(child=>child.className==='caption'&&child.textContent?.startsWith('Action execution:')));
-  assert.ok(row(1).children.some(child=>child.className==='error-message'&&child.textContent==='Action execution: Notify · failed · 12ms · exit 7 · Connection refused'));
+  assert.ok(row(1).children.some(child=>child.className==='error-message'&&child.textContent==='Action failed: Notify'));
+  const errorDetails=()=>row(1).children.find(child=>child.children[0]?.textContent==='Error Details');
+  assert.equal(errorDetails().open,false);
+  assert.equal(errorDetails().children[1].textContent,'Notify · failed · 12ms · exit 7\n\nConnection refused');
+  errorDetails().open=true;errorDetails().ontoggle();
   const failedValues=Object.fromEntries(details(1).children[1].children.map(field=>[field.children[0].textContent,field.children[1].textContent]));
   assert.equal(failedValues.Host,'Remote Host (host:22)');
   assert.equal(failedValues.Source,'ssh://host/logs · File line 7');
   details(0).open=true;details(0).ontoggle();
   vm.runInContext('render(false)',context);
   assert.equal(details(0).open,true);
+  assert.equal(errorDetails().open,true);
   const json=row(0).children.at(-1);json.open=true;json.ontoggle();
   const saved=JSON.parse(json.children[1].children[1].textContent);
   assert.equal(saved.source,success.result.source);
