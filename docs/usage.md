@@ -4,6 +4,8 @@
 
 ## Sign In and Access
 
+When signed in, your email appears in an account badge directly below the Decision Engine status at the top right. Click the badge to open the account menu and select **Sign Out**.
+
 The default HTTP demo opens `http://localhost:4000` without sign-in.
 The following sign-in instructions apply when `OAUTH2_PROXY_ENABLED=true`.
 Open the HTTPS origin in `.env`'s

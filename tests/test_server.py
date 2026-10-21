@@ -351,3 +351,21 @@ async def test_clean_ui_routes_support_direct_links_without_catching_api_errors(
             assert response.status_code == 404
             assert response.headers["content-type"].startswith("application/json")
         assert (await client.post("/tasks")).status_code != 200
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("enabled", ["true", "false"])
+async def test_status_exposes_authentication_mode_only(
+    monkeypatch: pytest.MonkeyPatch, enabled: str
+) -> None:
+    """The browser reads identity from OAuth2-Proxy, never client-supplied headers."""
+    monkeypatch.setenv("OAUTH2_PROXY_ENABLED", enabled)
+    monkeypatch.setenv("DECISION_ENGINE", "laya")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=server.app), base_url="http://test"
+    ) as client:
+        response = await client.get(
+            "/api/status", headers={"X-Forwarded-Email": "forged@example.com"}
+        )
+    assert response.json()["authenticationEnabled"] == (enabled == "true")
+    assert "forged@example.com" not in response.text

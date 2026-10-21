@@ -105,6 +105,7 @@ function workspace(events, status, storage = { getItem: () => null, setItem() {}
       if (path === '/api/actions') return { ok: true, json: async () => ({ actions: [] }) };
       if (path === '/api/engine-health') return {ok:true,json:async()=>({engine:status?.engine || 'laya',connection:'connected'})};
       if (path === '/api/status') return status ? { ok: true, json: async () => status } : new Promise(() => {});
+      if (path === '/oauth2/userinfo') return {ok:true,json:async()=>({email:'approved-user@example.com'})};
       requests.push(JSON.parse(options.body));
       return { ok: true, body: {} };
     },
@@ -5055,4 +5056,39 @@ test('Cascading filters support keyboard navigation, Enter search and Escape clo
   nodes.get('result-filter-menu').open=true;vm.runInContext("resultFilterCategories.get('log-search').onclick()",context);
   nodes.get('log-search').value='missing';nodes.get('log-search').onkeydown({key:'Enter',preventDefault(){}});
   assert.equal(nodes.get('result-filter-menu').open,false);assert.equal(vm.runInContext('filteredResults.indices.length',context),0);
+});
+
+test('signed-in account appears only with proxy authentication and uses session email as text', async () => {
+  const {nodes,context}=workspace([]);
+  let calls=0;
+  context.fetch=async path=>{
+    assert.equal(path,'/oauth2/userinfo');calls++;
+    return {ok:true,json:async()=>({email:'<script>user</script>@example.com'})};
+  };
+  await vm.runInContext('handleLoadSignedInUser(false)',context);
+  assert.equal(calls,0);
+  assert.equal(nodes.get('signed-in').hidden,true);
+  await vm.runInContext('handleLoadSignedInUser(true)',context);
+  const row=nodes.get('signed-in');
+  assert.equal(row.hidden,false);
+  const menu=row.children[0],summary=menu.children[0],signOut=menu.children[1].children[0];
+  assert.equal(summary.children[0].textContent,'<script>user</script>@example.com');
+  assert.equal(summary.className,'pill account-summary');
+  assert.equal(signOut.textContent,'Sign Out');
+  assert.equal(signOut.href,'/oauth2/sign_out');
+  let focused=false,prevented=false;
+  summary.focus=()=>{focused=true;};menu.open=true;
+  row.onkeydown({key:'Escape',preventDefault(){prevented=true;}});
+  assert.equal(menu.open,false);assert.equal(focused,true);assert.equal(prevented,true);
+  assert.equal(calls,1);
+  for(const response of [
+    {ok:false},
+    {ok:true,json:async()=>({email:''})},
+    {ok:true,json:async()=>{throw new Error('not JSON');}},
+  ]){
+    context.fetch=async()=>response;
+    await vm.runInContext('handleLoadSignedInUser(true)',context);
+    assert.equal(row.hidden,true);
+    assert.equal(row.children.length,0);
+  }
 });

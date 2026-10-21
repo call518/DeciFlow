@@ -1141,11 +1141,71 @@ footer {
 }
 
 #status {
+  display: inline-block;
   color: #000;
   font-weight: 700;
   max-width: 100%;
   overflow-wrap: anywhere
 }
+
+.intro-status {
+  margin-left: auto;
+  max-width: 100%;
+  min-width: 0;
+  text-align: right;
+}
+
+.signed-in {
+  margin-top: 4px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.account-menu {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  text-align: left;
+}
+
+.account-summary {
+  color: #000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.account-summary::-webkit-details-marker { display: none; }
+.account-summary:focus-visible { outline: 2px solid #79ad90; outline-offset: 2px; }
+.account-summary > strong { min-width: 0; }
+.account-summary::after { content: '▾'; flex-shrink: 0; }
+.account-menu[open] > summary::after { content: '▴'; }
+
+.account-options {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  right: 0;
+  width: 180px;
+  max-width: calc(100vw - 36px);
+  padding: 4px;
+  border: 1px solid #cbdcd2;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 5px 18px #102f2626;
+}
+
+.account-options a {
+  display: block;
+  padding: 8px;
+  border-radius: 4px;
+  color: #284438;
+  text-decoration: none;
+}
+
+.account-options a:hover, .account-options a:focus-visible { background: #e3eee7; }
 
 .selected-engine {
   color: #7c3aed;

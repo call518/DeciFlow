@@ -184,6 +184,7 @@ async def handle_status(request: Request) -> Response:
             "configured": engine.name == "laya" or bool(engine.api_key),
             "engine": engine.name,
             "model": engine.model,
+            "authenticationEnabled": os.getenv("OAUTH2_PROXY_ENABLED") == "true",
             "workingDirectory": str(Path.cwd()),
             "profiles": {key: value["label"] for key, value in PROFILES.items()},
             "chartDefaults": {

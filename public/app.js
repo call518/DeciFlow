@@ -3232,11 +3232,52 @@ async function handlePagedProcessing(job) {
   finally{busy=false;controller.abort();activeRequest=undefined;$('export-reviewed').disabled = $('export').disabled =!completed;handleLoadTasks();}
 }
 handleLoadResultSettings();
+async function handleLoadSignedInUser(enabled) {
+  const row = $('signed-in');
+  row.hidden = true;
+  row.replaceChildren();
+  if (!enabled) return;
+  try {
+    const response = await fetch('/oauth2/userinfo', {cache:'no-store'});
+    if (!response.ok) return;
+    const data = await response.json();
+    if (typeof data.email !== 'string' || !data.email.trim()) return;
+    const menu = element('details', '', 'account-menu');
+    const summary = element('summary', '', 'pill account-summary');
+    summary.setAttribute('aria-label', `Account: ${data.email}`);
+    summary.append(element('strong', data.email));
+    const options = element('nav', '', 'account-options');
+    options.setAttribute('aria-label', 'Account Actions');
+    const signOut = element('a', 'Sign Out');
+    signOut.href = '/oauth2/sign_out';
+    options.append(signOut);
+    menu.append(summary, options);
+    row.append(menu);
+    row.onkeydown = event => {
+      if (event.key === 'Escape' && menu.open) {
+        event.preventDefault();
+        menu.open = false;
+        summary.focus();
+      }
+    };
+    row.hidden = false;
+  } catch {
+    // Keep account information hidden when the proxy session cannot be read.
+  }
+}
+if (document.addEventListener) {
+  document.addEventListener('click', event => {
+    const row = $('signed-in');
+    const menu = row.children[0];
+    if (menu?.open && !row.contains(event.target)) menu.open = false;
+  });
+}
 fetch('/api/status').then(async response => {
   const data = await readApiJsonResponse(response);
   if (!response.ok) throw new Error(data.error);
   return data;
 }).then(async data => {
+  handleLoadSignedInUser(data.authenticationEnabled);
   $('host-name').textContent = data.host.hostname;
   $('host-os').textContent = data.host.os;
   $('host-addresses').textContent = data.host.addresses.join('\n') || 'IP unavailable';

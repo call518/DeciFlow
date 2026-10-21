@@ -4,6 +4,8 @@
 
 ## 로그인과 접근
 
+로그인한 이메일은 우측 상단 Decision Engine 상태 바로 아래의 계정 배지에 표시합니다. 배지를 클릭해 계정 메뉴를 열고 **Sign Out**을 선택하면 로그아웃합니다.
+
 기본 HTTP 데모는 `http://localhost:4000`을 로그인 없이 사용합니다.
 `OAUTH2_PROXY_ENABLED=true`인 경우 다음 로그인 안내가 적용됩니다. `.env`의 `OAUTH2_PROXY_PUBLIC_URL`에 지정한 HTTPS 출처
 (4443 포트)를 열고 이메일 허용 목록에 등록된 Google 계정으로 로그인합니다.

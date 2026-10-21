@@ -142,6 +142,7 @@ def test_real_proxy_access_and_streaming(
 
     for method, path in [
         ("GET", "/api/status"),
+        ("GET", "/oauth2/userinfo"),
         ("POST", "/api/tasks"),
         ("PUT", "/api/sources"),
         ("DELETE", "/api/actions"),
