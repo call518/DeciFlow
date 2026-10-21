@@ -47,6 +47,7 @@ function workspace(events, status, storage = { getItem: () => null, setItem() {}
   const listeners = new Map();
   const node = () => ({
     children: [], value: '', checked: false, attributes: {},
+    contains(target) { return this===target || this.children.some(child=>child && typeof child==='object' && child.contains?.(target)); },
     showModal() { this.returnValue='delete'; this.onclose(); },
     append(...children) { for(const child of children){if(child?.parentNode)child.parentNode.removeChild(child);this.children.push(child);if(child && typeof child==='object')child.parentNode=this;} },
     remove() { this.parentNode?.removeChild(this); },
@@ -3595,7 +3596,7 @@ test('Elapsed times use separate metrics and review count appears beside host de
   assert.deepEqual(elapsedValues(nodes),['1 min 5 sec','28.9 sec (44.5%)']);
   assert.equal(nodes.get('needs-review-count').textContent,'Needs Review: 0');
   const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
-  assert.match(html,/class="result-display-settings"[^]*?id="decision-display-menu"[^]*?id="host-status"[^]*?id="needs-review-count"[^]*?id="source-hosts-detail"[^]*?class="result-toolbar"[^]*?id="result-filter-type"/);
+  assert.match(html,/class="result-display-settings"[^]*?id="result-filter-type"[^]*?id="decision-display-menu"[^]*?id="host-status"[^]*?id="needs-review-count"[^]*?id="source-hosts-detail"/);
 });
 
 
@@ -4979,4 +4980,36 @@ test('Paged Overview uses server-filtered aggregates instead of visible rows and
   assert.equal(nodes.get('category-chart').children[0].children[2].textContent,'80 (100.0%)');
   vm.runInContext("pagedView.chartSummary.total=40;pagedView.chartSummary.decisionGroups['stable:area'].counts.all.a=40;render(false,true)",context);
   assert.equal(nodes.get('category-chart').children[0].children[2].textContent,'40 (100.0%)');
+});
+
+test('Cascading filter categories reveal values without requests and selections apply through the shared filters',async()=>{
+  const one=result(0,false),two=result(1,false);one.result.hostId='one';one.result.hostName='Host One';two.result.hostId='two';two.result.hostName='Host Two';
+  const {context,nodes,requests}=workspace([one,two]);await runTask(nodes);
+  const before=requests.length,menu=nodes.get('result-filter-menu');menu.open=true;menu.ontoggle();
+  const host=vm.runInContext("resultFilterCategories.get('host-filter')",context);host.onmouseenter();
+  assert.equal(requests.length,before);assert.equal(nodes.get('result-filter-summary').textContent,'Host');
+  const option=nodes.get('result-filter-options').children.find(button=>button.attributes['data-filter-value']==='one');
+  option.onclick();assert.equal(menu.open,false);assert.equal(nodes.get('host-filter').value,'one');assert.deepEqual(logs(nodes),['log-0']);
+  menu.open=true;vm.runInContext("resultFilterCategories.get('log-search').onclick()",context);
+  const input=nodes.get('log-search');assert.equal(nodes.get('result-filter-options').contains(input),true);
+  input.value='log-0';input.oninput();
+  host.onmouseenter();assert.equal(nodes.get('result-filter-state').contains(input),true);
+  vm.runInContext("resultFilterCategories.get('log-search').onclick()",context);assert.equal(input.value,'log-0');
+  assert.equal(nodes.get('host-filter').value,'one');assert.equal(requests.length,before);
+});
+
+test('Cascading filters support keyboard navigation, Enter search and Escape close',async()=>{
+  const {context,nodes}=workspace([result(0,false)]);await runTask(nodes);let focused='';
+  const categories=vm.runInContext('[...resultFilterCategories]',context);
+  for(const [id,button] of categories)button.focus=()=>{focused=id;button.onfocus();};
+  nodes.get('result-filter-summary').focus=()=>{focused='summary';};
+  nodes.get('result-filter-summary').onkeydown({key:'ArrowDown',preventDefault(){}});
+  assert.equal(nodes.get('result-filter-menu').open,true);assert.equal(focused,'log-search');
+  context.filterKeyEvent={key:'ArrowDown',target:categories[0][1],preventDefault(){}};vm.runInContext('handleResultFilterMenuKeydown(filterKeyEvent)',context);
+  assert.equal(focused,'processing-filter');assert.equal(nodes.get('result-filter-type').value,'processing-filter');
+  context.filterKeyEvent={key:'Escape',preventDefault(){}};vm.runInContext('handleResultFilterMenuKeydown(filterKeyEvent)',context);
+  assert.equal(nodes.get('result-filter-menu').open,false);assert.equal(focused,'summary');
+  nodes.get('result-filter-menu').open=true;vm.runInContext("resultFilterCategories.get('log-search').onclick()",context);
+  nodes.get('log-search').value='missing';nodes.get('log-search').onkeydown({key:'Enter',preventDefault(){}});
+  assert.equal(nodes.get('result-filter-menu').open,false);assert.equal(vm.runInContext('filteredResults.indices.length',context),0);
 });

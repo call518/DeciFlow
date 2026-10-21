@@ -86,12 +86,15 @@ reduces input variation; it does not guarantee identical predictions or accuracy
 
 ### Results and controls
 
-Show Decisions and review/host controls sit above the full-width result filters.
+The filter menu, Show Decisions, and review/host controls share a compact toolbar.
 Filter types appear in this order: Search Text, Processing Status, Source, Host, Review Status.
 Search Text is selected initially.
 
-Choose **Filter Type** on the left and set its value on the right. Review Status,
-Processing Status, Host, and Source use a dropdown; Search Text uses a text field. Switching
+Open the single filter menu, then hover over or click a filter type to show its
+choices. Selecting a value applies it and closes the menu. Search Text opens a text
+field; Enter applies the search and closes it. Outside clicks and Escape close the
+menu. Use Up/Down to navigate categories or values and Right/Left to move between
+levels. On narrow screens, the choices appear below the categories. Switching
 types preserves applied conditions and does not refresh results. Conditions combine
 with AND and appear as removable buttons below the toolbar. Use **Clear All** to reset
 them. Long Source values are shortened on the button; its tooltip keeps the full path.

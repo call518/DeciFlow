@@ -5,6 +5,8 @@ const runStateBadge=$('run-state');
 const routeOpeners = new Map();
 const resultFilterLabels={'processing-filter':'Processing Status','source-filter':'Source','host-filter':'Host','log-search':'Search Text','review-filter':'Review Status'};
 let resultFilterSignature='';
+let resultFilterOptionsSignature='';
+const resultFilterCategories=new Map();
 let applyingRoute = false;
 let routeGeneration = 0;
 const routeBases = {'source-view':'/sources','criteria-view':'/criteria','action-view':'/actions','task-view':'/tasks','task-history':'/tasks','ssh-key-view':'/settings/ssh-keys','ssh-host-view':'/settings/ssh-hosts'};
@@ -2811,9 +2813,70 @@ function renderReviewFilter(stats) {
   select.value=selected;
   select.title='Counts cover the entire run. Review groups exclude processing failures.';
 }
+function handleCloseResultFilterMenu(focus=false) {
+  $('result-filter-menu').open=false;if(focus)$('result-filter-summary').focus();
+}
+function handleResultFilterMenuKeydown(event) {
+  const menu=$('result-filter-menu');if(!menu.open)return;
+  if(event.key==='Escape'){event.preventDefault();handleCloseResultFilterMenu(true);return;}
+  const categories=[...resultFilterCategories.values()];
+  const category=categories.indexOf(event.target);
+  const values=[...$('result-filter-options').children].filter(node=>node.tagName?.toLowerCase()==='button' && !node.disabled);
+  const value=values.indexOf(event.target);
+  if(category>=0){
+    if(event.key==='ArrowDown' || event.key==='ArrowUp'){
+      event.preventDefault();const index=(category+(event.key==='ArrowDown'?1:-1)+categories.length)%categories.length;
+      categories[index].focus();categories[index].onclick();
+    }else if(event.key==='ArrowRight'){
+      event.preventDefault();($('result-filter-type').value==='log-search'?$('log-search'):values[0])?.focus();
+    }
+  }else if(value>=0 && (event.key==='ArrowDown' || event.key==='ArrowUp')){
+    event.preventDefault();values[(value+(event.key==='ArrowDown'?1:-1)+values.length)%values.length].focus();
+  }else if(event.key==='ArrowLeft' && value>=0){event.preventDefault();resultFilterCategories.get($('result-filter-type').value)?.focus();}
+}
+function renderResultFilterMenu() {
+  const selected=$('result-filter-type').value || 'log-search';
+  $('result-filter-summary').textContent=resultFilterLabels[selected] || 'Search Text';
+  if(!resultFilterCategories.size){
+    for(const id of ['log-search','processing-filter','source-filter','host-filter','review-filter']){
+      const button=element('button',`${resultFilterLabels[id]} ›`,'result-filter-category');button.type='button';
+      button.setAttribute('data-filter-type',id);button.setAttribute('aria-controls','result-filter-options');
+      button.onfocus=button.onmouseenter=button.onclick=()=>{$('result-filter-type').value=id;renderResultFilters();};
+      resultFilterCategories.set(id,button);$('result-filter-categories').append(button);
+    }
+  }
+  for(const [id,button] of resultFilterCategories){button.setAttribute('aria-expanded',String(id===selected));}
+  const control=$(selected);const options=selected==='log-search'?[]:Array.from(control.options);
+  const signature=JSON.stringify([selected,selected==='log-search'?'':control.value,control.disabled,options.map(option=>[option.value,option.text])]);
+  if(signature===resultFilterOptionsSignature)return;resultFilterOptionsSignature=signature;
+  const panel=$('result-filter-options');const search=$('log-search');
+  const focusedValue=panel.contains(document.activeElement)?document.activeElement?.getAttribute?.('data-filter-value'):null;
+  const scrollTop=panel.scrollTop;let restoreFocus;
+  if(panel.contains(search))$('result-filter-state').append(search);
+  panel.replaceChildren();
+  if(selected==='log-search'){
+    const label=element('label','Search Text');label.append(search);panel.append(label);return;
+  }
+  for(const option of options){
+    const button=element('button',option.text,'result-filter-option');button.type='button';button.disabled=Boolean(control.disabled || option.disabled);
+    button.setAttribute('data-filter-value',option.value);button.setAttribute('aria-pressed',String(option.value===control.value));button.title=option.text;
+    button.onclick=()=>{control.value=option.value;handleCloseResultFilterMenu();return handleResultFilter();};panel.append(button);
+    if(option.value===focusedValue)restoreFocus=button;
+  }
+  restoreFocus?.focus({preventScroll:true});panel.scrollTop=scrollTop;
+}
+$('result-filter-menu').ontoggle=()=>{if($('result-filter-menu').open)renderResultFilterMenu();};
+$('result-filter-summary').onkeydown=event=>{
+  if(event.key==='ArrowDown'){event.preventDefault();$('result-filter-menu').open=true;renderResultFilterMenu();resultFilterCategories.values().next().value?.focus();}
+};
+if(document.addEventListener){
+  document.addEventListener('click',event=>{if($('result-filter-menu').open && !$('result-filter-menu').contains(event.target))handleCloseResultFilterMenu();});
+  document.addEventListener('keydown',handleResultFilterMenuKeydown);
+}
 function renderResultFilters() {
   const selected=$('result-filter-type').value || 'log-search';
   $('result-filter-type').value=selected;
+  renderResultFilterMenu();
   const items=[];
   for(const [id,label] of Object.entries(resultFilterLabels)){
     const control=$(id);
@@ -2858,6 +2921,7 @@ $('log-search').oninput = () => {
   if(!pagedView)return handleResultFilter();
   clearTimeout(resultSearchTimer);resultSearchTimer=setTimeout(()=>handleResultFilter().catch(error=>{handleMessage('message',error.message,true);}),250);
 };
+$('log-search').onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();clearTimeout(resultSearchTimer);handleCloseResultFilterMenu(true);return handleResultFilter();}};
 $('source-filter').onchange = handleResultFilter;
 $('host-filter').onchange = handleResultFilter;
 $('previous').onclick = () => { if(pagedView){page--;pagedView.cursors.pop();return handleRefreshResults(true);}page--;render(); };
