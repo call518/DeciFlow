@@ -70,14 +70,13 @@ access 로그, 애플리케이션 오류, 운영 이벤트에 활용하세요.
 
 ## 빠른 시작 — Docker + Laya CPU
 
-**전제:** 같은 Linux 호스트에 Git·Docker(Compose 플러그인 포함), 도메인·신뢰할 수 있는
-TLS 인증서·Google OAuth 웹 애플리케이션 클라이언트가 필요합니다.
-HTTPS 진입점은 4443이며 Google 리디렉션 URI에도 같은 포트를 등록하세요.
+**전제:** 같은 Linux 호스트에 Git·Docker Compose 2.20.0+가 필요합니다.
+기본 HTTP 데모에는 도메인·인증서·Google 설정이 필요하지 않습니다.
 호환 NVIDIA GPU가 있으면 [GPU로 실행하기(CUDA)](#laya-gpu)를 참고해
 Laya의 추론 성능을 높일 수 있습니다. 이 빠른 시작은
 다양한 환경에서 DeciFlow를 테스트할 수 있도록 CPU 기준으로 안내합니다.
-Laya는 추론, DeciFlow는 소스 읽기·UI/API, 세 번째 컨테이너인 OAuth2-Proxy는
-HTTPS·Google 로그인·이메일 허용 목록 검사를 담당합니다.
+Laya는 추론, DeciFlow는 소스 읽기·UI/API를 담당합니다.
+선택 사항인 OAuth2-Proxy는 HTTPS·Google 로그인·이메일 허용 목록 검사를 추가합니다.
 
 ### 1. 저장소 준비
 
@@ -96,6 +95,8 @@ test -f .env || cp .env.example .env
 
 ```dotenv
 COMPOSE_PROFILES=cpu
+OAUTH2_PROXY_ENABLED=false
+DECIFLOW_BIND_HOST=127.0.0.1
 DECISION_ENGINE=laya
 LAYA_MODEL=multilingual
 LAYA_API_URL=http://laya:8000/v1/systemone
@@ -104,12 +105,12 @@ PORT=4000
 
 ### 3. 컨테이너 실행
 
-먼저 [Google 로그인·HTTPS 설정](docs/authentication.ko.md)에 따라 `.env`의 OAuth 값과
-이메일 허용 목록·인증서 파일을 준비하세요. OAuth2-Proxy는 DeciFlow와 함께 기본 실행됩니다.
-인증서 발급·자동 갱신 절차는 [DNS·TLS 준비 안내](docs/dns-tls.ko.md)를 참고하세요.
+HTTP 데모에서는 OAuth 설정을 비워두세요. 로그인이 필요하면
+[Google 로그인·HTTPS 설정](docs/authentication.ko.md)과 [DNS·TLS 준비](docs/dns-tls.ko.md)를
+완료하고 `OAUTH2_PROXY_ENABLED=true`로 설정하세요.
 
 ```bash
-docker compose up -d
+docker compose up -d --remove-orphans
 docker compose logs --follow laya-cpu
 ```
 
@@ -118,7 +119,8 @@ docker compose logs --follow laya-cpu
 
 ### 4. 샘플 로그 분석
 
-설정한 **HTTPS 출처**를 열고 승인된 Google 계정으로 로그인합니다. **Sources**에서
+**http://localhost:4000**을 엽니다. OAuth2-Proxy를 활성화했다면 `OAUTH2_PROXY_PUBLIC_URL`을 열고
+승인된 Google 계정으로 로그인합니다. **Sources**에서
 **Sample HTTP access** 경로를 `/host-logs/sample-logs/access-100.log`로 수정하고 저장합니다.
 **Tasks**에서 이름을 지정한 **Batch / Manual** Task를 추가하고
 **Sample HTTP access**, **Sample HTTP access** 기준, **Events/Chunk: 1**,
@@ -130,9 +132,13 @@ docker compose logs --follow laya-cpu
 유료 API를 사용하려면 [Jev](#jev)를 참고하세요.
 기본 키 `changeme`는 체험용입니다. 운영 전 `.env`의 키를 변경하세요.
 
-Docker Compose는 OAuth2-Proxy를 기본 실행합니다. 4443 포트의 HTTPS로 UI·API를
-보호하며 UI는 Docker 내부에서만 접근합니다. 공개 URL과 Google 인증정보는 `.env`에
-설정합니다. [Google 로그인 설정](docs/authentication.ko.md)을 참고하세요.
+`.env`의 `OAUTH2_PROXY_ENABLED=false`는 로컬 HTTP, `true`는 4443 포트의 인증된
+HTTPS를 제공합니다. 활성 시 UI는 Docker 내부에서만 접근합니다. 전환 후
+`docker compose up -d --remove-orphans`로 사용하지 않는 프록시를 정리합니다.
+데이터 볼륨은 유지합니다. HTTP 모드로 다른 호스트에서 접속하려면
+`DECIFLOW_BIND_HOST=0.0.0.0`, `DECIFLOW_CSRF_TRUSTED_ORIGINS`에 브라우저 출처를
+설정한 뒤 같은 명령으로 반영하세요. 필요하면 TCP 4000을 포워딩합니다. 접근 가능한
+누구나 모든 관리 기능을 사용할 수 있습니다. [Google 로그인 설정](docs/authentication.ko.md)을 참고하세요.
 
 기본 **Sample DeciFlow Server Log** Task는 `DECIFLOW_LOG_DIR/server.log` / `DECIFLOW_LOG_DIR/access.log`를 감시하며 기본 Disable 상태입니다(Run 전에 Enable로 전환). Reset 후를 포함한 서버 시작 시 누락된 기본 설정을 복구합니다. [Tasks](docs/tasks.ko.md)를 참고하세요.
 
@@ -408,7 +414,7 @@ LAYA_API_KEY=changeme
 PORT=4000
 ```
 
-`COMPOSE_PROFILES=`로 두고 `docker compose up -d`를 실행하면 로컬 Laya 없이 UI와 OAuth2-Proxy가 시작됩니다.
+`COMPOSE_PROFILES=`로 두고 `docker compose up -d`를 실행하면 로컬 Laya 없이 UI가 시작되며 OAuth2-Proxy는 OAUTH2_PROXY_ENABLED에 따릅니다.
 Docker 없이 실행하려면 [네이티브 안내](docs/native.ko.md)를 따르세요.
 
 <a id="jev"></a>
@@ -430,7 +436,7 @@ PORT=4000
 Docker 또는 [네이티브 설치](docs/native.ko.md) 중 하나를 선택합니다. DeciFlow 호스트에는
 Compose가 포함된 Docker가 필요하며 로컬 Python·uv·CUDA는 필요하지 않습니다.
 먼저 `.env`에 Laya 또는 Jev를 설정하세요. 외부 Laya 또는 Jev를 사용하면
-`COMPOSE_PROFILES=`로 두고 UI와 OAuth2-Proxy를 실행합니다:
+`COMPOSE_PROFILES=`로 두고 선택한 접근 모드로 실행합니다:
 
 ```bash
 docker compose up -d
@@ -440,7 +446,8 @@ Compose는 Docker Hub에 공개된 `call518/deciflow-ui:0.0.2` 이미지를 사�
 이미지는 Python·uv와 운영 유틸리티를 제공합니다. 저장소는 `/app`에 읽기 전용으로
 마운트하며, 시작할 때 `uv sync --frozen`으로 `deciflow-venv` 볼륨에 의존성을 설치합니다.
 최초 실행에는 네트워크 연결이 필요합니다. Compose가 `.env`를 UI에 전달하며
-`PORT`는 UI 내부 포트(기본값: 4000)이며 OAuth2-Proxy가 4443에 HTTPS를 공개합니다.
+`PORT`는 UI 포트(기본값: 4000)입니다. HTTP 모드는 `DECIFLOW_BIND_HOST`에
+해당 포트를 공개하고 OAuth2-Proxy 모드는 HTTPS 4443만 공개합니다.
 `pull_policy: always`로 `up` 실행 시마다 이미지 업데이트를 확인합니다.
 UI·Laya 서비스는 `extra_hosts`로 `host.docker.internal`을 Docker 호스트 게이트웨이에 연결합니다. 기존 컨테이너에는 재생성 후 적용됩니다.
 
@@ -482,18 +489,19 @@ docker run --rm --mount type=bind,src="$PWD",dst=/app,readonly \
 | `name: deciflow` | 소문자 Compose 프로젝트·그룹 이름. 개별 컨테이너 이름은 DeciFlow 표기 유지. |
 | `ui` | 항상 활성화. 공개 UI 이미지가 없으면 다운로드하고 .env·PORT·소스·로그·데이터 마운트를 적용. 빌드 단계 없음. |
 | `laya-cpu` / `laya-cuda` | COMPOSE_PROFILES=cpu 또는 cuda로 선택. laya 네트워크 별칭·8000 포트 공유. CUDA만 GPU 요청. |
-| `oauth2-proxy` | DeciFlow-OAuth2-Proxy로 기본 실행. 4443에 HTTPS를 공개하고 승인된 사용자를 ui로 중계. |
+| `oauth2-proxy` | OAUTH2_PROXY_ENABLED=true일 때 DeciFlow-OAuth2-Proxy로 실행. 4443에 HTTPS를 공개하고 승인된 사용자를 ui로 중계. |
 | `x-laya` | Laya 공통 설정을 재사용하는 YAML 앵커이며 별도 컨테이너가 아님. |
 | 이름 있는 볼륨 | deciflow-venv·deciflow-data·deciflow-logs·deciflow-laya-model-cache의 기존 이름 유지. |
 
 Compose는 `.env`를 변수 치환에 사용하고 `env_file`로 UI에 전달합니다.
 Laya에는 명시한 서버 변수만 전달하며 `LAYA_API_KEY`는 같은 설정을 공유합니다.
 변수 치환 시 프로세스 환경변수가 `.env`보다 우선합니다. `COMPOSE_PROFILES`는
-`DECISION_ENGINE`과 독립적이므로 Jev·외부 Laya 사용 시 프로필을 비우세요. UI와 OAuth2-Proxy는 계속 실행됩니다. UI가 Laya 준비 전에 시작할 수 있으므로 로그 분석 전 준비 상태를
+`DECISION_ENGINE`과 독립적이므로 Jev·외부 Laya 사용 시 프로필을 비우세요. UI는 계속 실행되며 OAuth2-Proxy는 OAUTH2_PROXY_ENABLED에 따릅니다. UI가 Laya 준비 전에 시작할 수 있으므로 로그 분석 전 준비 상태를
 확인하세요. 유료 엔진으로 자동 전환하지 않습니다.
 
-웹 진입점은 OAuth2-Proxy의 HTTPS 4443만 공개합니다. `DECIFLOW_PUBLIC_URL`의
-주소로 접속하며 UI 자체는 호스트 포트를 매핑하지 않습니다. 별도 Laya API는 8000을 유지합니다.
+OAuth2-Proxy 활성 시 HTTPS 4443만 공개하고 `OAUTH2_PROXY_PUBLIC_URL`로 접속합니다.
+비활성 시 `http://localhost:4000` 또는 설정한 HTTP 주소·포트로 접속합니다.
+별도 Laya API는 8000을 유지합니다.
 `deciflow-data` 볼륨은 `DECIFLOW_DATA_DIR`(기본값: `/var/lib/deciflow-data`)에
 Sources·Tasks와 실행 이력·Actions·Criteria·SSH 키 쌍·SSH Host를 저장하고, `deciflow-logs`는 서버 로그를 저장합니다.
 사용자 지정 데이터·로그 디렉터리는 컨테이너 안의 절대 경로로 설정하세요.
@@ -529,7 +537,8 @@ Dockerfile을 수정한 경우에만 `docker build --tag call518/deciflow-ui:0.0
 UI 이미지를 직접 빌드한 뒤 `docker compose up -d --force-recreate ui`로 적용합니다.
 소스 버전 전환 전에는 DeciFlow를 중지하세요.
 
-Compose는 HTTPS 포트를 포함한 `DECIFLOW_PUBLIC_URL`을 UI 신뢰 출처로 지정합니다.
+OAuth2-Proxy 활성 시 Compose는 HTTPS 포트를 포함한
+`OAUTH2_PROXY_PUBLIC_URL`을 UI 신뢰 출처로 지정합니다.
 이 URL을 변경하면 Google 승인 원본·리디렉션 URI도 바꾸고
 `docker compose up -d ui oauth2-proxy`로 적용하세요.
 `DECIFLOW_CSRF_TRUSTED_ORIGINS`만 수정해도 Compose 지정값은 바뀌지 않습니다.
@@ -577,7 +586,7 @@ Batch·Realtime 실행은 기존 ID로 복구하며 일시정지 상태도 유�
 
 ## Docker 없이 실행
 
-로컬 CPU·기존 Laya/Jev·네이티브 OP 직접 실행은
+로컬 CPU·기존 Laya/Jev·선택적 네이티브 OAuth2-Proxy 자동 실행은
 [네이티브 설치·기동 안내](docs/native.ko.md)를 따라 진행하세요.
 
 ## Appendix — Docker 커스텀 이미지(선택)

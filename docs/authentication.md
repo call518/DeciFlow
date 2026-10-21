@@ -11,11 +11,19 @@ Source access, Laya/Jev calls, and Action delivery keep their existing authentic
 All admitted users share DeciFlow's data and administrative capabilities; this
 does not add per-user storage or roles.
 
-`docker-compose.yml` starts OAuth2-Proxy with DeciFlow by default. All environment
-settings belong in `.env`; `docker compose up -d` starts the complete deployment.
-The UI has no published host port.
+Set `OAUTH2_PROXY_ENABLED=true` in `.env` to use this guide. The default `false`
+provides an HTTP demo at `http://localhost:4000` without OAuth or certificate files.
+With OAuth2-Proxy enabled, only HTTPS port 4443 is published; the UI has no host port.
+After changing the mode, run `docker compose up -d --remove-orphans`. This recreates
+the UI port bindings and removes an unused OAuth2-Proxy container without deleting data.
+Do not use `restart` alone to switch modes. Invalid enabled-mode settings stop
+startup; there is no automatic fallback to HTTP.
 
-For Docker-free installation and manual OP execution, use the [native guide](native.md).
+The entry point remains `docker-compose.yml`. It automatically selects the files
+in `compose/` from this setting; do not pass those files with `-f`.
+Docker Compose 2.20.0+ is required for this include mechanism.
+
+For Docker-free installation and automatic native OAuth2-Proxy execution, use the [native guide](native.md).
 
 ## Prerequisites
 
@@ -27,7 +35,7 @@ For Docker-free installation and manual OP execution, use the [native guide](nat
 The examples use `https://deciflow.example.com:4443`; replace it with your HTTPS origin.
 Certificate issuance/renewal and Google account setup are performed by the operator;
 the Compose configuration does not create them.
-For domain records, certificate issuance, renewal, and OP deployment, follow
+For domain records, certificate issuance, renewal, and OAuth2-Proxy deployment, follow
 [DNS and TLS preparation](dns-tls.md) before continuing below.
 
 ## 1. Register Google Sign-In
@@ -55,7 +63,7 @@ chmod 600 .env
 openssl rand -base64 32
 ```
 
-Edit `.env`: set `DECIFLOW_PUBLIC_URL` to your HTTPS origin without a path
+Edit `.env`: set `OAUTH2_PROXY_ENABLED=true` and `OAUTH2_PROXY_PUBLIC_URL` to your HTTPS origin without a path
 or trailing slash, fill in `OAUTH2_PROXY_CLIENT_ID` and `OAUTH2_PROXY_CLIENT_SECRET`,
 and place the generated value in `OAUTH2_PROXY_COOKIE_SECRET`.
 
@@ -148,7 +156,7 @@ the proxy to reliably apply changes. Use the same command after updating
 docker compose up -d --no-deps --force-recreate oauth2-proxy
 ```
 
-If `DECIFLOW_PUBLIC_URL` changes, update both authorized URLs in Google, including
+If `OAUTH2_PROXY_PUBLIC_URL` changes, update both authorized URLs in Google, including
 the port, then run `docker compose up -d ui oauth2-proxy` to update the callback and
 UI trusted origin. `redirect_uri_mismatch` means the requested callback does not
 exactly match a URI registered for that Google client.

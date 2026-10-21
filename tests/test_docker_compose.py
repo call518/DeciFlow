@@ -1,4 +1,4 @@
-"""Validate default authenticated Compose deployments without starting containers."""
+"""Validate both access modes without starting containers."""
 
 import json
 import os
@@ -25,11 +25,12 @@ def test_compose_deployment(profile: str, tmp_path: Path) -> None:
     env_file = tmp_path / "compose.env"
     env_file.write_text(
         f"COMPOSE_PROFILES={profile}\n"
+        "OAUTH2_PROXY_ENABLED=true\n"
         "PORT=4567\n"
         "LAYA_API_KEY=compose-test-key\n"
         "DECIFLOW_DATA_DIR=/custom/data\n"
         "DECIFLOW_LOG_DIR=/custom/logs\n"
-        "DECIFLOW_PUBLIC_URL=https://deciflow.example.com:4443\n"
+        "OAUTH2_PROXY_PUBLIC_URL=https://deciflow.example.com:4443\n"
         "OAUTH2_PROXY_CLIENT_ID=test-client\n"
         "OAUTH2_PROXY_CLIENT_SECRET=test-secret\n"
         "OAUTH2_PROXY_COOKIE_SECRET=test-cookie-secret\n"
@@ -100,8 +101,9 @@ def test_google_auth_compose(profile: str, tmp_path: Path) -> None:
     env_file = tmp_path / "oauth2.env"
     env_file.write_text(
         f"COMPOSE_PROFILES={profile}\n"
+        "OAUTH2_PROXY_ENABLED=true\n"
         "PORT=4567\n"
-        "DECIFLOW_PUBLIC_URL=https://deciflow.example.com:4443\n"
+        "OAUTH2_PROXY_PUBLIC_URL=https://deciflow.example.com:4443\n"
         "OAUTH2_PROXY_CLIENT_ID=test-client\n"
         "OAUTH2_PROXY_CLIENT_SECRET=test-secret\n"
         "OAUTH2_PROXY_COOKIE_SECRET=test-cookie-secret\n"
@@ -183,3 +185,42 @@ def test_google_auth_policy() -> None:
     assert not policy["pass_basic_auth"]
     assert not policy["pass_user_headers"]
     assert not any(key.startswith(("skip_auth", "trusted_ip")) for key in policy)
+
+
+@pytest.mark.parametrize("profile", ["cpu", "cuda", ""])
+@pytest.mark.parametrize("bind_host", ["127.0.0.1", "0.0.0.0"])
+def test_http_demo_without_oauth(tmp_path: Path, profile: str, bind_host: str) -> None:
+    """A fresh checkout needs neither private OAuth files nor credentials."""
+    if shutil.which("docker") is None:
+        pytest.skip("Docker Compose is required")
+    # Copy only public deployment files: no actual .env, TLS or email allow list.
+    shutil.copytree(ROOT / "compose", tmp_path / "compose")
+    shutil.copy(ROOT / "docker-compose.yml", tmp_path / "docker-compose.yml")
+    (tmp_path / ".env").write_text(
+        f"COMPOSE_PROFILES={profile}\n"
+        "OAUTH2_PROXY_ENABLED=false\n"
+        f"DECIFLOW_BIND_HOST={bind_host}\nPORT=4567\n"
+    )
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith(("COMPOSE_", "OAUTH2_", "DECIFLOW_")) and key != "PORT"
+    }
+    result = subprocess.run(
+        ["docker", "compose", "config", "--format", "json"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    services = json.loads(result.stdout)["services"]
+    assert set(services) == ({"ui", f"laya-{profile}"} if profile else {"ui"})
+    port = services["ui"]["ports"][0]
+    assert (port["host_ip"], port["published"], port["target"]) == (
+        bind_host,
+        "4567",
+        4567,
+    )
+    assert services["ui"]["environment"].get("OAUTH2_PROXY_CLIENT_SECRET") is None
+    assert str(tmp_path) in services["ui"]["volumes"][0]["source"]

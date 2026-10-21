@@ -1,0 +1,21 @@
+services:
+  ui:
+    image: call518/deciflow-ui:0.0.2
+    container_name: DeciFlow-UI
+    hostname: DeciFlow-UI
+    init: true
+    restart: unless-stopped
+    pull_policy: always
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file: .env
+    environment:
+      DECIFLOW_DATA_DIR: ${DECIFLOW_DATA_DIR:-/var/lib/deciflow-data}
+    volumes:
+      - .:/app:ro
+      - venv:/opt/deciflow-venv
+      - /var/log:/host-logs/var/log:ro
+      - ./sample-logs:/host-logs/sample-logs:ro
+      - data:${DECIFLOW_DATA_DIR:-/var/lib/deciflow-data}
+      - logs:${DECIFLOW_LOG_DIR:-/var/log/deciflow}
+

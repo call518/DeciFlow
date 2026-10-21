@@ -30,8 +30,8 @@ Source → Criteria → optional Actions → Tasks, and inspect current/latest T
 | Reference | Contents |
 | --- | --- |
 | [DNS and TLS Certificates](dns-tls.md) | Public DNS, Certbot DNS-01/RFC2136, certificate deployment, renewal, and WSL checks |
-| [Native Installation](native.md) | Docker-free local demo, engine selection, startup/shutdown, and manual OP |
-| [Google Sign-In](authentication.md) | Default OAuth2-Proxy deployment, email allow list, HTTPS, and verification |
+| [Native Installation](native.md) | Docker-free local demo, engine selection, startup/shutdown, and optional automatic OAuth2-Proxy |
+| [Google Sign-In](authentication.md) | Optional OAuth2-Proxy deployment, email allow list, HTTPS, and verification |
 | [Docker deployment](../README.md#docker-deployment-details) | Published images, CPU/CUDA profiles, ports, mounts, volumes, and lifecycle commands |
 | [Dockerfile and Compose](../README.md#dockerfile-and-compose-responsibilities) | UI runtime image and how Compose configures its services |
 | [Laya integration](laya-integration.md) | Request contract, response validation, server settings, and limits |

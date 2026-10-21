@@ -30,8 +30,8 @@ Source → Criteria → 선택적 Actions → Tasks 순으로 구성하고 Main�
 | 참고 자료 | 내용 |
 | --- | --- |
 | [DNS·TLS 인증서](dns-tls.ko.md) | 공개 DNS·Certbot DNS-01/RFC2136·인증서 배포·자동 갱신·WSL 점검 |
-| [네이티브 설치](native.ko.md) | Docker 없는 로컬 데모·엔진 선택·시작과 종료·OP 직접 실행 |
-| [Google 로그인](authentication.ko.md) | 기본 OAuth2-Proxy 배포·이메일 허용 목록·HTTPS·검증 |
+| [네이티브 설치](native.ko.md) | Docker 없는 로컬 데모·엔진 선택·시작과 종료·선택적 OAuth2-Proxy 자동 실행 |
+| [Google 로그인](authentication.ko.md) | 선택적 OAuth2-Proxy 배포·이메일 허용 목록·HTTPS·검증 |
 | [Docker 배포](../README.ko.md#docker-배포-상세) | 공개 이미지·CPU/CUDA 프로필·포트·마운트·볼륨·운영 명령 |
 | [Dockerfile과 Compose](../README.ko.md#dockerfile과-compose의-역할) | UI 실행 이미지와 Compose 서비스 구성 방식 |
 | [Laya 연동](laya-integration.ko.md) | 요청 구성·응답 검증·서버 설정·제약 |

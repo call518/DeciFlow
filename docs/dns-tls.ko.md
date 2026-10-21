@@ -4,7 +4,8 @@
 
 **DeciFlow**는 소스를 읽고 UI·API를 제공하며 **Laya 서버**와 **Jev 서비스**는
 추론을 담당합니다. **OAuth2-Proxy**는 브라우저·API 접근의 HTTPS 진입점입니다.
-현재 Compose 배포에는 도메인과 신뢰할 수 있는 TLS 인증서가 필요합니다.
+이 안내는 `OAUTH2_PROXY_ENABLED=true`일 때만 필요합니다. 기본 HTTP 데모에는
+도메인·인증서가 필요하지 않습니다.
 
 이 문서는 DNS 준비, Certbot DNS-01을 통한 Let's Encrypt 인증서 발급,
 자동 갱신과 OAuth2-Proxy 반영을 안내합니다. 기존 권한 DNS 서버인 BIND9에
@@ -43,14 +44,14 @@ dig AAAA deciflow.example.com +short
 
 | 통신 | 필요한 경로 |
 | --- | --- |
-| 브라우저 → DeciFlow | 외부 TCP 4443 → Docker 호스트 TCP 4443 → OP 컨테이너 TCP 4443 |
+| 브라우저 → DeciFlow | 외부 TCP 4443 → Docker 호스트 TCP 4443 → OAuth2-Proxy 컨테이너 TCP 4443 |
 | Certbot → Primary DNS | TSIG 인증 업데이트를 위한 TCP/UDP 53 |
 | ACME 검증 → 권한 DNS | TCP/UDP 53의 공개 DNS 질의 |
 | Certbot → Let's Encrypt | 외부로 나가는 TCP 443 HTTPS |
 
 NAT 환경에서는 외부 TCP 4443을 Docker 호스트 TCP 4443으로 전달하고 호스트·Windows
 방화벽도 확인하세요. UI 내부 4000 포트는 공개하지 않습니다. DNS-01 발급에는
-외부에서 들어오는 웹 포트 80/443이나 실행 중인 OP가 필요하지 않습니다.
+외부에서 들어오는 웹 포트 80/443이나 실행 중인 OAuth2-Proxy가 필요하지 않습니다.
 인증서 발급 성공만으로 브라우저의 4443 접속이 보장되지는 않습니다.
 [Let's Encrypt 검증 방식](https://letsencrypt.org/docs/challenge-types/#dns-01-challenge)을 참고하세요.
 
@@ -216,11 +217,11 @@ sudo install -m 644 /etc/letsencrypt/live/deciflow.example.com/fullchain.pem oau
 sudo install -o 65532 -m 600 /etc/letsencrypt/live/deciflow.example.com/privkey.pem oauth2-proxy/tls/privkey.pem
 ```
 
-65532는 프로젝트가 고정한 OP 이미지의 실행 UID입니다. TLS 디렉터리는 Git과
+65532는 프로젝트가 고정한 OAuth2-Proxy 이미지의 실행 UID입니다. TLS 디렉터리는 Git과
 이미지 빌드에서 제외됩니다. Certbot의 원본이 갱신돼도 이 복사본은 자동으로 바뀌지 않습니다.
 
 [Google 로그인 설정](authentication.ko.md)을 이어서 진행하세요.
-`DECIFLOW_PUBLIC_URL=https://deciflow.example.com:4443`을 지정하고 포트까지 정확히
+`OAUTH2_PROXY_PUBLIC_URL=https://deciflow.example.com:4443`을 지정하고 포트까지 정확히
 일치하는 Google 콜백·클라이언트 인증정보·허용 목록을 준비한 뒤 Docker 호스트에서 실행합니다.
 
 ```bash
@@ -234,7 +235,7 @@ curl -i https://deciflow.example.com:4443/api/status
 표시될 수 있고 `/api/status`는 401이어야 합니다. 외부 네트워크에서도 확인하세요.
 LAN 내부 테스트만으로 NAT 동작을 확인할 수는 없습니다.
 
-## 5. 자동 갱신과 OP 반영
+## 5. 자동 갱신과 OAuth2-Proxy 반영
 
 **Certbot 호스트**에서 갱신을 검증한 뒤 스케줄을 활성화합니다.
 
@@ -284,14 +285,14 @@ sudo sh -n /etc/letsencrypt/renewal-hooks/deploy/deciflow-op.sh
 sudo env RENEWED_LINEAGE=/etc/letsencrypt/live/deciflow.example.com /etc/letsencrypt/renewal-hooks/deploy/deciflow-op.sh
 ```
 
-마지막 명령은 현재 인증서로 배포를 테스트하며 **OP를 재생성**합니다.
+마지막 명령은 현재 인증서로 배포를 테스트하며 **OAuth2-Proxy를 재생성**합니다.
 브라우저 스트림이 잠시 끊기지만 UI·Laya·백그라운드 Task는 계속 실행됩니다.
 계보 검사는 다른 인증서에 대한 실행을 건너뜁니다. Certbot은 갱신 성공 후 deploy hook을
 실행하며 일반 `--dry-run`만으로 이 hook이 테스트되지는 않습니다.
 ACME staging 인증서를 운영 서비스에 배포하지 마세요.
 [Certbot 갱신·hook 안내](https://eff-certbot.readthedocs.io/en/stable/using.html#renewing-certificates)를 참고하세요.
 
-Certbot이 다른 호스트에 있다면 안전한 인증서 전송과 원격 OP 재생성 방식으로
+Certbot이 다른 호스트에 있다면 안전한 인증서 전송과 원격 OAuth2-Proxy 재생성 방식으로
 배포 hook을 조정하세요. 위 스크립트는 Certbot·Docker가 같은 호스트인 경우입니다.
 
 ## 6. 점검과 문제 해결
@@ -310,9 +311,9 @@ openssl s_client -connect deciflow.example.com:4443 -servername deciflow.example
 | `SERVFAIL` / 저널 권한 오류 | BIND 로그·Zone 파일과 디렉터리 권한·AppArmor/SELinux 거부 |
 | Certbot이 플러그인을 찾지 못함 | 실제 실행되는 Certbot과 같은 환경에 플러그인이 설치됐는지 |
 | Primary에서만 TXT가 조회됨 | Secondary 전송·알림·전파 대기 시간 |
-| 발급 성공 후 브라우저 접속 실패 | NAT 4443/TCP·호스트 방화벽·WSL 라우팅·OP 실행 상태 |
-| OP가 개인 키를 읽지 못함 | 배포한 키 UID 65532·권한 600·부모 디렉터리 접근 권한 |
-| 브라우저에 이전 인증서가 표시됨 | hook의 갱신 파일 복사·OP 재생성 여부와 로그 |
+| 발급 성공 후 브라우저 접속 실패 | NAT 4443/TCP·호스트 방화벽·WSL 라우팅·OAuth2-Proxy 실행 상태 |
+| OAuth2-Proxy가 개인 키를 읽지 못함 | 배포한 키 UID 65532·권한 600·부모 디렉터리 접근 권한 |
+| 브라우저에 이전 인증서가 표시됨 | hook의 갱신 파일 복사·OAuth2-Proxy 재생성 여부와 로그 |
 | 타이머 비활성·다음 실행 없음 | 실제 unit 이름·활성 상태·스케줄러 로그 |
 | Google `redirect_uri_mismatch` | :4443까지 일치하는 HTTPS 출처·콜백. 인증 안내 참고 |
 

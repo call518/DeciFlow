@@ -73,14 +73,13 @@ Menus, item details/editors, Task History, and execution results have [shareable
 
 ## Quick start — Docker + Laya CPU
 
-**Requires:** Git and Docker with the Compose plugin on one Linux host, a domain
-with a trusted TLS certificate, and a Google OAuth Web application client.
-The HTTPS entry point is port 4443; register the same port in the Google redirect URI.
+**Requires:** Git and Docker Compose 2.20.0+ on one Linux host.
+The default HTTP demo needs no domain, certificate, or Google configuration.
 A compatible NVIDIA GPU can improve Laya's inference performance; see
 [Run with GPU (CUDA)](#laya-gpu). This quick start
 uses CPU so you can try DeciFlow across a wider range of environments.
-Laya runs inference, DeciFlow reads sources and serves the UI/API, and OAuth2-Proxy
-handles HTTPS, Google sign-in, and the approved-email check in a third container.
+Laya runs inference; DeciFlow reads sources and serves the UI/API.
+Optional OAuth2-Proxy adds HTTPS, Google sign-in, and an email allow list.
 
 ### 1. Prepare the repository
 
@@ -98,6 +97,8 @@ for both CPU and CUDA. Keep your existing API key; Compose passes it to both con
 
 ```dotenv
 COMPOSE_PROFILES=cpu
+OAUTH2_PROXY_ENABLED=false
+DECIFLOW_BIND_HOST=127.0.0.1
 DECISION_ENGINE=laya
 LAYA_MODEL=multilingual
 LAYA_API_URL=http://laya:8000/v1/systemone
@@ -106,13 +107,12 @@ PORT=4000
 
 ### 3. Start the containers
 
-Complete [Google sign-in and HTTPS setup](docs/authentication.md) first: set the
-OAuth values in `.env`, prepare the email allow list and certificate files.
-OAuth2-Proxy starts with DeciFlow by default.
-For certificate issuance and automatic renewal, follow [DNS and TLS preparation](docs/dns-tls.md).
+For the HTTP demo, leave OAuth settings blank. To require sign-in instead,
+complete [Google sign-in and HTTPS setup](docs/authentication.md), including
+[DNS and TLS preparation](docs/dns-tls.md), and set `OAUTH2_PROXY_ENABLED=true`.
 
 ```bash
-docker compose up -d
+docker compose up -d --remove-orphans
 docker compose logs --follow laya-cpu
 ```
 
@@ -121,7 +121,8 @@ Wait for the initial model download/loading, then press `Ctrl+C` to leave the lo
 
 ### 4. Analyze sample logs
 
-Open your configured **HTTPS origin** and sign in with an approved Google account. In **Sources**, edit
+Open **http://localhost:4000**. With OAuth2-Proxy enabled, open `OAUTH2_PROXY_PUBLIC_URL` and sign in
+with an approved Google account instead. In **Sources**, edit
 **Sample HTTP access** to use `/host-logs/sample-logs/access-100.log` and save.
 In **Tasks**, add a named **Batch / Manual** Task, select **Sample HTTP access**,
 **Sample HTTP access** criteria, **Events/Chunk: 1**, and **Action: None**, then save.
@@ -133,9 +134,13 @@ For optional GPU acceleration, see [Docker deployment details](#laya-docker);
 for a paid API, see [Jev](#jev).
 The default key `changeme` is for trials. Change it in `.env` before deployment.
 
-Docker Compose starts OAuth2-Proxy by default. It protects the UI and API through
-HTTPS on port 4443; the UI is reachable only inside Docker. Configure the public URL
-and Google credentials in `.env`; see [Google sign-in setup](docs/authentication.md).
+Choose access in `.env`: `OAUTH2_PROXY_ENABLED=false` serves local HTTP; `true`
+serves authenticated HTTPS on port 4443 and keeps the UI inside Docker.
+After switching, run `docker compose up -d --remove-orphans` to remove the unused
+proxy. Data volumes are retained. For access from other hosts in HTTP mode, set
+`DECIFLOW_BIND_HOST=0.0.0.0` and the browser origin in `DECIFLOW_CSRF_TRUSTED_ORIGINS`,
+then run the same command. Forward TCP 4000 if needed; anyone reaching it can use
+all management features. See [Google sign-in setup](docs/authentication.md).
 
 A built-in **Sample DeciFlow Server Log** Task monitors `DECIFLOW_LOG_DIR/server.log` / `DECIFLOW_LOG_DIR/access.log`; it is disabled by default (enable it before Run). Missing default configuration is restored on startup, including after Reset DeciFlow. See [Tasks](docs/tasks.md).
 
@@ -418,7 +423,7 @@ LAYA_API_KEY=changeme
 PORT=4000
 ```
 
-Set `COMPOSE_PROFILES=` and run `docker compose up -d`; UI and OAuth2-Proxy start without local Laya.
+Set `COMPOSE_PROFILES=` and run `docker compose up -d`; UI starts without local Laya; OAuth2-Proxy follows OAUTH2_PROXY_ENABLED.
 For execution without Docker, follow the [native guide](docs/native.md).
 
 <a id="jev"></a>
@@ -439,7 +444,7 @@ PORT=4000
 
 Choose Docker or the [native installation](docs/native.md). The DeciFlow host needs
 Docker with Compose, not local Python/uv/CUDA. Configure `.env` for Laya or Jev first.
-For external Laya or Jev, set `COMPOSE_PROFILES=` and start UI and OAuth2-Proxy:
+For external Laya or Jev, set `COMPOSE_PROFILES=` and start the selected access mode:
 
 ```bash
 docker compose up -d
@@ -449,7 +454,8 @@ Compose uses the published `call518/deciflow-ui:0.0.2` image from Docker Hub.
 The image provides Python, uv, and operational utilities. The repository is mounted
 read-only at `/app`; `uv sync --frozen` installs dependencies into `deciflow-venv`
 on startup. Initial startup needs network access. Compose passes `.env` to the UI;
-`PORT` controls the internal UI port (default: 4000); OAuth2-Proxy publishes HTTPS on 4443.
+`PORT` controls the UI port (default: 4000). HTTP mode publishes it on
+`DECIFLOW_BIND_HOST`; OAuth2-Proxy mode publishes only HTTPS on 4443.
 Compose checks for updated images on each `up` with `pull_policy: always`.
 The UI and Laya services map `host.docker.internal` to the Docker host gateway via `extra_hosts`. Recreate existing containers to apply this mapping.
 
@@ -494,7 +500,7 @@ connectivity, Kerberos authentication, or cluster compatibility.
 | `name: deciflow` | Compose project/group name; lowercase. Individual container names retain DeciFlow capitalization. |
 | `ui` | Always enabled; pulls the published UI image if missing, reads `.env`, listens internally on PORT, and mounts source/logs/data. No build step. |
 | `laya-cpu` / `laya-cuda` | Selected by COMPOSE_PROFILES=cpu or cuda; same laya network alias and port 8000. Only CUDA reserves GPUs. |
-| `oauth2-proxy` | Always enabled as DeciFlow-OAuth2-Proxy; publishes HTTPS on 4443 and forwards approved users to ui. |
+| `oauth2-proxy` | Enabled when OAUTH2_PROXY_ENABLED=true as DeciFlow-OAuth2-Proxy; publishes HTTPS on 4443 and forwards approved users to ui. |
 | `x-laya` | YAML anchor for shared Laya settings; not an additional container. |
 | Named volumes | deciflow-venv, deciflow-data, deciflow-logs, and deciflow-laya-model-cache retain their existing names. |
 
@@ -502,11 +508,12 @@ Compose reads `.env` for interpolation and passes it to the UI through `env_file
 Only the declared Laya server variables are passed to Laya; its API key uses the same
 `LAYA_API_KEY`. Process environment values override `.env` during interpolation.
 `COMPOSE_PROFILES` is independent of `DECISION_ENGINE`: for Jev or external Laya,
-leave profiles empty; UI and OAuth2-Proxy remain enabled. The UI can start before Laya is ready;
+leave profiles empty; UI remains enabled and OAuth2-Proxy follows OAUTH2_PROXY_ENABLED. The UI can start before Laya is ready;
 check Laya readiness before analyzing logs. There is no automatic paid fallback.
 
-Only OAuth2-Proxy publishes the web entry point, HTTPS on 4443. Open the URL in
-`DECIFLOW_PUBLIC_URL`; the UI has no host port mapping. Laya's separate API remains on 8000.
+With OAuth2-Proxy enabled, only HTTPS on 4443 is published; open `OAUTH2_PROXY_PUBLIC_URL`.
+With OAuth2-Proxy disabled, open `http://localhost:4000` (or your configured HTTP host/port).
+Laya's separate API remains on 8000.
 The `deciflow-data` volume stores Sources, Tasks and run history, Actions, Criteria, SSH Key pairs, and SSH Hosts at `DECIFLOW_DATA_DIR`
 (default: `/var/lib/deciflow-data`); `deciflow-logs` stores server logs.
 Use absolute container paths for custom data/log directories.
@@ -541,7 +548,8 @@ changes. If you modify the Dockerfile, build the UI image explicitly with
 `docker compose up -d --force-recreate ui`.
 Stop DeciFlow before switching source versions.
 
-Compose sets the UI trusted origin from `DECIFLOW_PUBLIC_URL`, including its HTTPS
+With OAuth2-Proxy enabled, Compose sets the UI trusted origin from
+`OAUTH2_PROXY_PUBLIC_URL`, including its HTTPS
 port. After changing this URL, update the Google authorized origin/redirect URI too
 and run `docker compose up -d ui oauth2-proxy`. Changing
 `DECIFLOW_CSRF_TRUSTED_ORIGINS` alone does not override the Compose setting.
@@ -594,7 +602,7 @@ vision model.
 ## Run Without Docker
 
 Follow [Native installation and startup](docs/native.md) for local CPU, existing
-Laya/Jev, and manual native OP execution.
+Laya/Jev, and optional automatic native OAuth2-Proxy execution.
 
 ## Appendix — Custom Docker images (optional)
 

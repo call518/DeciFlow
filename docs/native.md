@@ -7,7 +7,7 @@ and a certificate are not required for this local workflow.
 
 **DeciFlow** reads sources and serves the UI/API. The **Laya server** runs inference
 locally or remotely; **Jev** is an alternative paid hosted inference service.
-**OAuth2-Proxy (OP)** can protect browser access, but is a separate native process.
+**OAuth2-Proxy** can protect browser access, but is a separate native process.
 Choose native execution instead of the Compose deployment for the same installation.
 
 ## Quick Start: Local CPU
@@ -33,6 +33,8 @@ Edit the existing entries in `.env`; preserve other values and the template's or
 and comments:
 
 ```dotenv
+OAUTH2_PROXY_ENABLED=false
+DECIFLOW_BIND_HOST=127.0.0.1
 DECISION_ENGINE=laya
 PORT=4000
 DECIFLOW_DATA_DIR=./data
@@ -48,7 +50,9 @@ The repository's local Laya adapter reads the same `.env` API key as DeciFlow.
 For another Laya server, set `LAYA_API_KEY` to its matching key. The Compose hostname
 `laya` and `/host-logs` mounts are unavailable outside Docker.
 `COMPOSE_PROFILES` is ignored by these native commands. OAuth values may remain
-blank for local HTTP execution; setting them does not automatically start OP.
+blank when `OAUTH2_PROXY_ENABLED=false`. Set `DECIFLOW_BIND_HOST=0.0.0.0` and
+add the public browser origin to `DECIFLOW_CSRF_TRUSTED_ORIGINS` for external HTTP
+access, then restart DeciFlow. Anyone reaching that port can manage all data.
 
 ### 3. Start Laya and DeciFlow
 
@@ -115,61 +119,44 @@ uv run python server.py
 
 Open the same local UI and follow the sample steps above.
 
-## Optional: Native HTTPS with OP
+## Optional: Native HTTPS with OAuth2-Proxy
 
-This is a manual two-process setup, not an implemented `.env` mode switch.
-DeciFlow stays on loopback; OP owns the external HTTPS listener:
+Set `OAUTH2_PROXY_ENABLED=true` to start OAuth2-Proxy automatically with the same
+`uv run --extra laya python server.py` command. DeciFlow stays on loopback;
+OAuth2-Proxy owns the external HTTPS listener:
 
 ```text
-Browser → OP HTTPS :4443 → DeciFlow HTTP 127.0.0.1:4000 → Laya or Jev
+Browser → OAuth2-Proxy HTTPS :4443 → DeciFlow HTTP 127.0.0.1:4000 → Laya or Jev
 ```
 
 1. Install the official [OAuth2-Proxy v7.15.5 binary](https://github.com/oauth2-proxy/oauth2-proxy/releases/tag/v7.15.5)
-   for your OS/architecture on PATH. Verify the release checksum. No Docker is required.
+   for your OS/architecture on PATH and verify the release checksum.
 2. Prepare a domain and trusted certificate using [DNS/TLS preparation](dns-tls.md).
-   Use its DNS/issuance instructions; its Docker deploy-hook commands do not apply
-   to native OP. Put actual certificate files in `oauth2-proxy/tls/` and make the
-   private key readable by the **native OP process owner**, with mode 600. The
-   Docker UID 65532 ownership rule is specific to the container; do not change a
-   key used by a running Docker deployment to repurpose it for native execution.
-3. Follow [Google registration and allow-list setup](authentication.md). Set
-   `DECIFLOW_PUBLIC_URL` and the OAuth client/cookie values in `.env`. For the
-   example domain, also set:
+   Its Docker deploy hook does not apply to native execution. Put actual certificate
+   files in `oauth2-proxy/tls/`; the native process owner must be able to read the
+   private key, with mode 600. Docker UID 65532 is not a native ownership rule.
+3. Follow [Google registration and the email allow list](authentication.md).
+   Fill the client ID, client secret, and cookie key in `.env`, then set:
 
 ```dotenv
-DECIFLOW_PUBLIC_URL=https://deciflow.example.com:4443
-DECIFLOW_CSRF_TRUSTED_ORIGINS=https://deciflow.example.com:4443
+OAUTH2_PROXY_ENABLED=true
+OAUTH2_PROXY_PUBLIC_URL=https://deciflow.example.com:4443
 ```
 
-Keep the private key, allow list, and `.env` outside Git as configured by the project.
-Register `https://deciflow.example.com:4443/oauth2/callback` in Google. Replace the
-example domain consistently; do not use a Docker-only hostname as the native upstream.
+Restart DeciFlow using the same terminal B command. With an existing engine,
+omit `--extra laya` as above. The launcher supplies native paths, the configured
+`PORT`, callback, and trusted origin automatically. Keep OAuth settings and private
+files out of Git. Do not publish the internal UI port. Missing settings, an absent
+binary, or an OAuth2-Proxy exit stop startup/service; HTTP is never enabled as a fallback.
 
-Start DeciFlow with the earlier command in terminal B. In terminal C, from the
-repository root, run:
+Open the public HTTPS URL. Verify approved and unapproved accounts and a cookieless
+`/api/status` request (401). `Ctrl+C` stops DeciFlow and OAuth2-Proxy together; Laya remains
+in terminal A. UI Restart/Reset also cleans up OAuth2-Proxy before restarting DeciFlow.
 
-```bash
-uv run --env-file .env --extra laya oauth2-proxy \
-  --config=oauth2-proxy/oauth2-proxy.cfg \
-  --upstream=http://127.0.0.1:4000/ \
-  --redirect-url=https://deciflow.example.com:4443/oauth2/callback \
-  --authenticated-emails-file=oauth2-proxy/allowed-emails.txt \
-  --tls-cert-file=oauth2-proxy/tls/fullchain.pem \
-  --tls-key-file=oauth2-proxy/tls/privkey.pem
-```
-
-The command overrides the policy file's container paths with native paths.
-For an existing Laya server or Jev, omit `--extra laya` here as well.
-Change the upstream port if you changed DeciFlow's `PORT`.
-Open your public HTTPS origin and test approved/unlisted accounts and a cookie-free
-`/api/status` request (401). The browser's public URL, Google callback, and trusted
-origin must agree, including the port. Do not forward the UI's internal port.
-
-Stop OP with `Ctrl+C` in terminal C. For renewed certificates or allow-list/policy
-changes, update the files and restart **the native OP process**; Docker Compose
-recreation commands do not manage it. Keep certificate permissions appropriate to
-that process owner. Run OP under your host's service manager if unattended renewal
-and restart are needed; no native service unit is installed by this project.
+To switch modes or apply changed credentials, certificates, allow-list or policy,
+stop terminal B with `Ctrl+C` and run the same command again after editing files.
+For renewal, restart this native deployment using your host service manager;
+Docker recreation commands do not manage it. No native service unit is installed.
 
 ## Troubleshooting
 
@@ -179,8 +166,8 @@ and restart are needed; no native service unit is installed by this project.
 | Model download/loading is slow | Inspect terminal A; initial loading needs download access and adequate memory |
 | Engine cannot be reached | Laya process/readiness, native API URL, and API key; `laya` resolves only in Compose |
 | Source not found | Absolute host path rather than `/host-logs/...` |
-| Native OP returns 403 for UI API calls | Public HTTPS origin in `DECIFLOW_CSRF_TRUSTED_ORIGINS`; restart DeciFlow after editing |
-| OP cannot read certificates | Native file paths and private-key owner/permissions |
+| Native OAuth2-Proxy returns 403 for UI API calls | Public HTTPS origin in `DECIFLOW_CSRF_TRUSTED_ORIGINS`; restart DeciFlow after editing |
+| OAuth2-Proxy cannot read certificates | Native file paths and private-key owner/permissions |
 | Port already in use | Stop the other installation or choose free ports consistently |
 
 For HDFS native Sources, the host also needs the Java/Hadoop/libhdfs requirements

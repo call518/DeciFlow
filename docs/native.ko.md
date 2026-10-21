@@ -6,7 +6,7 @@ DeciFlow를 로컬에서 실행하고 브라우저로 샘플 로그를 분류합
 이 로컬 절차에는 Docker·도메인·인증서가 필요하지 않습니다.
 
 **DeciFlow**는 소스를 읽고 UI·API를 제공합니다. **Laya 서버**는 로컬·원격에서
-추론하며 **Jev**는 대안인 유료 호스팅 추론 서비스입니다. **OAuth2-Proxy(OP)**는
+추론하며 **Jev**는 대안인 유료 호스팅 추론 서비스입니다. **OAuth2-Proxy**는
 브라우저 접근을 보호할 수 있지만 별도로 실행하는 네이티브 프로세스입니다.
 같은 설치에서는 Compose 배포 대신 네이티브 실행을 선택하세요.
 
@@ -31,6 +31,8 @@ uv sync --frozen --extra laya
 `.env`의 기존 항목을 수정합니다. 다른 값과 예제의 항목 순서·주석은 유지하세요.
 
 ```dotenv
+OAUTH2_PROXY_ENABLED=false
+DECIFLOW_BIND_HOST=127.0.0.1
 DECISION_ENGINE=laya
 PORT=4000
 DECIFLOW_DATA_DIR=./data
@@ -45,8 +47,10 @@ LAYA_HEAD_TOKENS=512
 저장소의 로컬 Laya 어댑터는 DeciFlow와 동일한 `.env`의 API 키를 읽습니다.
 다른 Laya 서버에는 해당 서버와 일치하는 `LAYA_API_KEY`를 지정하세요.
 Compose의 `laya` 호스트 이름과 `/host-logs` 마운트는 Docker 밖에서 사용할 수 없습니다.
-위 네이티브 명령은 `COMPOSE_PROFILES`를 사용하지 않습니다. 로컬 HTTP 실행에는
-OAuth 값을 비워 둬도 되며, 값을 넣었다고 OP가 자동 실행되지는 않습니다.
+위 네이티브 명령은 `COMPOSE_PROFILES`를 사용하지 않습니다. `OAUTH2_PROXY_ENABLED=false`이면 OAuth 값을
+비워 둬도 됩니다. 외부 HTTP 접속에는 `DECIFLOW_BIND_HOST=0.0.0.0`과
+`DECIFLOW_CSRF_TRUSTED_ORIGINS`의 공개 브라우저 출처를 설정하고 재시작하세요.
+접근 가능한 누구나 모든 데이터를 관리할 수 있습니다.
 
 ### 3. Laya와 DeciFlow 시작
 
@@ -113,57 +117,43 @@ uv run python server.py
 
 같은 로컬 UI를 열고 앞의 샘플 절차를 따릅니다.
 
-## 선택 사항: 네이티브 OP로 HTTPS 사용
+## 선택: OAuth2-Proxy를 통한 네이티브 HTTPS
 
-프로세스 두 개를 직접 실행하는 방식이며 `.env` 모드 선택 기능이 구현된 것은 아닙니다.
-DeciFlow는 루프백을 유지하고 OP가 외부 HTTPS를 수신합니다.
+`OAUTH2_PROXY_ENABLED=true`로 설정하면 같은
+`uv run --extra laya python server.py` 명령이 OAuth2-Proxy도 자동 실행합니다.
+DeciFlow는 루프백에 유지되며 OAuth2-Proxy가 외부 HTTPS를 수신합니다.
 
 ```text
-Browser → OP HTTPS :4443 → DeciFlow HTTP 127.0.0.1:4000 → Laya or Jev
+Browser → OAuth2-Proxy HTTPS :4443 → DeciFlow HTTP 127.0.0.1:4000 → Laya or Jev
 ```
 
 1. OS·아키텍처에 맞는 공식 [OAuth2-Proxy v7.15.5 바이너리](https://github.com/oauth2-proxy/oauth2-proxy/releases/tag/v7.15.5)를
-   PATH에 설치하고 릴리즈 체크섬을 검증하세요. Docker는 필요하지 않습니다.
-2. [DNS·TLS 준비](dns-tls.ko.md)의 DNS·발급 절차로 도메인·신뢰할 수 있는 인증서를
-   준비합니다. 해당 문서의 Docker deploy hook 명령은 네이티브 OP에 적용하지 않습니다.
-   실제 인증서 파일은 `oauth2-proxy/tls/`에 두고 개인 키는 **네이티브 OP 실행 사용자**가
-   읽을 수 있게 소유권·600 권한을 지정하세요. UID 65532는 Docker 컨테이너용 규칙입니다.
-   실행 중인 Docker 배포의 키 소유권을 바꿔 네이티브용으로 전용하지 마세요.
-3. [Google 등록·허용 목록 설정](authentication.ko.md)에 따라 `.env`에
-   `DECIFLOW_PUBLIC_URL`·OAuth 클라이언트·쿠키 값을 넣습니다. 예시 도메인은 다음과 같습니다.
+   PATH에 설치하고 릴리즈 체크섬을 검증하세요.
+2. [DNS·TLS 준비](dns-tls.ko.md)에 따라 도메인과 신뢰할 수 있는 인증서를 준비합니다.
+   Docker deploy hook은 네이티브에 적용하지 않습니다. 실제 인증서 파일을
+   `oauth2-proxy/tls/`에 두고 네이티브 실행 사용자가 개인 키를 읽도록 소유권·600 권한을
+   지정하세요. Docker UID 65532는 네이티브 소유권 규칙이 아닙니다.
+3. [Google 등록·이메일 허용 목록](authentication.ko.md)을 설정합니다. `.env`의
+   클라이언트 ID·비밀값·쿠키 키를 채운 뒤 다음을 지정하세요.
 
 ```dotenv
-DECIFLOW_PUBLIC_URL=https://deciflow.example.com:4443
-DECIFLOW_CSRF_TRUSTED_ORIGINS=https://deciflow.example.com:4443
+OAUTH2_PROXY_ENABLED=true
+OAUTH2_PROXY_PUBLIC_URL=https://deciflow.example.com:4443
 ```
 
-프로젝트 설정대로 개인 키·허용 목록·`.env`는 Git에서 제외합니다. Google에는
-`https://deciflow.example.com:4443/oauth2/callback`을 등록하세요. 예시 도메인을
-모두 일관되게 바꾸고 네이티브 upstream에 Docker 전용 호스트 이름을 쓰지 마세요.
+터미널 B에서 같은 명령으로 DeciFlow를 다시 실행합니다. 기존 엔진을 사용한다면 앞의
+안내처럼 `--extra laya`를 제외하세요. 실행기가 네이티브 경로·설정한 `PORT`·콜백·신뢰
+출처를 자동 지정합니다. OAuth 설정과 개인 파일은 Git에서 제외하며 내부 UI 포트를
+공개하지 마세요. 설정·바이너리 누락이나 OAuth2-Proxy 종료 시 실행을 중단하고 HTTP로 자동 전환하지 않습니다.
 
-앞의 명령으로 터미널 B에서 DeciFlow를 실행합니다. 저장소 루트의 터미널 C에서 실행하세요.
+공개 HTTPS URL에서 승인·미등록 계정과 쿠키 없는 `/api/status` 요청(401)을 확인합니다.
+`Ctrl+C`는 DeciFlow와 OAuth2-Proxy를 함께 종료하며 터미널 A의 Laya는 유지합니다.
+UI Restart/Reset도 OAuth2-Proxy를 정리한 뒤 DeciFlow를 다시 실행합니다.
 
-```bash
-uv run --env-file .env --extra laya oauth2-proxy \
-  --config=oauth2-proxy/oauth2-proxy.cfg \
-  --upstream=http://127.0.0.1:4000/ \
-  --redirect-url=https://deciflow.example.com:4443/oauth2/callback \
-  --authenticated-emails-file=oauth2-proxy/allowed-emails.txt \
-  --tls-cert-file=oauth2-proxy/tls/fullchain.pem \
-  --tls-key-file=oauth2-proxy/tls/privkey.pem
-```
-
-정책 파일의 컨테이너 경로를 네이티브 경로로 덮어쓰는 명령입니다.
-기존 Laya·Jev를 사용한다면 여기서도 `--extra laya`를 제외합니다.
-DeciFlow의 `PORT`를 바꿨다면 upstream 포트도 바꾸세요.
-공개 HTTPS 출처를 열고 승인·미등록 계정과 쿠키 없는 `/api/status` 요청(401)을 확인합니다.
-브라우저 URL·Google 콜백·신뢰 출처는 포트까지 일치해야 하며 UI 내부 포트는 전달하지 않습니다.
-
-터미널 C의 `Ctrl+C`로 OP를 종료합니다. 인증서 갱신·허용 목록·정책 변경 후에는
-파일을 반영하고 **네이티브 OP 프로세스**를 재시작하세요. Docker Compose 재생성
-명령으로 관리되지 않습니다. 인증서 권한은 해당 실행 사용자에 맞게 유지합니다.
-무인 갱신·재시작에는 호스트의 서비스 관리자를 사용하세요. 프로젝트가 네이티브
-서비스 unit을 자동 설치하지는 않습니다.
+모드 전환이나 인증정보·인증서·허용 목록·정책 변경 시 터미널 B를 `Ctrl+C`로 종료하고
+파일을 수정한 뒤 같은 명령으로 실행하세요. 인증서 자동 갱신 반영에는 호스트의 서비스
+관리자로 네이티브 배포를 재시작하세요. Docker 재생성 명령으로 관리되지 않으며
+프로젝트가 네이티브 서비스 unit을 자동 설치하지 않습니다.
 
 ## 문제 해결
 
@@ -173,8 +163,8 @@ DeciFlow의 `PORT`를 바꿨다면 upstream 포트도 바꾸세요.
 | 모델 다운로드·적재가 느림 | 터미널 A 상태. 최초 적재에는 다운로드 연결·충분한 메모리 필요 |
 | 엔진 접속 실패 | Laya 실행·준비 상태, 네이티브 URL·API 키. `laya`는 Compose에서만 조회됨 |
 | Source를 찾지 못함 | `/host-logs/...` 대신 호스트의 절대 경로 |
-| 네이티브 OP 경유 UI API가 403 | `DECIFLOW_CSRF_TRUSTED_ORIGINS`의 공개 HTTPS 출처. 수정 후 DeciFlow 재시작 |
-| OP 인증서 읽기 실패 | 네이티브 경로·개인 키 소유권과 권한 |
+| 네이티브 OAuth2-Proxy 경유 UI API가 403 | `DECIFLOW_CSRF_TRUSTED_ORIGINS`의 공개 HTTPS 출처. 수정 후 DeciFlow 재시작 |
+| OAuth2-Proxy 인증서 읽기 실패 | 네이티브 경로·개인 키 소유권과 권한 |
 | 포트 사용 중 | 다른 설치를 종료하거나 관련 포트를 일관되게 변경 |
 
 HDFS 네이티브 Source에는 호스트의 Java·Hadoop·libhdfs도 필요합니다.

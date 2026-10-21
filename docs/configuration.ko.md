@@ -6,20 +6,22 @@ DeciFlow 운영 설정은 **Settings → Configurations**에서 수정할 수 �
 UI 저장값 → `.env`/프로세스 환경변수 → 코드 기본값 순으로 적용합니다.
 **Use UI Override**를 해제하면 환경변수/기본값으로 복원합니다. 초기 환경은 `.env`에서 준비합니다.
 Laya 서버 설정은 Laya 호스트에서 관리하며, Compose는 `LAYA_API_KEY`를 DeciFlow와
-공유합니다. `COMPOSE_PROFILES`는 `cpu` 또는 `cuda`를 선택하며 빈 값이면 UI와 OAuth2-Proxy를 실행합니다.
+공유합니다. `COMPOSE_PROFILES`는 `cpu` 또는 `cuda`를 선택하며 빈 값이면 로컬 Laya를 실행하지 않습니다.
 
 | 환경변수 | 미설정 시 코드 기본값 | 역할 |
 | --- | --- | --- |
-| `COMPOSE_PROFILES` | 미설정(UI·OAuth2-Proxy 실행) | Compose 전용. cpu·cuda 중 하나만 선택. .env.example은 cpu 지정 |
+| `COMPOSE_PROFILES` | 미설정(로컬 Laya 미실행) | Compose 전용. cpu·cuda 중 하나만 선택. .env.example은 cpu 지정 |
+| `OAUTH2_PROXY_ENABLED` | `false` | true: Google 로그인·HTTPS, false: 인증 없는 HTTP 데모. Docker·네이티브 공통 |
+| `DECIFLOW_BIND_HOST` | `127.0.0.1` | OAuth2-Proxy 비활성 시 HTTP 주소. 0.0.0.0은 외부 접속 허용; 활성 시 UI 포트 미공개 |
 | `DECISION_ENGINE` | `laya` | `laya` 또는 `jev` |
 | `DECIFLOW_DATA_DIR` | `/var/lib/deciflow-data` | Sources·Tasks/이력·Actions·Criteria·SSH 키·호스트 공통 저장 루트; 쓰기 권한 필요 |
-| `DECIFLOW_CSRF_TRUSTED_ORIGINS` | 빈 값 | 쉼표로 구분한 신뢰 UI 출처. https://*.ngrok-free.app 지원. 출처 검사이며 인증 기능은 아님. Compose는 DECIFLOW_PUBLIC_URL 사용 |
+| `DECIFLOW_CSRF_TRUSTED_ORIGINS` | 빈 값 | 쉼표로 구분한 신뢰 UI 출처. https://*.ngrok-free.app 지원. 출처 검사이며 인증 기능은 아님. OAuth2-Proxy 활성 시 OAUTH2_PROXY_PUBLIC_URL 사용 |
 | `DECIFLOW_LOG_DIR` | `/var/log/deciflow` | 서버·접근 로그. 빈 값은 파일 기록 비활성화. Compose는 deciflow-logs에 보존 |
-| `PORT` | `4000` | Compose의 UI 내부 포트. 네이티브 실행 시 DeciFlow 수신 포트 |
-| `DECIFLOW_PUBLIC_URL` | Compose 필수 | :4443을 포함한 공개 HTTPS 출처. 콜백·신뢰 UI 출처 설정 |
-| `OAUTH2_PROXY_CLIENT_ID` | Compose 필수 | Google 웹 애플리케이션 클라이언트 ID |
-| `OAUTH2_PROXY_CLIENT_SECRET` | Compose 필수 | Google 클라이언트 비밀값. Git 제외된 .env에 보관 |
-| `OAUTH2_PROXY_COOKIE_SECRET` | Compose 필수 | 무작위 32바이트를 Base64 인코딩한 쿠키 키 |
+| `PORT` | `4000` | UI 수신 포트. OAuth2-Proxy 비활성 시 Docker도 같은 포트를 공개 |
+| `OAUTH2_PROXY_PUBLIC_URL` | OAuth2-Proxy 활성 시 필수 | :4443을 포함한 공개 HTTPS 출처. 콜백·신뢰 UI 출처 설정 |
+| `OAUTH2_PROXY_CLIENT_ID` | OAuth2-Proxy 활성 시 필수 | Google 웹 애플리케이션 클라이언트 ID |
+| `OAUTH2_PROXY_CLIENT_SECRET` | OAuth2-Proxy 활성 시 필수 | Google 클라이언트 비밀값. Git 제외된 .env에 보관 |
+| `OAUTH2_PROXY_COOKIE_SECRET` | OAuth2-Proxy 활성 시 필수 | 무작위 32바이트를 Base64 인코딩한 쿠키 키 |
 | `LAYA_API_URL` | `http://127.0.0.1:8000/v1/systemone` | 프록시 접두사를 포함한 전체 Laya URL. Compose CPU·CUDA는 모두 `http://laya:8000/v1/systemone`, 네이티브 실행은 루프백 사용 |
 | `LAYA_API_KEY` | `changeme` | Laya 서버와 동일한 키 |
 | `LAYA_MODEL` | `multilingual` | 내장 모델 또는 등록한 사용자 체크포인트 이름; 서버에 모델 필요 |
@@ -45,10 +47,14 @@ CPU·CUDA 모두 8000 포트를 공개합니다.
 해당 컨테이너를 재생성해야 합니다. 네이티브 실행은 Python 프로세스를 재시작하세요.
 state·세 질문·출력은 [요청·결과 JSON](results.ko.md)을 참고하세요.
 
+OAuth2-Proxy 모드·수신 주소 변경 후 Docker는 `docker compose up -d --remove-orphans`,
+네이티브는 DeciFlow를 종료한 뒤 다시 실행하세요. 인증 없는 외부 HTTP는 접근 가능한
+누구나 관리 기능을 사용할 수 있습니다.
+
 OAuth 값은 UI 재정의가 아닌 배포 설정입니다. Google 클라이언트 ID·비밀값 또는 쿠키 키를
 바꾸면 `docker compose up -d --force-recreate oauth2-proxy`로 적용하세요.
 **Restart DeciFlow**만으로 프록시 설정은 갱신되지 않습니다.
-`DECIFLOW_PUBLIC_URL` 변경 시 Google 등록 원본·리디렉션 URI도 바꾸고
+`OAUTH2_PROXY_PUBLIC_URL` 변경 시 Google 등록 원본·리디렉션 URI도 바꾸고
 `docker compose up -d ui oauth2-proxy`를 실행하세요. 파일·인증서 갱신은
 [인증 운영 안내](authentication.ko.md#운영)를 참고하세요.
 
@@ -196,6 +202,5 @@ UI는 확인한 재시작 요청을 한 번만 보내고 최대 60초 동안 새
 `POST /api/configuration`은 비밀값 없는 설정 정보를 조회합니다. `PUT /api/configuration`은
 `resultsPerPage`와 `runtimeOverrides`(지원하는 비밀값 없는 환경변수명만)를 받습니다.
 `POST /api/restart`는 `{ "confirmation": "RESTART DECIFLOW" }`를 요구하며 202를 반환합니다.
-앱은 신뢰 출처를 검사하며 기본 Compose 배포에서는 OAuth2-Proxy가 모든 UI·API 요청에
-Google 로그인을 추가로 요구합니다. Python 네이티브 실행에는 프록시 인증이 자동으로
-추가되지 않습니다. [인증 안내](authentication.ko.md)를 참고하세요.
+앱은 신뢰 출처를 검사합니다. `OAUTH2_PROXY_ENABLED=true`이면 Docker·네이티브 모두
+OAuth2-Proxy가 UI·API 요청에 Google 로그인을 요구합니다. false이면 로그인 없이 사용합니다. [인증 안내](authentication.ko.md)를 참고하세요.

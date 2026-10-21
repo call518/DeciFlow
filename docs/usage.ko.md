@@ -4,7 +4,8 @@
 
 ## 로그인과 접근
 
-기본 Docker 배포에서는 `.env`의 `DECIFLOW_PUBLIC_URL`에 지정한 HTTPS 출처
+기본 HTTP 데모는 `http://localhost:4000`을 로그인 없이 사용합니다.
+`OAUTH2_PROXY_ENABLED=true`인 경우 다음 로그인 안내가 적용됩니다. `.env`의 `OAUTH2_PROXY_PUBLIC_URL`에 지정한 HTTPS 출처
 (4443 포트)를 열고 이메일 허용 목록에 등록된 Google 계정으로 로그인합니다.
 Gmail뿐 아니라 Workspace 등 Google 계정도 사용할 수 있습니다.
 공유한 실행 링크에도 같은 로그인·접근 권한이 필요하며 링크 자체가 권한을 부여하지 않습니다.

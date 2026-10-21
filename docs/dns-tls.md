@@ -4,7 +4,8 @@
 
 **DeciFlow** reads sources and serves the UI/API; the **Laya server** and **Jev service**
 provide inference. **OAuth2-Proxy** is the HTTPS entry point for browser/API access.
-The current Compose deployment requires a domain and trusted TLS certificate.
+This guide is required only for `OAUTH2_PROXY_ENABLED=true`. The default HTTP demo
+needs no domain or certificate.
 
 This guide prepares DNS, issues a Let's Encrypt certificate with Certbot DNS-01,
 and connects renewal to OAuth2-Proxy. It uses an existing authoritative BIND9 server
@@ -45,14 +46,14 @@ dig AAAA deciflow.example.com +short
 
 | Traffic | Required Path |
 | --- | --- |
-| Browser → DeciFlow | Public TCP 4443 → Docker host TCP 4443 → OP container TCP 4443 |
+| Browser → DeciFlow | Public TCP 4443 → Docker host TCP 4443 → OAuth2-Proxy container TCP 4443 |
 | Certbot → primary DNS | TCP/UDP 53, with TSIG-authenticated updates |
 | ACME validation → authoritative DNS | Public DNS queries on TCP/UDP 53 |
 | Certbot → Let's Encrypt | Outbound HTTPS on TCP 443 |
 
 For a NAT deployment, forward external TCP 4443 to the Docker host's TCP 4443.
 Check host/Windows firewalls too. Do not publish the UI's internal port 4000.
-DNS-01 issuance does not require inbound web ports 80/443 or a running OP container;
+DNS-01 issuance does not require inbound web ports 80/443 or a running OAuth2-Proxy container;
 successful issuance alone does not establish browser connectivity on 4443.
 See [Let's Encrypt challenge types](https://letsencrypt.org/docs/challenge-types/#dns-01-challenge).
 
@@ -222,12 +223,12 @@ sudo install -m 644 /etc/letsencrypt/live/deciflow.example.com/fullchain.pem oau
 sudo install -o 65532 -m 600 /etc/letsencrypt/live/deciflow.example.com/privkey.pem oauth2-proxy/tls/privkey.pem
 ```
 
-UID 65532 is the user in the project's pinned OP image. The TLS directory is
+UID 65532 is the user in the project's pinned OAuth2-Proxy image. The TLS directory is
 excluded from Git and image builds. A renewed Certbot file does not automatically
 update these deployed copies.
 
 Continue with [Google sign-in setup](authentication.md): set
-`DECIFLOW_PUBLIC_URL=https://deciflow.example.com:4443`, register the exact Google
+`OAUTH2_PROXY_PUBLIC_URL=https://deciflow.example.com:4443`, register the exact Google
 callback including the port, and prepare the client credentials and allow list.
 Then validate and start on the Docker host:
 
@@ -242,7 +243,7 @@ Certificate validation must succeed; an unauthenticated main request may return
 403 with the sign-in page, while `/api/status` must return 401. Check from an
 external network too; testing inside the LAN does not establish that NAT works.
 
-## 5. Automate Renewal and OP Deployment
+## 5. Automate Renewal and OAuth2-Proxy Deployment
 
 **On the Certbot host**, verify renewal before enabling its schedule:
 
@@ -292,7 +293,7 @@ sudo sh -n /etc/letsencrypt/renewal-hooks/deploy/deciflow-op.sh
 sudo env RENEWED_LINEAGE=/etc/letsencrypt/live/deciflow.example.com /etc/letsencrypt/renewal-hooks/deploy/deciflow-op.sh
 ```
 
-The last command tests deployment with the current certificate and **recreates OP**;
+The last command tests deployment with the current certificate and **recreates OAuth2-Proxy**;
 browser streams disconnect briefly, while UI/Laya and background Tasks stay running.
 The lineage guard skips other certificates. Certbot runs a deploy hook after a
 successful renewal; an ordinary `--dry-run` does not test this hook. Do not deploy
@@ -300,7 +301,7 @@ an ACME staging certificate to the production service. See
 [Certbot renewal and hooks](https://eff-certbot.readthedocs.io/en/stable/using.html#renewing-certificates).
 
 If Certbot is on another host, replace the local deployment hook with your secure
-certificate transfer and remote OP recreation process; the above script assumes
+certificate transfer and remote OAuth2-Proxy recreation process; the above script assumes
 Certbot and Docker share a host.
 
 ## 6. Checks and Troubleshooting
@@ -319,9 +320,9 @@ openssl s_client -connect deciflow.example.com:4443 -servername deciflow.example
 | `SERVFAIL` / journal permission error | BIND logs, zone-file/directory permissions, AppArmor/SELinux denials |
 | Certbot cannot find plugin | Plugin installed into the same environment as the running Certbot |
 | TXT present only on primary | Secondary transfer/notification and propagation delay |
-| Issuance succeeds but browser cannot connect | NAT 4443/TCP, host firewall, WSL routing, OP container state |
-| OP cannot read private key | Deployed key ownership UID 65532, mode 600, readable parent directory |
-| Browser still sees old certificate | Deploy hook copied renewed files and recreated OP; inspect hook logs |
+| Issuance succeeds but browser cannot connect | NAT 4443/TCP, host firewall, WSL routing, OAuth2-Proxy container state |
+| OAuth2-Proxy cannot read private key | Deployed key ownership UID 65532, mode 600, readable parent directory |
+| Browser still sees old certificate | Deploy hook copied renewed files and recreated OAuth2-Proxy; inspect hook logs |
 | Timer inactive or no future run | Actual unit name, enabled state, scheduler logs |
 | Google `redirect_uri_mismatch` | Exact HTTPS origin and callback, including :4443; see authentication guide |
 

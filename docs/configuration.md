@@ -7,20 +7,22 @@ Saved UI overrides take precedence over `.env`/process environment values, then
 code defaults. Clearing **Use UI Override** restores the environment/default value.
 The initial environment setup remains in `.env`.
 Laya server settings are managed on the Laya host; Compose shares `LAYA_API_KEY`
-with DeciFlow. `COMPOSE_PROFILES` selects `cpu` or `cuda`; empty starts UI and OAuth2-Proxy.
+with DeciFlow. `COMPOSE_PROFILES` selects `cpu` or `cuda`; empty starts no local Laya container.
 
 | Variable | Code default (when unset) | Purpose |
 | --- | --- | --- |
-| `COMPOSE_PROFILES` | Unset (UI and OAuth2-Proxy) | Compose only: set cpu or cuda, exactly one; .env.example selects cpu |
+| `COMPOSE_PROFILES` | Unset (no local Laya) | Compose only: set cpu or cuda, exactly one; .env.example selects cpu |
+| `OAUTH2_PROXY_ENABLED` | `false` | true: Google sign-in and HTTPS; false: unauthenticated HTTP demo. Docker and native |
+| `DECIFLOW_BIND_HOST` | `127.0.0.1` | HTTP address when OAuth2-Proxy disabled; 0.0.0.0 allows external access. With OAuth2-Proxy enabled no UI port is published |
 | `DECISION_ENGINE` | `laya` | `laya` or `jev` |
 | `DECIFLOW_DATA_DIR` | `/var/lib/deciflow-data` | Shared Sources/Tasks/history/Actions/Criteria/SSH Key/host storage root; must be writable |
-| `DECIFLOW_CSRF_TRUSTED_ORIGINS` | Empty | Comma-separated trusted UI origins, including optional https://*.ngrok-free.app; origin check only, not authentication. Compose uses DECIFLOW_PUBLIC_URL |
+| `DECIFLOW_CSRF_TRUSTED_ORIGINS` | Empty | Comma-separated trusted UI origins, including optional https://*.ngrok-free.app; origin check only, not authentication. With OAuth2-Proxy enabled, uses OAUTH2_PROXY_PUBLIC_URL |
 | `DECIFLOW_LOG_DIR` | `/var/log/deciflow` | Server/access logs; empty disables file logging. Compose persists logs in deciflow-logs |
-| `PORT` | `4000` | Internal UI port in Compose; native DeciFlow listening port |
-| `DECIFLOW_PUBLIC_URL` | Required by Compose | Public HTTPS origin including :4443; sets callback and trusted UI origin |
-| `OAUTH2_PROXY_CLIENT_ID` | Required by Compose | Google Web application client ID |
-| `OAUTH2_PROXY_CLIENT_SECRET` | Required by Compose | Google client secret; keep in ignored .env |
-| `OAUTH2_PROXY_COOKIE_SECRET` | Required by Compose | Random Base64-encoded 32-byte cookie key |
+| `PORT` | `4000` | UI listening port; also published by Docker when OAuth2-Proxy is disabled |
+| `OAUTH2_PROXY_PUBLIC_URL` | Required when OAuth2-Proxy enabled | Public HTTPS origin including :4443; sets callback and trusted UI origin |
+| `OAUTH2_PROXY_CLIENT_ID` | Required when OAuth2-Proxy enabled | Google Web application client ID |
+| `OAUTH2_PROXY_CLIENT_SECRET` | Required when OAuth2-Proxy enabled | Google client secret; keep in ignored .env |
+| `OAUTH2_PROXY_COOKIE_SECRET` | Required when OAuth2-Proxy enabled | Random Base64-encoded 32-byte cookie key |
 | `LAYA_API_URL` | `http://127.0.0.1:8000/v1/systemone` | Full Laya URL, including any proxy prefix. Compose CPU/CUDA both use `http://laya:8000/v1/systemone`; native execution uses loopback |
 | `LAYA_API_KEY` | `changeme` | Key matching the Laya server |
 | `LAYA_MODEL` | `multilingual` | Built-in or registered custom checkpoint name; server must provide it |
@@ -46,10 +48,14 @@ service require `docker compose up -d` to recreate affected containers. For nati
 execution, restart the Python process.
 See [request/result JSON](results.md) for state, the three questions, and outputs.
 
+After changing OAuth2-Proxy mode or the bind address, run `docker compose up -d --remove-orphans`
+for Docker, or stop and start native DeciFlow again. External HTTP without OAuth2-Proxy gives
+anyone who can connect access to management features.
+
 OAuth settings are deployment settings, not UI overrides. Changing a Google client
 ID/secret or cookie key requires `docker compose up -d --force-recreate oauth2-proxy`;
 **Restart DeciFlow** alone does not reload the proxy. After changing
-`DECIFLOW_PUBLIC_URL`, update Google's registered origin/redirect URI and run
+`OAUTH2_PROXY_PUBLIC_URL`, update Google's registered origin/redirect URI and run
 `docker compose up -d ui oauth2-proxy`. For files and certificate renewal, see
 [authentication operations](authentication.md#operations).
 
@@ -206,6 +212,6 @@ DeciFlow's original-command process replacement; use one process per data direct
 `POST /api/configuration` reads safe metadata. `PUT /api/configuration` accepts
 `resultsPerPage` and `runtimeOverrides` (only supported non-secret environment identifiers).
 `POST /api/restart` requires `{ "confirmation": "RESTART DECIFLOW" }` and returns 202.
-The application checks trusted origins; the default Compose deployment additionally
-requires Google sign-in through OAuth2-Proxy for all UI/API requests. Native Python
-execution has no automatic proxy authentication. See [authentication](authentication.md).
+The application checks trusted origins. With `OAUTH2_PROXY_ENABLED=true`, both Docker
+and native deployments require Google sign-in through OAuth2-Proxy for UI/API requests.
+With false, access requires no sign-in. See [authentication](authentication.md).

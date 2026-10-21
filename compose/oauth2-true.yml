@@ -1,0 +1,46 @@
+services:
+  ui:
+    environment:
+      DECIFLOW_CSRF_TRUSTED_ORIGINS: ${OAUTH2_PROXY_PUBLIC_URL:?Set OAUTH2_PROXY_PUBLIC_URL in .env}
+
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.5
+    container_name: DeciFlow-OAuth2-Proxy
+    restart: unless-stopped
+    command:
+      - --config=/etc/oauth2-proxy/oauth2-proxy.cfg
+      - --upstream=http://ui:${PORT:-4000}/
+    environment:
+      OAUTH2_PROXY_CLIENT_ID: ${OAUTH2_PROXY_CLIENT_ID:?Set the Google client ID in .env}
+      OAUTH2_PROXY_CLIENT_SECRET: ${OAUTH2_PROXY_CLIENT_SECRET:?Set the Google client secret in .env}
+      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET:?Set a random cookie secret in .env}
+      OAUTH2_PROXY_REDIRECT_URL: ${OAUTH2_PROXY_PUBLIC_URL:?Set OAUTH2_PROXY_PUBLIC_URL in .env}/oauth2/callback
+    ports:
+      - "4443:4443"
+    volumes:
+      - type: bind
+        source: ./oauth2-proxy/oauth2-proxy.cfg
+        target: /etc/oauth2-proxy/oauth2-proxy.cfg
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./oauth2-proxy/allowed-emails.txt
+        target: /etc/oauth2-proxy/allowed-emails.txt
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./oauth2-proxy/tls
+        target: /etc/oauth2-proxy/tls
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      - ui
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    cap_drop:
+      - ALL
+

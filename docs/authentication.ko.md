@@ -11,11 +11,18 @@ DeciFlow로 중계하므로 Nginx는 필요하지 않습니다.
 허용된 사용자는 DeciFlow의 데이터와 관리 기능을 공유합니다.
 사용자별 저장 공간이나 역할 구분을 추가하는 기능은 아닙니다.
 
-`docker-compose.yml`은 OAuth2-Proxy를 DeciFlow와 함께 기본 실행합니다. 모든 환경
-설정은 `.env`에 넣고 `docker compose up -d`로 전체 구성을 시작합니다.
-UI의 호스트 포트는 공개하지 않습니다.
+이 안내를 적용하려면 `.env`에 `OAUTH2_PROXY_ENABLED=true`를 지정하세요. 기본값
+`false`는 OAuth·인증서 없이 `http://localhost:4000`에서 HTTP 데모를 제공합니다.
+OAuth2-Proxy 활성 시 HTTPS 4443 포트만 공개하며 UI 호스트 포트는 공개하지 않습니다.
+모드 변경 후 `docker compose up -d --remove-orphans`를 실행하세요. UI 포트 구성을
+재생성하고 불필요한 OAuth2-Proxy 컨테이너를 제거하며 데이터는 삭제하지 않습니다. 모드 전환에
+`restart`만 사용하지 마세요. 활성 모드의 설정 오류 시 실행을 중단하며 HTTP로 자동 전환하지 않습니다.
 
-Docker 없는 설치와 OP 직접 실행은 [네이티브 안내](native.ko.md)를 따르세요.
+진입점은 계속 `docker-compose.yml`입니다. 설정값에 따라 `compose/`의 파일을 자동
+선택하므로 해당 파일을 `-f`로 직접 지정하지 마세요. include 기능을 위해
+Docker Compose 2.20.0+가 필요합니다.
+
+Docker 없는 설치와 OAuth2-Proxy 자동 실행은 [네이티브 안내](native.ko.md)를 따르세요.
 
 ## 준비 사항
 
@@ -27,7 +34,7 @@ Docker 없는 설치와 OP 직접 실행은 [네이티브 안내](native.ko.md)�
 예시의 `https://deciflow.example.com:4443`을 실제 HTTPS 출처로 바꾸세요.
 인증서 발급·갱신과 Google 계정 설정은 운영자가 수행해야 하며
 Compose가 자동으로 생성하지 않습니다.
-도메인 레코드·인증서 발급·갱신·OP 반영은 [DNS·TLS 준비 안내](dns-tls.ko.md)에
+도메인 레코드·인증서 발급·갱신·OAuth2-Proxy 반영은 [DNS·TLS 준비 안내](dns-tls.ko.md)에
 따라 준비한 뒤 아래 Google 설정을 진행하세요.
 
 ## 1. Google 로그인 등록
@@ -56,7 +63,7 @@ chmod 600 .env
 openssl rand -base64 32
 ```
 
-`.env`의 `DECIFLOW_PUBLIC_URL`에 경로·끝의 / 없는 HTTPS 출처를 지정하고,
+`.env`에 `OAUTH2_PROXY_ENABLED=true`를 지정하고 `OAUTH2_PROXY_PUBLIC_URL`에 경로·끝의 / 없는 HTTPS 출처를 지정하고,
 `OAUTH2_PROXY_CLIENT_ID`와 `OAUTH2_PROXY_CLIENT_SECRET`에 Google 등록 값을 넣습니다.
 생성한 무작위 값은 `OAUTH2_PROXY_COOKIE_SECRET`에 넣으세요.
 
@@ -147,7 +154,7 @@ OAUTH2_PROXY_BINARY=/path/to/oauth2-proxy uv run pytest -q tests/test_oauth2_pro
 docker compose up -d --no-deps --force-recreate oauth2-proxy
 ```
 
-`DECIFLOW_PUBLIC_URL`을 변경하면 포트를 포함해 Google의 승인 원본·리디렉션 URI를
+`OAUTH2_PROXY_PUBLIC_URL`을 변경하면 포트를 포함해 Google의 승인 원본·리디렉션 URI를
 함께 수정하고 `docker compose up -d ui oauth2-proxy`로 콜백·신뢰 UI 출처를 갱신하세요.
 `redirect_uri_mismatch`는 요청한 콜백이 해당 Google 클라이언트의 등록 URI와
 정확히 일치하지 않는다는 뜻입니다.

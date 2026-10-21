@@ -1768,7 +1768,9 @@ async def lifespan(application: Starlette) -> AsyncIterator[None]:
                 )
         if application.state.restart_requested:
             close_result_store(get_data_directory())
-        if application.state.reset_requested or application.state.restart_requested:
+        if (
+            application.state.reset_requested or application.state.restart_requested
+        ) and not getattr(application.state, "managed_native_proxy", False):
             restart_process()
 
 
@@ -1875,11 +1877,32 @@ def get_log_config() -> Result:
     return config
 
 
-def main(*, host: str = "127.0.0.1") -> None:
+def main(*, host: str | None = None, manage_proxy: bool = False) -> None:
     """Read local settings at startup; bind to loopback unless specified."""
     load_startup_settings(ROOT / ".env")
+    from native_proxy import proxy_enabled, run_with_proxy
+
+    protected = proxy_enabled()
+    host = host or (
+        "127.0.0.1" if protected else os.getenv("DECIFLOW_BIND_HOST", "127.0.0.1")
+    )
     get_engine()
     port = int(os.getenv("PORT") or "4000")
+    if manage_proxy and protected:
+        app.state.managed_native_proxy = True
+        run_with_proxy(
+            uvicorn.Config(
+                app,
+                host="127.0.0.1",
+                port=port,
+                timeout_graceful_shutdown=2,
+                log_config=get_log_config(),
+            ),
+            ROOT,
+        )
+        if app.state.reset_requested or app.state.restart_requested:
+            restart_process()
+        return
     print(f"DeciFlow: http://{host}:{port}", flush=True)
     uvicorn.run(
         app,
@@ -1891,4 +1914,7 @@ def main(*, host: str = "127.0.0.1") -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main(manage_proxy=True)
+    except (ValueError, OSError, RuntimeError) as error:
+        raise SystemExit(f"DeciFlow stopped: {error}") from None

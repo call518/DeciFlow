@@ -1,5 +1,11 @@
 name: deciflow
 
+include:
+  - path:
+      - ./compose/ui.yml
+      - ./compose/oauth2-${OAUTH2_PROXY_ENABLED:-false}.yml
+    project_directory: .
+
 x-laya: &laya
   hostname: DeciFlow-Laya
   init: true
@@ -24,68 +30,6 @@ x-laya: &laya
         - laya
 
 services:
-  ui:
-    image: call518/deciflow-ui:0.0.2
-    container_name: DeciFlow-UI
-    hostname: DeciFlow-UI
-    init: true
-    restart: unless-stopped
-    pull_policy: always
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    env_file: .env
-    environment:
-      DECIFLOW_DATA_DIR: ${DECIFLOW_DATA_DIR:-/var/lib/deciflow-data}
-      DECIFLOW_CSRF_TRUSTED_ORIGINS: ${DECIFLOW_PUBLIC_URL:?Set DECIFLOW_PUBLIC_URL in .env}
-    volumes:
-      - .:/app:ro
-      - venv:/opt/deciflow-venv
-      - /var/log:/host-logs/var/log:ro
-      - ./sample-logs:/host-logs/sample-logs:ro
-      - data:${DECIFLOW_DATA_DIR:-/var/lib/deciflow-data}
-      - logs:${DECIFLOW_LOG_DIR:-/var/log/deciflow}
-
-  oauth2-proxy:
-    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.5
-    container_name: DeciFlow-OAuth2-Proxy
-    restart: unless-stopped
-    command:
-      - --config=/etc/oauth2-proxy/oauth2-proxy.cfg
-      - --upstream=http://ui:${PORT:-4000}/
-    environment:
-      OAUTH2_PROXY_CLIENT_ID: ${OAUTH2_PROXY_CLIENT_ID:?Set the Google client ID in .env}
-      OAUTH2_PROXY_CLIENT_SECRET: ${OAUTH2_PROXY_CLIENT_SECRET:?Set the Google client secret in .env}
-      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET:?Set a random cookie secret in .env}
-      OAUTH2_PROXY_REDIRECT_URL: ${DECIFLOW_PUBLIC_URL:?Set DECIFLOW_PUBLIC_URL in .env}/oauth2/callback
-    ports:
-      - "4443:4443"
-    volumes:
-      - type: bind
-        source: ./oauth2-proxy/oauth2-proxy.cfg
-        target: /etc/oauth2-proxy/oauth2-proxy.cfg
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ./oauth2-proxy/allowed-emails.txt
-        target: /etc/oauth2-proxy/allowed-emails.txt
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ./oauth2-proxy/tls
-        target: /etc/oauth2-proxy/tls
-        read_only: true
-        bind:
-          create_host_path: false
-    depends_on:
-      - ui
-    security_opt:
-      - no-new-privileges:true
-    read_only: true
-    cap_drop:
-      - ALL
-
   laya-cpu:
     <<: *laya
     image: call518/deciflow-laya-cpu:0.0.1

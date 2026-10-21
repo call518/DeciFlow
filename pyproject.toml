@@ -30,7 +30,7 @@ testpaths = ["tests"]
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
-include = ["result_payload.py", "decisions.py", "actions.py", "classifier.py", "config.py", "criteria_generation.py", "server.py", "sources.py", "laya_server.py", "profiles", "chunks.py", "source_settings.py", "source_registry.py", "remote_sources.py", "hdfs_sources.py", "webhdfs_sources.py", "configured_sources.py", "host_sources.py", "tasks.py", "jobs.py", "result_store.py", "app_settings.py", "config_store.py", "reset.py", "ssh_hosts.py", "ssh_keys.py", "tests"]
+include = ["native_proxy.py", "result_payload.py", "decisions.py", "actions.py", "classifier.py", "config.py", "criteria_generation.py", "server.py", "sources.py", "laya_server.py", "profiles", "chunks.py", "source_settings.py", "source_registry.py", "remote_sources.py", "hdfs_sources.py", "webhdfs_sources.py", "configured_sources.py", "host_sources.py", "tasks.py", "jobs.py", "result_store.py", "app_settings.py", "config_store.py", "reset.py", "ssh_hosts.py", "ssh_keys.py", "tests"]
 exclude = [".venv", "vendor"]
 pythonVersion = "3.11"
 

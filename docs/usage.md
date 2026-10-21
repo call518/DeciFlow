@@ -4,8 +4,10 @@
 
 ## Sign In and Access
 
-For the default Docker deployment, open the HTTPS origin in `.env`'s
-`DECIFLOW_PUBLIC_URL` (port 4443), then sign in with a Google account on the email
+The default HTTP demo opens `http://localhost:4000` without sign-in.
+The following sign-in instructions apply when `OAUTH2_PROXY_ENABLED=true`.
+Open the HTTPS origin in `.env`'s
+`OAUTH2_PROXY_PUBLIC_URL` (port 4443), then sign in with a Google account on the email
 allow list. This includes Workspace and other Google accounts, not only Gmail.
 A shared run link requires the same sign-in and permission; it does not grant access.
 All approved users share the installation's data and management capabilities.
