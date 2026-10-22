@@ -650,6 +650,12 @@ uv run pyright
 uv run pytest
 ```
 
+Python 3.11 is the minimum supported version; Python 3.12 is recommended for
+development and used by the Docker runtime. GitHub Actions runs the full pytest
+suite on every push using Ubuntu with both Python 3.11 and 3.12, without a personal
+`.env` or production credentials. View results in the
+repository's **Actions → Pytest** page; **Run workflow** also starts a manual run.
+
 Pytest automatically downloads and verifies OAuth2-Proxy v7.15.5 for Linux/macOS
 amd64/arm64. OpenSSL and initial GitHub access are required. Release archives are
 cached outside Git in `~/.cache/deciflow/test-tools/`; binaries and test certificates
