@@ -190,7 +190,8 @@ Processing Status → Failed를 함께 선택해 확인하세요.
 선택하세요. Choice는 분류 항목, Score는 차트와 같은 반올림 점수 단계,
 Noul은 차트와 같은 25% 확률 구간을 사용합니다. Criteria 이름으로 다른 프로필의
 Decision을 구분합니다. Decision·값 조건 하나를 다른 필터와 함께 적용할 수 있습니다.
-전체 실행의 결과 목록과 Overview 차트에 적용하며 **Show Decisions**와 독립적입니다.
+전체 실행의 우측 결과 목록에만 적용합니다. Overview 차트는 Decision 조건을 제외하고
+다른 필터만 반영합니다. **Show Decisions**와도 독립적입니다.
 사람이 Review에서 정정한 값으로 AI 판정값을 대체해 검색하지 않습니다.
 조건 칩을 개별 해제하거나 **Clear All**로 초기화하며 실행 URL에도 선택을 보존합니다.
 

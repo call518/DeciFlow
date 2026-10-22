@@ -197,8 +197,9 @@ not run metrics or JSON export; the Overview chart aggregates all matching resul
 Choice uses its classification options, Score uses the chart's rounded levels,
 and Noul uses the chart's 25% probability intervals. Criteria names distinguish
 Decisions from different profiles. One Decision/value condition can be active at
-a time and combines with the other filters. It affects the full-run result list
-and Overview chart, independently of **Show Decisions**. Reviewer corrections do
+a time and combines with the other filters. It affects only the full-run result list;
+the Overview chart ignores this condition and still follows the other filters.
+This is independent of **Show Decisions**. Reviewer corrections do
 not replace AI answers for filtering. Remove its filter chip or use **Clear All**
 to reset it. Run URLs retain the selected condition.
 

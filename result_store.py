@@ -658,6 +658,8 @@ class SQLiteResultStore:
                 cursor_where.append(f"e.sequence {operator} ?")
                 cursor_params.append(value)
         decision = filters.get("decision", "all")
+        decision_where = None
+        decision_params: list[object] = []
         certainty = filters.get("certainty", "all")
         if certainty not in {"all", "certain", "uncertain", "unassessed"}:
             raise ValueError("Invalid decision certainty filter.")
@@ -686,12 +688,11 @@ class SQLiteResultStore:
             if certainty != "all":
                 conditions.append("selected_decision.certainty=?")
                 decision_params.append(certainty)
-            where.append(
+            decision_where = (
                 "EXISTS (SELECT 1 FROM result_decisions selected_decision WHERE "
                 + " AND ".join(conditions)
                 + ")"
             )
-            params.extend(decision_params)
         elif certainty != "all":
             raise ValueError("Select a Choice decision before filtering certainty.")
         if decision == "all" and filters.get("category") is not None:
@@ -737,6 +738,10 @@ class SQLiteResultStore:
             chart = self._filtered_chart(stats, where, params, boundary)
         if filters.get("onlySummary"):
             return {"chartSummary": chart}
+        # Decision selection narrows result cards, not Overview aggregates.
+        if decision_where is not None:
+            where.append(decision_where)
+            params.extend(decision_params)
         where.extend(cursor_where)
         params.extend(cursor_params)
         with self.reader() as connection:

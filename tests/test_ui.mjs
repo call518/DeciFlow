@@ -5094,7 +5094,7 @@ test('signed-in account appears only with proxy authentication and uses session 
 });
 
 
-test('Decision filtering matches original Choice, Score and Noul answers and updates all chart groups',async()=>{
+test('Decision filtering matches original answers without changing Overview charts',async()=>{
   const items=[assessmentFixture(0),assessmentFixture(1),assessmentFixture(2),assessmentFixture(3)];
   items[0].result.decisions.urgency.score=.49;items[0].result.decisions.followup.noul=.249;
   items[1].result.decisions.area.choice='b';items[1].result.decisions.followup.noul=.25;
@@ -5103,6 +5103,9 @@ test('Decision filtering matches original Choice, Score and Noul answers and upd
   items[0].result.reviewerDecisions={area:'b'};
   const {nodes,context,requests}=workspace(items);await runTask(nodes);
   const count=requests.length;
+  const chartBefore=vm.runInContext('JSON.stringify(overviewStatistics().decisionGroups)',context);
+  const captionBefore=nodes.get('chart-totals').textContent;
+  const noteBefore=nodes.get('chart-decision-note').textContent;
   for(const [question,bucket,expected] of [
     ['area','b',['log-2','log-1']],
     ['urgency','0 · Low',['log-0']],
@@ -5113,9 +5116,15 @@ test('Decision filtering matches original Choice, Score and Noul answers and upd
     nodes.get('decision-filter').value=JSON.stringify([`stable:${question}`,bucket]);
     nodes.get('decision-filter').onchange();
     assert.deepEqual(logs(nodes),expected);
-    assert.equal(vm.runInContext('overviewStatistics().total',context),expected.length);
-    assert.equal(vm.runInContext("Object.values(overviewStatistics().decisionGroups['stable:response'].counts.all).reduce((a,b)=>a+b,0)",context),expected.length);
+    assert.equal(vm.runInContext('overviewStatistics().total',context),4);
+    assert.equal(vm.runInContext('JSON.stringify(overviewStatistics().decisionGroups)',context),chartBefore);
+    assert.equal(nodes.get('chart-totals').textContent,captionBefore);
+    assert.equal(nodes.get('chart-decision-note').textContent,noteBefore);
+    assert.equal(vm.runInContext("Object.values(overviewStatistics().decisionGroups['stable:response'].counts.all).reduce((a,b)=>a+b,0)",context),3);
   }
+  nodes.get('log-search').value='log-1';nodes.get('log-search').oninput();
+  assert.equal(vm.runInContext('overviewStatistics().total',context),1);
+  assert.match(nodes.get('chart-totals').textContent,/Filtered Results/);
   nodes.get('log-search').value='missing';nodes.get('log-search').oninput();assert.equal(vm.runInContext('overviewStatistics().total',context),0);
   assert.equal(nodes.get('decision-filter').value,JSON.stringify(['stable:followup','75–100%']));
   assert.ok(nodes.get('decision-filter').options.some(option=>option.value===JSON.stringify(['stable:area','a'])));

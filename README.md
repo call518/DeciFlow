@@ -180,6 +180,7 @@ nearest level; Noul charts group Yes probabilities into 25% intervals. Certainty
 refer to the selected Choice. Score and Noul have no certainty groups. Show Decisions
 selects which judgments appear in each card without filtering results or fetching data.
 Decision, Processing Status, Source, Host, Review Status, and Search Text filter the whole run.
+Decision filtering affects result cards only; the other filters also update Overview.
 Needs Review includes issues in any decision. Switching charts does not run inference.
 
 Content Field is a literal top-level key containing nonempty text. Malformed JSONL

@@ -623,7 +623,7 @@ def test_filtered_chart_aggregates_all_matches_independently_of_pages(
         ("followup", "25–<50%", [3, 4, 5]),
     ],
 )
-def test_decision_value_filter_updates_all_chart_decisions_across_pages(
+def test_decision_value_filter_leaves_chart_counts_unchanged_across_pages(
     tmp_path: Path, question: str, bucket: str, expected: list[int]
 ) -> None:
     store = SQLiteResultStore(tmp_path / "decisions.db")
@@ -658,13 +658,22 @@ def test_decision_value_filter_updates_all_chart_decisions_across_pages(
         f"record {number} % literal" for number in reversed(expected) for _ in range(5)
     ]
     chart = first["chartSummary"]
-    assert chart["total"] == len(expected) * 5
+    assert chart["total"] == 60
     for key in ["voc:area", "voc:urgency", "voc:followup"]:
-        assert (
-            sum(chart["decisionGroups"][key]["counts"]["all"].values())
-            == len(expected) * 5
-        )
-    assert sum(chart["decisionGroups"]["other:area"]["counts"]["all"].values()) == 0
+        assert sum(chart["decisionGroups"][key]["counts"]["all"].values()) == 40
+    assert sum(chart["decisionGroups"]["other:area"]["counts"]["all"].values()) == 20
+    assert store.page(identity, {"search": "RECORD"}, 10)["chartSummary"] == chart
+    assert (
+        store.page(identity, {"decision": f"voc:{question}", "category": bucket}, 10)[
+            "chartSummary"
+        ]
+        is None
+    )
+    common = {"host": "host-0", "source": "/input*.txt", "search": "record"}
+    assert (
+        store.page(identity, {**filters, **common}, 10)["chartSummary"]
+        == store.page(identity, common, 10)["chartSummary"]
+    )
     assert second["chartSummary"] == chart
     assert (
         store.page(identity, {**filters, "onlySummary": True}, 10)["chartSummary"]
@@ -687,7 +696,8 @@ def test_choice_named_all_is_a_literal_filter_value(tmp_path: Path) -> None:
         store.append(run["jobId"], item, run)
     filters = {"decision": "system:category", "category": "all"}
     page = store.page(run["jobId"], filters, 10)
-    assert len(page["items"]) == page["chartSummary"]["total"] == 1
+    assert len(page["items"]) == 1
+    assert page["chartSummary"] is None
     assert page["items"][0]["result"]["decisions"]["category"]["choice"] == "all"
     assert (
         len(store.page(run["jobId"], {"decision": "system:category"}, 10)["items"]) == 2

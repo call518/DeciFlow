@@ -2284,16 +2284,16 @@ function isDefaultChartEntry(entry) {
   const decision=profile?.defaultDecision || chartDefaults[entry.profileId];
   return decision?entry.question===decision:entry.default;
 }
-function hasResultFilters() {
-  return Object.keys(resultFilterLabels).some(id=>$(id).value && $(id).value!=='all');
+function hasOverviewFilters() {
+  return Object.keys(resultFilterLabels).some(id=>id!=='decision-filter' && $(id).value && $(id).value!=='all');
 }
-function matchesResultFilters(result) {
+function matchesResultFilters(result, includeDecision=true) {
   const processing=$('processing-filter').value || 'all',review=$('review-filter').value || 'all';
   const source=$('source-filter').value || 'all',host=$('host-filter').value || 'all';
   return (review==='all' || (review==='needs-review'?needsReview(result):!result.error && !needsReview(result)))
     && (processing==='all' || (processing==='failed'?Boolean(result.error):!result.error))
     && result.log.toLowerCase().includes($('log-search').value.toLowerCase())
-    && matchesDecisionFilter(result)
+    && (!includeDecision || matchesDecisionFilter(result))
     && (source==='all' || result.sourcePatterns?.includes(source) || result.source===source)
     && (host==='all' || resultHostId(result)===host);
 }
@@ -2315,12 +2315,12 @@ function matchesDecisionFilter(result) {
   return entry.options[Math.min(entry.options.length-1,Math.max(0,Math.floor(entry.type==='score'?value+0.5:value*4)))]===bucket;
 }
 function overviewStatistics() {
-  const all=updateResultStatistics();if(!hasResultFilters())return all;
+  const all=updateResultStatistics();if(!hasOverviewFilters())return all;
   if(pagedView)return pagedView.chartSummary || all;
   const stats={total:0,failed:0,truncated:0,decisionGroups:JSON.parse(JSON.stringify(all.decisionGroups || {}))};
   for(const entry of Object.values(stats.decisionGroups))for(const counts of Object.values(entry.counts))for(const key of Object.keys(counts))counts[key]=0;
   for(const result of results){
-    if(!result || !matchesResultFilters(result))continue;
+    if(!result || !matchesResultFilters(result,false))continue;
     stats.total++;stats.failed+=Boolean(result.error);stats.truncated+=result.providerResponse?.usage?.truncated===true;
     addDecisionStatistics(stats,result);
   }
@@ -2344,7 +2344,7 @@ function renderCategoryChart() {
   if(selected && selected.type!=='choice')chartCertainty='all';
   const options=selected?Object.fromEntries(selected.options.map(key=>[key,key])):Object.fromEntries(Object.keys(labels).map(key=>[key,key]));
   const counts=selected?.counts[chartCertainty] || Object.fromEntries(Object.keys(options).map(key=>[key,0]));
-  $('chart-decision-note').textContent=(hasResultFilters()?'Filtered Results · ':'')+(selected?.type==='score'?'Probability-weighted scores rounded to the nearest level.':selected?.type==='noul'?'Chunks by Yes probability.':'AI selected choices per chunk.');
+  $('chart-decision-note').textContent=(hasOverviewFilters()?'Filtered Results · ':'')+(selected?.type==='score'?'Probability-weighted scores rounded to the nearest level.':selected?.type==='noul'?'Chunks by Yes probability.':'AI selected choices per chunk.');
   renderDecisionDisplay(entries);
   const defaultButton=$('set-chart-default');defaultButton.hidden=!selected || isDefaultChartEntry(selected);defaultButton.disabled=savingChartDefault;
   const {failed, truncated} = stats;
@@ -2379,7 +2379,7 @@ function renderCategoryChart() {
     $('category-chart').append(row);
   }
   $('chart-truncated').textContent = `Truncated: ${truncated.toLocaleString('en-US')}`;
-  $('chart-totals').textContent = `${hasResultFilters()?'Filtered Results · ':''}${classified.toLocaleString('en-US')} classified ${classified === 1 ? 'chunk' : 'chunks'} · ${failed.toLocaleString('en-US')} failed ${failed === 1 ? 'request' : 'requests'}`;
+  $('chart-totals').textContent = `${hasOverviewFilters()?'Filtered Results · ':''}${classified.toLocaleString('en-US')} classified ${classified === 1 ? 'chunk' : 'chunks'} · ${failed.toLocaleString('en-US')} failed ${failed === 1 ? 'request' : 'requests'}`;
 }
 $('set-chart-default').onclick=async()=>{
   if(savingChartDefault)return;
