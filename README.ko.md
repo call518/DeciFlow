@@ -176,7 +176,7 @@ Default Chart Decision은 모든 유형 중 하나를 지정하며 AI 답변·�
 Score는 가중 점수를 가장 가까운 수준으로 반올림하여, Noul은 Yes 확률을 25% 구간으로
 집계합니다. 확실성 그룹은 선택한 Choice 기준이며 Score·Noul에는 적용하지 않습니다.
 Show Decisions는 결과를 걸러내거나 조회하지 않고 카드에 표시할 판단을 여러 개 선택합니다.
-Processing Status·Source·Host·Review Status·Search Text는 전체 실행의 결과를 필터링합니다. 어느 판단 항목이든 문제가 있으면 Needs Review가 됩니다. 차트 전환은 재분석하지 않습니다.
+Decision·Processing Status·Source·Host·Review Status·Search Text는 전체 실행의 결과를 필터링합니다. 어느 판단 항목이든 문제가 있으면 Needs Review가 됩니다. 차트 전환은 재분석하지 않습니다.
 
 Content Field는 비어 있지 않은 문자열을 담은 최상위 필드의 정확한 이름입니다.
 잘못된 JSONL 레코드는 실패로 보존하고 이후 레코드를 계속 처리합니다. 파일은 DeciFlow

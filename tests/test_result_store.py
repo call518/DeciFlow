@@ -613,3 +613,83 @@ def test_filtered_chart_aggregates_all_matches_independently_of_pages(
     assert store.state(identity)["summary"]["total"] == 120
     assert store.page(identity, {}, 10)["chartSummary"] is None
     store.close()
+
+
+@pytest.mark.parametrize(
+    "question,bucket,expected",
+    [
+        ("area", "a", [0, 2, 4, 6]),
+        ("urgency", "1 · Medium", [1, 4, 7]),
+        ("followup", "25–<50%", [3, 4, 5]),
+    ],
+)
+def test_decision_value_filter_updates_all_chart_decisions_across_pages(
+    tmp_path: Path, question: str, bucket: str, expected: list[int]
+) -> None:
+    store = SQLiteResultStore(tmp_path / "decisions.db")
+    run = snapshot()
+    identity = run["jobId"]
+    store.create(identity, run)
+    definitions = {
+        "area": {"type": "choice", "criteria": {"a": "A", "b": "B"}},
+        "urgency": {"type": "score", "criteria": ["Low", "Medium", "High"]},
+        "followup": {"type": "noul"},
+    }
+    for index in range(60):
+        number = index // 5
+        item = event(number)
+        item["result"].update(
+            criteriaGroup="voc" if number < 8 else "other",
+            decisionDefinitions=definitions,
+            decisions={
+                "area": {"choice": "a" if number % 2 == 0 else "b"},
+                "urgency": {"score": number % 3 + 0.2},
+                "followup": {"noul": number / 11},
+            },
+        )
+        store.append(identity, item, run)
+    filters = {"decision": f"voc:{question}", "category": bucket, "search": "RECORD"}
+    first = store.page(identity, filters, 10)
+    second = store.page(
+        identity, {**filters, "before": first["items"][-1]["sequence"]}, 10
+    )
+    rows = first["items"] + second["items"]
+    assert [row["result"]["log"] for row in rows] == [
+        f"record {number} % literal" for number in reversed(expected) for _ in range(5)
+    ]
+    chart = first["chartSummary"]
+    assert chart["total"] == len(expected) * 5
+    for key in ["voc:area", "voc:urgency", "voc:followup"]:
+        assert (
+            sum(chart["decisionGroups"][key]["counts"]["all"].values())
+            == len(expected) * 5
+        )
+    assert sum(chart["decisionGroups"]["other:area"]["counts"]["all"].values()) == 0
+    assert second["chartSummary"] == chart
+    assert (
+        store.page(identity, {**filters, "onlySummary": True}, 10)["chartSummary"]
+        == chart
+    )
+    assert store.state(identity)["summary"]["total"] == 60
+    store.close()
+
+
+def test_choice_named_all_is_a_literal_filter_value(tmp_path: Path) -> None:
+    store = SQLiteResultStore(tmp_path / "literal-all.db")
+    run = snapshot()
+    store.create(run["jobId"], run)
+    for index, choice in enumerate(["all", "other"]):
+        item = event(index)
+        item["result"]["decisionDefinitions"] = {
+            "category": {"type": "choice", "criteria": {"all": "All", "other": "Other"}}
+        }
+        item["result"]["decisions"] = {"category": {"choice": choice}}
+        store.append(run["jobId"], item, run)
+    filters = {"decision": "system:category", "category": "all"}
+    page = store.page(run["jobId"], filters, 10)
+    assert len(page["items"]) == page["chartSummary"]["total"] == 1
+    assert page["items"][0]["result"]["decisions"]["category"]["choice"] == "all"
+    assert (
+        len(store.page(run["jobId"], {"decision": "system:category"}, 10)["items"]) == 2
+    )
+    store.close()

@@ -3,7 +3,8 @@ import { readEvents } from './stream.js';
 const $ = id => document.getElementById(id);
 const runStateBadge=$('run-state');
 const routeOpeners = new Map();
-const resultFilterLabels={'processing-filter':'Processing Status','source-filter':'Source','host-filter':'Host','log-search':'Search Text','review-filter':'Review Status'};
+const resultFilterLabels={'processing-filter':'Processing Status','source-filter':'Source','host-filter':'Host','log-search':'Search Text','decision-filter':'Decision','review-filter':'Review Status'};
+let decisionFilterSelection='';
 let resultFilterSignature='';
 let resultFilterOptionsSignature='';
 const resultFilterCategories=new Map();
@@ -2217,6 +2218,7 @@ let chartClassification='system';
 let chartDefaults={};
 let chartSelectionExplicit=false;
 function handleResetChart() {
+  $('decision-filter').value='all';decisionFilterSelection='';
   chartClassification='system';chartCertainty='all';chartSelectionExplicit=false;$('chart-default-message').hidden=true;
   shownDecisionKeys=null;$('decision-display-menu').open=false;
 }
@@ -2291,8 +2293,26 @@ function matchesResultFilters(result) {
   return (review==='all' || (review==='needs-review'?needsReview(result):!result.error && !needsReview(result)))
     && (processing==='all' || (processing==='failed'?Boolean(result.error):!result.error))
     && result.log.toLowerCase().includes($('log-search').value.toLowerCase())
+    && matchesDecisionFilter(result)
     && (source==='all' || result.sourcePatterns?.includes(source) || result.source===source)
     && (host==='all' || resultHostId(result)===host);
+}
+function selectedDecisionFilter() {
+  try {
+    const pair=JSON.parse($('decision-filter').value);
+    return Array.isArray(pair) && pair.length===2 && pair.every(value=>typeof value==='string')?pair:null;
+  } catch { return null; }
+}
+function matchesDecisionFilter(result) {
+  const selected=selectedDecisionFilter();if(!selected)return true;
+  if(result.error)return false;
+  const [key,bucket]=selected;
+  const entry=updateResultStatistics().decisionGroups?.[key];
+  if(!entry || (result.criteriaGroup || 'system')!==entry.identity)return false;
+  const value=resultDecisionAnswers(result)[entry.question]?.[entry.type];
+  if(entry.type==='choice')return value===bucket;
+  if(!Number.isFinite(value))return false;
+  return entry.options[Math.min(entry.options.length-1,Math.max(0,Math.floor(entry.type==='score'?value+0.5:value*4)))]===bucket;
 }
 function overviewStatistics() {
   const all=updateResultStatistics();if(!hasResultFilters())return all;
@@ -2531,9 +2551,9 @@ function render(updateList = true, incremental = false) {
   const search = $('log-search').value.toLowerCase();
   const source = $('source-filter').value || 'all';
   const host = $('host-filter').value || 'all';
-  const filterKey = JSON.stringify([review, processing, search, source, host]);
+  const filterKey = JSON.stringify([review, processing, search, source, host, $('decision-filter').value]);
   let visible = order;
-  if (!pagedView && (review !== 'all' || processing !== 'all' || search || source !== 'all' || host !== 'all')) {
+  if (!pagedView && (review !== 'all' || processing !== 'all' || search || source !== 'all' || host !== 'all' || selectedDecisionFilter())) {
     if (!incremental || filteredResults?.order !== order || filteredResults.key !== filterKey) {
       filteredResults = {order, key: filterKey, cursor: 0, indices: []};
     }
@@ -2822,6 +2842,49 @@ function renderReviewFilter(stats) {
 function handleCloseResultFilterMenu(focus=false) {
   $('result-filter-menu').open=false;if(focus)$('result-filter-summary').focus();
 }
+function decisionFilterLabel(entry, includeCriteria=false) {
+  return `${includeCriteria?`${entry.criteria} / `:''}${entry.label} (${({choice:'Choice',score:'Score',noul:'Noul'})[entry.type]})`;
+}
+function renderDecisionFilterControl() {
+  const control=$('decision-filter'),selected=control.value || 'all';
+  const entries=updateResultStatistics().decisionGroups || {};
+  const grouped=new Set(Object.values(entries).map(entry=>entry.identity)).size>1;
+  control.replaceChildren(new Option('All Decision Values','all'));
+  for(const [key,entry] of Object.entries(entries)){
+    for(const bucket of entry.options)control.append(new Option(`${decisionFilterLabel(entry,grouped)} → ${bucket}`,JSON.stringify([key,bucket])));
+  }
+  control.value=Array.from(control.options).some(option=>option.value===selected)?selected:'all';
+  if(!entries[decisionFilterSelection])decisionFilterSelection=selectedDecisionFilter()?.[0] || Object.keys(entries)[0] || '';
+  control.disabled=!Object.keys(entries).length;
+}
+function renderDecisionFilterMenu(panel) {
+  const entries=updateResultStatistics().decisionGroups || {};
+  const keys=Object.keys(entries);
+  if(!entries[decisionFilterSelection])decisionFilterSelection=selectedDecisionFilter()?.[0] || keys[0] || '';
+  const clear=element('button','All Decision Values');clear.type='button';
+  clear.setAttribute('aria-pressed',String(!selectedDecisionFilter()));
+  clear.onclick=()=>{$('decision-filter').value='all';handleCloseResultFilterMenu();return handleResultFilter();};panel.append(clear);
+  if(!keys.length){panel.append(element('p','No decisions available.','caption'));return;}
+  const label=element('label','Decision');const select=element('select','');select.setAttribute('aria-label','Filter Decision');
+  const grouped=new Set(Object.values(entries).map(entry=>entry.identity)).size>1;
+  const groups=new Map();
+  for(const [key,entry] of Object.entries(entries)){
+    if(grouped && !groups.has(entry.identity)){
+      const group=element('optgroup','');group.label=entry.criteria;
+      groups.set(entry.identity,group);select.append(group);
+    }
+    (grouped?groups.get(entry.identity):select).append(new Option(decisionFilterLabel(entry),key));
+  }
+  select.value=decisionFilterSelection;
+  select.onchange=()=>{decisionFilterSelection=select.value;resultFilterOptionsSignature='';renderResultFilterMenu();};
+  label.append(select);panel.append(label);
+  for(const bucket of entries[decisionFilterSelection].options){
+    const value=JSON.stringify([decisionFilterSelection,bucket]);
+    const button=element('button',bucket,'result-filter-option');button.type='button';
+    button.setAttribute('data-filter-value',value);button.setAttribute('aria-pressed',String(value===$('decision-filter').value));
+    button.onclick=()=>{$('decision-filter').value=value;handleCloseResultFilterMenu();return handleResultFilter();};panel.append(button);
+  }
+}
 function handleResultFilterMenuKeydown(event) {
   const menu=$('result-filter-menu');if(!menu.open)return;
   if(event.key==='Escape'){event.preventDefault();handleCloseResultFilterMenu(true);return;}
@@ -2844,7 +2907,7 @@ function renderResultFilterMenu() {
   const selected=$('result-filter-type').value || 'log-search';
   $('result-filter-summary').textContent=resultFilterLabels[selected] || 'Search Text';
   if(!resultFilterCategories.size){
-    for(const id of ['log-search','processing-filter','source-filter','host-filter','review-filter']){
+    for(const id of ['log-search','decision-filter','processing-filter','source-filter','host-filter','review-filter']){
       const button=element('button',`${resultFilterLabels[id]} ›`,'result-filter-category');button.type='button';
       button.setAttribute('data-filter-type',id);button.setAttribute('aria-controls','result-filter-options');
       button.onfocus=button.onmouseenter=button.onclick=()=>{$('result-filter-type').value=id;renderResultFilters();};
@@ -2853,7 +2916,7 @@ function renderResultFilterMenu() {
   }
   for(const [id,button] of resultFilterCategories){button.setAttribute('aria-expanded',String(id===selected));}
   const control=$(selected);const options=selected==='log-search'?[]:Array.from(control.options);
-  const signature=JSON.stringify([selected,selected==='log-search'?'':control.value,control.disabled,options.map(option=>[option.value,option.text])]);
+  const signature=JSON.stringify([selected,selected==='log-search'?'':control.value,control.disabled,options.map(option=>[option.value,option.text]),selected==='decision-filter'?decisionFilterSelection:'']);
   if(signature===resultFilterOptionsSignature)return;resultFilterOptionsSignature=signature;
   const panel=$('result-filter-options');const search=$('log-search');
   const focusedValue=panel.contains(document.activeElement)?document.activeElement?.getAttribute?.('data-filter-value'):null;
@@ -2863,6 +2926,7 @@ function renderResultFilterMenu() {
   if(selected==='log-search'){
     const label=element('label','Search Text');label.append(search);panel.append(label);return;
   }
+  if(selected==='decision-filter'){renderDecisionFilterMenu(panel);return;}
   for(const option of options){
     const button=element('button',option.text,'result-filter-option');button.type='button';button.disabled=Boolean(control.disabled || option.disabled);
     button.setAttribute('data-filter-value',option.value);button.setAttribute('aria-pressed',String(option.value===control.value));button.title=option.text;
@@ -2880,6 +2944,7 @@ if(document.addEventListener){
   document.addEventListener('keydown',handleResultFilterMenuKeydown);
 }
 function renderResultFilters() {
+  renderDecisionFilterControl();
   const selected=$('result-filter-type').value || 'log-search';
   $('result-filter-type').value=selected;
   renderResultFilterMenu();
@@ -2920,6 +2985,7 @@ function handleResultFilter() {
 }
 $('processing-filter').onchange=handleResultFilter;
 $('review-filter').onchange=handleResultFilter;
+$('decision-filter').onchange=handleResultFilter;
 let resultSearchTimer;
 $('result-filter-type').onchange=()=>{renderResultFilters();handleSyncRunRoute();};
 renderResultFilters();
@@ -3092,7 +3158,7 @@ $('results-settings-form').onsubmit=async event=>{
   }catch(error){handleMessage('results-settings-message',error.message,true);}
   finally{$('save-results-settings').disabled=false;}
 };
-const routeFilters={'review':'review-filter','processing':'processing-filter','host':'host-filter','source':'source-filter','search':'log-search'};
+const routeFilters={'review':'review-filter','processing':'processing-filter','host':'host-filter','source':'source-filter','search':'log-search','decisionValue':'decision-filter'};
 function handleSyncRunRoute(poll=false) {
   if(poll && routeLocation()==='/')return;
   if(!globalThis.history?.pushState || !pagedView || pagedView.restoringRoute || currentView!=='main')return;
@@ -3132,6 +3198,8 @@ async function handleRefreshResults(reset=false,poll=false) {
   const body={processing:$('processing-filter').value || 'all',review:$('review-filter').value,
     host:$('host-filter').value || 'all',source:$('source-filter').value || 'all',
     search:$('log-search').value,onlySummary:held};
+  const decisionFilter=selectedDecisionFilter();
+  if(decisionFilter){body.decision=decisionFilter[0];body.category=decisionFilter[1];}
   if(after!==null)body.after=after;
   if(page>0){body.before=view.cursors[page];body.through=view.through;}
   const response=await fetch(`/api/jobs/${view.id}/results`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:activeRequest?.signal});
@@ -3189,6 +3257,7 @@ async function handleApplyRunRoute(path) {
   }
   $('result-filter-type').value=Object.hasOwn(resultFilterLabels,params.get('filter'))?params.get('filter'):'log-search';
   renderCategoryChart();
+  renderDecisionFilterControl();decisionFilterSelection='';
   for(const [key,id] of Object.entries(routeFilters))$(id).value=params.get(key) || (key==='search'?'':'all');
   const cursors=(params.get('cursors') || '').split(',').filter(Boolean).map(Number);
   if(cursors.some(value=>!Number.isSafeInteger(value) || value<=0))throw new Error('Invalid result page link.');

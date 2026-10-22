@@ -179,7 +179,7 @@ AI answers or filters. Choice charts count selected options; Score charts round 
 nearest level; Noul charts group Yes probabilities into 25% intervals. Certainty groups
 refer to the selected Choice. Score and Noul have no certainty groups. Show Decisions
 selects which judgments appear in each card without filtering results or fetching data.
-Processing Status, Source, Host, Review Status, and Search Text filter the whole run.
+Decision, Processing Status, Source, Host, Review Status, and Search Text filter the whole run.
 Needs Review includes issues in any decision. Switching charts does not run inference.
 
 Content Field is a literal top-level key containing nonempty text. Malformed JSONL

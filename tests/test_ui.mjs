@@ -4547,7 +4547,7 @@ test('Show Decisions groups multiple Criteria and preserves distinct checkbox ke
 
 test('Processing Status filters result cards independently of displayed decisions',async()=>{
   const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
-  assert.doesNotMatch(html,/id="(?:decision-filter|certainty-filter|category-filter|category-selection)"/);
+  assert.doesNotMatch(html,/id="(?:certainty-filter|category-filter|category-selection)"/);
   const failed=result(2,false);failed.result.error='Invalid response';
   const {context,nodes}=workspace([assessmentFixture(),assessmentFixture(1,true),failed]);await runTask(nodes);
   showDecisions(context,['stable:response']);
@@ -5050,7 +5050,7 @@ test('Cascading filters support keyboard navigation, Enter search and Escape clo
   nodes.get('result-filter-summary').onkeydown({key:'ArrowDown',preventDefault(){}});
   assert.equal(nodes.get('result-filter-menu').open,true);assert.equal(focused,'log-search');
   context.filterKeyEvent={key:'ArrowDown',target:categories[0][1],preventDefault(){}};vm.runInContext('handleResultFilterMenuKeydown(filterKeyEvent)',context);
-  assert.equal(focused,'processing-filter');assert.equal(nodes.get('result-filter-type').value,'processing-filter');
+  assert.equal(focused,'decision-filter');assert.equal(nodes.get('result-filter-type').value,'decision-filter');
   context.filterKeyEvent={key:'Escape',preventDefault(){}};vm.runInContext('handleResultFilterMenuKeydown(filterKeyEvent)',context);
   assert.equal(nodes.get('result-filter-menu').open,false);assert.equal(focused,'summary');
   nodes.get('result-filter-menu').open=true;vm.runInContext("resultFilterCategories.get('log-search').onclick()",context);
@@ -5090,5 +5090,81 @@ test('signed-in account appears only with proxy authentication and uses session 
     await vm.runInContext('handleLoadSignedInUser(true)',context);
     assert.equal(row.hidden,true);
     assert.equal(row.children.length,0);
+  }
+});
+
+
+test('Decision filtering matches original Choice, Score and Noul answers and updates all chart groups',async()=>{
+  const items=[assessmentFixture(0),assessmentFixture(1),assessmentFixture(2),assessmentFixture(3)];
+  items[0].result.decisions.urgency.score=.49;items[0].result.decisions.followup.noul=.249;
+  items[1].result.decisions.area.choice='b';items[1].result.decisions.followup.noul=.25;
+  items[2].result.decisions.area.choice='b';items[2].result.decisions.followup.noul=1;
+  items[3].result.criteriaGroup='other';
+  items[0].result.reviewerDecisions={area:'b'};
+  const {nodes,context,requests}=workspace(items);await runTask(nodes);
+  const count=requests.length;
+  for(const [question,bucket,expected] of [
+    ['area','b',['log-2','log-1']],
+    ['urgency','0 · Low',['log-0']],
+    ['urgency','1 · High',['log-2','log-1']],
+    ['followup','25–<50%',['log-1']],
+    ['followup','75–100%',['log-2']],
+  ]){
+    nodes.get('decision-filter').value=JSON.stringify([`stable:${question}`,bucket]);
+    nodes.get('decision-filter').onchange();
+    assert.deepEqual(logs(nodes),expected);
+    assert.equal(vm.runInContext('overviewStatistics().total',context),expected.length);
+    assert.equal(vm.runInContext("Object.values(overviewStatistics().decisionGroups['stable:response'].counts.all).reduce((a,b)=>a+b,0)",context),expected.length);
+  }
+  nodes.get('log-search').value='missing';nodes.get('log-search').oninput();assert.equal(vm.runInContext('overviewStatistics().total',context),0);
+  assert.equal(nodes.get('decision-filter').value,JSON.stringify(['stable:followup','75–100%']));
+  assert.ok(nodes.get('decision-filter').options.some(option=>option.value===JSON.stringify(['stable:area','a'])));
+  nodes.get('active-result-filters').children.find(node=>node.textContent==='Clear All').onclick();
+  assert.equal(nodes.get('decision-filter').value,'all');assert.equal(logs(nodes).length,4);
+  nodes.get('result-filter-type').value='decision-filter';nodes.get('result-filter-type').onchange();
+  const panel=nodes.get('result-filter-options');const picker=panel.children[1].children[0];
+  picker.value='stable:area';picker.onchange();
+  panel.children.find(node=>node.textContent==='b').onclick();
+  assert.deepEqual(logs(nodes),['log-2','log-1']);
+  assert.equal(nodes.get('result-filter-menu').open,false);
+  nodes.get('active-result-filters').children.find(node=>node.textContent.startsWith('Decision:')).onclick();
+  assert.equal(logs(nodes).length,4);assert.equal(requests.length,count);
+});
+
+test('Decision filter travels in paged requests and shareable run URLs',async()=>{
+  const {nodes,context}=workspace([assessmentFixture()]);await runTask(nodes);
+  vm.runInContext("const summary=updateResultStatistics();pagedView={id:'test-job',summary,cursors:[null],items:[],through:1,revision:0};currentView='main';",context);
+  let posted;
+  context.fetch=async(path,options)=>{posted=JSON.parse(options.body);throw Error('Stop after request');};
+  nodes.get('decision-filter').value=JSON.stringify(['stable:area','a']);
+  await assert.rejects(vm.runInContext('handleRefreshResults(true)',context),/Stop after request/);
+  assert.equal(posted.decision,'stable:area');assert.equal(posted.category,'a');
+  context.URLSearchParams=URLSearchParams;
+  context.location={pathname:'/runs/test-job',search:''};let route;
+  context.history={pushState(_state,_title,path){route=path;}};
+  vm.runInContext('handleSyncRunRoute()',context);
+  assert.equal(new URLSearchParams(route.split('?')[1]).get('decisionValue'),JSON.stringify(['stable:area','a']));
+  nodes.get('decision-filter').value='all';
+  vm.runInContext('handleRefreshResults=async()=>{}',context);
+  await vm.runInContext(`handleApplyRunRoute(${JSON.stringify(route)})`,context);
+  assert.equal(nodes.get('decision-filter').value,JSON.stringify(['stable:area','a']));
+});
+
+
+test('Decision picker omits a single Criteria name and groups mixed Criteria without repeating names',async()=>{
+  for(const mixed of [false,true]){
+    const first=assessmentFixture(),second=assessmentFixture(1);
+    if(mixed){second.result.criteriaGroup='other';second.result.profileLabel='Other Criteria';}
+    const {nodes}=workspace([first,second]);await runTask(nodes);
+    nodes.get('result-filter-type').value='decision-filter';nodes.get('result-filter-type').onchange();
+    const picker=nodes.get('result-filter-options').children[1].children[0];
+    assert.equal(picker.options[0].text,'Area (Choice)');
+    assert.ok(picker.options.every(option=>!option.text.includes('Review Fixture') && !option.text.includes('Other Criteria')));
+    if(mixed){assert.deepEqual(picker.children.map(group=>group.label),['Review Fixture','Other Criteria']);}
+    else{
+      assert.equal(picker.children.length,4);
+      nodes.get('decision-filter').value=JSON.stringify(['stable:area','a']);nodes.get('decision-filter').onchange();
+      assert.match(nodes.get('active-result-filters').children[0].textContent,/^Decision: Area \(Choice\) → a/);
+    }
   }
 });

@@ -671,23 +671,30 @@ class SQLiteResultStore:
                 raise ValueError("Invalid decision filter.")
             if certainty != "all" and definition["type"] != "choice":
                 raise ValueError("Certainty filters require a Choice decision.")
-            table += " JOIN result_decisions d ON d.run_id=e.run_id AND d.sequence=e.sequence"
-            conditions = ["d.decision=?"]
+            conditions = [
+                "selected_decision.run_id=e.run_id",
+                "selected_decision.sequence=e.sequence",
+                "selected_decision.decision=?",
+            ]
             decision_params = [decision]
-            value = filters.get("category", "all")
-            if value != "all":
+            value = filters.get("category")
+            if value is not None:
                 if value not in definition["options"]:
                     raise ValueError("Invalid decision value filter.")
-                conditions.append("d.bucket=?")
+                conditions.append("selected_decision.bucket=?")
                 decision_params.append(value)
             if certainty != "all":
-                conditions.append("d.certainty=?")
+                conditions.append("selected_decision.certainty=?")
                 decision_params.append(certainty)
-            where.extend(conditions)
+            where.append(
+                "EXISTS (SELECT 1 FROM result_decisions selected_decision WHERE "
+                + " AND ".join(conditions)
+                + ")"
+            )
             params.extend(decision_params)
         elif certainty != "all":
             raise ValueError("Select a Choice decision before filtering certainty.")
-        if decision == "all" and filters.get("category", "all") != "all":
+        if decision == "all" and filters.get("category") is not None:
             raise ValueError("Select a decision before filtering its value.")
         processing = filters.get("processing", "all")
         if not isinstance(processing, str) or processing not in {

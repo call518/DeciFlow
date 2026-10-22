@@ -191,10 +191,19 @@ and case-insensitive literal search of original log text combine with the review
 filter. **Source**, after Search data, filters by an entered path/pattern and shows
 completed counts, including failures. Overlapping patterns retain all matches in
 `sourcePatterns`; files are still processed once. Filters affect the list only,
-not metrics, chart, or JSON export.
+not run metrics or JSON export; the Overview chart aggregates all matching results.
+
+**Decision** filters original AI answers. Select a Decision, then one value:
+Choice uses its classification options, Score uses the chart's rounded levels,
+and Noul uses the chart's 25% probability intervals. Criteria names distinguish
+Decisions from different profiles. One Decision/value condition can be active at
+a time and combines with the other filters. It affects the full-run result list
+and Overview chart, independently of **Show Decisions**. Reviewer corrections do
+not replace AI answers for filtering. Remove its filter chip or use **Clear All**
+to reset it. Run URLs retain the selected condition.
 
 **Host** filters the selected run by its saved host identity and combines with Source,
-processing status, review, and log-text filters. The Overview chart aggregates all matching results across pages. Run metrics and exports remain whole-run.
+processing status, review, Decision, and log-text filters. The Overview chart aggregates all matching results across pages. Run metrics and exports remain whole-run.
 **Source Hosts Detail** opens a scrollable dialog with each host’s collection status
 and Success / Failed / Total counts for the entire selected run, including hosts
 with no completed records. Opening it does not reconnect to hosts.

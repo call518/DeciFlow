@@ -40,6 +40,7 @@
       <div class="result-filters" role="group" aria-label="Result Filters">
         <select id="result-filter-type" hidden aria-label="Filter Type">
           <option value="log-search">Search Text</option>
+          <option value="decision-filter">Decision</option>
           <option value="processing-filter">Processing Status</option>
           <option value="source-filter">Source</option>
           <option value="host-filter">Host</option>
@@ -56,6 +57,7 @@
           <select id="processing-filter" aria-label="Processing Status" hidden><option value="all">All Statuses</option><option value="successful">Successful</option><option value="failed">Failed</option></select>
           <select id="review-filter" aria-label="Review Status" hidden><option value="all">All Results (0)</option><option value="needs-review">Needs Review (0)</option><option value="no-review">No Review Needed (0)</option></select>
           <input id="log-search" type="search" aria-label="Search Text" placeholder="Contains text…" title="Case-insensitive literal search in original input text">
+          <select id="decision-filter" aria-label="Decision Filter" hidden><option value="all">All Decision Values</option></select>
           <select id="host-filter" aria-label="Host" hidden><option value="all">All Hosts</option></select>
           <select id="source-filter" aria-label="Source" hidden><option value="all">All Sources</option></select>
         </div>
