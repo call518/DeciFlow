@@ -133,8 +133,18 @@ Before exposing the service to users, verify:
    API access must require sign-in again. This clears the proxy session, not the
    Google account session.
 
-For an automated local smoke test, download the matching official OAuth2-Proxy
-binary and run the following with its absolute path:
+The automated local smoke test downloads OAuth2-Proxy v7.15.5 for Linux/macOS
+amd64/arm64, verifies its pinned official SHA-256 digest, and caches the archive in
+`~/.cache/deciflow/test-tools/` outside the repository. The executable and test TLS
+files use temporary pytest storage. OpenSSL and GitHub access are required on the
+first run; a verified cache avoids repeat downloads. Download or checksum errors
+fail the test instead of silently skipping it.
+
+```bash
+uv run pytest -q tests/test_oauth2_proxy.py
+```
+
+For an offline environment or an existing executable, supply its absolute path:
 
 ```bash
 OAUTH2_PROXY_BINARY=/path/to/oauth2-proxy uv run pytest -q tests/test_oauth2_proxy.py

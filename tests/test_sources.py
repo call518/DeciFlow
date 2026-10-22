@@ -393,7 +393,9 @@ async def test_batch_files_reach_engine_concurrently(
     second = tmp_path / "b.log"
     first.write_text("a\n" * 20)
     second.write_text("b\n" * 3)
-    arrived = {"a": asyncio.Event(), "b": asyncio.Event()}
+    simultaneous = asyncio.Event()
+    active = 0
+    peak = 0
 
     async def handle_classify(
         log: str,
@@ -401,9 +403,17 @@ async def test_batch_files_reach_engine_concurrently(
         client: httpx.AsyncClient,
         profile: str = "4e6d5417-611e-49e0-8e23-2444a0f49ee4",
     ) -> Result:
-        arrived[log].set()
-        await arrived["b" if log == "a" else "a"].wait()
-        return {"category": "normal", "review": False}
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        if active == 2:
+            simultaneous.set()
+        try:
+            await simultaneous.wait()
+            await asyncio.sleep(0)
+            return {"category": "normal", "review": False}
+        finally:
+            active -= 1
 
     monkeypatch.setattr(server, "classify_log", handle_classify)
     async with httpx.AsyncClient(
@@ -433,7 +443,8 @@ async def test_batch_files_reach_engine_concurrently(
     events = [json.loads(line) for line in response.text.splitlines()]
     results = [event["result"] for event in events if event["type"] == "result"]
     assert len(results) == 23
-    assert {row["source"] for row in results[:2]} == {str(first), str(second)}
+    assert peak == 2
+    assert {row["source"] for row in results} == {str(first), str(second)}
 
     assert all(
         row["profile"] == "2e44ae00-7a3a-492d-8806-9177a8973582"

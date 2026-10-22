@@ -60,6 +60,10 @@ async def test_dependency_check_lists_saved_and_running_references(
             )
             assert response.status_code == 200
             references = response.json()["references"]
+            assert references == sorted(
+                {item["description"] for item in response.json()["details"]},
+                key=str.casefold,
+            )
             assert "Running task: Analysis" in references
             if kind != "Task":
                 assert "Task: Analysis" in references
@@ -70,7 +74,7 @@ async def test_dependency_check_lists_saved_and_running_references(
         allowed = await client.post(
             "/api/delete-check", json={"kind": "Source", "id": "unused"}
         )
-        assert allowed.json() == {"references": []}
+        assert allowed.json() == {"references": [], "details": []}
         invalid = await client.post(
             "/api/delete-check", json={"kind": "unknown", "id": "unused"}
         )

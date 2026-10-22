@@ -27,10 +27,24 @@ def test_sigint_stops_open_realtime_stream(tmp_path: Path, persist: bool) -> Non
         "DECISION_ENGINE": "laya",
         "LAYA_CONCURRENCY": "4",
         "LAYA_API_URL": "http://127.0.0.1:1/v1/systemone",
+        "OAUTH2_PROXY_ENABLED": "false",
+        "DECIFLOW_BIND_HOST": "127.0.0.1",
+        "DECIFLOW_LOG_DIR": str(tmp_path / "logs"),
     }
+    # Isolate local .env settings and unrelated Action dependency installation.
+    bootstrap = """
+import sys
+from pathlib import Path
+import server
+server.ROOT = Path(sys.argv[1])
+async def skip_action_setup():
+    pass
+server.initialize_default_action = skip_action_setup
+server.main(manage_proxy=True)
+"""
     with output.open("w") as capture:
         process = subprocess.Popen(
-            [sys.executable, "server.py"],
+            [sys.executable, "-c", bootstrap, str(tmp_path)],
             env=env,
             stdout=capture,
             stderr=capture,
@@ -40,6 +54,10 @@ def test_sigint_stops_open_realtime_stream(tmp_path: Path, persist: bool) -> Non
             with httpx.Client(base_url=base, timeout=5) as client:
                 deadline = time.monotonic() + 10
                 while True:
+                    if process.poll() is not None:
+                        pytest.fail(
+                            f"Test server exited before startup:\n{output.read_text()}"
+                        )
                     try:
                         response = client.get("/api/status")
                         response.raise_for_status()

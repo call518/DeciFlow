@@ -133,8 +133,17 @@ Google 세션은 매시간 갱신하며 세션 수명은 8시간입니다.
    새로고침하면 API 접근에 다시 로그인이 필요해야 합니다.
    프록시 세션을 지우는 동작이며 Google 계정 자체에서 로그아웃하지는 않습니다.
 
-로컬 자동 스모크 테스트는 동일한 버전의 공식 OAuth2-Proxy 바이너리를 내려받고
-절대 경로를 지정해 실행합니다.
+로컬 자동 스모크 테스트는 Linux/macOS amd64/arm64용 OAuth2-Proxy v7.15.5를
+자동 다운로드하고 고정된 공식 SHA-256으로 검증합니다. 압축 파일은 저장소 밖의
+`~/.cache/deciflow/test-tools/`에 캐시하며 실행 파일·테스트 인증서는 pytest 임시
+디렉터리에 생성합니다. OpenSSL과 최초 실행 시 GitHub 접근이 필요하며 검증된 캐시는
+재다운로드하지 않습니다. 다운로드·체크섬 오류는 생략하지 않고 테스트 실패로 처리합니다.
+
+```bash
+uv run pytest -q tests/test_oauth2_proxy.py
+```
+
+오프라인 환경이거나 기존 실행 파일을 사용하려면 절대 경로를 지정하세요.
 
 ```bash
 OAUTH2_PROXY_BINARY=/path/to/oauth2-proxy uv run pytest -q tests/test_oauth2_proxy.py

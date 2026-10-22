@@ -633,6 +633,11 @@ uv run pyright
 uv run pytest
 ```
 
+pytest는 Linux/macOS amd64/arm64용 OAuth2-Proxy v7.15.5를 자동 다운로드·검증합니다.
+OpenSSL과 최초 GitHub 접근이 필요합니다. 압축 파일은 Git 저장소 밖의
+`~/.cache/deciflow/test-tools/`에 캐시하고 실행 파일·테스트 인증서는 임시 저장소를
+사용합니다. 오프라인에서는 `OAUTH2_PROXY_BINARY`로 기존 실행 파일을 지정하세요.
+
 UI 회귀 테스트(Node.js는 테스트에만 필요):
 
 ```bash
