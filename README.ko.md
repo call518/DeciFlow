@@ -21,31 +21,70 @@
 | 우선순위 | 설치 방식과 안내 | 기본 `.env` 위치 |
 | --- | --- | --- |
 | 1 — 권장 | [PyPI / uv tool](docs/tool-install.ko.md) | `~/.config/deciflow/.env` |
-| 2 | [Git clone + Docker Compose](#빠른-시작--docker--laya-cpu) | `<checkout>/.env` → UI 컨테이너 내부 `/app/.env` |
+| 2 | [Git clone + Docker Compose](#대안-설치-docker--laya-cpu) | `<checkout>/.env` → UI 컨테이너 내부 `/app/.env` |
 | 3 | [Git clone + 네이티브 Python](docs/native.ko.md) | DeciFlow·로컬 Laya 어댑터 모두 `<checkout>/.env` |
 
 `<checkout>`은 복제한 DeciFlow 저장소 루트입니다. 이 파일들은 자동으로 공유되지 않습니다.
 경로 선택과 적용 우선순위는 [환경 파일 위치](docs/configuration.ko.md#환경-파일-위치)를 참고하세요.
 
-PyPI에서 설치하고 설정 파일을 초기화하세요.
+## 빠른 시작 — PyPI / uv tool
+
+**전제:** [uv](https://docs.astral.sh/uv/getting-started/installation/), Python
+3.11 이상(3.12 권장), 실행 중인 Laya 서버 또는 Jev 계정이 필요합니다. DeciFlow 설치가
+추론 서버를 기동하지는 않습니다. 기준 환경은 Linux/WSL2이며 기본 HTTP 모드에는
+도메인·인증서·Google 설정이 필요하지 않습니다.
+
+### 1. 설치와 초기 설정
 
 ```bash
 uv tool install deciflow
 deciflow init
 ```
 
-관리자는 [태그 릴리즈 워크플로](docs/tool-install.ko.md#git-태그로-게시)로
-태그와 같은 버전을 TestPyPI·PyPI에 게시합니다.
-`~/.config/deciflow/.env`를 수정하고, 실행 중인 Laya 서버나 Jev 연결과 쓰기 가능한
-저장 경로를 [설치 안내](docs/tool-install.ko.md)에 따라 준비한 뒤 기동하세요.
+### 2. 엔진과 저장 경로 설정
+
+`~/.config/deciflow/.env`(root: `/root/.config/deciflow/.env`)를 수정하세요. Laya는
+접근 가능한 URL과 서버와 동일한 API 키를 지정합니다. 아래 예시는 로컬 서버 기준입니다.
+
+```dotenv
+OAUTH2_PROXY_ENABLED=false
+DECISION_ENGINE=laya
+LAYA_API_URL=http://127.0.0.1:8000/v1/systemone
+LAYA_API_KEY=your-laya-server-key
+```
+
+Laya 준비 또는 유료 Jev 사용 방법은
+[엔진 연결 안내](docs/tool-install.ko.md#엔진-연결과-기동)를 따르세요.
+DeciFlow 실행 계정이 사용할 기본 저장 디렉터리를 준비합니다.
+
+```bash
+sudo install -d -o "$(id -un)" -g "$(id -gn)" \
+  /var/lib/deciflow-data /var/log/deciflow
+```
+
+대신 쓰기 가능한 데이터·로그 경로를 직접 설정하고 생성해도 됩니다.
+자세한 내용은 [설치 안내](docs/tool-install.ko.md)를 참고하세요.
+
+### 3. DeciFlow 기동
 
 ```bash
 deciflow
 ```
 
-`deciflow`는 기동 전마다 준비 상태를 검사합니다. 상세 진단은 `deciflow config test`,
-비밀값을 숨긴 적용 설정 조회는 `deciflow config list`를 사용합니다.
-다른 설정 디렉터리를 사용한다면 모든 명령에 같은 `--config-dir`을 지정하세요.
+기동 시 준비 상태를 검사한 뒤 UI를 제공합니다. 상세 진단은 `deciflow config test`,
+비밀값을 숨긴 적용 설정 조회는 `deciflow config list`를 사용하세요.
+다른 설정 디렉터리를 사용한다면 모든 명령에 같은 `--config-dir`을 지정합니다.
+Ctrl+C로 DeciFlow를 종료합니다.
+
+### 4. 로컬 로그 분석
+
+**http://127.0.0.1:4000**을 열고 엔진 상태를 확인하세요. **Sources**에서 실제 로컬
+로그를 절대 경로로 등록합니다. Docker 샘플의 `/host-logs/...` 경로는 이 설치 방식에
+적용되지 않습니다. **Tasks**에서 이름을 지정한 **Batch / Manual** Task를 만들고
+등록한 Source, 적절한 Criteria, **Action: None**을 선택하세요.
+저장한 Task를 활성화하고 **Run**을 누르면 Main에서 결과를 확인할 수 있습니다.
+선택적인 Google 로그인·HTTPS는
+[uv tool 인증 안내](docs/tool-install.ko.md#선택적-google-로그인)를 참고하세요.
 
 ## 아키텍처
 
@@ -100,12 +139,12 @@ access 로그, 애플리케이션 오류, 운영 이벤트에 활용하세요.
 
 메뉴·항목 상세/편집·Task History·실행 결과는 [공유 가능한 일반 URL](docs/usage.ko.md#공유-가능한-url)을 제공하며 결과 필터·커서 페이지도 유지합니다. 기존 해시 링크도 지원합니다.
 
-## 빠른 시작 — Docker + Laya CPU
+## 대안 설치: Docker + Laya CPU
 
 **전제:** 같은 Linux 호스트에 Git·Docker Compose 2.20.0+가 필요합니다.
 기본 HTTP 데모에는 도메인·인증서·Google 설정이 필요하지 않습니다.
 호환 NVIDIA GPU가 있으면 [GPU로 실행하기(CUDA)](#laya-gpu)를 참고해
-Laya의 추론 성능을 높일 수 있습니다. 이 빠른 시작은
+Laya의 추론 성능을 높일 수 있습니다. 이 Docker 안내는
 다양한 환경에서 DeciFlow를 테스트할 수 있도록 CPU 기준으로 안내합니다.
 Laya는 추론, DeciFlow는 소스 읽기·UI/API를 담당합니다.
 선택 사항인 OAuth2-Proxy는 HTTPS·Google 로그인·이메일 허용 목록 검사를 추가합니다.
@@ -651,6 +690,9 @@ Dockerfile의 `TORCH_VERSION`에 맞는 CUDA 빌드를
 Laya 업그레이드 시 API 호환성을 검증합니다.
 
 ## 개발
+
+관리자는 [태그 릴리즈 워크플로](docs/tool-install.ko.md#git-태그로-게시)로
+태그와 같은 버전을 TestPyPI·PyPI에 게시합니다.
 
 모델 평가 명령과 보고서 필드는 [Laya 로그 검증](docs/laya-validation.ko.md)을 확인하세요.
 선택한 Laya 모델로 5개 프로필의 정답 사례 36개를 평가하려면:

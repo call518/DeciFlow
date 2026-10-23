@@ -4,7 +4,7 @@
 
 This is the recommended installation method. Install DeciFlow from PyPI
 without cloning the repository or using Docker.
-The second choice is [Docker](../README.md#quick-start--docker--laya-cpu), followed
+The second choice is [Docker](../README.md#alternative-installation-docker--laya-cpu), followed
 by [Git checkout native](native.md). Choose one method for each installation.
 
 **DeciFlow** serves the UI/API and reads your sources. The **Laya server** runs

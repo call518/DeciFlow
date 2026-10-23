@@ -3,7 +3,7 @@
 [English](tool-install.md) | [프로젝트 README](../README.ko.md)
 
 가장 권장하는 설치 방식입니다. 저장소를 복제하거나 Docker를 사용하지 않고
-PyPI에서 DeciFlow를 설치합니다. 두 번째는 [Docker](../README.ko.md#빠른-시작--docker--laya-cpu),
+PyPI에서 DeciFlow를 설치합니다. 두 번째는 [Docker](../README.ko.md#대안-설치-docker--laya-cpu),
 세 번째는 [Git 복제 기반 네이티브](native.ko.md)이며 설치별로 하나를 선택합니다.
 
 **DeciFlow**는 UI/API를 제공하고 소스를 읽습니다. **Laya 서버**는 별도로 추론을

@@ -5,7 +5,7 @@
 Run DeciFlow locally, open the browser, and classify a sample log. Docker, a domain,
 and a certificate are not required for this local workflow.
 This is the third recommended method, after [PyPI / uv tool](tool-install.md)
-and [Docker Compose](../README.md#quick-start--docker--laya-cpu). Choose one method;
+and [Docker Compose](../README.md#alternative-installation-docker--laya-cpu). Choose one method;
 this guide runs Git checkout scripts directly.
 
 **DeciFlow** reads sources and serves the UI/API. The **Laya server** runs inference

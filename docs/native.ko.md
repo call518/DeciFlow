@@ -5,7 +5,7 @@
 DeciFlow를 로컬에서 실행하고 브라우저로 샘플 로그를 분류합니다.
 이 로컬 절차에는 Docker·도메인·인증서가 필요하지 않습니다.
 이 방식은 [PyPI / uv tool](tool-install.ko.md),
-[Docker Compose](../README.ko.md#빠른-시작--docker--laya-cpu) 다음인 세 번째 권장 방식입니다.
+[Docker Compose](../README.ko.md#대안-설치-docker--laya-cpu) 다음인 세 번째 권장 방식입니다.
 하나를 선택하며, 이 안내에서는 Git 저장소의 스크립트를 직접 실행합니다.
 
 **DeciFlow**는 소스를 읽고 UI·API를 제공합니다. **Laya 서버**는 로컬·원격에서

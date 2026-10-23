@@ -5,7 +5,7 @@
 Choose one installation method in the recommended order:
 
 1. [PyPI / uv tool](tool-install.md): recommended installation from PyPI without cloning the repository.
-2. [Git clone + Docker Compose](../README.md#quick-start--docker--laya-cpu): container deployment with optional local Laya.
+2. [Git clone + Docker Compose](../README.md#alternative-installation-docker--laya-cpu): container deployment with optional local Laya.
 3. [Git clone + native Python](native.md): run the source scripts directly.
 
 Check [environment file locations](configuration.md#environment-file-locations)
