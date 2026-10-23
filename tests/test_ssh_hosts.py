@@ -7,12 +7,12 @@ import asyncssh
 import httpx
 import pytest
 
-import server
-from classifier import Result
-from source_registry import load_sources, save_sources
-from source_settings import parse_source_settings
-from ssh_hosts import delete_host, load_hosts, save_host
-from ssh_keys import add_key, delete_key, list_keys
+from deciflow import server
+from deciflow.classifier import Result
+from deciflow.source_registry import load_sources, save_sources
+from deciflow.source_settings import parse_source_settings
+from deciflow.ssh_hosts import delete_host, load_hosts, save_host
+from deciflow.ssh_keys import add_key, delete_key, list_keys
 
 
 @pytest.fixture
@@ -206,7 +206,7 @@ async def test_connection_failures_report_reason_and_close_connection(
 ) -> None:
     from contextlib import asynccontextmanager
 
-    from ssh_hosts import test_host_connection as check_connection
+    from deciflow.ssh_hosts import test_host_connection as check_connection
 
     closed: list[bool] = []
 
@@ -233,8 +233,8 @@ async def test_connection_failures_report_reason_and_close_connection(
 async def test_real_ssh_approvals_persist_and_ignore_cli_known_hosts(
     connection: Result, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from ssh_hosts import get_hosts_directory
-    from ssh_hosts import test_host_connection as check_connection
+    from deciflow.ssh_hosts import get_hosts_directory
+    from deciflow.ssh_hosts import test_host_connection as check_connection
 
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     host_key = asyncssh.generate_private_key("ssh-ed25519")

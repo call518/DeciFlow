@@ -4,9 +4,9 @@ import httpx
 import pytest
 from conftest import DECISION_ANSWERS
 
-from classifier import Result, _decision_input, classify_batch, classify_log
-from config import get_engine
-from profiles import PROFILES
+from deciflow.classifier import Result, _decision_input, classify_batch, classify_log
+from deciflow.config import get_engine
+from deciflow.profiles import PROFILES
 
 
 @pytest.mark.anyio

@@ -8,10 +8,10 @@ import asyncssh
 import httpx
 import pytest
 
-import server
-from source_registry import save_sources
-from ssh_hosts import delete_host, load_hosts, save_host
-from ssh_keys import add_key, delete_key, get_keys_directory, list_keys
+from deciflow import server
+from deciflow.source_registry import save_sources
+from deciflow.ssh_hosts import delete_host, load_hosts, save_host
+from deciflow.ssh_keys import add_key, delete_key, get_keys_directory, list_keys
 
 
 @pytest.fixture
@@ -204,7 +204,7 @@ async def test_uuid_key_rename_preserves_host_references_and_key_files(
     key_storage: Path,
 ) -> None:
     """Renaming/reusing display names must not change connections or key material."""
-    from config_store import load_records
+    from deciflow.config_store import load_records
 
     private = asyncssh.generate_private_key("ssh-ed25519").export_private_key().decode()
     pair = add_key("Original", private)

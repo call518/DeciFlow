@@ -2,6 +2,8 @@
 
 import asyncio
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 from uuid import uuid4
@@ -10,12 +12,13 @@ import anyio
 import httpx
 import pytest
 
-import actions
-import server
-from classifier import Result
-from config import get_engine
-from config_store import save_records
-from source_settings import parse_source_settings, resolve_configured_sources
+from deciflow import actions, server
+from deciflow.classifier import Result
+from deciflow.config import get_engine
+from deciflow.config_store import save_records
+from deciflow.source_settings import parse_source_settings, resolve_configured_sources
+
+TEST_PYTHON_VERSION = f"{sys.version_info.major}.{sys.version_info.minor}"
 
 
 def make_action(tmp_path: Path, code: str) -> Result:
@@ -183,10 +186,45 @@ async def test_error_output_is_bounded(tmp_path: Path) -> None:
     assert len(result["error"]) == 4096
 
 
+@pytest.fixture(scope="session")
+def seed_wheels(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Download consistent seed wheels independently of the OS ensurepip layout."""
+    directory = tmp_path_factory.mktemp("action-seed")
+    wheels = directory / "wheels"
+    subprocess.run(
+        [
+            "uv",
+            "tool",
+            "run",
+            "--python",
+            sys.executable,
+            "--from",
+            "pip==25.0.1",
+            "pip",
+            "download",
+            "--disable-pip-version-check",
+            "--only-binary=:all:",
+            "--no-deps",
+            "--dest",
+            str(wheels),
+            "pip==25.0.1",
+            "setuptools==80.9.0",
+            "wheel==0.45.1",
+        ],
+        env={**os.environ, "UV_CACHE_DIR": str(directory / "cache")},
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=120,
+    )
+    return wheels
+
+
 @pytest.fixture
-def managed_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Use a local wheel index and installed Python without network access."""
-    import ensurepip
+def managed_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, seed_wheels: Path
+) -> None:
+    """Install Actions offline using prepared seed wheels and the active Python."""
     import shutil
     import zipfile
 
@@ -198,7 +236,7 @@ def managed_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setenv("UV_PYTHON_DOWNLOADS", "never")
     wheels = tmp_path / "wheels"
     wheels.mkdir()
-    for seed_wheel in Path(ensurepip.__file__).with_name("_bundled").glob("*.whl"):
+    for seed_wheel in seed_wheels.glob("*.whl"):
         shutil.copyfile(seed_wheel, wheels / seed_wheel.name)
     monkeypatch.setenv("UV_FIND_LINKS", str(wheels))
     with zipfile.ZipFile(
@@ -317,7 +355,7 @@ async def test_failed_prepare_preserves_registry_and_existing_environment(
 )
 def test_managed_settings_validation(tmp_path: Path, fields: Result) -> None:
     action = make_action(tmp_path, "pass\n")
-    action.update({"pythonVersion": "3.12", "modules": [], **fields})
+    action.update({"pythonVersion": TEST_PYTHON_VERSION, "modules": [], **fields})
     with pytest.raises(ValueError):
         actions.validate_actions([action])
 
@@ -368,7 +406,12 @@ async def test_inline_code_save_edit_and_api(
         "import json, sys\nfrom pathlib import Path\n"
         f"Path({str(output)!r}).write_text(json.dumps(json.load(sys.stdin)))\n"
     )
-    action = {"name": "inline", "pythonVersion": "3.12", "modules": [], "code": code}
+    action = {
+        "name": "inline",
+        "pythonVersion": TEST_PYTHON_VERSION,
+        "modules": [],
+        "code": code,
+    }
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=server.app), base_url="http://localhost"
     ) as client:
@@ -456,7 +499,9 @@ async def test_reset_rebuilds_only_venv_and_delete_removes_owned_data(
     action = make_action(tmp_path, "pass")
     action.pop("python")
     action.update(
-        pythonVersion="3.12", modules=["deciflow-test-module==1.0.0"], code="pass"
+        pythonVersion=TEST_PYTHON_VERSION,
+        modules=["deciflow-test-module==1.0.0"],
+        code="pass",
     )
     saved = (await actions.save_actions([action]))[0]
     project = Path(saved["python"]).parent.parent.parent
@@ -495,7 +540,7 @@ async def test_reset_failure_keeps_action_unready_and_can_be_retried(
 ) -> None:
     action = make_action(tmp_path, "pass")
     action.pop("python")
-    action.update(pythonVersion="3.12", modules=[])
+    action.update(pythonVersion=TEST_PYTHON_VERSION, modules=[])
     saved = (await actions.save_actions([action]))[0]
     original = actions._run_uv
 
@@ -519,7 +564,7 @@ async def test_reset_api_requires_trusted_origin(
 ) -> None:
     action = make_action(tmp_path, "pass")
     action.pop("python")
-    action.update(pythonVersion="3.12", modules=[])
+    action.update(pythonVersion=TEST_PYTHON_VERSION, modules=[])
     saved = (await actions.save_actions([action]))[0]
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=server.app), base_url="http://localhost"
@@ -543,7 +588,7 @@ async def test_file_run_protects_action_before_first_execution(
 
     action = make_action(tmp_path, "pass")
     action.pop("python")
-    action.update(pythonVersion="3.12", modules=[], code="pass")
+    action.update(pythonVersion=TEST_PYTHON_VERSION, modules=[], code="pass")
     saved = (await actions.save_actions([action]))[0]
     source = tmp_path / "events.log"
     source.write_text("event\n")
@@ -568,7 +613,7 @@ async def test_action_maintenance_rejects_new_users(
 ) -> None:
     action = make_action(tmp_path, "pass")
     action.pop("python")
-    action.update(pythonVersion="3.12", modules=[], code="pass")
+    action.update(pythonVersion=TEST_PYTHON_VERSION, modules=[], code="pass")
     saved = (await actions.save_actions([action]))[0]
     with (
         actions._maintain_actions([saved]),
@@ -585,7 +630,7 @@ async def test_action_ready_requires_completed_dependency_sync(
 ) -> None:
     action = make_action(tmp_path, "pass")
     action.pop("python")
-    action.update(pythonVersion="3.12", modules=[], code="pass")
+    action.update(pythonVersion=TEST_PYTHON_VERSION, modules=[], code="pass")
     saved = (await actions.save_actions([action]))[0]
     assert actions.get_action_status(saved) == "ready"
     original = actions._run_uv
@@ -624,7 +669,7 @@ async def test_actions_keep_only_current_code_and_environment(
 ) -> None:
     action = {
         "name": "Elastic/search ..",
-        "pythonVersion": "3.12",
+        "pythonVersion": TEST_PYTHON_VERSION,
         "modules": [],
         "code": "pass\n",
     }
@@ -668,7 +713,14 @@ async def test_failed_save_keeps_current_action_and_removes_prepared_files(
 ) -> None:
     saved = (
         await actions.save_actions(
-            [{"name": "probe", "pythonVersion": "3.12", "modules": [], "code": "pass"}]
+            [
+                {
+                    "name": "probe",
+                    "pythonVersion": TEST_PYTHON_VERSION,
+                    "modules": [],
+                    "code": "pass",
+                }
+            ]
         )
     )[0]
     registry = actions.load_actions()
@@ -701,7 +753,7 @@ async def test_save_keeps_current_paths_and_extra_directories(
             [
                 {
                     "name": "existing",
-                    "pythonVersion": "3.12",
+                    "pythonVersion": TEST_PYTHON_VERSION,
                     "modules": [],
                     "code": "pass",
                 }
@@ -734,7 +786,14 @@ async def test_concurrent_saves_keep_only_the_current_script(
 ) -> None:
     saved = (
         await actions.save_actions(
-            [{"name": "probe", "pythonVersion": "3.12", "modules": [], "code": "pass"}]
+            [
+                {
+                    "name": "probe",
+                    "pythonVersion": TEST_PYTHON_VERSION,
+                    "modules": [],
+                    "code": "pass",
+                }
+            ]
         )
     )[0]
 
@@ -759,7 +818,12 @@ async def test_used_action_cannot_be_edited_but_other_actions_can(
 ) -> None:
     first, second = await actions.save_actions(
         [
-            {"name": name, "pythonVersion": "3.12", "modules": [], "code": "pass"}
+            {
+                "name": name,
+                "pythonVersion": TEST_PYTHON_VERSION,
+                "modules": [],
+                "code": "pass",
+            }
             for name in ("first", "second")
         ]
     )
@@ -786,7 +850,7 @@ async def test_action_rename_preserves_id_paths_and_environment(
             [
                 {
                     "name": "Original",
-                    "pythonVersion": "3.12",
+                    "pythonVersion": TEST_PYTHON_VERSION,
                     "modules": [],
                     "code": "pass",
                 }
@@ -811,7 +875,12 @@ async def test_failed_batch_save_preserves_all_current_actions(
 ) -> None:
     saved = await actions.save_actions(
         [
-            {"name": name, "pythonVersion": "3.12", "modules": [], "code": "pass"}
+            {
+                "name": name,
+                "pythonVersion": TEST_PYTHON_VERSION,
+                "modules": [],
+                "code": "pass",
+            }
             for name in ("first", "second")
         ]
     )
@@ -842,7 +911,14 @@ async def test_registry_write_failure_preserves_current_script(
 ) -> None:
     saved = (
         await actions.save_actions(
-            [{"name": "probe", "pythonVersion": "3.12", "modules": [], "code": "pass"}]
+            [
+                {
+                    "name": "probe",
+                    "pythonVersion": TEST_PYTHON_VERSION,
+                    "modules": [],
+                    "code": "pass",
+                }
+            ]
         )
     )[0]
     registry = actions.load_actions()
@@ -866,7 +942,14 @@ async def test_environment_replacement_blocks_new_runs_until_saved(
 ) -> None:
     saved = (
         await actions.save_actions(
-            [{"name": "probe", "pythonVersion": "3.12", "modules": [], "code": "pass"}]
+            [
+                {
+                    "name": "probe",
+                    "pythonVersion": TEST_PYTHON_VERSION,
+                    "modules": [],
+                    "code": "pass",
+                }
+            ]
         )
     )[0]
     preparing = asyncio.Event()
@@ -904,7 +987,14 @@ async def test_cancelled_save_preserves_current_action_and_cleans_preparation(
 ) -> None:
     saved = (
         await actions.save_actions(
-            [{"name": "probe", "pythonVersion": "3.12", "modules": [], "code": "pass"}]
+            [
+                {
+                    "name": "probe",
+                    "pythonVersion": TEST_PYTHON_VERSION,
+                    "modules": [],
+                    "code": "pass",
+                }
+            ]
         )
     )[0]
     registry = actions.load_actions()
@@ -938,8 +1028,8 @@ async def test_uuid_assignments_survive_rename_and_reused_names(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, engine: str
 ) -> None:
     """A reused label must never redirect an existing Task to another Action."""
-    from source_registry import save_sources
-    from tasks import load_tasks, save_task
+    from deciflow.source_registry import save_sources
+    from deciflow.tasks import load_tasks, save_task
 
     monkeypatch.setenv("DECISION_ENGINE", engine)
     source_path = tmp_path / "input.txt"
@@ -988,7 +1078,7 @@ async def test_uuid_assignments_survive_rename_and_reused_names(
 
 def test_default_elasticsearch_action_is_seeded_once_without_preparation() -> None:
     """Sample registration is persistent and never downloads or executes at startup."""
-    from config_store import save_records
+    from deciflow.config_store import save_records
 
     sample = actions.load_actions()[0]
     assert sample["id"] == actions.DEFAULT_ACTION_ID
@@ -1064,7 +1154,14 @@ async def test_ready_and_reset_error_match_actual_environment(
 ) -> None:
     saved = (
         await actions.save_actions(
-            [{"name": "Probe", "pythonVersion": "3.12", "modules": [], "code": "pass"}]
+            [
+                {
+                    "name": "Probe",
+                    "pythonVersion": TEST_PYTHON_VERSION,
+                    "modules": [],
+                    "code": "pass",
+                }
+            ]
         )
     )[0]
     script = Path(saved["script"])

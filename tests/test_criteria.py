@@ -10,15 +10,15 @@ import httpx
 import pytest
 from conftest import DECISION_ANSWERS
 
-import server
-from classifier import Result, classify_log
-from config import get_engine
-from config_store import (
+from deciflow import server
+from deciflow.classifier import Result, classify_log
+from deciflow.config import get_engine
+from deciflow.config_store import (
     get_database_path,
     load_records,
     save_records,
 )
-from profiles import (
+from deciflow.profiles import (
     PROFILES,
     get_profile,
     load_profiles,
@@ -239,8 +239,7 @@ def test_default_criteria_storage(
 
 
 def test_shared_criteria_and_action_storage(criteria_storage: Path) -> None:
-    import actions
-
+    from deciflow import actions
     save_profiles(deepcopy(PROFILES))
     assert get_database_path() == criteria_storage / "deciflow.sqlite3"
     assert actions.get_actions_directory() == criteria_storage / "actions"

@@ -9,6 +9,51 @@ The initial environment setup remains in `.env`.
 Laya server settings are managed on the Laya host; Compose shares `LAYA_API_KEY`
 with DeciFlow. `COMPOSE_PROFILES` selects `cpu` or `cuda`; empty starts no local Laya container.
 
+## Environment File Locations
+
+Choose one execution method in this recommended order: **PyPI / uv tool → Docker
+Compose → Git checkout native Python**. Follow the
+[uv tool guide](tool-install.md) for installation from PyPI.
+`<checkout>` below means the cloned DeciFlow repository root on the host.
+
+| Method | File Read by DeciFlow | How to Prepare or Select It |
+| --- | --- | --- |
+| PyPI / uv tool | `~/.config/deciflow/.env` | `deciflow init` creates templates; edit before startup |
+| Git clone + Docker Compose | `<checkout>/.env` on the host, mounted at `/app/.env` in the UI container | Copy `<checkout>/.env.example` to `<checkout>/.env`; run Compose from the checkout |
+| Git clone + native Python | `<checkout>/.env` | Copy the template; `uv run deciflow run --config-dir "$PWD"` and `uv run --extra laya python laya_server.py` read this file |
+
+For uv tool, `~` is the home of the user running the command; root therefore uses
+`/root/.config/deciflow/.env`. `--config-dir /path/to/deciflow-config` selects
+`/path/to/deciflow-config/.env` for `init`, `config list`, `config test`, `run`, `status`, and `stop`.
+Pass the same option every time. A `.env` in the shell's current directory is not
+automatically selected. Initialization preserves existing files.
+
+For Git native CLI execution, run from the checkout and select it explicitly with
+`--config-dir "$PWD"`; otherwise the CLI uses `~/.config/deciflow`. The direct
+`server.py` script reads the checkout file regardless of the shell directory.
+Run documented commands from the checkout so relative Source paths are predictable.
+The local Laya adapter reads that same checkout file. A separately deployed Laya
+server has its own configuration on its own host.
+
+Compose uses the checkout file for interpolation and the UI's `env_file`; DeciFlow
+also reads the mounted `/app/.env` at startup. `docker compose --env-file ...`
+alone does not change the UI's `env_file` or replace the mounted `/app/.env`.
+It is not a way to switch the whole Docker deployment to the uv tool file.
+`--config-dir` is a DeciFlow CLI option, not a Compose or `server.py` option.
+
+The files are independent, with no automatic search, synchronization, or fallback
+between them. To deliberately reuse a native checkout file with the installed
+command, pass `--config-dir /path/to/DeciFlow`. Docker's `http://laya:8000` address
+only works inside its network; host-based execution needs a reachable Laya URL.
+
+These configuration paths are separate from `DECIFLOW_DATA_DIR` and
+`DECIFLOW_LOG_DIR`. Defaults remain `/var/lib/deciflow-data` (including a blank data
+setting) and `/var/log/deciflow`. Docker uses these paths inside the container and
+backs them with named volumes; uv tool/native execution uses host directories.
+The native quick start explicitly overrides them with `./data` and `./logs`.
+
+## Environment Settings
+
 | Variable | Code default (when unset) | Purpose |
 | --- | --- | --- |
 | `COMPOSE_PROFILES` | Unset (no local Laya) | Compose only: set cpu or cuda, exactly one; .env.example selects cpu |
@@ -35,8 +80,8 @@ with DeciFlow. `COMPOSE_PROFILES` selects `cpu` or `cuda`; empty starts no local
 | `JEV_CONCURRENCY` | `4` | Maximum simultaneous Jev requests per run; positive integer |
 
 `.env.example` overrides some code defaults: LAYA_API_URL uses the Compose hostname
-`laya`, LAYA_MODEL is `multilingual`, JEV_MODEL is `jev-latest`, and trusted UI origins
-include `https://*.ngrok-free.app`. Existing `.env` values
+`laya`, LAYA_MODEL is `multilingual`, and JEV_MODEL is `jev-latest`. Trusted UI origins
+are empty by default; `https://*.ngrok-free.app` is an optional example. Existing `.env` values
 are not overwritten. For native DeciFlow or an external Laya host, set the reachable
 URL explicitly. Both CPU and CUDA publish port 8000.
 UI overrides remain authoritative after restart. At UI startup, explicit `DECISION_ENGINE`, `LAYA_*`, and `JEV_*` entries in the

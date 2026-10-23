@@ -6,7 +6,7 @@
 
 DeciFlow는 로그 청크를 `state`로 담아 `/v1/systemone`에 보내고 분류(`choice`),
 긴급도(`score`), 작업 티켓 필요성(`noul`) 세 질문을 평가합니다. Laya·Jev는
-[`classifier.py`](../classifier.py)의 요청 생성·결과 검증·UI 동작을 공유합니다.
+[`classifier.py`](../deciflow/classifier.py)의 요청 생성·결과 검증·UI 동작을 공유합니다.
 [요청·결과 JSON](results.ko.md)을 참고하세요.
 
 | 설정 | DeciFlow 동작 |

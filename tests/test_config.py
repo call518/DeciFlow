@@ -6,17 +6,19 @@ import pytest
 from conftest import DECISION_ANSWERS
 from dotenv import dotenv_values
 
-from classifier import Result, classify_batch, classify_log, parse_logs
-from config import get_engine, get_jev_input_bytes, load_startup_settings
+from deciflow.classifier import Result, classify_batch, classify_log, parse_logs
+from deciflow.config import get_engine, get_jev_input_bytes, load_startup_settings
 
 
 def test_example_laya_settings_pass_startup_validation(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     settings = dotenv_values(Path(__file__).resolve().parents[1] / ".env.example")
     for key, value in settings.items():
         if value is not None:
             monkeypatch.setenv(key, value)
+    monkeypatch.setenv("DECIFLOW_DATA_DIR", str(tmp_path / "data"))
     engine = get_engine()
     assert engine.name == "laya"
     assert engine.model == settings["LAYA_MODEL"]
@@ -376,7 +378,8 @@ def test_restart_reloads_mounted_engine_settings_only(
     for key in settings:
         monkeypatch.setenv(key, "old")
     monkeypatch.setenv("PORT", "4000")
-    monkeypatch.setenv("DECIFLOW_DATA_DIR", "/mounted-data")
+    mounted_data = tmp_path / "mounted-data"
+    monkeypatch.setenv("DECIFLOW_DATA_DIR", str(mounted_data))
     path.write_text(
         "\n".join(f"{key}={value}" for key, value in settings.items())
         + "\nPORT=9999\nDECIFLOW_DATA_DIR=/other-data\n"
@@ -390,7 +393,7 @@ def test_restart_reloads_mounted_engine_settings_only(
     import os
 
     assert os.environ["PORT"] == "4000"
-    assert os.environ["DECIFLOW_DATA_DIR"] == "/mounted-data"
+    assert os.environ["DECIFLOW_DATA_DIR"] == str(mounted_data)
     path.unlink()
     load_startup_settings(path)
     assert get_engine() == engine

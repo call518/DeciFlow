@@ -11,6 +11,13 @@ DeciFlow로 중계하므로 Nginx는 필요하지 않습니다.
 허용된 사용자는 DeciFlow의 데이터와 관리 기능을 공유합니다.
 사용자별 저장 공간이나 역할 구분을 추가하는 기능은 아닙니다.
 
+이 안내는 **Docker Compose** 기준입니다. 저장소에서 명령을 실행하고
+`<checkout>/.env`를 수정하며, UI 컨테이너 내부에서는 `/app/.env`로 보입니다.
+OAuth2-Proxy 파일은 `<checkout>/oauth2-proxy/`에 둡니다. Docker 없이 설치하려면
+권장하는 [uv tool 안내](tool-install.ko.md#선택적-google-로그인) 또는
+[Git 복제 기반 네이티브 안내](native.ko.md)를 선택하세요. 설정 경로의 차이는
+[환경 파일 위치](configuration.ko.md#환경-파일-위치)에 정리되어 있습니다.
+
 이 안내를 적용하려면 `.env`에 `OAUTH2_PROXY_ENABLED=true`를 지정하세요. 기본값
 `false`는 OAuth·인증서 없이 `http://localhost:4000`에서 HTTP 데모를 제공합니다.
 OAuth2-Proxy 활성 시 HTTPS 4443 포트만 공개하며 UI 호스트 포트는 공개하지 않습니다.
@@ -21,8 +28,6 @@ OAuth2-Proxy 활성 시 HTTPS 4443 포트만 공개하며 UI 호스트 포트는
 진입점은 계속 `docker-compose.yml`입니다. 설정값에 따라 `compose/`의 파일을 자동
 선택하므로 해당 파일을 `-f`로 직접 지정하지 마세요. include 기능을 위해
 Docker Compose 2.20.0+가 필요합니다.
-
-Docker 없는 설치와 OAuth2-Proxy 자동 실행은 [네이티브 안내](native.ko.md)를 따르세요.
 
 ## 준비 사항
 

@@ -8,14 +8,13 @@ import httpx
 import pytest
 from pyarrow.fs import LocalFileSystem
 
-import hdfs_sources
-import server
-from classifier import EXECUTION_CONTROL, ExecutionControl
-from criteria_generation import preview_samples
-from profiles import GENERAL_PROFILE_ID
-from source_registry import save_sources, source_pattern, validate_sources
-from source_settings import parse_source_settings, resolve_configured_sources
-from tasks import save_task
+from deciflow import hdfs_sources, server
+from deciflow.classifier import EXECUTION_CONTROL, ExecutionControl
+from deciflow.criteria_generation import preview_samples
+from deciflow.profiles import GENERAL_PROFILE_ID
+from deciflow.source_registry import save_sources, source_pattern, validate_sources
+from deciflow.source_settings import parse_source_settings, resolve_configured_sources
+from deciflow.tasks import save_task
 
 
 @pytest.fixture

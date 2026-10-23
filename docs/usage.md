@@ -144,7 +144,7 @@ retain line locations/counts. Requests and results use `chunkEvents`.
 #### Uncertainty and human review
 
 **Uncertain is a DeciFlow feature**, computed from the provider response in
-[`classifier.py`](../classifier.py); it is not Laya's own uncertainty flag.
+[`classifier.py`](../deciflow/classifier.py); it is not Laya's own uncertainty flag.
 For each Choice, any of the following conditions sets its
 `decisionAssessments[id].uncertain=true`:
 

@@ -9,13 +9,13 @@ from pathlib import Path
 import httpx
 import pytest
 
-import server
-from classifier import Result
-from config_store import get_data_directory, save_records
-from jobs import JOBS, Job
-from result_store import open_result_store
-from source_registry import load_sources, save_sources
-from tasks import (
+from deciflow import server
+from deciflow.classifier import Result
+from deciflow.config_store import get_data_directory, save_records
+from deciflow.jobs import JOBS, Job
+from deciflow.result_store import open_result_store
+from deciflow.source_registry import load_sources, save_sources
+from deciflow.tasks import (
     DEFAULT_TASK_ID,
     DEFAULT_TASK_NAME,
     TaskScheduler,
@@ -428,7 +428,7 @@ async def test_default_task_preserves_existing_configuration(
 async def test_disabled_task_blocks_manual_run_and_toggle_stops_active_run(
     task_setup: Result, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from tasks import set_task_enabled
+    from deciflow.tasks import set_task_enabled
 
     task = task_setup["task"]
     set_task_enabled(task["id"], False)

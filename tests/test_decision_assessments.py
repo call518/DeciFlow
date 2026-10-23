@@ -7,11 +7,11 @@ from typing import Any
 import httpx
 import pytest
 
-from classifier import classify_log
-from config import Engine
-from decisions import decision_assessments, needs_review
-from profiles import DEFAULT_PROFILES, use_profile_snapshot, validate_profiles
-from result_store import SQLiteResultStore
+from deciflow.classifier import classify_log
+from deciflow.config import Engine
+from deciflow.decisions import decision_assessments, needs_review
+from deciflow.profiles import DEFAULT_PROFILES, use_profile_snapshot, validate_profiles
+from deciflow.result_store import SQLiteResultStore
 
 
 @pytest.fixture

@@ -1,14 +1,26 @@
-# Docker 없이 실행하기
+# Git 복제 기반 네이티브 설치
 
 [English](native.md) | [프로젝트 README](../README.ko.md) | [문서 안내](README.ko.md)
 
 DeciFlow를 로컬에서 실행하고 브라우저로 샘플 로그를 분류합니다.
 이 로컬 절차에는 Docker·도메인·인증서가 필요하지 않습니다.
+이 방식은 [PyPI / uv tool](tool-install.ko.md),
+[Docker Compose](../README.ko.md#대안-설치-docker--laya-cpu) 다음인 세 번째 권장 방식입니다.
+하나를 선택하며, 이 안내에서는 Git 저장소의 스크립트를 직접 실행합니다.
 
 **DeciFlow**는 소스를 읽고 UI·API를 제공합니다. **Laya 서버**는 로컬·원격에서
 추론하며 **Jev**는 대안인 유료 호스팅 추론 서비스입니다. **OAuth2-Proxy**는
 브라우저 접근을 보호할 수 있지만 별도로 실행하는 네이티브 프로세스입니다.
 같은 설치에서는 Compose 배포 대신 네이티브 실행을 선택하세요.
+
+## 환경 파일
+
+복제한 저장소 루트(`<checkout>`)에서 CLI를 실행하고 `--config-dir "$PWD"`로
+`<checkout>/.env`를 명시적으로 선택하세요. 생략하면 저장소 안에서도
+`~/.config/deciflow/.env`를 사용합니다. 로컬 `laya_server.py` 어댑터와
+`server.py` 직접 실행은 저장소의 파일을 읽으며 CLI의 `--config-dir` 옵션으로
+참조 경로가 바뀌지는 않습니다.
+[환경 파일 위치](configuration.ko.md#환경-파일-위치)를 참고하세요.
 
 ## 빠른 시작: 로컬 CPU
 
@@ -67,7 +79,7 @@ uv run --extra laya python laya_server.py
 같은 저장소에서 터미널 B로 실행합니다.
 
 ```bash
-uv run --extra laya python server.py
+uv run --extra laya deciflow run --config-dir "$PWD"
 ```
 
 두 명령에 `--extra laya`를 지정해 동일한 환경을 유지합니다.
@@ -96,6 +108,24 @@ Elasticsearch 서버는 필요하지 않습니다. 다른 사용 흐름은 [사�
 유지됩니다. [Task 복구](tasks.ko.md#서버-재시작-후-복구)를 참고하세요.
 환경값을 바꾸면 해당 네이티브 프로세스를 재시작합니다.
 
+## 네이티브 프로세스 관리
+
+저장소 루트에서 포그라운드 명령 대신 데몬 실행을 선택할 수 있습니다.
+
+```bash
+uv run --extra laya deciflow run --daemon --config-dir "$PWD"
+uv run --extra laya deciflow status --config-dir "$PWD"
+uv run --extra laya deciflow stop --config-dir "$PWD"
+```
+
+로컬 어댑터와 환경을 공유하면 `--extra laya`를 유지하고, 외부 엔진을 사용하면
+생략하세요. 이 명령은 DeciFlow와 자식 OAuth2-Proxy를 관리하며 별도 Laya 프로세스는
+종료하지 않습니다. 로그·종료 코드·서비스 제한은
+[프로세스 관리](tool-install.ko.md#실행상태-확인종료)를 참고하세요.
+저장소 경로를 항상 명시하세요. 저장소 안에서도 `--config-dir`을 생략하면
+`~/.config/deciflow`를 선택합니다. `python server.py` 직접 실행도 가능하지만
+`deciflow status`나 `deciflow stop`의 관리 대상이 아닙니다.
+
 ## 기존 엔진 사용
 
 로컬 Laya 기동 대신 아래 중 하나를 선택합니다. DeciFlow 호스트에 로컬 모델·GPU·
@@ -112,7 +142,7 @@ Elasticsearch 서버는 필요하지 않습니다. 다른 사용 흐름은 [사�
 2단계의 쓰기 가능한 데이터·로그 경로를 유지하고 아래만 실행하세요.
 
 ```bash
-uv run python server.py
+uv run deciflow run --config-dir "$PWD"
 ```
 
 같은 로컬 UI를 열고 앞의 샘플 절차를 따릅니다.
@@ -120,15 +150,15 @@ uv run python server.py
 ## 선택: OAuth2-Proxy를 통한 네이티브 HTTPS
 
 `OAUTH2_PROXY_ENABLED=true`로 설정하면 같은
-`uv run --extra laya python server.py` 명령이 OAuth2-Proxy도 자동 실행합니다.
+`uv run --extra laya deciflow run --config-dir "$PWD"` 명령이 OAuth2-Proxy도 자동 실행합니다.
 DeciFlow는 루프백에 유지되며 OAuth2-Proxy가 외부 HTTPS를 수신합니다.
 
 ```text
 Browser → OAuth2-Proxy HTTPS :4443 → DeciFlow HTTP 127.0.0.1:4000 → Laya or Jev
 ```
 
-1. OS·아키텍처에 맞는 공식 [OAuth2-Proxy v7.15.5 바이너리](https://github.com/oauth2-proxy/oauth2-proxy/releases/tag/v7.15.5)를
-   PATH에 설치하고 릴리즈 체크섬을 검증하세요.
+1. [OAuth2-Proxy 바이너리 설치](oauth2-proxy-install.ko.md)에 따라 다운로드·체크섬
+   검증·PATH 배치·설치 확인을 진행하세요.
 2. [DNS·TLS 준비](dns-tls.ko.md)에 따라 도메인과 신뢰할 수 있는 인증서를 준비합니다.
    Docker deploy hook은 네이티브에 적용하지 않습니다. 실제 인증서 파일을
    `oauth2-proxy/tls/`에 두고 네이티브 실행 사용자가 개인 키를 읽도록 소유권·600 권한을

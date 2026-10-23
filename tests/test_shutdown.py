@@ -35,7 +35,7 @@ def test_sigint_stops_open_realtime_stream(tmp_path: Path, persist: bool) -> Non
     bootstrap = """
 import sys
 from pathlib import Path
-import server
+from deciflow import server
 server.ROOT = Path(sys.argv[1])
 async def skip_action_setup():
     pass

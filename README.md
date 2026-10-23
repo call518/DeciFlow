@@ -12,10 +12,86 @@
   <a href="https://youtu.be/bXuBJs4Hf70" target="_blank" rel="noopener noreferrer">Demo Video - YouTube</a>
 </p>
 
-## Architecture
+## Installation
 
-Start with the [Docker quick start](#quick-start--docker--laya-cpu), or choose
-[installation without Docker](docs/native.md).
+**DeciFlow** serves the UI/API and reads sources. A separate **Laya server** runs
+inference, or choose **Jev**, a paid hosted inference API. Choose one installation
+method in this recommended order:
+
+| Priority | Method and Guide | Default `.env` Location |
+| --- | --- | --- |
+| 1 — Recommended | [PyPI / uv tool](docs/tool-install.md) | `~/.config/deciflow/.env` |
+| 2 | [Git clone + Docker Compose](#alternative-installation-docker--laya-cpu) | `<checkout>/.env` → `/app/.env` inside the UI container |
+| 3 | [Git clone + native Python](docs/native.md) | `<checkout>/.env` for DeciFlow and the local Laya adapter |
+
+`<checkout>` means the cloned DeciFlow repository root. These files are not shared
+automatically. See [environment file locations](docs/configuration.md#environment-file-locations)
+for path selection and precedence.
+
+## Quick Start — PyPI / uv tool
+
+**Requires:** [uv](https://docs.astral.sh/uv/getting-started/installation/), Python
+3.11+ (3.12 recommended), and a running Laya server or a Jev account. DeciFlow
+installation does not start an inference server. Linux/WSL2 is the reference
+platform. The default HTTP mode needs no domain, certificate, or Google setup.
+
+### 1. Install and Initialize
+
+```bash
+uv tool install deciflow
+deciflow init
+```
+
+### 2. Configure the Engine and Storage
+
+Edit `~/.config/deciflow/.env` (root: `/root/.config/deciflow/.env`). For Laya,
+use its reachable URL and matching API key; this example assumes a local server:
+
+```dotenv
+OAUTH2_PROXY_ENABLED=false
+DECISION_ENGINE=laya
+LAYA_API_URL=http://127.0.0.1:8000/v1/systemone
+LAYA_API_KEY=your-laya-server-key
+```
+
+For Laya setup or the paid Jev alternative, follow the
+[engine connection guide](docs/tool-install.md#connect-an-engine-and-start).
+Prepare the default storage directories for the account running DeciFlow:
+
+```bash
+sudo install -d -o "$(id -un)" -g "$(id -gn)" \
+  /var/lib/deciflow-data /var/log/deciflow
+```
+
+You can instead configure and create your own writable data/log directories;
+see the [installation guide](docs/tool-install.md).
+
+### 3. Start DeciFlow
+
+```bash
+deciflow run
+```
+
+Startup checks prerequisites before serving the UI. For detailed diagnostics,
+use `deciflow config test`; `deciflow config list` shows effective settings with
+secrets redacted. Pass the same `--config-dir` to every command if you use another
+configuration directory. Ctrl+C stops DeciFlow.
+
+For background operation, use `deciflow run --daemon`; check it with
+`deciflow status` and shut it down with `deciflow stop`. See
+[process management](docs/tool-install.md#run-status-and-stop) for logging and custom configurations.
+
+### 4. Analyze a Local Log
+
+Open **http://127.0.0.1:4000** and check the engine status. In **Sources**, register
+an existing local log using its absolute path; Docker sample paths under
+`/host-logs/...` do not apply to this installation. In **Tasks**, create a named
+**Batch / Manual** Task with that Source, matching Criteria, and **Action: None**.
+Save, enable the Task, and click **Run** to view results in Main.
+For optional Google sign-in and HTTPS, see the
+[uv tool authentication guide](docs/tool-install.md#optional-google-sign-in).
+
+## Architecture
 
 [![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue)](https://deepwiki.com/call518/DeciFlow)
 
@@ -71,12 +147,12 @@ Result JSON keeps input text once; SQLite shares repeated Criteria definitions p
 
 Menus, item details/editors, Task History, and execution results have [shareable clean URLs](docs/usage.md#shareable-urls), including result filters and cursor pages. Legacy hash links remain supported.
 
-## Quick start — Docker + Laya CPU
+## Alternative Installation: Docker + Laya CPU
 
 **Requires:** Git and Docker Compose 2.20.0+ on one Linux host.
 The default HTTP demo needs no domain, certificate, or Google configuration.
 A compatible NVIDIA GPU can improve Laya's inference performance; see
-[Run with GPU (CUDA)](#laya-gpu). This quick start
+[Run with GPU (CUDA)](#laya-gpu). This Docker guide
 uses CPU so you can try DeciFlow across a wider range of environments.
 Laya runs inference; DeciFlow reads sources and serves the UI/API.
 Optional OAuth2-Proxy adds HTTPS, Google sign-in, and an email allow list.
@@ -89,6 +165,10 @@ cd DeciFlow
 # Only if .env does not exist / 기존 .env가 없다면
 test -f .env || cp .env.example .env
 ```
+
+The `.env` above is `<checkout>/.env` on the Docker host and is mounted as
+`/app/.env` inside the UI container. Docker does not read the uv tool configuration
+at `~/.config/deciflow/.env`. See [environment file locations](docs/configuration.md#environment-file-locations).
 
 ### 2. Configure CPU execution
 
@@ -602,8 +682,9 @@ vision model.
 
 ## Run Without Docker
 
-Follow [Native installation and startup](docs/native.md) for local CPU, existing
-Laya/Jev, and optional automatic native OAuth2-Proxy execution.
+Choose the recommended [uv tool installation](docs/tool-install.md), or
+[Git checkout native installation](docs/native.md) for local CPU and development.
+Both support existing Laya/Jev and optional automatic OAuth2-Proxy execution.
 
 ## Appendix — Custom Docker images (optional)
 
@@ -630,6 +711,9 @@ supported by your GPU/driver and the Dockerfile's `TORCH_VERSION` using the
 Validate API compatibility when upgrading Laya.
 
 ## Development
+
+Maintainers publish matching tag versions to TestPyPI and PyPI through the
+[tag release workflow](docs/tool-install.md#publish-from-a-git-tag).
 
 For model evaluation commands and report fields, see [Laya log validation](docs/laya-validation.md).
 Evaluate the selected Laya model on 36 labeled cases across five profiles:
@@ -660,6 +744,12 @@ Pytest automatically downloads and verifies OAuth2-Proxy v7.15.5 for Linux/macOS
 amd64/arm64. OpenSSL and initial GitHub access are required. Release archives are
 cached outside Git in `~/.cache/deciflow/test-tools/`; binaries and test certificates
 use temporary storage. Set `OAUTH2_PROXY_BINARY` to use an existing executable offline.
+
+Action tests prepare pinned `pip`, `setuptools`, and `wheel` wheels once per test
+session using PyPI/index access and temporary storage. Action environments then
+install offline from this local index using the Python version under test.
+Tests use temporary data/log paths and generated Compose settings; no root access
+or personal `.env` is required.
 
 UI regression test (requires Node.js only for testing):
 

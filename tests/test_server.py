@@ -8,9 +8,9 @@ from pathlib import Path
 import httpx
 import pytest
 
-import server
-from classifier import Result
-from config import Engine
+from deciflow import server
+from deciflow.classifier import Result
+from deciflow.config import Engine
 
 
 @pytest.mark.anyio
@@ -269,7 +269,7 @@ def test_startup_reads_changed_dotenv(tmp_path: Path) -> None:
     for name in ("DECISION_ENGINE", "PORT", "LAYA_MODEL", "LAYA_MAX_TOKENS"):
         environment.pop(name, None)
     code = (
-        "import sys; from pathlib import Path; import server; "
+        "import sys; from pathlib import Path; from deciflow import server; "
         "server.ROOT = Path(sys.argv[1]); "
         "server.uvicorn.run = lambda app, **kwargs: "
         "print(server.get_engine().name, kwargs['host'], kwargs['port']); "

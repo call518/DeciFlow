@@ -1,14 +1,26 @@
-# Run Without Docker
+# Git Checkout Native Installation
 
 [한국어](native.ko.md) | [Project README](../README.md) | [Documentation](README.md)
 
 Run DeciFlow locally, open the browser, and classify a sample log. Docker, a domain,
 and a certificate are not required for this local workflow.
+This is the third recommended method, after [PyPI / uv tool](tool-install.md)
+and [Docker Compose](../README.md#alternative-installation-docker--laya-cpu). Choose one method;
+this guide runs Git checkout scripts directly.
 
 **DeciFlow** reads sources and serves the UI/API. The **Laya server** runs inference
 locally or remotely; **Jev** is an alternative paid hosted inference service.
 **OAuth2-Proxy** can protect browser access, but is a separate native process.
 Choose native execution instead of the Compose deployment for the same installation.
+
+## Environment File
+
+Run the CLI from the cloned repository root (`<checkout>`) and select
+`<checkout>/.env` explicitly with `--config-dir "$PWD"`. Without that option,
+the CLI uses `~/.config/deciflow/.env`, even inside a checkout.
+The local `laya_server.py` adapter and direct `server.py` execution read the
+checkout file; their paths are not selected by the CLI's `--config-dir` option.
+See [environment file locations](configuration.md#environment-file-locations).
 
 ## Quick Start: Local CPU
 
@@ -69,7 +81,7 @@ It checks token budgets and exposes truncation metadata through the Laya API.
 In terminal B, from the same repository:
 
 ```bash
-uv run --extra laya python server.py
+uv run --extra laya deciflow run --config-dir "$PWD"
 ```
 
 Both commands use `--extra laya` to keep the same environment. DeciFlow listens on
@@ -98,6 +110,24 @@ in `./data`; logs remain in `./logs`. Active runs with checkpoints can recover;
 paused runs remain paused. See [Task recovery](tasks.md#recovery-after-a-server-restart).
 Restart the relevant native process after changing its environment settings.
 
+## Manage the Native Process
+
+From the repository root, choose daemon mode instead of the foreground command:
+
+```bash
+uv run --extra laya deciflow run --daemon --config-dir "$PWD"
+uv run --extra laya deciflow status --config-dir "$PWD"
+uv run --extra laya deciflow stop --config-dir "$PWD"
+```
+
+Keep `--extra laya` when sharing the environment with the local adapter; omit it
+for an external engine. These commands manage DeciFlow and its OAuth2-Proxy child,
+not the separate Laya process. See [process management](tool-install.md#run-status-and-stop)
+for logs, exit codes, and service limitations. Always select the checkout explicitly;
+omitting `--config-dir` selects `~/.config/deciflow` even inside the repository.
+Direct `python server.py` execution remains available but is not managed by
+`deciflow status` or `deciflow stop`.
+
 ## Use an Existing Engine
 
 Choose one of these instead of starting local Laya. The DeciFlow host needs no
@@ -114,7 +144,7 @@ For a remote server, use its actual reachable URL. There is no automatic fallbac
 to paid Jev. Keep the writable data/log paths from step 2, then run only:
 
 ```bash
-uv run python server.py
+uv run deciflow run --config-dir "$PWD"
 ```
 
 Open the same local UI and follow the sample steps above.
@@ -122,15 +152,15 @@ Open the same local UI and follow the sample steps above.
 ## Optional: Native HTTPS with OAuth2-Proxy
 
 Set `OAUTH2_PROXY_ENABLED=true` to start OAuth2-Proxy automatically with the same
-`uv run --extra laya python server.py` command. DeciFlow stays on loopback;
+`uv run --extra laya deciflow run --config-dir "$PWD"` command. DeciFlow stays on loopback;
 OAuth2-Proxy owns the external HTTPS listener:
 
 ```text
 Browser → OAuth2-Proxy HTTPS :4443 → DeciFlow HTTP 127.0.0.1:4000 → Laya or Jev
 ```
 
-1. Install the official [OAuth2-Proxy v7.15.5 binary](https://github.com/oauth2-proxy/oauth2-proxy/releases/tag/v7.15.5)
-   for your OS/architecture on PATH and verify the release checksum.
+1. Follow [OAuth2-Proxy binary installation](oauth2-proxy-install.md) to download,
+   verify, install on PATH, and check the executable.
 2. Prepare a domain and trusted certificate using [DNS/TLS preparation](dns-tls.md).
    Its Docker deploy hook does not apply to native execution. Put actual certificate
    files in `oauth2-proxy/tls/`; the native process owner must be able to read the

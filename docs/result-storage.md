@@ -58,7 +58,7 @@ See [Tasks](tasks.md#recovery-after-a-server-restart) for restart states and fil
 On a fresh data directory, bundled Sources, Criteria, the Elasticsearch sample Action and disabled default
 Task are created in SQLite. Empty saved lists remain empty. No configuration JSON,
 run.json, or events.ndjson is generated.
-Bundled Criteria JSON files under `profiles/` remain read-only seed definitions.
+Bundled Criteria JSON files under `deciflow/profiles/` remain read-only seed definitions.
 
 Use one DeciFlow process per data directory on a local filesystem. SQLite uses WAL,
 FULL synchronous commits, and a 2 MiB connection cache. Do not place the active DB

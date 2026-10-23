@@ -7,10 +7,10 @@ import asyncssh
 import httpx
 import pytest
 
-import server
-from reset import reset_data, reset_directory
-from result_store import open_result_store
-from tasks import load_tasks
+from deciflow import server
+from deciflow.reset import reset_data, reset_directory
+from deciflow.result_store import open_result_store
+from deciflow.tasks import load_tasks
 
 
 def test_reset_clears_data_without_following_symlinks(
@@ -39,6 +39,20 @@ def test_reset_rejects_protected_roots(
     monkeypatch.setenv("DECIFLOW_DATA_DIR", path)
     with pytest.raises(ValueError, match="directory|application"):
         reset_directory()
+
+
+@pytest.mark.parametrize("parent", [False, True])
+def test_reset_preserves_installed_workspace(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, parent: bool
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / ".env").write_text("DECISION_ENGINE=laya\n")
+    monkeypatch.chdir(workspace)
+    monkeypatch.setenv("DECIFLOW_DATA_DIR", str(tmp_path if parent else workspace))
+    with pytest.raises(ValueError, match="directory|application"):
+        reset_directory()
+    assert (workspace / ".env").is_file()
 
 
 def test_reset_rejects_symlink_root(
@@ -154,8 +168,8 @@ def test_reset_preserves_ssh_key_files_and_registration(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Preserved keys remain visible and usable after other app data is reset."""
-    from config_store import save_records
-    from ssh_keys import add_key, get_key, list_keys
+    from deciflow.config_store import save_records
+    from deciflow.ssh_keys import add_key, get_key, list_keys
 
     root = tmp_path / "data"
     monkeypatch.setenv("DECIFLOW_DATA_DIR", str(root))

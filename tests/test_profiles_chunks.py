@@ -8,13 +8,13 @@ import httpx
 import pytest
 from conftest import DECISION_ANSWERS
 
-import server
-from chunks import chunk_records
-from classifier import Result, classify_log
-from config import get_engine
-from configured_sources import read_configured
-from profiles import PROFILES, validate_settings
-from source_settings import parse_source_settings, resolve_configured_sources
+from deciflow import server
+from deciflow.chunks import chunk_records
+from deciflow.classifier import Result, classify_log
+from deciflow.config import get_engine
+from deciflow.configured_sources import read_configured
+from deciflow.profiles import PROFILES, validate_settings
+from deciflow.source_settings import parse_source_settings, resolve_configured_sources
 
 
 @pytest.mark.parametrize("engine", ["laya", "jev"])
@@ -288,7 +288,7 @@ async def test_file_api_applies_each_source_settings(
 
 @pytest.mark.anyio
 async def test_realtime_discovers_globs_with_per_file_chunks(tmp_path: Path) -> None:
-    from configured_sources import follow_configured
+    from deciflow.configured_sources import follow_configured
 
     specs = parse_source_settings(
         [
@@ -322,7 +322,7 @@ async def test_realtime_discovers_globs_with_per_file_chunks(tmp_path: Path) -> 
 
 @pytest.mark.anyio
 async def test_live_rotation_does_not_mix_generations(tmp_path: Path) -> None:
-    from sources import follow_file
+    from deciflow.sources import follow_file
 
     path = tmp_path / "rotate.log"
     path.write_text("")
@@ -390,7 +390,7 @@ async def test_overlapping_source_patterns_are_retained_without_duplicate_chunks
 def test_criteria_name_uniqueness_matches_ui() -> None:
     from copy import deepcopy
 
-    from profiles import DEFAULT_PROFILES, validate_profiles
+    from deciflow.profiles import DEFAULT_PROFILES, validate_profiles
 
     profiles = deepcopy(DEFAULT_PROFILES)
     profiles["617706a3-c4ee-426f-81cf-7f5d80ecf67a"]["label"] = (

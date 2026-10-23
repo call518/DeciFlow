@@ -99,4 +99,4 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/deciflow-venv \
     PYTHONUNBUFFERED=1
 RUN mkdir -p /var/lib/deciflow-data/actions /var/lib/deciflow-data/criteria
 EXPOSE 4000
-CMD ["sh", "-c", "uv sync --frozen --no-dev --no-install-project --no-cache && exec /opt/deciflow-venv/bin/python -c \"import server; server.main(host='0.0.0.0')\""]
+CMD ["sh", "-c", "uv sync --frozen --no-dev --no-install-project --no-cache && exec /opt/deciflow-venv/bin/python -c \"from deciflow import server; server.main(host='0.0.0.0')\""]

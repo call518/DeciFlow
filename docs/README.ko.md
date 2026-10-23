@@ -2,10 +2,17 @@
 
 [English](README.md) | [한국어](README.ko.md) | [프로젝트 README](../README.ko.md)
 
-DeciFlow와 Laya 실행은 [빠른 시작](../README.ko.md#빠른-시작--docker--laya-cpu)부터
-확인하세요. 기본 Docker 배포를 시작하기 전에 [Google 로그인·HTTPS 설정](authentication.ko.md)을
-완료해야 합니다. 필요한 작업에 따라 아래 문서를 선택하면 됩니다.
-Docker 없이 로컬에서 실행하려면 [네이티브 안내](native.ko.md)부터 따르세요.
+다음 추천 순서에 따라 설치 방식 하나를 선택하세요.
+
+1. [PyPI / uv tool](tool-install.ko.md): 저장소를 복제하지 않고 PyPI에서 설치하는 권장 방식입니다.
+2. [Git clone + Docker Compose](../README.ko.md#대안-설치-docker--laya-cpu): 선택적 로컬 Laya를 포함한 컨테이너 배포입니다.
+3. [Git clone + 네이티브 Python](native.ko.md): 복제한 소스 저장소에서 CLI를 실행합니다.
+
+`.env`를 수정하기 전에 [환경 파일 위치](configuration.ko.md#환경-파일-위치)를
+확인하세요. 세 방식은 이 파일을 자동 공유하지 않습니다.
+컨테이너 없이 인증을 사용하려면 [OAuth2-Proxy 바이너리 설치](oauth2-proxy-install.ko.md)를 따르세요.
+Google 로그인과 HTTPS는 선택 사항이며, OAuth2-Proxy 활성 시에만
+[인증 설정](authentication.ko.md)을 준비합니다.
 
 Remote File은 Settings에서 SSH Keys·SSH Hosts를 먼저 등록합니다. 이후
 Source → Criteria → 선택적 Actions → Tasks 순으로 구성하고 Main에서 Task의 현재·최근 실행 결과를 확인합니다.
@@ -29,10 +36,11 @@ Source → Criteria → 선택적 Actions → Tasks 순으로 구성하고 Main�
 
 | 참고 자료 | 내용 |
 | --- | --- |
-| [DNS·TLS 인증서](dns-tls.ko.md) | 공개 DNS·Certbot DNS-01/RFC2136·인증서 배포·자동 갱신·WSL 점검 |
-| [네이티브 설치](native.ko.md) | Docker 없는 로컬 데모·엔진 선택·시작과 종료·선택적 OAuth2-Proxy 자동 실행 |
-| [Google 로그인](authentication.ko.md) | 선택적 OAuth2-Proxy 배포·이메일 허용 목록·HTTPS·검증 |
+| [PyPI / uv tool 설치](tool-install.ko.md) | 권장 명령 설치·init/config 명령·엔진 연결·선택적 인증 |
 | [Docker 배포](../README.ko.md#docker-배포-상세) | 공개 이미지·CPU/CUDA 프로필·포트·마운트·볼륨·운영 명령 |
+| [Git 복제 기반 네이티브 설치](native.ko.md) | 소스 기반 로컬 데모·엔진 선택·시작과 종료·선택적 네이티브 OAuth2-Proxy |
+| [DNS·TLS 인증서](dns-tls.ko.md) | 공개 DNS·Certbot DNS-01/RFC2136·인증서 배포·자동 갱신·WSL 점검 |
+| [Google 로그인](authentication.ko.md) | 선택적 OAuth2-Proxy 배포·이메일 허용 목록·HTTPS·검증 |
 | [Dockerfile과 Compose](../README.ko.md#dockerfile과-compose의-역할) | UI 실행 이미지와 Compose 서비스 구성 방식 |
 | [Laya 연동](laya-integration.ko.md) | 요청 구성·응답 검증·서버 설정·제약 |
 | [요청·결과 JSON](results.ko.md) | Laya/Jev 공통 스키마·state·타입별 판단·답변·필드 설명 |

@@ -3,10 +3,10 @@
 import httpx
 import pytest
 
-from classifier import classify_log
-from config import get_engine
-from decisions import validate_answer
-from profiles import DEFAULT_PROFILES
+from deciflow.classifier import classify_log
+from deciflow.config import get_engine
+from deciflow.decisions import validate_answer
+from deciflow.profiles import DEFAULT_PROFILES
 
 
 @pytest.mark.parametrize(

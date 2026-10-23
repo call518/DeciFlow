@@ -3,8 +3,8 @@
 import httpx
 import pytest
 
-import server
-from config import Engine
+from deciflow import server
+from deciflow.config import Engine
 
 
 @pytest.mark.anyio

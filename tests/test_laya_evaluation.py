@@ -4,7 +4,7 @@ import httpx
 import pytest
 from conftest import DECISION_ANSWERS
 
-from config import Engine
+from deciflow.config import Engine
 from scripts.evaluate_laya import evaluate, summarize
 
 

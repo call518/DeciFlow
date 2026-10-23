@@ -11,16 +11,14 @@ import asyncssh
 import httpx
 import pytest
 
-import host_sources
-import server
-import tasks
-from classifier import Result
-from jobs import JOBS
-from source_registry import load_sources, save_sources
-from source_settings import parse_source_settings
-from ssh_hosts import save_host
-from ssh_keys import add_key
-from tasks import load_tasks, save_task, task_runs
+from deciflow import host_sources, server, tasks
+from deciflow.classifier import Result
+from deciflow.jobs import JOBS
+from deciflow.source_registry import load_sources, save_sources
+from deciflow.source_settings import parse_source_settings
+from deciflow.ssh_hosts import save_host
+from deciflow.ssh_keys import add_key
+from deciflow.tasks import load_tasks, save_task, task_runs
 
 pytestmark = pytest.mark.anyio
 

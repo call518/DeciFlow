@@ -7,10 +7,10 @@ import anyio
 import httpx
 import pytest
 
-import server
-from classifier import Result, classify_stream
-from config import Engine
-from sources import (
+from deciflow import server
+from deciflow.classifier import Result, classify_stream
+from deciflow.config import Engine
+from deciflow.sources import (
     follow_file,
     follow_sources,
     merge_batch,

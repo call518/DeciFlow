@@ -51,7 +51,7 @@ DB 안의 JSON 값으로 보존합니다. 별도 DB 서버나 환경변수는 �
 
 새 데이터 경로에는 번들 Source·Criteria·Elasticsearch 샘플 Action과 기본 비활성 Task를 SQLite에 생성합니다.
 저장한 빈 목록은 빈 상태를 유지합니다. 설정 JSON·run.json·events.ndjson은 생성하지 않습니다.
-`profiles/`의 번들 Criteria
+`deciflow/profiles/`의 번들 Criteria
 JSON은 읽기 전용 초기값으로 유지합니다.
 
 로컬 파일시스템의 데이터 경로마다 DeciFlow 프로세스 하나를 사용합니다. SQLite는

@@ -7,8 +7,14 @@ import httpx
 import pytest
 from conftest import DECISION_ANSWERS
 
-from classifier import CRITERIA, Result, classify_batch, classify_log, parse_logs
-from config import get_engine
+from deciflow.classifier import (
+    CRITERIA,
+    Result,
+    classify_batch,
+    classify_log,
+    parse_logs,
+)
+from deciflow.config import get_engine
 
 ANSWER: Result = {
     "choice": "error",
@@ -256,7 +262,7 @@ async def test_three_questions_share_one_request(
 ) -> None:
     import json
 
-    from profiles import DEFAULT_PROFILES
+    from deciflow.profiles import DEFAULT_PROFILES
 
     definitions = DEFAULT_PROFILES["4e6d5417-611e-49e0-8e23-2444a0f49ee4"]["questions"]
 

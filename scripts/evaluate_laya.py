@@ -10,9 +10,9 @@ from pathlib import Path
 import httpx
 from dotenv import load_dotenv
 
-from classifier import DecisionError, Result, classify_log
-from config import Engine, get_engine
-from profiles import GENERAL_PROFILE_ID, PROFILES
+from deciflow.classifier import DecisionError, Result, classify_log
+from deciflow.config import Engine, get_engine
+from deciflow.profiles import GENERAL_PROFILE_ID, PROFILES
 
 ROOT = Path(__file__).resolve().parents[1]
 

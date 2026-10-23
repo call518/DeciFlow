@@ -125,8 +125,8 @@ for Jev. DeciFlow's Jev byte check is not exact token measurement.
 
 The bundled Criteria are Korean-only. Use the [complete field values in the Korean
 guide](voc.ko.md#4-전체-입력값) or the canonical templates:
-[Asia Culture Center](../profiles/consultation.json) and
-[Central Gov](../profiles/central_gov.json). Copy their labels, instructions, option
+[Asia Culture Center](../deciflow/profiles/consultation.json) and
+[Central Gov](../deciflow/profiles/central_gov.json). Copy their labels, instructions, option
 keys, and definitions unchanged when reproducing the supplied profiles.
 
 ## 5. Validate the Decision Boundaries

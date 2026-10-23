@@ -10,11 +10,11 @@ from typing import Any
 import httpx
 import pytest
 
-import criteria_generation as generation
-import server
-from config_store import load_records
-from profiles import PROFILES
-from source_registry import save_sources
+from deciflow import criteria_generation as generation
+from deciflow import server
+from deciflow.config_store import load_records
+from deciflow.profiles import PROFILES
+from deciflow.source_registry import save_sources
 
 
 @pytest.fixture
@@ -382,7 +382,7 @@ def test_openai_settings_reload_without_exposing_key(
 ) -> None:
     import os
 
-    from config import load_startup_settings
+    from deciflow.config import load_startup_settings
 
     monkeypatch.setenv("OPENAI_API_KEY", "old-test-key")
     monkeypatch.setenv("OPENAI_CRITERIA_MODEL", "old-model")
@@ -449,7 +449,7 @@ def test_generated_decisions_are_all_available_for_overview(
     generated: dict[str, Any],
 ) -> None:
     """All generated decisions remain chartable independently of the default."""
-    from result_store import _aggregate_decisions
+    from deciflow.result_store import _aggregate_decisions
 
     profile = generation.convert_generated_profile(generated)
     stats: dict[str, Any] = {}

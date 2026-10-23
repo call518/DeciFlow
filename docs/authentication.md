@@ -11,6 +11,13 @@ Source access, Laya/Jev calls, and Action delivery keep their existing authentic
 All admitted users share DeciFlow's data and administrative capabilities; this
 does not add per-user storage or roles.
 
+This guide uses **Docker Compose**: run commands from the checkout and edit
+`<checkout>/.env`, mounted as `/app/.env` inside the UI container. OAuth2-Proxy
+files are in `<checkout>/oauth2-proxy/`. For installation without Docker, choose
+the recommended [uv tool guide](tool-install.md#optional-google-sign-in) or the
+[Git checkout native guide](native.md). Their configuration paths differ; see
+[environment file locations](configuration.md#environment-file-locations).
+
 Set `OAUTH2_PROXY_ENABLED=true` in `.env` to use this guide. The default `false`
 provides an HTTP demo at `http://localhost:4000` without OAuth or certificate files.
 With OAuth2-Proxy enabled, only HTTPS port 4443 is published; the UI has no host port.
@@ -22,8 +29,6 @@ startup; there is no automatic fallback to HTTP.
 The entry point remains `docker-compose.yml`. It automatically selects the files
 in `compose/` from this setting; do not pass those files with `-f`.
 Docker Compose 2.20.0+ is required for this include mechanism.
-
-For Docker-free installation and automatic native OAuth2-Proxy execution, use the [native guide](native.md).
 
 ## Prerequisites
 
