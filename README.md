@@ -12,10 +12,47 @@
   <a href="https://youtu.be/bXuBJs4Hf70" target="_blank" rel="noopener noreferrer">Demo Video - YouTube</a>
 </p>
 
-## Architecture
+## Installation
 
-Start with the [Docker quick start](#quick-start--docker--laya-cpu), or choose
-[installation without Docker](docs/native.md).
+**DeciFlow** serves the UI/API and reads sources. A separate **Laya server** runs
+inference, or choose **Jev**, a paid hosted inference API. Choose one installation
+method in this recommended order:
+
+| Priority | Method and Guide | Default `.env` Location |
+| --- | --- | --- |
+| 1 — Recommended | [PyPI / uv tool](docs/tool-install.md) | `~/.config/deciflow/.env` |
+| 2 | [Git clone + Docker Compose](#quick-start--docker--laya-cpu) | `<checkout>/.env` → `/app/.env` inside the UI container |
+| 3 | [Git clone + native Python](docs/native.md) | `<checkout>/.env` for DeciFlow and the local Laya adapter |
+
+`<checkout>` means the cloned DeciFlow repository root. These files are not shared
+automatically. See [environment file locations](docs/configuration.md#environment-file-locations)
+for path selection and precedence.
+
+PyPI publication is pending. To test uv tool installation from this branch's Git
+checkout:
+
+```bash
+uv tool install .
+deciflow init
+```
+
+After publication, use `uv tool install deciflow` instead of `uv tool install .`.
+Maintainers publish matching tag versions to TestPyPI and PyPI through the
+[tag release workflow](docs/tool-install.md#publish-from-a-git-tag).
+Edit `~/.config/deciflow/.env`, connect a running Laya server or configure Jev,
+and prepare writable storage using the [installation guide](docs/tool-install.md).
+Then start:
+
+```bash
+deciflow
+```
+
+Every `deciflow` startup checks prerequisites before starting the server.
+Use `deciflow config test` for detailed diagnostics and `deciflow config list`
+to inspect effective settings with secrets redacted. For another configuration
+directory, pass the same `--config-dir` to every command.
+
+## Architecture
 
 [![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue)](https://deepwiki.com/call518/DeciFlow)
 
@@ -89,6 +126,10 @@ cd DeciFlow
 # Only if .env does not exist / 기존 .env가 없다면
 test -f .env || cp .env.example .env
 ```
+
+The `.env` above is `<checkout>/.env` on the Docker host and is mounted as
+`/app/.env` inside the UI container. Docker does not read the uv tool configuration
+at `~/.config/deciflow/.env`. See [environment file locations](docs/configuration.md#environment-file-locations).
 
 ### 2. Configure CPU execution
 
@@ -602,8 +643,9 @@ vision model.
 
 ## Run Without Docker
 
-Follow [Native installation and startup](docs/native.md) for local CPU, existing
-Laya/Jev, and optional automatic native OAuth2-Proxy execution.
+Choose the recommended [uv tool installation](docs/tool-install.md), or
+[Git checkout native installation](docs/native.md) for local CPU and development.
+Both support existing Laya/Jev and optional automatic OAuth2-Proxy execution.
 
 ## Appendix — Custom Docker images (optional)
 

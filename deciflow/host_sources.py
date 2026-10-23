@@ -3,10 +3,10 @@
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 
-from classifier import Result
-from remote_sources import read_remote
-from source_registry import source_pattern
-from sources import merge_batch
+from deciflow.classifier import Result
+from deciflow.remote_sources import read_remote
+from deciflow.source_registry import source_pattern
+from deciflow.sources import merge_batch
 
 
 def host_metadata(spec: Result) -> Result:

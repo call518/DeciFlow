@@ -12,10 +12,44 @@
   <a href="https://youtu.be/bXuBJs4Hf70" target="_blank" rel="noopener noreferrer">Demo Video - YouTube</a>
 </p>
 
-## 아키텍처
+## 설치
 
-[Docker 빠른 시작](#빠른-시작--docker--laya-cpu) 또는
-[Docker 없는 설치](docs/native.ko.md) 중 하나를 선택하세요.
+**DeciFlow**는 UI/API를 제공하고 소스를 읽습니다. 별도 **Laya 서버**가 추론을
+수행하며, 대신 유료 추론 API인 **Jev**를 선택할 수 있습니다.
+다음 추천 순서에 따라 설치 방식 하나를 선택하세요.
+
+| 우선순위 | 설치 방식과 안내 | 기본 `.env` 위치 |
+| --- | --- | --- |
+| 1 — 권장 | [PyPI / uv tool](docs/tool-install.ko.md) | `~/.config/deciflow/.env` |
+| 2 | [Git clone + Docker Compose](#빠른-시작--docker--laya-cpu) | `<checkout>/.env` → UI 컨테이너 내부 `/app/.env` |
+| 3 | [Git clone + 네이티브 Python](docs/native.ko.md) | DeciFlow·로컬 Laya 어댑터 모두 `<checkout>/.env` |
+
+`<checkout>`은 복제한 DeciFlow 저장소 루트입니다. 이 파일들은 자동으로 공유되지 않습니다.
+경로 선택과 적용 우선순위는 [환경 파일 위치](docs/configuration.ko.md#환경-파일-위치)를 참고하세요.
+
+아직 PyPI에 게시하지 않았습니다. 현재 브랜치의 Git 저장소에서 uv tool 설치를
+테스트하려면:
+
+```bash
+uv tool install .
+deciflow init
+```
+
+게시 후에는 `uv tool install .` 대신 `uv tool install deciflow`로 설치합니다.
+관리자는 [태그 릴리즈 워크플로](docs/tool-install.ko.md#git-태그로-게시)로
+태그와 같은 버전을 TestPyPI·PyPI에 게시합니다.
+`~/.config/deciflow/.env`를 수정하고, 실행 중인 Laya 서버나 Jev 연결과 쓰기 가능한
+저장 경로를 [설치 안내](docs/tool-install.ko.md)에 따라 준비한 뒤 기동하세요.
+
+```bash
+deciflow
+```
+
+`deciflow`는 기동 전마다 준비 상태를 검사합니다. 상세 진단은 `deciflow config test`,
+비밀값을 숨긴 적용 설정 조회는 `deciflow config list`를 사용합니다.
+다른 설정 디렉터리를 사용한다면 모든 명령에 같은 `--config-dir`을 지정하세요.
+
+## 아키텍처
 
 [![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue)](https://deepwiki.com/call518/DeciFlow)
 
@@ -86,6 +120,10 @@ cd DeciFlow
 # 기존 .env가 없다면 / Only if .env does not exist
 test -f .env || cp .env.example .env
 ```
+
+위 `.env`는 Docker 호스트의 `<checkout>/.env`이며 UI 컨테이너 안에서는
+`/app/.env`로 마운트됩니다. Docker는 uv tool 설정 파일인
+`~/.config/deciflow/.env`를 읽지 않습니다. [환경 파일 위치](docs/configuration.ko.md#환경-파일-위치)를 참고하세요.
 
 ### 2. CPU 실행 설정
 
@@ -586,8 +624,9 @@ Batch·Realtime 실행은 기존 ID로 복구하며 일시정지 상태도 유�
 
 ## Docker 없이 실행
 
-로컬 CPU·기존 Laya/Jev·선택적 네이티브 OAuth2-Proxy 자동 실행은
-[네이티브 설치·기동 안내](docs/native.ko.md)를 따라 진행하세요.
+권장하는 [uv tool 설치](docs/tool-install.ko.md) 또는 로컬 CPU·개발용
+[Git 복제 기반 네이티브 설치](docs/native.ko.md)를 선택하세요.
+두 방식 모두 기존 Laya/Jev 연결과 선택적 OAuth2-Proxy 자동 실행을 지원합니다.
 
 ## Appendix — Docker 커스텀 이미지(선택)
 

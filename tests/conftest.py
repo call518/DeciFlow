@@ -3,7 +3,7 @@ from typing import Any
 
 import pytest
 
-from profiles import DEFAULT_PROFILES
+from deciflow.profiles import DEFAULT_PROFILES
 
 URGENCY_CRITERIA = DEFAULT_PROFILES["4e6d5417-611e-49e0-8e23-2444a0f49ee4"][
     "questions"
@@ -29,8 +29,7 @@ def anyio_backend() -> str:
 @pytest.fixture(autouse=True)
 def engine_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Keep provider tests independent of developer secrets and shell settings."""
-    import server
-
+    from deciflow import server
     monkeypatch.setattr(server.app.state, "reset_requested", False, raising=False)
     monkeypatch.setattr(server.app.state, "restart_requested", False, raising=False)
     monkeypatch.setenv("DECIFLOW_DATA_DIR", str(tmp_path / "data"))

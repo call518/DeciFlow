@@ -2,10 +2,16 @@
 
 [English](README.md) | [한국어](README.ko.md) | [Project README](../README.md)
 
-Start with the [quick start](../README.md#quick-start--docker--laya-cpu) to run
-DeciFlow and Laya. Complete [Google sign-in and HTTPS setup](authentication.md)
-before starting the default Docker deployment. Use the guides below for the task you need.
-For Docker-free local execution, start with the [native guide](native.md).
+Choose one installation method in the recommended order:
+
+1. [PyPI / uv tool](tool-install.md): recommended installable command; PyPI publication is pending, so use the documented checkout installation for now.
+2. [Git clone + Docker Compose](../README.md#quick-start--docker--laya-cpu): container deployment with optional local Laya.
+3. [Git clone + native Python](native.md): run the source scripts directly.
+
+Check [environment file locations](configuration.md#environment-file-locations)
+before editing `.env`; the three methods do not automatically share this file.
+Google sign-in and HTTPS are optional. Configure [authentication](authentication.md)
+only when enabling OAuth2-Proxy.
 
 For Remote File, register SSH Keys and SSH Hosts in Settings first. Then follow
 Source → Criteria → optional Actions → Tasks, and inspect current/latest Task results in Main.
@@ -29,10 +35,11 @@ Source → Criteria → optional Actions → Tasks, and inspect current/latest T
 
 | Reference | Contents |
 | --- | --- |
-| [DNS and TLS Certificates](dns-tls.md) | Public DNS, Certbot DNS-01/RFC2136, certificate deployment, renewal, and WSL checks |
-| [Native Installation](native.md) | Docker-free local demo, engine selection, startup/shutdown, and optional automatic OAuth2-Proxy |
-| [Google Sign-In](authentication.md) | Optional OAuth2-Proxy deployment, email allow list, HTTPS, and verification |
+| [PyPI / uv tool Installation](tool-install.md) | Recommended command installation, init/config commands, engine connection, and optional authentication |
 | [Docker deployment](../README.md#docker-deployment-details) | Published images, CPU/CUDA profiles, ports, mounts, volumes, and lifecycle commands |
+| [Git Checkout Native Installation](native.md) | Source-based local demo, engine selection, startup/shutdown, and optional native OAuth2-Proxy |
+| [DNS and TLS Certificates](dns-tls.md) | Public DNS, Certbot DNS-01/RFC2136, certificate deployment, renewal, and WSL checks |
+| [Google Sign-In](authentication.md) | Optional OAuth2-Proxy deployment, email allow list, HTTPS, and verification |
 | [Dockerfile and Compose](../README.md#dockerfile-and-compose-responsibilities) | UI runtime image and how Compose configures its services |
 | [Laya integration](laya-integration.md) | Request contract, response validation, server settings, and limits |
 | [Request/result JSON](results.md) | Shared Laya/Jev schema, state, typed decisions, answers, and field reference |

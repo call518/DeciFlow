@@ -8,6 +8,47 @@ UI 저장값 → `.env`/프로세스 환경변수 → 코드 기본값 순으로
 Laya 서버 설정은 Laya 호스트에서 관리하며, Compose는 `LAYA_API_KEY`를 DeciFlow와
 공유합니다. `COMPOSE_PROFILES`는 `cpu` 또는 `cuda`를 선택하며 빈 값이면 로컬 Laya를 실행하지 않습니다.
 
+## 환경 파일 위치
+
+추천 순서는 **PyPI / uv tool → Docker Compose → Git 복제 기반 네이티브 Python**이며
+실행 방식 하나를 선택합니다. 아직 PyPI에 게시하지 않았으므로 현재 저장소에서 설치하는
+방법은 [uv tool 안내](tool-install.ko.md)를 따르세요.
+아래 `<checkout>`은 호스트에 복제한 DeciFlow 저장소 루트입니다.
+
+| 방식 | DeciFlow가 읽는 파일 | 준비·선택 방법 |
+| --- | --- | --- |
+| PyPI / uv tool | `~/.config/deciflow/.env` | `deciflow init`으로 샘플 생성 후 수정 |
+| Git clone + Docker Compose | 호스트 `<checkout>/.env`, UI 컨테이너 내부 `/app/.env`로 마운트 | `<checkout>/.env.example`을 `<checkout>/.env`로 복사하고 저장소에서 Compose 실행 |
+| Git clone + 네이티브 Python | `<checkout>/.env` | 샘플 복사 후 `uv run python server.py`, `uv run --extra laya python laya_server.py`가 같은 파일을 읽음 |
+
+uv tool의 `~`는 명령 실행 사용자의 홈입니다. 따라서 root는
+`/root/.config/deciflow/.env`를 사용합니다. `--config-dir /path/to/deciflow-config`를
+지정하면 `init`, `config list`, `config test`, 기동 모두
+`/path/to/deciflow-config/.env`를 사용하므로 매번 같은 옵션을 전달하세요.
+현재 셸 디렉터리의 `.env`를 자동 선택하지 않으며, 초기화는 기존 파일을 보존합니다.
+
+Git 네이티브 스크립트는 셸 위치와 관계없이 저장소의 파일을 읽습니다. Source 상대 경로를
+명확히 하려면 안내된 명령을 저장소에서 실행하세요. 로컬 Laya 어댑터도 같은 파일을 읽지만,
+별도 배포한 Laya 서버는 해당 호스트의 자체 설정을 사용합니다.
+
+Compose는 저장소 파일을 변수 치환과 UI의 `env_file`에 사용하고, DeciFlow는 기동 시
+마운트된 `/app/.env`도 읽습니다. `docker compose --env-file ...`만 지정해도 UI의
+`env_file`이나 마운트된 `/app/.env`가 바뀌지는 않으므로 uv tool 설정 파일로
+Docker 배포 전체를 전환하는 방법이 아닙니다. `--config-dir`은 DeciFlow CLI 옵션이며
+Compose나 `server.py` 옵션이 아닙니다.
+
+각 파일은 독립적이며 자동 검색·동기화·대체 사용을 하지 않습니다. 설치형 명령으로 기존
+네이티브 저장소 파일을 의도적으로 재사용하려면 `--config-dir /path/to/DeciFlow`를 지정하세요.
+Docker의 `http://laya:8000`은 해당 네트워크 내부 주소이므로 호스트에서 실행할 때는
+접근 가능한 Laya URL을 설정해야 합니다.
+
+설정 파일 위치와 `DECIFLOW_DATA_DIR`·`DECIFLOW_LOG_DIR`은 별개입니다. 기본값은
+데이터 `/var/lib/deciflow-data`(빈 값도 동일), 로그 `/var/log/deciflow`를 유지합니다.
+Docker는 컨테이너 내부 경로를 이름 있는 볼륨으로 보존하고, uv tool·네이티브는 호스트
+디렉터리를 사용합니다. 네이티브 빠른 시작은 명시적으로 `./data`·`./logs`로 덮어씁니다.
+
+## 환경 설정
+
 | 환경변수 | 미설정 시 코드 기본값 | 역할 |
 | --- | --- | --- |
 | `COMPOSE_PROFILES` | 미설정(로컬 Laya 미실행) | Compose 전용. cpu·cuda 중 하나만 선택. .env.example은 cpu 지정 |
@@ -34,8 +75,8 @@ Laya 서버 설정은 Laya 호스트에서 관리하며, Compose는 `LAYA_API_KE
 | `JEV_CONCURRENCY` | `4` | 실행별 최대 Jev 동시 요청 수; 양의 정수 |
 
 `.env.example`은 일부 코드 기본값을 덮어씁니다. LAYA_API_URL은 Compose 호스트
-`laya`, LAYA_MODEL은 `multilingual`, JEV_MODEL은 `jev-latest`이며 신뢰 UI 출처에
-`https://*.ngrok-free.app`을 포함합니다. 기존 `.env` 값은
+`laya`, LAYA_MODEL은 `multilingual`, JEV_MODEL은 `jev-latest`입니다. 신뢰 UI 출처는
+기본적으로 비워두며 `https://*.ngrok-free.app`은 선택적 예시입니다. 기존 `.env` 값은
 덮어쓰지 않습니다. 네이티브 DeciFlow·외부 Laya는 접근 가능한 URL을 직접 설정하세요.
 CPU·CUDA 모두 8000 포트를 공개합니다.
 재시작 후에도 UI 저장값이 우선합니다. UI 시작 시 마운트된 `.env`에 명시한 `DECISION_ENGINE`·`LAYA_*`·`JEV_*` 값은

@@ -5,8 +5,8 @@ import shutil
 import sys
 from pathlib import Path
 
-from config_store import get_data_directory, load_records, save_records
-from result_store import close_result_store
+from deciflow.config_store import get_data_directory, load_records, save_records
+from deciflow.result_store import close_result_store
 
 
 def reset_directory() -> Path:
@@ -23,12 +23,15 @@ def reset_directory() -> Path:
         Path("/home"),
         Path("/opt"),
         Path.home(),
+        Path.cwd().resolve(),
     }
-    project = Path(__file__).resolve().parent
+    from deciflow.paths import RESOURCE_ROOT
+
+    project = RESOURCE_ROOT
     resolved = root.resolve()
     if root.is_symlink() or resolved in protected or resolved == project:
         raise ValueError("Reset requires a dedicated application data directory.")
-    if resolved in project.parents:
+    if resolved in project.parents or resolved in Path.cwd().resolve().parents:
         raise ValueError("The data directory must not contain the application.")
     return root
 

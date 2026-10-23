@@ -7,10 +7,10 @@ from typing import Any
 import httpx
 import pytest
 
-import server
-from app_settings import load_settings, save_settings
-from config import get_engine, get_model
-from runtime_config import configuration_description, effective_values
+from deciflow import server
+from deciflow.app_settings import load_settings, save_settings
+from deciflow.config import get_engine, get_model
+from deciflow.runtime_config import configuration_description, effective_values
 
 
 def test_overrides_persist_and_engine_budgets_are_frozen() -> None:

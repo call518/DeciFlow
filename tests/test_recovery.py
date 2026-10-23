@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pytest
 
-import server
-from classifier import Result
-from config_store import get_data_directory
-from jobs import JOBS
-from source_registry import save_sources
-from tasks import save_task, task_runs
+from deciflow import server
+from deciflow.classifier import Result
+from deciflow.config_store import get_data_directory
+from deciflow.jobs import JOBS
+from deciflow.source_registry import save_sources
+from deciflow.tasks import save_task, task_runs
 
 pytestmark = pytest.mark.anyio
 
@@ -166,7 +166,7 @@ async def test_changed_batch_file_fails_without_replaying_old_results(
 async def test_action_intent_and_outcome_are_not_reexecuted(
     recovery_task: Result, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from result_store import open_result_store
+    from deciflow.result_store import open_result_store
 
     store = open_result_store(get_data_directory())
     settings, _ = await server.prepare_file_execution(
@@ -226,8 +226,7 @@ async def test_action_intent_and_outcome_are_not_reexecuted(
 async def test_action_inflight_is_journaled_before_shutdown(
     recovery_task: Result, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import tasks
-
+    from deciflow import tasks
     recovery_task["path"].write_text("one\n")
     entered = asyncio.Event()
     action_calls: list[str] = []
@@ -281,9 +280,9 @@ async def test_hard_process_exit_recovers_committed_sqlite_queue(
     setup = f"""
 import asyncio, os
 from pathlib import Path
-import server
-from jobs import JOBS
-from tasks import load_tasks
+from deciflow import server
+from deciflow.jobs import JOBS
+from deciflow.tasks import load_tasks
 async def main():
     entered = asyncio.Event()
     async def classify(log, *args):
@@ -314,8 +313,8 @@ asyncio.run(main())
     recovered = f"""
 import asyncio
 from pathlib import Path
-import server
-from jobs import JOBS
+from deciflow import server
+from deciflow.jobs import JOBS
 async def main():
     calls = []
     async def classify(log, *args):
@@ -387,8 +386,8 @@ async def test_sftp_cursor_resumes_utf8_without_repeating_first_line(
 ) -> None:
     import asyncssh
 
-    from classifier import EXECUTION_CONTROL, ExecutionControl
-    from remote_sources import _lines
+    from deciflow.classifier import EXECUTION_CONTROL, ExecutionControl
+    from deciflow.remote_sources import _lines
 
     path = tmp_path / "remote.log"
     path.write_text("첫째\n둘째\n마지막", encoding="utf-8")
@@ -504,8 +503,8 @@ async def test_server_lifespan_recovers_before_accepting_new_starts(
 async def test_recovery_preserves_runtime_snapshot_after_settings_change(
     recovery_task: Result, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app_settings import save_settings
-    from config import Engine
+    from deciflow.app_settings import save_settings
+    from deciflow.config import Engine
 
     observed = []
 

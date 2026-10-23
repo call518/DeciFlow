@@ -6,8 +6,8 @@ import pytest
 from conftest import DECISION_ANSWERS
 from dotenv import dotenv_values
 
-from classifier import Result, classify_batch, classify_log, parse_logs
-from config import get_engine, get_jev_input_bytes, load_startup_settings
+from deciflow.classifier import Result, classify_batch, classify_log, parse_logs
+from deciflow.config import get_engine, get_jev_input_bytes, load_startup_settings
 
 
 def test_example_laya_settings_pass_startup_validation(

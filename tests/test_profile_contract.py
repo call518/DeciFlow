@@ -6,10 +6,10 @@ from uuid import UUID
 import httpx
 import pytest
 
-from classifier import classify_log
-from config import get_engine
-from profiles import DEFAULT_PROFILES, SAMPLE_PROFILE_IDS, validate_profiles
-from result_payload import compact_result
+from deciflow.classifier import classify_log
+from deciflow.config import get_engine
+from deciflow.profiles import DEFAULT_PROFILES, SAMPLE_PROFILE_IDS, validate_profiles
+from deciflow.result_payload import compact_result
 
 
 def test_all_templates_use_one_profile_format() -> None:

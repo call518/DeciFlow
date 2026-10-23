@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-import server
-from classifier import Result
-from config_store import save_records
-from result_store import open_result_store
+from deciflow import server
+from deciflow.classifier import Result
+from deciflow.config_store import save_records
+from deciflow.result_store import open_result_store
 
 
 @pytest.fixture
@@ -90,8 +90,8 @@ def test_persisted_recovery_dependencies_block_delete(
 async def test_direct_classification_protects_criteria(usage: list[Result]) -> None:
     from contextlib import aclosing
 
-    from config import get_engine
-    from profiles import GENERAL_PROFILE_ID
+    from deciflow.config import get_engine
+    from deciflow.profiles import GENERAL_PROFILE_ID
 
     async with aclosing(server.handle_events(["event"], get_engine())) as events:
         await anext(events)

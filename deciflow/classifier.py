@@ -12,14 +12,14 @@ from typing import Any, NoReturn
 
 import httpx
 
-from config import Engine
-from decisions import (
+from deciflow.config import Engine
+from deciflow.decisions import (
     decision_assessments,
     needs_review,
     review_options,
     validate_answer,
 )
-from profiles import DEFAULT_PROFILES, GENERAL_PROFILE_ID, get_profile
+from deciflow.profiles import DEFAULT_PROFILES, GENERAL_PROFILE_ID, get_profile
 
 CRITERIA = DEFAULT_PROFILES[GENERAL_PROFILE_ID]["questions"]["category"]["criteria"]
 Result = dict[str, Any]

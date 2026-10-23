@@ -2,10 +2,10 @@
 
 import os
 import re
-from pathlib import Path
 from typing import Any
 
-from config_store import load_records
+from deciflow.config_store import load_records
+from deciflow.paths import RESOURCE_ROOT
 
 FIELDS: dict[str, tuple[str, str, str, list[str] | None, str]] = {
     "DECISION_ENGINE": (
@@ -102,7 +102,7 @@ def configuration_description() -> dict[str, Any]:
     values = effective_values(overrides)
     references: dict[str, str] = {}
     comments: list[str] = []
-    for line in (Path(__file__).parent / ".env.example").read_text().splitlines():
+    for line in (RESOURCE_ROOT / ".env.example").read_text().splitlines():
         if line.startswith("#"):
             text = line.lstrip("# ")
             if text and not re.search(r"[가-힣]", text):
@@ -164,7 +164,7 @@ def configuration_description() -> dict[str, Any]:
 
 def validate_overrides(value: object) -> dict[str, str]:
     """Validate all effective settings before one atomic preference save."""
-    from config import get_engine
+    from deciflow.config import get_engine
 
     if not isinstance(value, dict) or set(value) - FIELDS.keys():
         raise ValueError("Provide only supported runtime settings.")

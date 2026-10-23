@@ -5,8 +5,8 @@ from typing import Any
 
 import pytest
 
-import laya_server
-from config import LAYA_CONTEXT_TOKENS
+from deciflow import laya_server
+from deciflow.config import LAYA_CONTEXT_TOKENS
 
 
 class Tokenizer:
@@ -70,7 +70,7 @@ def test_exact_event_budget_before_inference(
 def test_all_question_types_checked_before_inference(
     monkeypatch: pytest.MonkeyPatch, overflow_type: str | None
 ) -> None:
-    from profiles import DEFAULT_PROFILES
+    from deciflow.profiles import DEFAULT_PROFILES
 
     checked = []
 

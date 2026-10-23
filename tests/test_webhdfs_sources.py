@@ -8,15 +8,14 @@ from pathlib import Path
 import httpx
 import pytest
 
-import server
-import webhdfs_sources
-from classifier import EXECUTION_CONTROL, ExecutionControl
-from criteria_generation import preview_samples
-from hdfs_sources import prepare_hdfs_sources, read_hdfs_sources
-from profiles import GENERAL_PROFILE_ID
-from source_registry import save_sources, source_pattern, validate_sources
-from source_settings import parse_source_settings, resolve_configured_sources
-from tasks import save_task
+from deciflow import server, webhdfs_sources
+from deciflow.classifier import EXECUTION_CONTROL, ExecutionControl
+from deciflow.criteria_generation import preview_samples
+from deciflow.hdfs_sources import prepare_hdfs_sources, read_hdfs_sources
+from deciflow.profiles import GENERAL_PROFILE_ID
+from deciflow.source_registry import save_sources, source_pattern, validate_sources
+from deciflow.source_settings import parse_source_settings, resolve_configured_sources
+from deciflow.tasks import save_task
 
 
 @pytest.fixture

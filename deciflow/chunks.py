@@ -4,8 +4,8 @@ import asyncio
 import json
 from collections.abc import AsyncGenerator
 
-from classifier import Result
-from result_payload import compact_result
+from deciflow.classifier import Result
+from deciflow.result_payload import compact_result
 
 
 def _combine(rows: list[Result], profile: str, size: int) -> Result:

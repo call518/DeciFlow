@@ -5,19 +5,18 @@ import json
 import os
 import random
 from contextlib import aclosing
-from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 import httpx
 
-from config import get_engine
-from configured_sources import read_configured
-from hdfs_sources import prepare_hdfs_sources, read_hdfs_sources
-from profiles import validate_profiles
-from remote_sources import read_remote
-from runtime_config import effective_values
-from source_settings import parse_source_settings, resolve_configured_sources
+from deciflow.config import get_engine
+from deciflow.configured_sources import read_configured
+from deciflow.hdfs_sources import prepare_hdfs_sources, read_hdfs_sources
+from deciflow.profiles import validate_profiles
+from deciflow.remote_sources import read_remote
+from deciflow.runtime_config import effective_values
+from deciflow.source_settings import parse_source_settings, resolve_configured_sources
 
 MAX_SAMPLE_BYTES = 150_000
 DEFAULT_SAMPLES = 10
@@ -275,7 +274,9 @@ async def generate_criteria(body: dict[str, Any]) -> dict[str, Any]:
         if engine.name == "laya"
         else "Keep questions concise for Jev's per-question and request budgets."
     )
-    guide = (Path(__file__).parent / "docs" / "criteria.md").read_text()
+    from deciflow.paths import RESOURCE_ROOT
+
+    guide = (RESOURCE_ROOT / "docs" / "criteria.md").read_text()
     async with httpx.AsyncClient(timeout=120) as client:
         response = await client.post(
             "https://api.openai.com/v1/responses",

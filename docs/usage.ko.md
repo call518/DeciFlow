@@ -137,7 +137,7 @@ JSON의 `chunkEvents`는 설정값, `eventCount`는 실제 이벤트 수입니�
 
 #### 불확실성과 사람의 검토
 
-**Uncertain은 DeciFlow 자체 기능**입니다. [`classifier.py`](../classifier.py)에서
+**Uncertain은 DeciFlow 자체 기능**입니다. [`classifier.py`](../deciflow/classifier.py)에서
 엔진 응답을 바탕으로 계산하며, Laya 자체의 불확실성 표시가 아닙니다.
 각 Choice에서 다음 중 하나라도 충족하면 `decisionAssessments[id].uncertain=true`로
 설정합니다. 항목별 불확실성은 `decisionAssessments`에 저장합니다.

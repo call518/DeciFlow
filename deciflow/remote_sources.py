@@ -14,11 +14,11 @@ from asyncssh.constants import (
     FILEXFER_TYPE_UNKNOWN,
 )
 
-from chunks import source_records
-from classifier import EXECUTION_CONTROL, Result
-from source_registry import source_paths, source_pattern, source_patterns
-from sources import merge_batch
-from ssh_hosts import ssh_connection_options
+from deciflow.chunks import source_records
+from deciflow.classifier import EXECUTION_CONTROL, Result
+from deciflow.source_registry import source_paths, source_pattern, source_patterns
+from deciflow.sources import merge_batch
+from deciflow.ssh_hosts import ssh_connection_options
 
 
 async def _scan_pattern(

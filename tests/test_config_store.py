@@ -8,17 +8,21 @@ from pathlib import Path
 
 import pytest
 
-from app_settings import load_settings, save_settings
-from config_store import (
+from deciflow.app_settings import load_settings, save_settings
+from deciflow.config_store import (
     get_data_directory,
     get_database_path,
     load_records,
     save_record,
     save_records,
 )
-from profiles import DEFAULT_PROFILES, PROFILES, load_profiles
-from result_store import SQLiteResultStore, close_result_store, open_result_store
-from source_registry import (
+from deciflow.profiles import DEFAULT_PROFILES, PROFILES, load_profiles
+from deciflow.result_store import (
+    SQLiteResultStore,
+    close_result_store,
+    open_result_store,
+)
+from deciflow.source_registry import (
     CENTRAL_GOV_SOURCE,
     LOCAL_GOV_SOURCE,
     VOC_SOURCE,
@@ -28,7 +32,7 @@ from source_registry import (
     load_sources,
     save_sources,
 )
-from tasks import (
+from deciflow.tasks import (
     CENTRAL_GOV_TASK_ID,
     DEFAULT_TASK_ID,
     LOCAL_GOV_TASK_ID,
@@ -405,7 +409,7 @@ def test_central_gov_sample_and_localized_profiles() -> None:
 def test_sample_source_ids_are_stable_unique_uuids(tmp_path, monkeypatch):
     from uuid import UUID
 
-    from source_registry import DEFAULT_SOURCES, load_sources
+    from deciflow.source_registry import DEFAULT_SOURCES, load_sources
 
     monkeypatch.setenv("DECIFLOW_DATA_DIR", str(tmp_path))
     expected = {source["name"]: source["id"] for source in DEFAULT_SOURCES}

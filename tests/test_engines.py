@@ -6,8 +6,8 @@ import httpx
 import pytest
 from conftest import DECISION_ANSWERS
 
-from classifier import CRITERIA, Result, classify_batch, classify_log
-from config import get_engine
+from deciflow.classifier import CRITERIA, Result, classify_batch, classify_log
+from deciflow.config import get_engine
 
 
 def test_default_is_local_laya(monkeypatch: pytest.MonkeyPatch) -> None:

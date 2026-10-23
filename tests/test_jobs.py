@@ -8,9 +8,9 @@ from pathlib import Path
 import httpx
 import pytest
 
-import server
-from classifier import Result
-from jobs import JOBS, Job
+from deciflow import server
+from deciflow.classifier import Result
+from deciflow.jobs import JOBS, Job
 
 
 @pytest.fixture(autouse=True)

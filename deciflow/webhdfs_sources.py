@@ -10,7 +10,7 @@ from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
 
-from classifier import Result
+from deciflow.classifier import Result
 
 
 class WebHDFSFileSystem:

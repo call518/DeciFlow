@@ -7,10 +7,10 @@ import httpx
 import pytest
 from conftest import DECISION_ANSWERS
 
-from classifier import CRITERIA, Result, classify_batch, classify_log
-from config import get_engine
-from result_payload import compact_result
-from result_store import SQLiteResultStore
+from deciflow.classifier import CRITERIA, Result, classify_batch, classify_log
+from deciflow.config import get_engine
+from deciflow.result_payload import compact_result
+from deciflow.result_store import SQLiteResultStore
 
 
 @pytest.mark.anyio

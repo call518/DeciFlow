@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 
 from dotenv import dotenv_values, load_dotenv
 
-from runtime_config import effective_values
+from deciflow.runtime_config import effective_values
 
 # https://docs.typesafe.ai/models (verified 2026-10-10).
 JEV_MODEL = "jev-1.13.0"

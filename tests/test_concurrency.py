@@ -3,9 +3,9 @@ from collections.abc import AsyncGenerator
 import anyio
 import pytest
 
-import server
-from classifier import Result, classify_batch, classify_stream
-from config import get_engine
+from deciflow import server
+from deciflow.classifier import Result, classify_batch, classify_stream
+from deciflow.config import get_engine
 
 
 @pytest.mark.parametrize("engine", ["laya", "jev"])

@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from result_payload import compact_result
-from result_store import SQLiteResultStore, open_result_store
+from deciflow.result_payload import compact_result
+from deciflow.result_store import SQLiteResultStore, open_result_store
 
 
 def sample() -> dict:
@@ -104,8 +104,7 @@ def test_sqlite_stores_context_once_and_hydrates_pages_reviews_and_exports(
 async def test_action_receives_canonical_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import actions
-
+    from deciflow import actions
     received = []
 
     async def execute(action: dict, payload: dict) -> dict:

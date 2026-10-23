@@ -14,13 +14,12 @@ import asyncssh
 import httpx
 import pytest
 
-import remote_sources
-import server
-from classifier import Result
-from source_registry import load_sources, save_sources, source_pattern
-from source_settings import parse_source_settings, resolve_configured_sources
-from ssh_hosts import get_hosts_directory, save_host
-from ssh_keys import add_key
+from deciflow import remote_sources, server
+from deciflow.classifier import Result
+from deciflow.source_registry import load_sources, save_sources, source_pattern
+from deciflow.source_settings import parse_source_settings, resolve_configured_sources
+from deciflow.ssh_hosts import get_hosts_directory, save_host
+from deciflow.ssh_keys import add_key
 
 
 @pytest.fixture
@@ -635,7 +634,7 @@ def test_referenced_source_type_remains_editable(
     enabled: bool,
 ) -> None:
     """References do not lock edits; future runs validate the updated Source type."""
-    from config_store import save_records
+    from deciflow.config_store import save_records
 
     source = {
         "id": "d" * 32,

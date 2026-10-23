@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import uvicorn
 
-import native_proxy
+from deciflow import native_proxy
 
 
 @pytest.mark.parametrize("value", ["true", "false", "TRUE", "", "flase"])
@@ -100,8 +100,7 @@ def test_native_entrypoint_selects_access_mode(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, enabled: bool
 ) -> None:
     """Use one native command; protected mode ignores an external UI bind."""
-    import server
-
+    from deciflow import server
     monkeypatch.setattr(server, "load_startup_settings", lambda path: None)
     monkeypatch.setattr(server, "get_engine", lambda: None)
     monkeypatch.setattr(server, "get_log_config", lambda: None)

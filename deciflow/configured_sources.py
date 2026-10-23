@@ -8,10 +8,10 @@ from pathlib import Path
 
 import anyio
 
-from chunks import source_records
-from classifier import Result
-from source_settings import resolve_configured_sources
-from sources import follow_file, merge_batch, read_file
+from deciflow.chunks import source_records
+from deciflow.classifier import Result
+from deciflow.source_settings import resolve_configured_sources
+from deciflow.sources import follow_file, merge_batch, read_file
 
 
 async def _source_chunks(

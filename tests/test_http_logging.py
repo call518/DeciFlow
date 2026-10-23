@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from uvicorn.config import LOGGING_CONFIG
 
-import server
+from deciflow import server
 
 
 def test_empty_directory_keeps_console_logging(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -41,7 +41,7 @@ def test_separate_rotating_logs(
             sys.executable,
             "-c",
             (
-                "import logging, logging.config, server; "
+                "import logging, logging.config; from deciflow import server; "
                 "logging.config.dictConfig(server.get_log_config()); "
                 "logging.getLogger('uvicorn.error').error('server failure'); "
                 "logging.getLogger('uvicorn.access').info('%s - %s %s HTTP/%s %s', "

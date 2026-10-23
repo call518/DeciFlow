@@ -1,8 +1,8 @@
 """Persist application preferences in the shared SQLite database."""
 
-from classifier import Result
-from config_store import load_records, save_record
-from runtime_config import validate_overrides
+from deciflow.classifier import Result
+from deciflow.config_store import load_records, save_record
+from deciflow.runtime_config import validate_overrides
 
 
 def load_settings() -> Result:

@@ -17,14 +17,14 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 import anyio
 from anyio.abc import ByteReceiveStream
 
-from classifier import Result
-from config_store import (
+from deciflow.classifier import Result
+from deciflow.config_store import (
     get_data_directory,
     load_records,
     save_record,
     save_records,
 )
-from result_payload import compact_result
+from deciflow.result_payload import compact_result
 
 DEFAULT_ACTION_ID = uuid5(NAMESPACE_URL, "deciflow:action:elasticsearch").hex
 DEFAULT_ACTION_CODE = """import json

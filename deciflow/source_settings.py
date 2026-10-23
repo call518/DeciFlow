@@ -3,10 +3,10 @@
 from pathlib import Path
 from typing import Any
 
-from profiles import GENERAL_PROFILE_ID, validate_settings
-from source_registry import input_settings, load_sources, source_paths
-from sources import resolve_sources
-from ssh_hosts import load_hosts
+from deciflow.profiles import GENERAL_PROFILE_ID, validate_settings
+from deciflow.source_registry import input_settings, load_sources, source_paths
+from deciflow.sources import resolve_sources
+from deciflow.ssh_hosts import load_hosts
 
 
 def parse_source_settings(

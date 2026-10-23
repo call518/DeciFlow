@@ -8,14 +8,14 @@ from pathlib import Path
 import httpx
 import pytest
 
-from classifier import DecisionError, Result, classify_log, classify_stream
-from config import get_engine
-from configured_sources import read_configured
-from decisions import answer_value
-from profiles import DEFAULT_PROFILES, use_profile_snapshot, validate_profiles
-from result_store import SQLiteResultStore
-from source_registry import validate_sources
-from source_settings import parse_source_settings, resolve_configured_sources
+from deciflow.classifier import DecisionError, Result, classify_log, classify_stream
+from deciflow.config import get_engine
+from deciflow.configured_sources import read_configured
+from deciflow.decisions import answer_value
+from deciflow.profiles import DEFAULT_PROFILES, use_profile_snapshot, validate_profiles
+from deciflow.result_store import SQLiteResultStore
+from deciflow.source_registry import validate_sources
+from deciflow.source_settings import parse_source_settings, resolve_configured_sources
 
 
 def decision_answers(questions: Result) -> Result:

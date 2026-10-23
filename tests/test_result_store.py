@@ -8,11 +8,11 @@ from pathlib import Path
 import httpx
 import pytest
 
-import server
-from classifier import Result
-from jobs import JOBS, Job
-from profiles import DEFAULT_PROFILES
-from result_store import SQLiteResultStore
+from deciflow import server
+from deciflow.classifier import Result
+from deciflow.jobs import JOBS, Job
+from deciflow.profiles import DEFAULT_PROFILES
+from deciflow.result_store import SQLiteResultStore
 
 
 def snapshot() -> Result:
@@ -541,7 +541,7 @@ def test_processing_status_filters_combine_with_source_host_and_paging(
 def test_filtered_chart_aggregates_all_matches_independently_of_pages(
     tmp_path, filters
 ):
-    from decisions import needs_review
+    from deciflow.decisions import needs_review
 
     store = SQLiteResultStore(tmp_path / "filtered.db")
     run = snapshot()

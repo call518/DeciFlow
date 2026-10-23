@@ -11,18 +11,23 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from croniter import croniter
 
-from actions import load_actions
-from classifier import Result
-from config_store import (
+from deciflow.actions import load_actions
+from deciflow.classifier import Result
+from deciflow.config_store import (
     delete_record,
     get_data_directory,
     load_records,
     save_record,
     save_records,
 )
-from profiles import DEFAULT_PROFILES, GENERAL_PROFILE_ID, PROFILES, SAMPLE_PROFILE_IDS
-from result_store import open_result_store
-from source_registry import (
+from deciflow.profiles import (
+    DEFAULT_PROFILES,
+    GENERAL_PROFILE_ID,
+    PROFILES,
+    SAMPLE_PROFILE_IDS,
+)
+from deciflow.result_store import open_result_store
+from deciflow.source_registry import (
     CENTRAL_GOV_SOURCE,
     DEFAULT_SOURCES,
     LOCAL_GOV_SOURCE,
@@ -30,7 +35,7 @@ from source_registry import (
     load_sources,
     save_sources,
 )
-from source_settings import parse_source_settings
+from deciflow.source_settings import parse_source_settings
 
 DEFAULT_TASK_NAME = "Sample DeciFlow Server Log"
 DEFAULT_SOURCE_NAME = "Sample DeciFlow Server Log"
@@ -73,7 +78,9 @@ def ensure_default_task() -> None:
         or "/var/log/deciflow"
     )
     if not directory.is_absolute():
-        directory = Path(__file__).resolve().parent / directory
+        from deciflow.paths import RESOURCE_ROOT
+
+        directory = RESOURCE_ROOT / directory
     pattern = "\n".join(str(directory / name) for name in ("server.log", "access.log"))
     source = next(
         (

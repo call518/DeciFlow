@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-import server
+from deciflow import server
 
 
 @pytest.mark.anyio

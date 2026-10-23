@@ -9,9 +9,9 @@ from pathlib import Path
 import httpx
 import pytest
 
-from classifier import Result, classify_log
-from config import get_engine
-from profiles import use_profile_snapshot
+from deciflow.classifier import Result, classify_log
+from deciflow.config import get_engine
+from deciflow.profiles import use_profile_snapshot
 
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLES = ROOT / "docs" / "examples"
@@ -47,7 +47,7 @@ async def test_documented_request_and_result(
         definition["id"]: {
             key: value for key, value in definition.items() if key != "id"
         }
-        for path in (ROOT / "profiles").glob("*.json")
+        for path in (ROOT / "deciflow" / "profiles").glob("*.json")
         for definition in [json.loads(path.read_text())]
     }
     with use_profile_snapshot(profiles):
@@ -121,7 +121,7 @@ def test_readmes_keep_commands_identifiers_and_links_equivalent(
         )
         for profile_name in ("consultation", "central_gov", "local_gov"):
             profile = json.loads(
-                (ROOT / "profiles" / f"{profile_name}.json").read_text()
+                (ROOT / "deciflow" / "profiles" / f"{profile_name}.json").read_text()
             )
             assert profile["label"] in text
     assert commands[0] == commands[1]

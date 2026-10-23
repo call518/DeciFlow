@@ -17,8 +17,8 @@ from pathlib import Path
 from threading import RLock
 from typing import Protocol
 
-from classifier import Result
-from decisions import (
+from deciflow.classifier import Result
+from deciflow.decisions import (
     answer_value,
     decision_assessments,
     decision_bucket,
@@ -27,7 +27,7 @@ from decisions import (
     result_answers,
     result_definitions,
 )
-from result_payload import compact_result
+from deciflow.result_payload import compact_result
 
 
 def empty_summary() -> Result:

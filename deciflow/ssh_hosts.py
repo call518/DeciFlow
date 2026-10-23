@@ -10,9 +10,14 @@ from uuid import uuid4
 
 import asyncssh
 
-from classifier import Result
-from config_store import delete_record, get_data_directory, load_records, save_record
-from ssh_keys import get_key
+from deciflow.classifier import Result
+from deciflow.config_store import (
+    delete_record,
+    get_data_directory,
+    load_records,
+    save_record,
+)
+from deciflow.ssh_keys import get_key
 
 
 def get_hosts_directory() -> Path:

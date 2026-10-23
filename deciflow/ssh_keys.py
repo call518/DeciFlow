@@ -8,8 +8,13 @@ from uuid import uuid4
 
 import asyncssh
 
-from classifier import Result
-from config_store import delete_record, get_data_directory, load_records, save_record
+from deciflow.classifier import Result
+from deciflow.config_store import (
+    delete_record,
+    get_data_directory,
+    load_records,
+    save_record,
+)
 
 
 def get_keys_directory() -> Path:
@@ -128,7 +133,7 @@ def add_key_from_path(name: object, path: object) -> Result:
 
 def delete_key(identity: object, active_sources: list[Result]) -> None:
     """Delete unused UUID key metadata and files without following symlinks."""
-    from ssh_hosts import load_hosts
+    from deciflow.ssh_hosts import load_hosts
 
     key = get_key(identity)
     if any(

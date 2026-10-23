@@ -7,7 +7,7 @@
 DeciFlow sends one log chunk as `state` to `/v1/systemone` with three questions:
 category (`choice`), urgency (`score`), and work-ticket need (`noul`). Both Laya and
 Jev share the request construction, result validation, and UI behavior in
-[`classifier.py`](../classifier.py). See [request/result JSON](results.md).
+[`classifier.py`](../deciflow/classifier.py). See [request/result JSON](results.md).
 
 | Setting | DeciFlow behavior |
 | --- | --- |

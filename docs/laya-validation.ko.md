@@ -34,7 +34,7 @@ uv run python -m scripts.evaluate_laya --output /tmp/laya-validation.json
 ```
 
 기본값은 [5개 프로필의 합성 사례 36개](../tests/fixtures/log_evaluation.json)이며,
-동시 요청은 최대 두 개로 제한합니다. 평가에는 [`profiles/`](../profiles/)의 번들
+동시 요청은 최대 두 개로 제한합니다. 평가에는 [`deciflow/profiles/`](../deciflow/profiles/)의 번들
 기준을 사용하며 UI에서 수정·저장한 기준은 읽지 않습니다.
 UI에서 편집한 기준은 정답 로그를 UTF-8 파일로 만들고 Local File Source로 등록한 뒤,
 해당 프로필을 선택한 Batch Task를 실행해 Main에서 결과를 검증하세요.

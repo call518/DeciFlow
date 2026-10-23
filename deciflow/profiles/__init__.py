@@ -9,8 +9,8 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from config_store import load_records, save_record, save_records
-from decisions import review_options
+from deciflow.config_store import load_records, save_record, save_records
+from deciflow.decisions import review_options
 
 
 def _load_templates() -> tuple[dict[str, dict[str, Any]], dict[str, str]]:

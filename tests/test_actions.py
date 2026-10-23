@@ -10,12 +10,11 @@ import anyio
 import httpx
 import pytest
 
-import actions
-import server
-from classifier import Result
-from config import get_engine
-from config_store import save_records
-from source_settings import parse_source_settings, resolve_configured_sources
+from deciflow import actions, server
+from deciflow.classifier import Result
+from deciflow.config import get_engine
+from deciflow.config_store import save_records
+from deciflow.source_settings import parse_source_settings, resolve_configured_sources
 
 
 def make_action(tmp_path: Path, code: str) -> Result:
@@ -938,8 +937,8 @@ async def test_uuid_assignments_survive_rename_and_reused_names(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, engine: str
 ) -> None:
     """A reused label must never redirect an existing Task to another Action."""
-    from source_registry import save_sources
-    from tasks import load_tasks, save_task
+    from deciflow.source_registry import save_sources
+    from deciflow.tasks import load_tasks, save_task
 
     monkeypatch.setenv("DECISION_ENGINE", engine)
     source_path = tmp_path / "input.txt"
@@ -988,7 +987,7 @@ async def test_uuid_assignments_survive_rename_and_reused_names(
 
 def test_default_elasticsearch_action_is_seeded_once_without_preparation() -> None:
     """Sample registration is persistent and never downloads or executes at startup."""
-    from config_store import save_records
+    from deciflow.config_store import save_records
 
     sample = actions.load_actions()[0]
     assert sample["id"] == actions.DEFAULT_ACTION_ID

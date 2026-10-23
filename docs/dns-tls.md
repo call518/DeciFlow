@@ -13,6 +13,17 @@ with RFC2136/TSIG updates. A DNS provider's supported Certbot plugin is another
 issuance method; choose one method, then use the same certificate deployment steps.
 Operating your own BIND9 server is not a DeciFlow requirement.
 
+DNS and certificate issuance apply to all installation methods. The deployment
+and renewal hook below use **Docker Compose**, `<checkout>/.env`, and
+`<checkout>/oauth2-proxy/tls/`. For **uv tool**, use `<config-dir>/oauth2-proxy/tls/`
+(default `~/.config/deciflow/oauth2-proxy/tls/`) alongside `<config-dir>/.env`.
+For **Git checkout native Python**, use the checkout paths. In both non-container
+methods, the private key must be readable by the account running DeciFlow; the
+Docker UID `65532` instructions do not apply. The supplied Docker renewal hook
+does not restart native processes: adapt deployment paths, ownership, and the
+process supervisor to your host. See the [uv tool guide](tool-install.md#optional-google-sign-in),
+[native guide](native.md), and [environment file locations](configuration.md#environment-file-locations).
+
 ## Hosts and Example Values
 
 | Item | Example | Responsibility |

@@ -5,8 +5,8 @@ from pathlib import PurePosixPath
 from urllib.parse import urlsplit
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
-from classifier import Result
-from config_store import load_records, save_record, save_records
+from deciflow.classifier import Result
+from deciflow.config_store import load_records, save_record, save_records
 
 VOC_SOURCE = {
     "id": uuid5(NAMESPACE_URL, "deciflow:source:voc-consultations").hex,

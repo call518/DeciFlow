@@ -14,10 +14,10 @@ from xml.etree import ElementTree
 
 import anyio
 
-from chunks import source_records
-from classifier import EXECUTION_CONTROL, Result
-from source_registry import source_paths, source_pattern
-from sources import merge_batch
+from deciflow.chunks import source_records
+from deciflow.classifier import EXECUTION_CONTROL, Result
+from deciflow.source_registry import source_paths, source_pattern
+from deciflow.sources import merge_batch
 
 READERS = 4
 MAX_LINE_BYTES = 16 * 1024 * 1024
@@ -26,7 +26,7 @@ MAX_LINE_BYTES = 16 * 1024 * 1024
 def connect_hdfs(spec: Result) -> Any:
     """Load JNI only when HDFS is used; keep network waits bounded."""
     if spec.get("type") == "webhdfs":
-        from webhdfs_sources import WebHDFSFileSystem
+        from deciflow.webhdfs_sources import WebHDFSFileSystem
 
         return WebHDFSFileSystem(spec)
     try:

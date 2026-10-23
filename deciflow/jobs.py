@@ -15,8 +15,8 @@ from uuid import uuid4
 
 import anyio
 
-from classifier import EXECUTION_CONTROL, ExecutionControl, Result
-from result_store import open_result_store
+from deciflow.classifier import EXECUTION_CONTROL, ExecutionControl, Result
+from deciflow.result_store import open_result_store
 
 
 class Job:

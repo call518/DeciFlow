@@ -13,6 +13,17 @@ RFC2136·TSIG 업데이트를 설정하는 방식입니다. DNS 사업자가 지
 플러그인도 다른 발급 방법입니다. 한 방법을 선택한 뒤 동일한 인증서 배포 단계를
 따르세요. BIND9 직접 운영은 DeciFlow의 필수 요구사항이 아닙니다.
 
+DNS와 인증서 발급은 모든 설치 방식에 공통입니다. 아래 배포·갱신 hook은
+**Docker Compose**, `<checkout>/.env`, `<checkout>/oauth2-proxy/tls/` 기준입니다.
+**uv tool**은 `<config-dir>/.env`와 같은 설정 디렉터리의
+`<config-dir>/oauth2-proxy/tls/`(기본 `~/.config/deciflow/oauth2-proxy/tls/`)을 사용합니다.
+**Git 복제 기반 네이티브 Python**은 저장소 경로를 사용합니다. 두 비컨테이너 방식에서는
+DeciFlow 실행 계정이 개인 키를 읽을 수 있어야 하며 Docker UID `65532` 지침을
+적용하지 않습니다. 제공한 Docker 갱신 hook은 네이티브 프로세스를 재시작하지 않으므로
+배포 경로·소유자·프로세스 관리자를 호스트에 맞게 조정하세요.
+[uv tool 안내](tool-install.ko.md#선택적-google-로그인), [네이티브 안내](native.ko.md),
+[환경 파일 위치](configuration.ko.md#환경-파일-위치)를 참고하세요.
+
 ## 호스트와 예시 값
 
 | 항목 | 예시 | 역할 |

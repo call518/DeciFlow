@@ -1,14 +1,25 @@
-# Docker 없이 실행하기
+# Git 복제 기반 네이티브 설치
 
 [English](native.md) | [프로젝트 README](../README.ko.md) | [문서 안내](README.ko.md)
 
 DeciFlow를 로컬에서 실행하고 브라우저로 샘플 로그를 분류합니다.
 이 로컬 절차에는 Docker·도메인·인증서가 필요하지 않습니다.
+이 방식은 [PyPI / uv tool](tool-install.ko.md),
+[Docker Compose](../README.ko.md#빠른-시작--docker--laya-cpu) 다음인 세 번째 권장 방식입니다.
+하나를 선택하며, 이 안내에서는 Git 저장소의 스크립트를 직접 실행합니다.
 
 **DeciFlow**는 소스를 읽고 UI·API를 제공합니다. **Laya 서버**는 로컬·원격에서
 추론하며 **Jev**는 대안인 유료 호스팅 추론 서비스입니다. **OAuth2-Proxy**는
 브라우저 접근을 보호할 수 있지만 별도로 실행하는 네이티브 프로세스입니다.
 같은 설치에서는 Compose 배포 대신 네이티브 실행을 선택하세요.
+
+## 환경 파일
+
+`server.py`와 로컬 `laya_server.py` 어댑터는 모두 복제한 저장소 루트의
+`<checkout>/.env`를 읽으며 `~/.config/deciflow/.env`는 읽지 않습니다.
+안내된 명령은 저장소에서 실행하세요. 설치형 명령의 `--config-dir` 옵션으로
+소스 스크립트의 참조 파일이 바뀌지는 않습니다.
+[환경 파일 위치](configuration.ko.md#환경-파일-위치)를 참고하세요.
 
 ## 빠른 시작: 로컬 CPU
 

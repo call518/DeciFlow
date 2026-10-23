@@ -12,7 +12,7 @@ from typing import BinaryIO
 
 import anyio
 
-from classifier import EXECUTION_CONTROL, Result
+from deciflow.classifier import EXECUTION_CONTROL, Result
 
 
 def resolve_source(value: object, *, follow: bool = False) -> Path:

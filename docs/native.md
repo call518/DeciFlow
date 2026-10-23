@@ -1,14 +1,25 @@
-# Run Without Docker
+# Git Checkout Native Installation
 
 [한국어](native.ko.md) | [Project README](../README.md) | [Documentation](README.md)
 
 Run DeciFlow locally, open the browser, and classify a sample log. Docker, a domain,
 and a certificate are not required for this local workflow.
+This is the third recommended method, after [PyPI / uv tool](tool-install.md)
+and [Docker Compose](../README.md#quick-start--docker--laya-cpu). Choose one method;
+this guide runs Git checkout scripts directly.
 
 **DeciFlow** reads sources and serves the UI/API. The **Laya server** runs inference
 locally or remotely; **Jev** is an alternative paid hosted inference service.
 **OAuth2-Proxy** can protect browser access, but is a separate native process.
 Choose native execution instead of the Compose deployment for the same installation.
+
+## Environment File
+
+Both `server.py` and the local `laya_server.py` adapter read `<checkout>/.env`,
+where `<checkout>` is the cloned repository root. They do not read
+`~/.config/deciflow/.env`. Run the documented commands from the checkout; source
+script paths are not selected by the installed command's `--config-dir` option.
+See [environment file locations](configuration.md#environment-file-locations).
 
 ## Quick Start: Local CPU
 

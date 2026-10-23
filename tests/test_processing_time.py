@@ -6,8 +6,8 @@ from collections.abc import AsyncGenerator
 
 import pytest
 
-import server
-from classifier import Result
+from deciflow import server
+from deciflow.classifier import Result
 
 
 def test_processing_clock_excludes_idle_and_counts_overlap_once(
