@@ -2,8 +2,8 @@
 
 [English](tool-install.md) | [프로젝트 README](../README.ko.md)
 
-가장 권장하는 설치 방식입니다. PyPI에 게시된 후에는 저장소를 복제하거나 Docker를
-사용하지 않고 실행할 수 있습니다. 두 번째는 [Docker](../README.ko.md#빠른-시작--docker--laya-cpu),
+가장 권장하는 설치 방식입니다. 저장소를 복제하거나 Docker를 사용하지 않고
+PyPI에서 DeciFlow를 설치합니다. 두 번째는 [Docker](../README.ko.md#빠른-시작--docker--laya-cpu),
 세 번째는 [Git 복제 기반 네이티브](native.ko.md)이며 설치별로 하나를 선택합니다.
 
 **DeciFlow**는 UI/API를 제공하고 소스를 읽습니다. **Laya 서버**는 별도로 추론을
@@ -16,15 +16,7 @@ DeciFlow 설치가 Laya를 기동하거나 OAuth2-Proxy를 설치하지는 않�
 (3.12 권장), 의존성 다운로드 연결이 필요합니다. 기준 환경은 Linux/WSL2입니다.
 HDFS·SSH·Actions의 외부 준비 사항은 해당 기능 문서를 따릅니다.
 
-이 브랜치는 아직 PyPI에 게시하지 않았습니다. 현재 구현을 테스트하려면
-해당 Git 저장소에서 실행합니다.
-
-```bash
-uv tool install .
-deciflow init
-```
-
-본 프로젝트의 배포 파일이 PyPI에 게시된 후에는 다음과 같이 설치합니다.
+설치하고 설정 파일을 초기화합니다.
 
 ```bash
 uv tool install deciflow
@@ -181,16 +173,10 @@ Google 인증 정보와 `OAUTH2_PROXY_PUBLIC_URL`을 설정한 뒤 다음 파일
 
 ## 업데이트와 제거
 
-PyPI에 게시된 패키지를 설치했다면:
-
 ```bash
 uv tool upgrade deciflow
 uv tool uninstall deciflow
 ```
-
-브랜치 테스트 중에는 수정된 저장소나 wheel을 `uv tool install --force .`로 설치합니다.
-게시는 아래의 태그 워크플로로 수행하며, 이 브랜치의 설치·테스트는
-패키지를 업로드하지 않습니다.
 
 ## Git 태그로 게시
 

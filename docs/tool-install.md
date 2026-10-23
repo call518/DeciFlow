@@ -2,8 +2,8 @@
 
 [한국어](tool-install.ko.md) | [Project README](../README.md)
 
-This is the recommended installation method. Once published to PyPI, it runs
-DeciFlow without cloning the repository or using Docker.
+This is the recommended installation method. Install DeciFlow from PyPI
+without cloning the repository or using Docker.
 The second choice is [Docker](../README.md#quick-start--docker--laya-cpu), followed
 by [Git checkout native](native.md). Choose one method for each installation.
 
@@ -17,15 +17,7 @@ Requires [uv](https://docs.astral.sh/uv/getting-started/installation/), Python 3
 (3.12 recommended), and dependency download access. Linux/WSL2 is the reference
 environment. HDFS, SSH, and Actions retain their documented external prerequisites.
 
-This branch has not been published to PyPI. To test the current implementation,
-run this from its Git checkout:
-
-```bash
-uv tool install .
-deciflow init
-```
-
-After this project's distribution is published to PyPI, installation will be:
+Install and initialize:
 
 ```bash
 uv tool install deciflow
@@ -186,16 +178,10 @@ an unprotected HTTP listener.
 
 ## Update or Remove
 
-For a published PyPI installation:
-
 ```bash
 uv tool upgrade deciflow
 uv tool uninstall deciflow
 ```
-
-For branch testing, install an updated checkout or wheel with
-`uv tool install --force .`. Publication uses the tag workflow described below; installing or testing this
-branch does not upload packages.
 
 ## Publish from a Git Tag
 

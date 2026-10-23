@@ -28,15 +28,13 @@ method in this recommended order:
 automatically. See [environment file locations](docs/configuration.md#environment-file-locations)
 for path selection and precedence.
 
-PyPI publication is pending. To test uv tool installation from this branch's Git
-checkout:
+Install from PyPI and initialize your configuration:
 
 ```bash
-uv tool install .
+uv tool install deciflow
 deciflow init
 ```
 
-After publication, use `uv tool install deciflow` instead of `uv tool install .`.
 Maintainers publish matching tag versions to TestPyPI and PyPI through the
 [tag release workflow](docs/tool-install.md#publish-from-a-git-tag).
 Edit `~/.config/deciflow/.env`, connect a running Laya server or configure Jev,

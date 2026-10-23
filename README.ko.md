@@ -27,15 +27,13 @@
 `<checkout>`은 복제한 DeciFlow 저장소 루트입니다. 이 파일들은 자동으로 공유되지 않습니다.
 경로 선택과 적용 우선순위는 [환경 파일 위치](docs/configuration.ko.md#환경-파일-위치)를 참고하세요.
 
-아직 PyPI에 게시하지 않았습니다. 현재 브랜치의 Git 저장소에서 uv tool 설치를
-테스트하려면:
+PyPI에서 설치하고 설정 파일을 초기화하세요.
 
 ```bash
-uv tool install .
+uv tool install deciflow
 deciflow init
 ```
 
-게시 후에는 `uv tool install .` 대신 `uv tool install deciflow`로 설치합니다.
 관리자는 [태그 릴리즈 워크플로](docs/tool-install.ko.md#git-태그로-게시)로
 태그와 같은 버전을 TestPyPI·PyPI에 게시합니다.
 `~/.config/deciflow/.env`를 수정하고, 실행 중인 Laya 서버나 Jev 연결과 쓰기 가능한

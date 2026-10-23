@@ -4,7 +4,7 @@
 
 다음 추천 순서에 따라 설치 방식 하나를 선택하세요.
 
-1. [PyPI / uv tool](tool-install.ko.md): 권장 설치형 명령입니다. 아직 PyPI에 게시하지 않았으므로 현재는 안내된 저장소 설치를 사용합니다.
+1. [PyPI / uv tool](tool-install.ko.md): 저장소를 복제하지 않고 PyPI에서 설치하는 권장 방식입니다.
 2. [Git clone + Docker Compose](../README.ko.md#빠른-시작--docker--laya-cpu): 선택적 로컬 Laya를 포함한 컨테이너 배포입니다.
 3. [Git clone + 네이티브 Python](native.ko.md): 소스 스크립트를 직접 실행합니다.
 

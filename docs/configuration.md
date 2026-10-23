@@ -12,8 +12,8 @@ with DeciFlow. `COMPOSE_PROFILES` selects `cpu` or `cuda`; empty starts no local
 ## Environment File Locations
 
 Choose one execution method in this recommended order: **PyPI / uv tool → Docker
-Compose → Git checkout native Python**. PyPI publication is pending; the
-[uv tool guide](tool-install.md) explains installation from the current checkout.
+Compose → Git checkout native Python**. Follow the
+[uv tool guide](tool-install.md) for installation from PyPI.
 `<checkout>` below means the cloned DeciFlow repository root on the host.
 
 | Method | File Read by DeciFlow | How to Prepare or Select It |

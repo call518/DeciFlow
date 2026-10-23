@@ -35,6 +35,11 @@
 - Update `README.md` in English and `README.ko.md` in Korean together. Keep their
   features, settings, commands, and limitations equivalent.
 
+- Write READMEs and other guides to final-product documentation standards.
+  Describe the intended released installation and usage; keep temporary branch
+  status and work-in-progress notes out of user guides. Document only implemented
+  behavior and do not claim unverified release or publication success.
+
 - Keep READMEs concise and clear without omitting essential information. Remove
   repetition and unnecessary explanations, and format commands for readability.
   When multiple execution methods exist, state whether users choose one or combine

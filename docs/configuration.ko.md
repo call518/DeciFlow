@@ -11,8 +11,8 @@ Laya 서버 설정은 Laya 호스트에서 관리하며, Compose는 `LAYA_API_KE
 ## 환경 파일 위치
 
 추천 순서는 **PyPI / uv tool → Docker Compose → Git 복제 기반 네이티브 Python**이며
-실행 방식 하나를 선택합니다. 아직 PyPI에 게시하지 않았으므로 현재 저장소에서 설치하는
-방법은 [uv tool 안내](tool-install.ko.md)를 따르세요.
+실행 방식 하나를 선택합니다. PyPI 설치 방법은
+[uv tool 안내](tool-install.ko.md)를 따르세요.
 아래 `<checkout>`은 호스트에 복제한 DeciFlow 저장소 루트입니다.
 
 | 방식 | DeciFlow가 읽는 파일 | 준비·선택 방법 |
