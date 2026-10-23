@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import aclosing
 from pathlib import Path
 
@@ -25,6 +25,26 @@ from deciflow.sources import (
 def working_directory(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Isolate relative paths to each test's temporary directory."""
     monkeypatch.chdir(tmp_path)
+
+
+@pytest.fixture
+def follow_poll(monkeypatch: pytest.MonkeyPatch) -> Callable[[], Awaitable[None]]:
+    """Wait until the follower has processed input and reached its polling wait."""
+    polled = asyncio.Event()
+    sleep = anyio.sleep
+
+    async def observe_poll(delay: float) -> None:
+        if delay == 0.25:
+            polled.set()
+        await sleep(delay)
+
+    async def wait_for_poll() -> None:
+        polled.clear()
+        with anyio.fail_after(3):
+            await polled.wait()
+
+    monkeypatch.setattr(anyio, "sleep", observe_poll)
+    return wait_for_poll
 
 
 def test_source_path_validation(tmp_path: Path) -> None:
@@ -54,16 +74,18 @@ async def test_batch_lines_and_final_partial_line(tmp_path: Path) -> None:
 
 
 @pytest.mark.anyio
-async def test_follow_appends_utf8_rotation_and_truncation(tmp_path: Path) -> None:
+async def test_follow_appends_utf8_rotation_and_truncation(
+    tmp_path: Path, follow_poll: Callable[[], Awaitable[None]]
+) -> None:
     path = tmp_path / "access.log"
     path.write_text("old event\n")
     async with aclosing(follow_file(path)) as records:
         task = asyncio.create_task(anext(records))
-        await anyio.sleep(0.05)
+        await follow_poll()
         encoded = "new ☃\n".encode()
         with path.open("ab") as file:
             file.write(encoded[:-2])
-        await anyio.sleep(0.3)
+        await follow_poll()
         assert not task.done()
         with path.open("ab") as file:
             file.write(encoded[-2:])
@@ -78,38 +100,55 @@ async def test_follow_appends_utf8_rotation_and_truncation(tmp_path: Path) -> No
 
         task = asyncio.create_task(anext(records))
         path.write_text("")
-        await anyio.sleep(0.3)
+        await follow_poll()
         path.write_text("after truncate\n")
         with anyio.fail_after(3):
             assert (await task)["log"] == "after truncate"
 
 
 @pytest.mark.anyio
-async def test_follow_missing_file_and_recreation(tmp_path: Path) -> None:
+async def test_follow_missing_file_and_recreation(
+    tmp_path: Path, follow_poll: Callable[[], Awaitable[None]]
+) -> None:
     path = tmp_path / "access.log"
     async with aclosing(follow_file(path)) as records:
         task = asyncio.create_task(anext(records))
-        await anyio.sleep(0.05)
+        await follow_poll()
         path.write_text("created\n")
         with anyio.fail_after(3):
             assert (await task)["log"] == "created"
         task = asyncio.create_task(anext(records))
         path.unlink()
-        await anyio.sleep(0.3)
+        await follow_poll()
         path.write_text("recreated\n")
         with anyio.fail_after(3):
             assert (await task)["log"] == "recreated"
 
 
 @pytest.mark.anyio
-async def test_rotation_retains_partial_line(tmp_path: Path) -> None:
+@pytest.mark.parametrize("open_delay", [0, 0.1])
+async def test_rotation_retains_partial_line(
+    tmp_path: Path,
+    follow_poll: Callable[[], Awaitable[None]],
+    monkeypatch: pytest.MonkeyPatch,
+    open_delay: float,
+) -> None:
+    open_file = Path.open
+
+    def delayed_open(path: Path, *args, **kwargs):
+        import time
+
+        time.sleep(open_delay)
+        return open_file(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", delayed_open)
     path = tmp_path / "access.log"
     path.write_text("")
     async with aclosing(follow_file(path)) as records:
         task = asyncio.create_task(anext(records))
-        await anyio.sleep(0.05)
+        await follow_poll()
         path.write_text("partial")
-        await anyio.sleep(0.3)
+        await follow_poll()
         path.rename(tmp_path / "access.log.1")
         path.write_text("next\n")
         with anyio.fail_after(3):
@@ -120,7 +159,9 @@ async def test_rotation_retains_partial_line(tmp_path: Path) -> None:
 
 
 @pytest.mark.anyio
-async def test_stream_results_without_waiting_for_next_log(tmp_path: Path) -> None:
+async def test_stream_results_without_waiting_for_next_log(
+    tmp_path: Path, follow_poll: Callable[[], Awaitable[None]]
+) -> None:
     path = tmp_path / "access.log"
     path.write_text("before\n")
     calls = 0
@@ -132,7 +173,7 @@ async def test_stream_results_without_waiting_for_next_log(tmp_path: Path) -> No
 
     async with aclosing(classify_stream(follow_file(path), handle_classify)) as results:
         task = asyncio.create_task(anext(results))
-        await anyio.sleep(0.05)
+        await follow_poll()
         with path.open("a") as file:
             file.write("after\n")
         with anyio.fail_after(3):
