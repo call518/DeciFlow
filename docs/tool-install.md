@@ -28,7 +28,7 @@ If the shell cannot find `deciflow`, run `uv tool update-shell` and open a new s
 
 `deciflow init` creates `~/.config/deciflow/.env` with private file permissions
 and prepares OAuth2-Proxy templates. It does not test configuration or start a
-server. Edit the generated file before starting `deciflow`.
+server. Edit the generated file before starting `deciflow run`.
 Existing configuration files are never overwritten. No domain, certificate, or
 Google configuration is needed with `OAUTH2_PROXY_ENABLED=false`.
 The default path belongs to the user running the command; root uses
@@ -66,11 +66,11 @@ Alternatively, set `DECIFLOW_DATA_DIR` and `DECIFLOW_LOG_DIR` to your own writab
 directories and create them before startup. Then run:
 
 ```bash
-deciflow
+deciflow run
 ```
 
 Open `http://127.0.0.1:4000`. Check the engine status before running a Task.
-Every `deciflow` startup, including UI Restart, first runs the complete
+Every `deciflow run` startup, including UI Restart, first runs the complete
 configuration test. The server starts only if all checks pass. A missing Jev key,
 an unreachable engine, or another failed prerequisite blocks startup. It never
 creates a missing `.env` automatically; use `deciflow init`. There is no automatic
@@ -85,6 +85,48 @@ Relative Source and Action paths resolve from the configuration directory.
 Built-in Docker sample Sources use `/host-logs/...`; create or edit a Source to
 point to an actual local file for this installation. Ctrl+C stops the application.
 
+## Run, Status, and Stop
+
+CLI process management supports Linux, WSL2, and macOS. Run in the foreground or
+choose daemon mode; do not run both for the same configuration:
+
+```bash
+deciflow run
+deciflow run --daemon
+deciflow status
+deciflow stop
+```
+
+`deciflow` without a command displays help. Foreground execution stops with Ctrl+C.
+`--daemon` detaches from the terminal and returns only after the UI and, when
+enabled, OAuth2-Proxy are listening. It prints the PID, URL, configuration, and
+`DECIFLOW_LOG_DIR/daemon.log`. This file captures startup, console, and proxy output;
+server/access logs retain their existing rotation. The daemon log appends across
+runs; configure host log retention as needed. Daemon mode requires a nonempty,
+existing, writable `DECIFLOW_LOG_DIR`.
+
+A configuration directory can have only one CLI-managed process. `status` and
+`stop` use a private local control socket, not a saved PID to signal. They do not
+require valid engine credentials or a reachable engine. `status` returns exit code
+`0` for an active/starting process and `3` when stopped. `stop` is idempotent and
+waits up to 30 seconds for graceful shutdown; a timeout reports failure without
+force-killing an arbitrary process. Data and recovery checkpoints are preserved.
+UI Restart keeps the managed process and its daemon mode.
+
+When `OAUTH2_PROXY_ENABLED=true`, both run modes start the installed OAuth2-Proxy
+binary and stop it with DeciFlow. Laya is a separate service and is never stopped
+by these commands. Docker containers and directly launched `server.py` processes
+are not managed by this CLI. A daemon is not an installed OS service: there is
+no automatic start on boot or restart after a crash.
+
+For a custom configuration, pass the same directory to each command:
+
+```bash
+deciflow run --daemon --config-dir /path/to/deciflow-config
+deciflow status --config-dir /path/to/deciflow-config
+deciflow stop --config-dir /path/to/deciflow-config
+```
+
 ## Configuration and Storage
 
 To select another configuration directory, use the same option for all commands:
@@ -93,7 +135,7 @@ To select another configuration directory, use the same option for all commands:
 deciflow init --config-dir /path/to/deciflow-config
 deciflow config list --config-dir /path/to/deciflow-config
 deciflow config test --config-dir /path/to/deciflow-config
-deciflow --config-dir /path/to/deciflow-config
+deciflow run --config-dir /path/to/deciflow-config
 ```
 
 That directory holds `.env` and `oauth2-proxy/`; data and logs use their configured
@@ -122,8 +164,8 @@ failures and end with **Config Test Passed** or **Config Test Failed**. Terminal
 output uses green **Passed** and bright red **Failed**; redirected output is plain
 text, and `NO_COLOR` disables colors. Exit status is `0` for success and `1` for failure.
 
-Use `init` to create templates, `config test` to diagnose readiness, and plain
-`deciflow` to validate and start. `init`, `config test`, `config list`, and help do
+Use `init` to create templates, `config test` to diagnose readiness, and
+`deciflow run` to validate and start. `init`, `config test`, `config list`, and help do
 not start the server; only server startup requires the full readiness check.
 
 The check covers `.env` syntax, bundled UI resources, data/log write permissions,
@@ -160,7 +202,8 @@ probe engines, initialize a database, or require all readiness checks to pass.
 ## Optional Google Sign-In
 
 Follow [native authentication](native.md#optional-native-https-with-oauth2-proxy) and
-[DNS/TLS preparation](dns-tls.md). Install the OAuth2-Proxy executable on PATH,
+[DNS/TLS preparation](dns-tls.md). Follow [binary installation](oauth2-proxy-install.md)
+to install and verify the OAuth2-Proxy executable on PATH,
 configure Google credentials and `OAUTH2_PROXY_PUBLIC_URL`, and prepare:
 
 ```text

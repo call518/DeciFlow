@@ -2,12 +2,55 @@
 
 import os
 import shutil
+import signal
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from threading import Event, Thread
+from threading import Event, Thread, current_thread, main_thread
 from urllib.parse import urlsplit
 
 import uvicorn
+
+
+def serve(
+    server: uvicorn.Server,
+    stop: Event | None = None,
+    on_started: Callable[[], None] | None = None,
+) -> None:
+    """Bridge CLI readiness and cooperative shutdown to the actual server."""
+    finished = Event()
+
+    def monitor() -> None:
+        notified = False
+        while not finished.wait(0.05):
+            if stop is not None and stop.is_set():
+                server.should_exit = True
+            if not notified and getattr(server, "started", False):
+                if on_started is not None:
+                    on_started()
+                notified = True
+
+    watcher = Thread(target=monitor, daemon=True)
+    watcher.start()
+    original_term = None
+    if current_thread() is main_thread():
+        original_term = signal.getsignal(signal.SIGTERM)
+
+        def terminate(signum, frame) -> None:
+            server.should_exit = True
+
+        # Uvicorn re-raises handled signals; let the proxy's finally block run.
+        signal.signal(signal.SIGTERM, terminate)
+    try:
+        try:
+            server.run()
+        except KeyboardInterrupt:
+            pass
+    finally:
+        if original_term is not None:
+            signal.signal(signal.SIGTERM, original_term)
+        finished.set()
+        watcher.join()
 
 
 def proxy_enabled() -> bool:
@@ -31,12 +74,20 @@ def proxy_origin() -> str:
         or url.query
         or url.fragment
     ):
-        raise ValueError("OAUTH2_PROXY_PUBLIC_URL must be an HTTPS origin without a path")
+        raise ValueError(
+            "OAUTH2_PROXY_PUBLIC_URL must be an HTTPS origin without a path"
+        )
     _ = url.port
     return origin
 
 
-def run_with_proxy(config: uvicorn.Config, root: Path) -> None:
+def run_with_proxy(
+    config: uvicorn.Config,
+    root: Path,
+    *,
+    stop: Event | None = None,
+    on_started: Callable[[], None] | None = None,
+) -> None:
     """Supervise native OAuth2-Proxy and stop both processes when either exits."""
     binary = shutil.which("oauth2-proxy")
     if not binary:
@@ -84,7 +135,7 @@ def run_with_proxy(config: uvicorn.Config, root: Path) -> None:
         watcher.start()
         print(f"DeciFlow: {origin} (Google sign-in enabled)", flush=True)
         try:
-            server.run()
+            serve(server, stop, on_started)
         finally:
             stopping.set()
             if proxy.poll() is None:
@@ -96,4 +147,6 @@ def run_with_proxy(config: uvicorn.Config, root: Path) -> None:
                     proxy.wait()
             watcher.join()
     if failed.is_set():
-        raise RuntimeError("OAuth2-Proxy exited; DeciFlow stopped. Check OAuth2-Proxy logs.")
+        raise RuntimeError(
+            "OAuth2-Proxy exited; DeciFlow stopped. Check OAuth2-Proxy logs."
+        )

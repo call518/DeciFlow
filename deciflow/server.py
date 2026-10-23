@@ -9,13 +9,14 @@ import re
 import signal
 import socket
 import sqlite3
-from collections.abc import AsyncGenerator, AsyncIterator, Iterator
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Iterator
 from contextlib import aclosing, asynccontextmanager, contextmanager
 from copy import deepcopy
 from datetime import UTC, datetime
 from functools import partial
 from ipaddress import ip_address
 from pathlib import Path
+from threading import Event
 from time import perf_counter
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -1883,10 +1884,16 @@ def get_log_config() -> Result:
     return config
 
 
-def main(*, host: str | None = None, manage_proxy: bool = False) -> None:
+def main(
+    *,
+    host: str | None = None,
+    manage_proxy: bool = False,
+    stop: Event | None = None,
+    on_started: Callable[[], None] | None = None,
+) -> None:
     """Read local settings at startup; bind to loopback unless specified."""
     load_startup_settings(ROOT / ".env")
-    from deciflow.native_proxy import proxy_enabled, run_with_proxy
+    from deciflow.native_proxy import proxy_enabled, run_with_proxy, serve
 
     protected = proxy_enabled()
     host = host or (
@@ -1905,11 +1912,28 @@ def main(*, host: str | None = None, manage_proxy: bool = False) -> None:
                 log_config=get_log_config(),
             ),
             ROOT,
+            stop=stop,
+            on_started=on_started,
         )
         if app.state.reset_requested or app.state.restart_requested:
             restart_process()
         return
     print(f"DeciFlow: http://{host}:{port}", flush=True)
+    if stop is not None or on_started is not None:
+        serve(
+            uvicorn.Server(
+                uvicorn.Config(
+                    app,
+                    host=host,
+                    port=port,
+                    timeout_graceful_shutdown=2,
+                    log_config=get_log_config(),
+                )
+            ),
+            stop,
+            on_started,
+        )
+        return
     uvicorn.run(
         app,
         host=host,

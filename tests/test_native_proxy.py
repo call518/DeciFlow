@@ -109,7 +109,7 @@ def test_native_entrypoint_selects_access_mode(
     monkeypatch.setenv("PORT", "4567")
     calls = []
 
-    def proxy(config, root):
+    def proxy(config, root, **kwargs):
         calls.append((config.host, config.port, "protected"))
         server.app.state.reset_requested = False
         server.app.state.restart_requested = True

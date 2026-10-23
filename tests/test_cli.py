@@ -98,7 +98,7 @@ def test_cli_runs_native_server_from_workspace(
         f"DECISION_ENGINE={engine}\nJEV_API_KEY=disposable-test-key\n"
     )
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("sys.argv", ["deciflow", "--config-dir", str(tmp_path)])
+    monkeypatch.setattr("sys.argv", ["deciflow", "run", "--config-dir", str(tmp_path)])
     monkeypatch.setattr(server, "ROOT", server.ROOT)
     called = []
     monkeypatch.setattr(server, "main", lambda **kwargs: called.append(kwargs))
@@ -106,7 +106,9 @@ def test_cli_runs_native_server_from_workspace(
     assert server.ROOT == tmp_path
     assert Path.cwd() == tmp_path
     assert os.environ["DECISION_ENGINE"] == engine
-    assert called == [{"manage_proxy": True}]
+    assert called[0]["manage_proxy"] is True
+    assert callable(called[0]["on_started"])
+    assert not called[0]["stop"].is_set()
     assert sys.orig_argv[-2:] == ["--config-dir", str(tmp_path)]
 
 
@@ -117,7 +119,7 @@ def test_relative_workspace_survives_restart(
     workspace.mkdir()
     (workspace / ".env").write_text("DECISION_ENGINE=laya\n")
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(sys, "argv", ["deciflow", "--config-dir", "workspace"])
+    monkeypatch.setattr(sys, "argv", ["deciflow", "run", "--config-dir", "workspace"])
     monkeypatch.setattr(server, "ROOT", server.ROOT)
     monkeypatch.setattr(server, "main", lambda **kwargs: None)
     cli.main()
@@ -126,6 +128,7 @@ def test_relative_workspace_survives_restart(
         sys.executable,
         "-m",
         "deciflow.cli",
+        "run",
         "--config-dir",
         str(workspace),
     ]
@@ -136,7 +139,7 @@ def test_missing_jev_key_stops_with_guidance(
 ) -> None:
     (tmp_path / ".env").write_text("DECISION_ENGINE=jev\nJEV_API_KEY=\n")
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("sys.argv", ["deciflow", "--config-dir", str(tmp_path)])
+    monkeypatch.setattr("sys.argv", ["deciflow", "run", "--config-dir", str(tmp_path)])
     monkeypatch.setattr(server, "ROOT", server.ROOT)
     with pytest.raises(SystemExit) as exit_info:
         cli.main()
@@ -151,7 +154,7 @@ def test_server_startup_exit_points_to_configtest(
 ) -> None:
     (tmp_path / ".env").write_text("DECISION_ENGINE=laya\n")
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(sys, "argv", ["deciflow", "--config-dir", str(tmp_path)])
+    monkeypatch.setattr(sys, "argv", ["deciflow", "run", "--config-dir", str(tmp_path)])
     monkeypatch.setattr(server, "ROOT", server.ROOT)
 
     def fail(**kwargs: object) -> None:
@@ -167,7 +170,7 @@ def test_server_startup_exit_points_to_configtest(
 def test_runtime_does_not_create_missing_configuration(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture
 ) -> None:
-    monkeypatch.setattr(sys, "argv", ["deciflow", "--config-dir", str(tmp_path)])
+    monkeypatch.setattr(sys, "argv", ["deciflow", "run", "--config-dir", str(tmp_path)])
     monkeypatch.setattr(
         server, "main", lambda **kwargs: pytest.fail("failed test must block runtime")
     )
@@ -183,7 +186,7 @@ def test_configuration_check_gates_runtime(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, status: int
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(sys, "argv", ["deciflow", "--config-dir", str(tmp_path)])
+    monkeypatch.setattr(sys, "argv", ["deciflow", "run", "--config-dir", str(tmp_path)])
     monkeypatch.setattr(server, "ROOT", server.ROOT)
     events = []
 
@@ -219,3 +222,14 @@ def test_config_directory_option_at_each_command_level(
     )
     cli.main()
     assert calls == [tmp_path]
+
+
+def test_no_command_shows_help_without_testing(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(sys, "argv", ["deciflow"])
+    monkeypatch.setattr(
+        cli_config,
+        "run_config_test",
+        lambda *args, **kwargs: pytest.fail("help must not test"),
+    )
+    cli.main()
+    assert "run" in capsys.readouterr().out

@@ -69,13 +69,17 @@ see the [installation guide](docs/tool-install.md).
 ### 3. Start DeciFlow
 
 ```bash
-deciflow
+deciflow run
 ```
 
 Startup checks prerequisites before serving the UI. For detailed diagnostics,
 use `deciflow config test`; `deciflow config list` shows effective settings with
 secrets redacted. Pass the same `--config-dir` to every command if you use another
 configuration directory. Ctrl+C stops DeciFlow.
+
+For background operation, use `deciflow run --daemon`; check it with
+`deciflow status` and shut it down with `deciflow stop`. See
+[process management](docs/tool-install.md#run-status-and-stop) for logging and custom configurations.
 
 ### 4. Analyze a Local Log
 

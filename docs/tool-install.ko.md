@@ -27,7 +27,7 @@ deciflow init
 
 `deciflow init`은 소유자만 읽고 쓸 수 있는 `~/.config/deciflow/.env`와
 OAuth2-Proxy 샘플 파일을 준비합니다. 설정 검사나 서버 기동은 하지 않습니다.
-생성된 파일을 수정한 뒤 `deciflow`를 실행하세요.
+생성된 파일을 수정한 뒤 `deciflow run`을 실행하세요.
 기존 설정 파일은 덮어쓰지 않습니다. `OAUTH2_PROXY_ENABLED=false`이면
 도메인·인증서·Google 설정이 필요하지 않습니다.
 기본 경로는 명령 실행 사용자의 홈을 기준으로 하므로 root는
@@ -65,11 +65,11 @@ sudo install -d -o "$(id -un)" -g "$(id -gn)" \
 기동 전에 해당 디렉터리를 생성하세요. 이후 실행합니다.
 
 ```bash
-deciflow
+deciflow run
 ```
 
 `http://127.0.0.1:4000`에 접속하고 Task 실행 전에 엔진 상태를 확인하세요.
-`deciflow`는 UI Restart를 포함해 기동할 때마다 전체 설정 검사를 먼저 수행하고,
+`deciflow run`은 UI Restart를 포함해 기동할 때마다 전체 설정 검사를 먼저 수행하고,
 모두 통과해야 서버를 시작합니다. Jev 키 누락, 엔진 연결 불가 등 준비 조건이 실패하면
 기동을 중단합니다. `.env`가 없다고 자동 생성하지 않으므로 `deciflow init`으로
 준비하세요. Jev로 자동 전환하지 않습니다.
@@ -83,6 +83,47 @@ Source와 Action의 상대 경로는 설정 디렉터리 기준입니다. 내장
 `/host-logs/...`를 사용하므로 실제 로컬 파일을 가리키는 Source를 새로 만들거나
 수정하세요. Ctrl+C로 애플리케이션을 종료합니다.
 
+## 실행·상태 확인·종료
+
+CLI 프로세스 관리는 Linux·WSL2·macOS를 지원합니다. 포그라운드 또는 데몬 실행 중
+하나를 선택하며, 같은 설정으로 두 방식을 동시에 실행하지 마세요.
+
+```bash
+deciflow run
+deciflow run --daemon
+deciflow status
+deciflow stop
+```
+
+명령 없이 `deciflow`만 입력하면 도움말을 표시합니다. 포그라운드는 Ctrl+C로 종료합니다.
+`--daemon`은 터미널과 분리되어 실행되며, UI와 활성화된 OAuth2-Proxy가 연결을 받는
+상태를 확인한 뒤 반환합니다. PID·URL·설정 파일·`DECIFLOW_LOG_DIR/daemon.log`를
+표시합니다. 이 파일에는 기동·콘솔·프록시 출력이 기록되며 서버·접근 로그의 기존
+회전 정책은 유지됩니다. 데몬 로그는 실행마다 이어 쓰므로 필요하면 호스트의 로그 보존
+정책을 설정하세요. 데몬 모드는 `DECIFLOW_LOG_DIR`가 비어 있지 않고, 디렉터리가
+존재하며 쓰기 가능해야 합니다.
+
+설정 디렉터리별 CLI 관리 프로세스는 하나만 실행할 수 있습니다. `status`와 `stop`은
+저장된 PID에 신호를 보내는 대신 전용 로컬 제어 소켓을 사용합니다. 유효한 엔진 인증 정보나
+엔진 연결이 없어도 사용할 수 있습니다. `status`는 실행·기동 중이면 종료 코드 `0`,
+중지 상태이면 `3`을 반환합니다. `stop`은 반복 실행할 수 있으며 정상 종료를 최대
+30초 기다립니다. 시간 초과 시 임의의 프로세스를 강제 종료하지 않고 실패를 알립니다.
+데이터와 복구 체크포인트는 보존되며, UI Restart 후에도 관리 상태와 데몬 모드를 유지합니다.
+
+`OAUTH2_PROXY_ENABLED=true`이면 두 실행 방식 모두 설치된 OAuth2-Proxy 바이너리를
+함께 기동하고 종료합니다. Laya는 별도 서비스이므로 이 명령으로 종료하지 않습니다.
+Docker 컨테이너와 `server.py`를 직접 실행한 프로세스도 CLI 관리 대상이 아닙니다.
+데몬 실행은 OS 서비스 등록과 다르며, 부팅 시 자동 기동이나 장애 후 자동 재시작은
+제공하지 않습니다.
+
+다른 설정 디렉터리를 사용하면 모든 명령에 같은 경로를 지정하세요.
+
+```bash
+deciflow run --daemon --config-dir /path/to/deciflow-config
+deciflow status --config-dir /path/to/deciflow-config
+deciflow stop --config-dir /path/to/deciflow-config
+```
+
 ## 설정과 저장 경로
 
 다른 설정 디렉터리를 선택하려면 모든 명령에 같은 옵션을 전달합니다.
@@ -91,7 +132,7 @@ Source와 Action의 상대 경로는 설정 디렉터리 기준입니다. 내장
 deciflow init --config-dir /path/to/deciflow-config
 deciflow config list --config-dir /path/to/deciflow-config
 deciflow config test --config-dir /path/to/deciflow-config
-deciflow --config-dir /path/to/deciflow-config
+deciflow run --config-dir /path/to/deciflow-config
 ```
 
 이 디렉터리에는 `.env`와 `oauth2-proxy/`가 위치합니다. 데이터·로그는
@@ -120,7 +161,7 @@ deciflow config test --config-dir /path/to/deciflow-config
 **Passed**를 녹색, **Failed**를 밝은 빨강으로 표시합니다. 파일로 리디렉션하면 일반
 텍스트를 사용하고, `NO_COLOR`로 색상을 끌 수도 있습니다. 종료 코드는 성공 `0`, 실패 `1`입니다.
 
-`init`은 샘플 생성, `config test`는 준비 상태 진단, 기본 `deciflow`는 검사 후 기동입니다.
+`init`은 샘플 생성, `config test`는 준비 상태 진단, `deciflow run`은 검사 후 기동입니다.
 `init`, `config test`, `config list`, 도움말은 서버를 시작하지 않으며, 전체 준비 검사가
 필수인 작업은 서버 기동입니다.
 
@@ -156,7 +197,8 @@ deciflow config list --config-dir /path/to/deciflow-config
 ## 선택적 Google 로그인
 
 [네이티브 인증 설정](native.ko.md#선택-oauth2-proxy를-통한-네이티브-https)과
-[DNS/TLS 준비](dns-tls.ko.md)를 따르세요. OAuth2-Proxy 실행 파일을 PATH에 설치하고,
+[DNS/TLS 준비](dns-tls.ko.md)를 따르세요. [바이너리 설치 안내](oauth2-proxy-install.ko.md)로
+OAuth2-Proxy 실행 파일을 PATH에 설치·검증하고,
 Google 인증 정보와 `OAUTH2_PROXY_PUBLIC_URL`을 설정한 뒤 다음 파일을 준비합니다.
 
 ```text

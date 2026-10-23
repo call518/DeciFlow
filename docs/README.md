@@ -6,10 +6,11 @@ Choose one installation method in the recommended order:
 
 1. [PyPI / uv tool](tool-install.md): recommended installation from PyPI without cloning the repository.
 2. [Git clone + Docker Compose](../README.md#alternative-installation-docker--laya-cpu): container deployment with optional local Laya.
-3. [Git clone + native Python](native.md): run the source scripts directly.
+3. [Git clone + native Python](native.md): run the CLI from a source checkout.
 
 Check [environment file locations](configuration.md#environment-file-locations)
 before editing `.env`; the three methods do not automatically share this file.
+For non-container authentication, follow [OAuth2-Proxy binary installation](oauth2-proxy-install.md).
 Google sign-in and HTTPS are optional. Configure [authentication](authentication.md)
 only when enabling OAuth2-Proxy.
 

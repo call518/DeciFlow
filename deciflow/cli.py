@@ -82,6 +82,18 @@ def main() -> None:
     )
     parser.add_argument("--version", action="version", version=version("deciflow"))
     commands = parser.add_subparsers(dest="command")
+    run = commands.add_parser(
+        "run", parents=[location], help="validate and start DeciFlow"
+    )
+    run.add_argument(
+        "--daemon", action="store_true", help="run detached with file logging"
+    )
+    commands.add_parser(
+        "status", parents=[location], help="show this installation's process status"
+    )
+    commands.add_parser(
+        "stop", parents=[location], help="stop this installation gracefully"
+    )
     commands.add_parser(
         "init", parents=[location], help="create configuration templates"
     )
@@ -96,6 +108,9 @@ def main() -> None:
         "list", parents=[location], help="list effective settings with secrets redacted"
     )
     args = parser.parse_args()
+    if args.command is None:
+        parser.print_help()
+        return
     directory = (
         getattr(args, "config_dir", Path.home() / ".config" / "deciflow")
         .expanduser()
@@ -113,6 +128,17 @@ def main() -> None:
                 f"{check_command}"
             )
             return
+        if args.command in {"status", "stop"}:
+            from deciflow import process_control
+
+            if os.name != "posix":
+                raise ValueError(
+                    "CLI process management requires Linux, WSL2, or macOS"
+                )
+            if args.command == "status":
+                raise SystemExit(process_control.status(directory))
+            process_control.stop(directory)
+            return
         from deciflow.cli_config import list_configuration, run_config_test
 
         if args.command == "config" and args.config_command == "list":
@@ -120,34 +146,52 @@ def main() -> None:
             return
         if args.command == "config":
             raise SystemExit(run_config_test(directory))
-        result = run_config_test(directory, detailed=False)
-        if result:
-            advice = (
-                check_command
-                if (directory / ".env").is_file()
-                else shlex.join(["deciflow", "init", "--config-dir", str(directory)])
-            )
-            print(f"Run: {advice}", file=sys.stderr)
-            raise SystemExit(result)
-        os.chdir(directory)
-        from deciflow import server
+        from deciflow.process_control import DAEMON_ENV, RunLock, Runtime, launch_daemon
 
-        server.ROOT = directory
-        print(f"Configuration: {directory / '.env'}", flush=True)
-        # UI Restart must retain an absolute workspace after changing directory.
-        sys.orig_argv = [
-            sys.executable,
-            "-m",
-            "deciflow.cli",
-            "--config-dir",
-            str(directory),
-        ]
-        try:
-            server.main(manage_proxy=True)
-        except SystemExit as error:
-            if error.code:
-                print(f"Run: {check_command}", file=sys.stderr)
-            raise
+        if not directory.is_dir():
+            raise ValueError(
+                f"Run deciflow init --config-dir {shlex.quote(str(directory))}"
+            )
+        with RunLock(directory) as lock:
+            result = run_config_test(directory, detailed=False)
+            if result:
+                advice = (
+                    check_command
+                    if (directory / ".env").is_file()
+                    else shlex.join(
+                        ["deciflow", "init", "--config-dir", str(directory)]
+                    )
+                )
+                print(f"Run: {advice}", file=sys.stderr)
+                raise SystemExit(result)
+            os.chdir(directory)
+            if args.daemon:
+                launch_daemon(directory, lock)
+                return
+            from deciflow import server
+
+            server.ROOT = directory
+            print(f"Configuration: {directory / '.env'}", flush=True)
+            # Inherit the lock and mode across UI exec-based restarts.
+            sys.orig_argv = [
+                sys.executable,
+                "-m",
+                "deciflow.cli",
+                "run",
+                "--config-dir",
+                str(directory),
+            ]
+            with Runtime(directory, os.getenv(DAEMON_ENV) == "1") as runtime:
+                try:
+                    server.main(
+                        manage_proxy=True,
+                        stop=runtime.stop,
+                        on_started=runtime.ready.set,
+                    )
+                except SystemExit as error:
+                    if error.code:
+                        print(f"Run: {check_command}", file=sys.stderr)
+                    raise
     except (ValueError, OSError, RuntimeError) as error:
         print(f"DeciFlow stopped: {error}\nRun: {check_command}", file=sys.stderr)
         raise SystemExit(1) from None

@@ -19,16 +19,18 @@ Laya 서버 설정은 Laya 호스트에서 관리하며, Compose는 `LAYA_API_KE
 | --- | --- | --- |
 | PyPI / uv tool | `~/.config/deciflow/.env` | `deciflow init`으로 샘플 생성 후 수정 |
 | Git clone + Docker Compose | 호스트 `<checkout>/.env`, UI 컨테이너 내부 `/app/.env`로 마운트 | `<checkout>/.env.example`을 `<checkout>/.env`로 복사하고 저장소에서 Compose 실행 |
-| Git clone + 네이티브 Python | `<checkout>/.env` | 샘플 복사 후 `uv run python server.py`, `uv run --extra laya python laya_server.py`가 같은 파일을 읽음 |
+| Git clone + 네이티브 Python | `<checkout>/.env` | 샘플 복사 후 `uv run deciflow run --config-dir "$PWD"`, `uv run --extra laya python laya_server.py`가 같은 파일을 읽음 |
 
 uv tool의 `~`는 명령 실행 사용자의 홈입니다. 따라서 root는
 `/root/.config/deciflow/.env`를 사용합니다. `--config-dir /path/to/deciflow-config`를
-지정하면 `init`, `config list`, `config test`, 기동 모두
+지정하면 `init`, `config list`, `config test`, `run`, `status`, `stop` 모두
 `/path/to/deciflow-config/.env`를 사용하므로 매번 같은 옵션을 전달하세요.
 현재 셸 디렉터리의 `.env`를 자동 선택하지 않으며, 초기화는 기존 파일을 보존합니다.
 
-Git 네이티브 스크립트는 셸 위치와 관계없이 저장소의 파일을 읽습니다. Source 상대 경로를
-명확히 하려면 안내된 명령을 저장소에서 실행하세요. 로컬 Laya 어댑터도 같은 파일을 읽지만,
+Git 네이티브 CLI는 저장소에서 실행하고 `--config-dir "$PWD"`로 경로를 명시해야 합니다.
+생략하면 저장소 안에서도 `~/.config/deciflow`를 사용합니다. `server.py` 직접 실행은
+셸 위치와 관계없이 저장소의 파일을 읽습니다. Source 상대 경로를 명확히 하려면
+안내된 명령을 저장소에서 실행하세요. 로컬 Laya 어댑터도 같은 파일을 읽지만,
 별도 배포한 Laya 서버는 해당 호스트의 자체 설정을 사용합니다.
 
 Compose는 저장소 파일을 변수 치환과 UI의 `env_file`에 사용하고, DeciFlow는 기동 시

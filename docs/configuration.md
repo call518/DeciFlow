@@ -20,16 +20,18 @@ Compose → Git checkout native Python**. Follow the
 | --- | --- | --- |
 | PyPI / uv tool | `~/.config/deciflow/.env` | `deciflow init` creates templates; edit before startup |
 | Git clone + Docker Compose | `<checkout>/.env` on the host, mounted at `/app/.env` in the UI container | Copy `<checkout>/.env.example` to `<checkout>/.env`; run Compose from the checkout |
-| Git clone + native Python | `<checkout>/.env` | Copy the template; `uv run python server.py` and `uv run --extra laya python laya_server.py` read this file |
+| Git clone + native Python | `<checkout>/.env` | Copy the template; `uv run deciflow run --config-dir "$PWD"` and `uv run --extra laya python laya_server.py` read this file |
 
 For uv tool, `~` is the home of the user running the command; root therefore uses
 `/root/.config/deciflow/.env`. `--config-dir /path/to/deciflow-config` selects
-`/path/to/deciflow-config/.env` for `init`, `config list`, `config test`, and startup.
+`/path/to/deciflow-config/.env` for `init`, `config list`, `config test`, `run`, `status`, and `stop`.
 Pass the same option every time. A `.env` in the shell's current directory is not
 automatically selected. Initialization preserves existing files.
 
-Git native scripts read the checkout file regardless of the shell directory; run
-the documented commands from the checkout so relative Source paths are predictable.
+For Git native CLI execution, run from the checkout and select it explicitly with
+`--config-dir "$PWD"`; otherwise the CLI uses `~/.config/deciflow`. The direct
+`server.py` script reads the checkout file regardless of the shell directory.
+Run documented commands from the checkout so relative Source paths are predictable.
 The local Laya adapter reads that same checkout file. A separately deployed Laya
 server has its own configuration on its own host.
 

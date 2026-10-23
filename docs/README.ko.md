@@ -6,10 +6,11 @@
 
 1. [PyPI / uv tool](tool-install.ko.md): 저장소를 복제하지 않고 PyPI에서 설치하는 권장 방식입니다.
 2. [Git clone + Docker Compose](../README.ko.md#대안-설치-docker--laya-cpu): 선택적 로컬 Laya를 포함한 컨테이너 배포입니다.
-3. [Git clone + 네이티브 Python](native.ko.md): 소스 스크립트를 직접 실행합니다.
+3. [Git clone + 네이티브 Python](native.ko.md): 복제한 소스 저장소에서 CLI를 실행합니다.
 
 `.env`를 수정하기 전에 [환경 파일 위치](configuration.ko.md#환경-파일-위치)를
 확인하세요. 세 방식은 이 파일을 자동 공유하지 않습니다.
+컨테이너 없이 인증을 사용하려면 [OAuth2-Proxy 바이너리 설치](oauth2-proxy-install.ko.md)를 따르세요.
 Google 로그인과 HTTPS는 선택 사항이며, OAuth2-Proxy 활성 시에만
 [인증 설정](authentication.ko.md)을 준비합니다.
 

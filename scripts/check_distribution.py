@@ -79,7 +79,7 @@ def main() -> None:
         )
         executable = root / "bin" / "deciflow"
         workspace = root / "workspace"
-        command = [str(executable), "--config-dir", workspace.name]
+        command = [str(executable), "run", "--config-dir", workspace.name]
         subprocess.run([str(executable), "--help"], cwd=root, env=env, check=True)
         uninitialized = subprocess.run(
             command,
@@ -238,6 +238,23 @@ def main() -> None:
                     "Installed server did not stop after SIGINT"
                 ) from None
         assert process.returncode == 0, log.read_text()
+        managed = [str(executable), "status", "--config-dir", workspace.name]
+        shutdown = [str(executable), "stop", "--config-dir", workspace.name]
+        try:
+            subprocess.run(
+                command + ["--daemon"], cwd=root, env=env, check=True, timeout=90
+            )
+            subprocess.run(managed, cwd=root, env=env, check=True)
+            duplicate = subprocess.run(
+                command, cwd=root, env=env, capture_output=True, text=True, check=False
+            )
+            assert duplicate.returncode == 1 and "already running" in duplicate.stderr
+        finally:
+            subprocess.run(shutdown, cwd=root, env=env, check=True, timeout=40)
+        stopped = subprocess.run(
+            managed, cwd=root, env=env, capture_output=True, check=False
+        )
+        assert stopped.returncode == 3
         print("Installed wheel smoke test passed outside the source checkout.")
 
 
