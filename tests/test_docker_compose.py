@@ -8,6 +8,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -166,7 +167,6 @@ def test_google_auth_compose(
         ("4443", 4443)
     ]
     assert all(mount["read_only"] for mount in proxy["volumes"])
-    assert all(not mount["bind"]["create_host_path"] for mount in proxy["volumes"])
     assert proxy["read_only"]
     assert proxy["cap_drop"] == ["ALL"]
 
@@ -190,6 +190,16 @@ def test_google_auth_compose(
 
 def test_google_auth_policy() -> None:
     """Keep email admission restrictive and API/streaming behavior explicit."""
+    # Compose versions serialize false bind options differently; check the source.
+    deployment = yaml.safe_load((ROOT / "compose/oauth2-true.yml").read_text())
+    mounts = deployment["services"]["oauth2-proxy"]["volumes"]
+    assert mounts
+    assert all(
+        mount["type"] == "bind"
+        and mount["read_only"] is True
+        and mount["bind"]["create_host_path"] is False
+        for mount in mounts
+    )
     policy = tomllib.loads((ROOT / "oauth2-proxy/oauth2-proxy.cfg").read_text())
     assert policy["provider"] == "google"
     assert policy["authenticated_emails_file"].endswith("/allowed-emails.txt")
