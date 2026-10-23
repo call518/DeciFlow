@@ -100,7 +100,7 @@ def test_invalid_env_does_not_print_secret(
     (directory / ".env").write_text(f'JEV_API_KEY="{secret}\n')
     assert cli_config.run_config_test(directory) == 1
     output = capsys.readouterr().out
-    assert "Invalid .env syntax at line 1" in output
+    assert "[Failed] Environment File" in output
     assert secret not in output and calls == []
 
 
@@ -139,9 +139,9 @@ def test_enabled_proxy_reports_all_missing_prerequisites(
     assert cli_config.run_config_test(directory) == 1
     output = capsys.readouterr().out
     for label in (
-        "OAUTH2_PROXY_CLIENT_ID",
-        "OAUTH2_PROXY_CLIENT_SECRET",
-        "OAUTH2_PROXY_COOKIE_SECRET",
+        "OAuth2-Proxy Client ID",
+        "OAuth2-Proxy Client Secret",
+        "OAuth2-Proxy Cookie Secret",
         "Public HTTPS Origin",
         "OAuth2-Proxy Policy",
         "Email Allow-List",
@@ -306,4 +306,26 @@ def test_startup_report_only_shows_summary(
     assert f"Config Test {'Failed' if failure else 'Passed'}" in output
     assert "[Passed]" not in output and "[Failed]" not in output
     assert "Create this directory" not in output and "Setup guide" not in output
+    assert calls == ["laya"]
+
+
+@pytest.mark.parametrize("error_type", [ValueError, OSError, RuntimeError])
+def test_diagnostics_do_not_print_exception_values(
+    configuration: tuple[Path, list[str]],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    error_type: type[Exception],
+) -> None:
+    directory, calls = configuration
+    secret = "disposable-exception-credential"
+
+    def fail() -> None:
+        raise error_type(f"Invalid setting: {secret}")
+
+    monkeypatch.setattr(cli_config, "check_resources", fail)
+    assert cli_config.run_config_test(directory) == 1
+    captured = capsys.readouterr()
+    assert secret not in captured.out + captured.err
+    assert "[Failed] Application Resources" in captured.out
+    assert "Config Test Failed" in captured.out
     assert calls == ["laya"]

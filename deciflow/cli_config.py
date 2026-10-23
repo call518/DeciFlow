@@ -277,11 +277,12 @@ def run_config_test(directory: Path, *, detailed: bool = True) -> int:
         nonlocal passed, failed
         try:
             result = action()
-        except (OSError, ValueError, TypeError, RuntimeError, sqlite3.Error) as error:
+        except (OSError, ValueError, TypeError, RuntimeError, sqlite3.Error):
             failed += 1
             mark = "\033[91mFailed\033[0m" if color else "Failed"
             if detailed:
-                print(f"[{mark}] {label}: {error}", flush=True)
+                # Exception messages can contain configuration values or credentials.
+                print(f"[{mark}] {label}", flush=True)
             if detailed and hint:
                 print(f"         {hint}", flush=True)
             return None
@@ -349,12 +350,17 @@ def run_config_test(directory: Path, *, detailed: bool = True) -> int:
             )
         if protected:
             check("OAuth2-Proxy Executable", lambda: require_executable("oauth2-proxy"))
-            for key in (
-                "OAUTH2_PROXY_CLIENT_ID",
-                "OAUTH2_PROXY_CLIENT_SECRET",
-                "OAUTH2_PROXY_COOKIE_SECRET",
+            for label, key in (
+                ("OAuth2-Proxy Client ID", "OAUTH2_PROXY_CLIENT_ID"),
+                ("OAuth2-Proxy Client Secret", "OAUTH2_PROXY_CLIENT_SECRET"),
+                ("OAuth2-Proxy Cookie Secret", "OAUTH2_PROXY_COOKIE_SECRET"),
             ):
-                check(key, lambda key=key: require_secret(key))
+                check(
+                    label,
+                    lambda key=key: require_secret(key),
+                    "Set the corresponding credential in .env; the cookie secret must "
+                    "be a Base64-encoded 16, 24, or 32-byte key.",
+                )
             check("Public HTTPS Origin", proxy_origin)
             proxy = directory / "oauth2-proxy"
             policy = check(
