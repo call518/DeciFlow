@@ -102,12 +102,13 @@ def request(directory: Path, command: str = "status") -> dict[str, Any] | None:
             client.connect(str(socket_path(directory)))
             client.sendall(command.encode() + b"\n")
             output = client.makefile("rb").readline(8192)
-            return json.loads(output)
+            return json.loads(output) if output else None
     except (
         TimeoutError,
         FileNotFoundError,
         ConnectionRefusedError,
         ConnectionResetError,
+        BrokenPipeError,
     ):
         return None
 

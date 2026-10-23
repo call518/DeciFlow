@@ -18,6 +18,23 @@ from deciflow import cli, process_control
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.mark.parametrize("disconnected", ["send", "read", "eof"])
+def test_control_request_during_shutdown(tmp_path, monkeypatch, disconnected) -> None:
+    from unittest.mock import MagicMock
+
+    client = MagicMock()
+    client.__enter__.return_value = client
+    if disconnected == "send":
+        client.sendall.side_effect = BrokenPipeError(32, "Broken pipe")
+    elif disconnected == "read":
+        client.makefile.return_value.readline.side_effect = ConnectionResetError()
+    else:
+        client.makefile.return_value.readline.return_value = b""
+    monkeypatch.setattr(process_control.socket, "socket", lambda *args: client)
+    # A shutdown can close the control connection after connect succeeds.
+    assert process_control.request(tmp_path, "stop") is None
+
+
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         self.send_response(200)
@@ -120,14 +137,17 @@ def test_daemon_lifecycle_and_restart(installation) -> None:
     original = configuration.read_bytes()
     configuration.write_text("DECISION_ENGINE=invalid\n")
     assert invoke(directory, env, "status").returncode == 0
-    assert invoke(directory, env, "stop").returncode == 0
+    result = invoke(directory, env, "stop")
+    assert result.returncode == 0, result.stdout + result.stderr
     configuration.write_bytes(original)
     assert invoke(directory, env, "status").returncode == 3
-    assert invoke(directory, env, "stop").returncode == 0
+    result = invoke(directory, env, "stop")
+    assert result.returncode == 0, result.stdout + result.stderr
     assert (directory / "data/deciflow.sqlite3").exists()
     # A released lock and stale control path must not prevent another launch.
     assert invoke(directory, env, "run", "--daemon").returncode == 0
-    assert invoke(directory, env, "stop").returncode == 0
+    result = invoke(directory, env, "stop")
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_failed_daemon_never_reports_success(installation) -> None:
@@ -264,7 +284,8 @@ def test_daemon_stops_real_oauth2_proxy(installation, tmp_path: Path) -> None:
             pass
         assert time.monotonic() < deadline, (directory / "logs/daemon.log").read_text()
         time.sleep(0.1)
-    assert invoke(directory, env, "stop").returncode == 0
+    result = invoke(directory, env, "stop")
+    assert result.returncode == 0, result.stdout + result.stderr
     with pytest.raises(OSError):
         socket.create_connection(("127.0.0.1", port), timeout=0.2)
 
