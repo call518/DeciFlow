@@ -703,6 +703,12 @@ amd64/arm64. OpenSSL and initial GitHub access are required. Release archives ar
 cached outside Git in `~/.cache/deciflow/test-tools/`; binaries and test certificates
 use temporary storage. Set `OAUTH2_PROXY_BINARY` to use an existing executable offline.
 
+Action tests prepare pinned `pip`, `setuptools`, and `wheel` wheels once per test
+session using PyPI/index access and temporary storage. Action environments then
+install offline from this local index using the Python version under test.
+Tests use temporary data/log paths and generated Compose settings; no root access
+or personal `.env` is required.
+
 UI regression test (requires Node.js only for testing):
 
 ```bash

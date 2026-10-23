@@ -12,8 +12,19 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.fixture
+def compose_project(tmp_path: Path) -> Path:
+    """Validate public deployment files without the developer's private .env."""
+    shutil.copytree(ROOT / "compose", tmp_path / "compose")
+    shutil.copy(ROOT / "docker-compose.yml", tmp_path / "docker-compose.yml")
+    (tmp_path / ".env").touch()
+    return tmp_path
+
+
 @pytest.mark.parametrize("profile", ["cpu", "cuda", ""])
-def test_compose_deployment(profile: str, tmp_path: Path) -> None:
+def test_compose_deployment(
+    profile: str, tmp_path: Path, compose_project: Path
+) -> None:
     """Select only the requested engine and preserve mounts and GPU isolation."""
     if shutil.which("docker") is None:
         pytest.skip("Docker Compose is required for configuration validation")
@@ -52,7 +63,7 @@ def test_compose_deployment(profile: str, tmp_path: Path) -> None:
             "--format",
             "json",
         ],
-        cwd=ROOT,
+        cwd=compose_project,
         env=env,
         capture_output=True,
         text=True,
@@ -94,7 +105,9 @@ def test_compose_deployment(profile: str, tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("profile", ["cpu", "cuda", ""])
-def test_google_auth_compose(profile: str, tmp_path: Path) -> None:
+def test_google_auth_compose(
+    profile: str, tmp_path: Path, compose_project: Path
+) -> None:
     """Protect all UI routes without exposing an alternate application port."""
     if shutil.which("docker") is None:
         pytest.skip("Docker Compose is required for configuration validation")
@@ -126,7 +139,12 @@ def test_google_auth_compose(profile: str, tmp_path: Path) -> None:
         "json",
     ]
     result = subprocess.run(
-        command, cwd=ROOT, env=env, capture_output=True, text=True, check=True
+        command,
+        cwd=compose_project,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     services = json.loads(result.stdout)["services"]
     expected = {"ui", "oauth2-proxy"}
@@ -159,7 +177,12 @@ def test_google_auth_compose(profile: str, tmp_path: Path) -> None:
         )
     )
     missing = subprocess.run(
-        command, cwd=ROOT, env=env, capture_output=True, text=True, check=False
+        command,
+        cwd=compose_project,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert missing.returncode != 0
     assert "OAUTH2_PROXY_CLIENT_SECRET" in missing.stderr

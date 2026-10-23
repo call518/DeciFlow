@@ -683,6 +683,12 @@ OpenSSL과 최초 GitHub 접근이 필요합니다. 압축 파일은 Git 저장�
 `~/.cache/deciflow/test-tools/`에 캐시하고 실행 파일·테스트 인증서는 임시 저장소를
 사용합니다. 오프라인에서는 `OAUTH2_PROXY_BINARY`로 기존 실행 파일을 지정하세요.
 
+Action 테스트는 세션당 한 번 PyPI·패키지 인덱스에서 버전이 고정된 `pip`,
+`setuptools`, `wheel` 파일을 임시 저장소에 준비합니다. 이후 Action 환경 설치는
+테스트 중인 Python 버전과 로컬 인덱스를 사용하여 오프라인으로 수행합니다.
+테스트는 임시 데이터·로그 경로와 자체 Compose 설정을 사용하므로 root 권한이나
+개인 `.env`가 필요하지 않습니다.
+
 UI 회귀 테스트(Node.js는 테스트에만 필요):
 
 ```bash
