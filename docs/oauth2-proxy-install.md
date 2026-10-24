@@ -80,7 +80,7 @@ For uv tool:
 
 ```bash
 deciflow config test
-deciflow run --daemon
+deciflow start --daemon
 deciflow status
 deciflow stop
 ```

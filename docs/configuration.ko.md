@@ -19,7 +19,7 @@ Laya 서버 설정은 Laya 호스트에서 관리하며, Compose는 `LAYA_API_KE
 | --- | --- | --- |
 | PyPI / uv tool | `~/.config/deciflow/.env` | `deciflow init`으로 샘플 생성 후 수정 |
 | Git clone + Docker Compose | 호스트 `<checkout>/.env`, UI 컨테이너 내부 `/app/.env`로 마운트 | `<checkout>/.env.example`을 `<checkout>/.env`로 복사하고 저장소에서 Compose 실행 |
-| Git clone + 네이티브 Python | `<checkout>/.env` | 샘플 복사 후 `uv run deciflow run --config-dir "$PWD"`, `uv run --extra laya python laya_server.py`가 같은 파일을 읽음 |
+| Git clone + 네이티브 Python | `<checkout>/.env` | 샘플 복사 후 `uv run deciflow start --config-dir "$PWD"`, `uv run --extra laya python laya_server.py`가 같은 파일을 읽음 |
 
 uv tool의 `~`는 명령 실행 사용자의 홈입니다. 따라서 root는
 `/root/.config/deciflow/.env`를 사용합니다. `--config-dir /path/to/deciflow-config`를
@@ -259,7 +259,7 @@ OAuth2-Proxy가 UI·API 요청에 Google 로그인을 요구합니다. false이�
 | --- | --- | --- |
 | `access.log` | HTTP 클라이언트 주소·메서드·요청 경로·응답 상태. 실패한 요청을 찾는 출발점입니다. HTTP 200이어도 응답의 분석 결과나 스트림 이벤트는 실패일 수 있습니다. | 10 MiB마다 회전, 백업 5개 유지 |
 | `server.log` | Uvicorn 시작·종료·경고·처리되지 않은 요청 예외와, 처리된 엔진 설정·저장소/I/O·Criteria 생성·파일 스트림·백그라운드 작업·초기화 실패 진단. error.log 역할을 하며 정보 메시지도 포함합니다. | 10 MiB마다 회전, 백업 5개 유지 |
-| `daemon.log` | `deciflow run --daemon`이 생성합니다. 시작 검사·일반 표준 출력/오류·관리 중인 OAuth2-Proxy 출력을 수집합니다. 기동·Google 로그인 실패 시 확인합니다. Uvicorn 서버·접근 로그는 전용 파일에만 기록하여 여기에 중복하지 않습니다. | 재실행 시 이어 쓰기, 자동 회전 없음 |
+| `daemon.log` | `deciflow start --daemon`이 생성합니다. 시작 검사·일반 표준 출력/오류·관리 중인 OAuth2-Proxy 출력을 수집합니다. 기동·Google 로그인 실패 시 확인합니다. Uvicorn 서버·접근 로그는 전용 파일에만 기록하여 여기에 중복하지 않습니다. | 재실행 시 이어 쓰기, 자동 회전 없음 |
 
 포그라운드와 Docker 실행은 서버·접근 파일과 함께 Uvicorn 콘솔 출력도 유지합니다.
 Docker는 `daemon.log`를 만들지 않습니다. OAuth2-Proxy 활성화 시 컨테이너 콘솔·프록시

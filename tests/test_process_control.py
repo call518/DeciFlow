@@ -97,7 +97,7 @@ def invoke(
 
 def test_daemon_lifecycle_and_restart(installation) -> None:
     directory, env = installation
-    result = invoke(directory, env, "run", "--daemon")
+    result = invoke(directory, env, "start", "--daemon")
     assert result.returncode == 0, result.stdout + result.stderr
     info = process_control.request(directory)
     assert info and info["state"] == "Running" and info["daemon"]
@@ -106,7 +106,7 @@ def test_daemon_lifecycle_and_restart(installation) -> None:
     assert "daemon.log" in result.stdout
     assert (directory / "logs/daemon.log").stat().st_mode & 0o777 == 0o600
     assert invoke(directory, env, "status").returncode == 0
-    duplicate = invoke(directory, env, "run", "--daemon")
+    duplicate = invoke(directory, env, "start", "--daemon")
     assert duplicate.returncode == 1 and "already running" in duplicate.stderr
     base = info["url"]
     restart = urllib.request.Request(
@@ -132,7 +132,7 @@ def test_daemon_lifecycle_and_restart(installation) -> None:
         time.sleep(0.1)
     restarted = process_control.request(directory)
     assert restarted and restarted["pid"] == pid
-    assert invoke(directory, env, "run").returncode == 1
+    assert invoke(directory, env, "start").returncode == 1
     configuration = directory / ".env"
     original = configuration.read_bytes()
     configuration.write_text("DECISION_ENGINE=invalid\n")
@@ -145,7 +145,7 @@ def test_daemon_lifecycle_and_restart(installation) -> None:
     assert result.returncode == 0, result.stdout + result.stderr
     assert (directory / "data/deciflow.sqlite3").exists()
     # A released lock and stale control path must not prevent another launch.
-    assert invoke(directory, env, "run", "--daemon").returncode == 0
+    assert invoke(directory, env, "start", "--daemon").returncode == 0
     result = invoke(directory, env, "stop")
     assert result.returncode == 0, result.stdout + result.stderr
 
@@ -162,7 +162,7 @@ def test_failed_daemon_never_reports_success(installation) -> None:
         )
         + "\n"
     )
-    result = invoke(directory, env, "run", "--daemon")
+    result = invoke(directory, env, "start", "--daemon")
     assert result.returncode == 1
     assert "Config Test Failed" in result.stdout
     assert not process_control.locked(directory)
@@ -173,7 +173,7 @@ def test_daemon_requires_file_logging(installation) -> None:
     directory, env = installation
     path = directory / ".env"
     path.write_text(path.read_text() + "DECIFLOW_LOG_DIR=\n")
-    result = invoke(directory, env, "run", "--daemon")
+    result = invoke(directory, env, "start", "--daemon")
     assert result.returncode == 1 and "DECIFLOW_LOG_DIR" in result.stderr
     assert not process_control.locked(directory)
 
@@ -242,7 +242,7 @@ def test_daemon_stops_real_oauth2_proxy(installation, tmp_path: Path) -> None:
         "OAUTH2_PROXY_CLIENT_ID=local-test\nOAUTH2_PROXY_CLIENT_SECRET=local-test\n"
         f"OAUTH2_PROXY_COOKIE_SECRET={base64.urlsafe_b64encode(b't' * 32).decode()}\n"
     )
-    result = invoke(directory, env, "run", "--daemon")
+    result = invoke(directory, env, "start", "--daemon")
     assert result.returncode == 0, (
         result.stdout + result.stderr + (directory / "logs/daemon.log").read_text()
     )

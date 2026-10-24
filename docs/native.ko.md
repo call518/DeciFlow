@@ -79,7 +79,7 @@ uv run --extra laya python laya_server.py
 같은 저장소에서 터미널 B로 실행합니다.
 
 ```bash
-uv run --extra laya deciflow run --config-dir "$PWD"
+uv run --extra laya deciflow start --config-dir "$PWD"
 ```
 
 두 명령에 `--extra laya`를 지정해 동일한 환경을 유지합니다.
@@ -113,7 +113,7 @@ Elasticsearch 서버는 필요하지 않습니다. 다른 사용 흐름은 [사�
 저장소 루트에서 포그라운드 명령 대신 데몬 실행을 선택할 수 있습니다.
 
 ```bash
-uv run --extra laya deciflow run --daemon --config-dir "$PWD"
+uv run --extra laya deciflow start --daemon --config-dir "$PWD"
 uv run --extra laya deciflow status --config-dir "$PWD"
 uv run --extra laya deciflow stop --config-dir "$PWD"
 ```
@@ -142,7 +142,7 @@ uv run --extra laya deciflow stop --config-dir "$PWD"
 2단계의 쓰기 가능한 데이터·로그 경로를 유지하고 아래만 실행하세요.
 
 ```bash
-uv run deciflow run --config-dir "$PWD"
+uv run deciflow start --config-dir "$PWD"
 ```
 
 같은 로컬 UI를 열고 앞의 샘플 절차를 따릅니다.
@@ -150,7 +150,7 @@ uv run deciflow run --config-dir "$PWD"
 ## 선택: OAuth2-Proxy를 통한 네이티브 HTTPS
 
 `OAUTH2_PROXY_ENABLED=true`로 설정하면 같은
-`uv run --extra laya deciflow run --config-dir "$PWD"` 명령이 OAuth2-Proxy도 자동 실행합니다.
+`uv run --extra laya deciflow start --config-dir "$PWD"` 명령이 OAuth2-Proxy도 자동 실행합니다.
 DeciFlow는 루프백에 유지되며 OAuth2-Proxy가 외부 HTTPS를 수신합니다.
 
 ```text

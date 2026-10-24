@@ -79,7 +79,7 @@ uv tool 설치에서는 다음 명령을 사용하세요.
 
 ```bash
 deciflow config test
-deciflow run --daemon
+deciflow start --daemon
 deciflow status
 deciflow stop
 ```

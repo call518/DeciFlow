@@ -68,7 +68,7 @@ sudo install -d -o "$(id -un)" -g "$(id -gn)" \
 ### 3. DeciFlow 기동
 
 ```bash
-deciflow run
+deciflow start
 ```
 
 기동 시 준비 상태를 검사한 뒤 UI를 제공합니다. 상세 진단은 `deciflow config test`,
@@ -76,7 +76,7 @@ deciflow run
 다른 설정 디렉터리를 사용한다면 모든 명령에 같은 `--config-dir`을 지정합니다.
 Ctrl+C로 DeciFlow를 종료합니다.
 
-백그라운드 실행은 `deciflow run --daemon`, 상태 확인은 `deciflow status`,
+백그라운드 실행은 `deciflow start --daemon`, 상태 확인은 `deciflow status`,
 정상 종료는 `deciflow stop`을 사용하세요. 로그와 사용자 지정 설정은
 [프로세스 관리](docs/tool-install.ko.md#실행상태-확인종료)를 참고하세요.
 

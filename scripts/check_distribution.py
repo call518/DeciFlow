@@ -79,7 +79,7 @@ def main() -> None:
         )
         executable = root / "bin" / "deciflow"
         workspace = root / "workspace"
-        command = [str(executable), "run", "--config-dir", workspace.name]
+        command = [str(executable), "start", "--config-dir", workspace.name]
         subprocess.run([str(executable), "--help"], cwd=root, env=env, check=True)
         uninitialized = subprocess.run(
             command,

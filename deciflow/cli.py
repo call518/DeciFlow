@@ -78,15 +78,16 @@ def main() -> None:
         help="directory containing .env and oauth2-proxy files (default: ~/.config/deciflow)",
     )
     parser = argparse.ArgumentParser(
-        description="Run DeciFlow after checking its configuration.", parents=[location]
+        description="Start DeciFlow after checking its configuration.",
+        parents=[location],
     )
     parser.add_argument("--version", action="version", version=version("deciflow"))
     commands = parser.add_subparsers(dest="command")
-    run = commands.add_parser(
-        "run", parents=[location], help="validate and start DeciFlow"
+    start = commands.add_parser(
+        "start", parents=[location], help="validate and start DeciFlow"
     )
-    run.add_argument(
-        "--daemon", action="store_true", help="run detached with file logging"
+    start.add_argument(
+        "--daemon", action="store_true", help="start detached with file logging"
     )
     commands.add_parser(
         "status", parents=[location], help="show this installation's process status"
@@ -177,7 +178,7 @@ def main() -> None:
                 sys.executable,
                 "-m",
                 "deciflow.cli",
-                "run",
+                "start",
                 "--config-dir",
                 str(directory),
             ]

@@ -28,7 +28,7 @@ If the shell cannot find `deciflow`, run `uv tool update-shell` and open a new s
 
 `deciflow init` creates `~/.config/deciflow/.env` with private file permissions
 and prepares OAuth2-Proxy templates. It does not test configuration or start a
-server. Edit the generated file before starting `deciflow run`.
+server. Edit the generated file before starting `deciflow start`.
 Existing configuration files are never overwritten. No domain, certificate, or
 Google configuration is needed with `OAUTH2_PROXY_ENABLED=false`.
 The default path belongs to the user running the command; root uses
@@ -66,11 +66,11 @@ Alternatively, set `DECIFLOW_DATA_DIR` and `DECIFLOW_LOG_DIR` to your own writab
 directories and create them before startup. Then run:
 
 ```bash
-deciflow run
+deciflow start
 ```
 
 Open `http://127.0.0.1:4000`. Check the engine status before running a Task.
-Every `deciflow run` startup, including UI Restart, first runs the complete
+Every `deciflow start` startup, including UI Restart, first runs the complete
 configuration test. The server starts only if all checks pass. A missing Jev key,
 an unreachable engine, or another failed prerequisite blocks startup. It never
 creates a missing `.env` automatically; use `deciflow init`. There is no automatic
@@ -85,14 +85,14 @@ Relative Source and Action paths resolve from the configuration directory.
 Built-in Docker sample Sources use `/host-logs/...`; create or edit a Source to
 point to an actual local file for this installation. Ctrl+C stops the application.
 
-## Run, Status, and Stop
+## Start, Status, and Stop
 
 CLI process management supports Linux, WSL2, and macOS. Run in the foreground or
 choose daemon mode; do not run both for the same configuration:
 
 ```bash
-deciflow run
-deciflow run --daemon
+deciflow start
+deciflow start --daemon
 deciflow status
 deciflow stop
 ```
@@ -125,7 +125,7 @@ no automatic start on boot or restart after a crash.
 For a custom configuration, pass the same directory to each command:
 
 ```bash
-deciflow run --daemon --config-dir /path/to/deciflow-config
+deciflow start --daemon --config-dir /path/to/deciflow-config
 deciflow status --config-dir /path/to/deciflow-config
 deciflow stop --config-dir /path/to/deciflow-config
 ```
@@ -138,7 +138,7 @@ To select another configuration directory, use the same option for all commands:
 deciflow init --config-dir /path/to/deciflow-config
 deciflow config list --config-dir /path/to/deciflow-config
 deciflow config test --config-dir /path/to/deciflow-config
-deciflow run --config-dir /path/to/deciflow-config
+deciflow start --config-dir /path/to/deciflow-config
 ```
 
 That directory holds `.env` and `oauth2-proxy/`; data and logs use their configured
@@ -168,7 +168,7 @@ output uses green **Passed** and bright red **Failed**; redirected output is pla
 text, and `NO_COLOR` disables colors. Exit status is `0` for success and `1` for failure.
 
 Use `init` to create templates, `config test` to diagnose readiness, and
-`deciflow run` to validate and start. `init`, `config test`, `config list`, and help do
+`deciflow start` to validate and start. `init`, `config test`, `config list`, and help do
 not start the server; only server startup requires the full readiness check.
 
 The check covers `.env` syntax, bundled UI resources, data/log write permissions,

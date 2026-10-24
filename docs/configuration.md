@@ -20,7 +20,7 @@ Compose → Git checkout native Python**. Follow the
 | --- | --- | --- |
 | PyPI / uv tool | `~/.config/deciflow/.env` | `deciflow init` creates templates; edit before startup |
 | Git clone + Docker Compose | `<checkout>/.env` on the host, mounted at `/app/.env` in the UI container | Copy `<checkout>/.env.example` to `<checkout>/.env`; run Compose from the checkout |
-| Git clone + native Python | `<checkout>/.env` | Copy the template; `uv run deciflow run --config-dir "$PWD"` and `uv run --extra laya python laya_server.py` read this file |
+| Git clone + native Python | `<checkout>/.env` | Copy the template; `uv run deciflow start --config-dir "$PWD"` and `uv run --extra laya python laya_server.py` read this file |
 
 For uv tool, `~` is the home of the user running the command; root therefore uses
 `/root/.config/deciflow/.env`. `--config-dir /path/to/deciflow-config` selects
@@ -272,7 +272,7 @@ belong to Task History and result storage.
 | --- | --- | --- |
 | `access.log` | HTTP client address, method, request path, and response status. Start here to find failed requests; a 200 response can still carry a failed analysis result or stream event. | Rotates at 10 MiB, keeping 5 backups |
 | `server.log` | Uvicorn startup/shutdown, warnings, unhandled request exceptions, and application diagnostics for handled engine configuration, storage/I/O, Criteria generation, file-stream, background job, and reset failures. Serves the role of an error log, but includes informational messages. | Rotates at 10 MiB, keeping 5 backups |
-| `daemon.log` | Created by `deciflow run --daemon`; captures startup checks, general stdout/stderr, and the managed OAuth2-Proxy output. Check it when startup or Google sign-in fails. Uvicorn server/access records use their dedicated files without duplication here. | Appends across launches; no automatic rotation |
+| `daemon.log` | Created by `deciflow start --daemon`; captures startup checks, general stdout/stderr, and the managed OAuth2-Proxy output. Check it when startup or Google sign-in fails. Uvicorn server/access records use their dedicated files without duplication here. | Appends across launches; no automatic rotation |
 
 Foreground and Docker execution retain Uvicorn console output as well as the
 server/access files. Docker does not create `daemon.log`; use

@@ -262,7 +262,7 @@ def launch_daemon(directory: Path, lock: RunLock) -> None:
                 sys.executable,
                 "-m",
                 "deciflow.cli",
-                "run",
+                "start",
                 "--config-dir",
                 str(directory),
             ],

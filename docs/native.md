@@ -81,7 +81,7 @@ It checks token budgets and exposes truncation metadata through the Laya API.
 In terminal B, from the same repository:
 
 ```bash
-uv run --extra laya deciflow run --config-dir "$PWD"
+uv run --extra laya deciflow start --config-dir "$PWD"
 ```
 
 Both commands use `--extra laya` to keep the same environment. DeciFlow listens on
@@ -115,14 +115,14 @@ Restart the relevant native process after changing its environment settings.
 From the repository root, choose daemon mode instead of the foreground command:
 
 ```bash
-uv run --extra laya deciflow run --daemon --config-dir "$PWD"
+uv run --extra laya deciflow start --daemon --config-dir "$PWD"
 uv run --extra laya deciflow status --config-dir "$PWD"
 uv run --extra laya deciflow stop --config-dir "$PWD"
 ```
 
 Keep `--extra laya` when sharing the environment with the local adapter; omit it
 for an external engine. These commands manage DeciFlow and its OAuth2-Proxy child,
-not the separate Laya process. See [process management](tool-install.md#run-status-and-stop)
+not the separate Laya process. See [process management](tool-install.md#start-status-and-stop)
 for logs, exit codes, and service limitations. Always select the checkout explicitly;
 omitting `--config-dir` selects `~/.config/deciflow` even inside the repository.
 Direct `python server.py` execution remains available but is not managed by
@@ -144,7 +144,7 @@ For a remote server, use its actual reachable URL. There is no automatic fallbac
 to paid Jev. Keep the writable data/log paths from step 2, then run only:
 
 ```bash
-uv run deciflow run --config-dir "$PWD"
+uv run deciflow start --config-dir "$PWD"
 ```
 
 Open the same local UI and follow the sample steps above.
@@ -152,7 +152,7 @@ Open the same local UI and follow the sample steps above.
 ## Optional: Native HTTPS with OAuth2-Proxy
 
 Set `OAUTH2_PROXY_ENABLED=true` to start OAuth2-Proxy automatically with the same
-`uv run --extra laya deciflow run --config-dir "$PWD"` command. DeciFlow stays on loopback;
+`uv run --extra laya deciflow start --config-dir "$PWD"` command. DeciFlow stays on loopback;
 OAuth2-Proxy owns the external HTTPS listener:
 
 ```text

@@ -27,7 +27,7 @@ deciflow init
 
 `deciflow init`은 소유자만 읽고 쓸 수 있는 `~/.config/deciflow/.env`와
 OAuth2-Proxy 샘플 파일을 준비합니다. 설정 검사나 서버 기동은 하지 않습니다.
-생성된 파일을 수정한 뒤 `deciflow run`을 실행하세요.
+생성된 파일을 수정한 뒤 `deciflow start`을 실행하세요.
 기존 설정 파일은 덮어쓰지 않습니다. `OAUTH2_PROXY_ENABLED=false`이면
 도메인·인증서·Google 설정이 필요하지 않습니다.
 기본 경로는 명령 실행 사용자의 홈을 기준으로 하므로 root는
@@ -65,11 +65,11 @@ sudo install -d -o "$(id -un)" -g "$(id -gn)" \
 기동 전에 해당 디렉터리를 생성하세요. 이후 실행합니다.
 
 ```bash
-deciflow run
+deciflow start
 ```
 
 `http://127.0.0.1:4000`에 접속하고 Task 실행 전에 엔진 상태를 확인하세요.
-`deciflow run`은 UI Restart를 포함해 기동할 때마다 전체 설정 검사를 먼저 수행하고,
+`deciflow start`은 UI Restart를 포함해 기동할 때마다 전체 설정 검사를 먼저 수행하고,
 모두 통과해야 서버를 시작합니다. Jev 키 누락, 엔진 연결 불가 등 준비 조건이 실패하면
 기동을 중단합니다. `.env`가 없다고 자동 생성하지 않으므로 `deciflow init`으로
 준비하세요. Jev로 자동 전환하지 않습니다.
@@ -89,8 +89,8 @@ CLI 프로세스 관리는 Linux·WSL2·macOS를 지원합니다. 포그라운�
 하나를 선택하며, 같은 설정으로 두 방식을 동시에 실행하지 마세요.
 
 ```bash
-deciflow run
-deciflow run --daemon
+deciflow start
+deciflow start --daemon
 deciflow status
 deciflow stop
 ```
@@ -121,7 +121,7 @@ Docker 컨테이너와 `server.py`를 직접 실행한 프로세스도 CLI 관�
 다른 설정 디렉터리를 사용하면 모든 명령에 같은 경로를 지정하세요.
 
 ```bash
-deciflow run --daemon --config-dir /path/to/deciflow-config
+deciflow start --daemon --config-dir /path/to/deciflow-config
 deciflow status --config-dir /path/to/deciflow-config
 deciflow stop --config-dir /path/to/deciflow-config
 ```
@@ -134,7 +134,7 @@ deciflow stop --config-dir /path/to/deciflow-config
 deciflow init --config-dir /path/to/deciflow-config
 deciflow config list --config-dir /path/to/deciflow-config
 deciflow config test --config-dir /path/to/deciflow-config
-deciflow run --config-dir /path/to/deciflow-config
+deciflow start --config-dir /path/to/deciflow-config
 ```
 
 이 디렉터리에는 `.env`와 `oauth2-proxy/`가 위치합니다. 데이터·로그는
@@ -163,7 +163,7 @@ deciflow config test --config-dir /path/to/deciflow-config
 **Passed**를 녹색, **Failed**를 밝은 빨강으로 표시합니다. 파일로 리디렉션하면 일반
 텍스트를 사용하고, `NO_COLOR`로 색상을 끌 수도 있습니다. 종료 코드는 성공 `0`, 실패 `1`입니다.
 
-`init`은 샘플 생성, `config test`는 준비 상태 진단, `deciflow run`은 검사 후 기동입니다.
+`init`은 샘플 생성, `config test`는 준비 상태 진단, `deciflow start`은 검사 후 기동입니다.
 `init`, `config test`, `config list`, 도움말은 서버를 시작하지 않으며, 전체 준비 검사가
 필수인 작업은 서버 기동입니다.
 
