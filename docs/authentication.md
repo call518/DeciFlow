@@ -62,7 +62,7 @@ Run from the DeciFlow repository root on the Docker host:
 
 ```bash
 test -f .env || cp .env.example .env
-test -f oauth2-proxy/allowed-emails.txt || cp oauth2-proxy/allowed-emails.example.txt oauth2-proxy/allowed-emails.txt
+test -f oauth2-proxy/allowed-emails.txt || cp -T oauth2-proxy/allowed-emails.example.txt oauth2-proxy/allowed-emails.txt
 mkdir -p oauth2-proxy/tls
 chmod 600 .env
 openssl rand -base64 32
@@ -98,7 +98,19 @@ The local settings, allow list, and TLS directory are excluded from Git and imag
 
 ## 3. Validate and Start
 
-Validate without printing the rendered configuration, which contains secrets:
+Check that the required files exist before starting. Compose disables automatic
+host-path creation for proxy mounts, but does not repair existing directories.
+If `allowed-emails.txt` is a directory, inspect its contents and move it aside
+before copying the example file again. Do not delete it without checking.
+
+```bash
+test -f oauth2-proxy/allowed-emails.txt &&
+  test -f oauth2-proxy/tls/fullchain.pem &&
+  test -f oauth2-proxy/tls/privkey.pem
+```
+
+Continue only if this check exits successfully. Validate without printing the
+rendered configuration, which contains secrets:
 
 ```bash
 docker compose config --quiet

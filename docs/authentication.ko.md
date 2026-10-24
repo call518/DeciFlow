@@ -62,7 +62,7 @@ Docker 호스트의 DeciFlow 저장소 루트에서 실행합니다.
 
 ```bash
 test -f .env || cp .env.example .env
-test -f oauth2-proxy/allowed-emails.txt || cp oauth2-proxy/allowed-emails.example.txt oauth2-proxy/allowed-emails.txt
+test -f oauth2-proxy/allowed-emails.txt || cp -T oauth2-proxy/allowed-emails.example.txt oauth2-proxy/allowed-emails.txt
 mkdir -p oauth2-proxy/tls
 chmod 600 .env
 openssl rand -base64 32
@@ -98,7 +98,18 @@ sudo chmod 600 oauth2-proxy/tls/privkey.pem
 
 ## 3. 검증과 실행
 
-비밀값이 포함된 전체 설정을 출력하지 않고 검증합니다.
+시작 전에 필수 파일이 실제 파일인지 확인하세요. Compose는 프록시 마운트의
+호스트 경로를 자동 생성하지 않지만 이미 존재하는 디렉터리를 복구하지는 않습니다.
+`allowed-emails.txt`가 디렉터리라면 내용을 확인하고 다른 경로로 옮긴 뒤
+예시 파일을 다시 복사하세요. 확인 없이 삭제하지 마세요.
+
+```bash
+test -f oauth2-proxy/allowed-emails.txt &&
+  test -f oauth2-proxy/tls/fullchain.pem &&
+  test -f oauth2-proxy/tls/privkey.pem
+```
+
+이 검사가 성공한 경우에만 계속 진행하세요. 비밀값이 포함된 전체 설정을 출력하지 않고 검증합니다.
 
 ```bash
 docker compose config --quiet
