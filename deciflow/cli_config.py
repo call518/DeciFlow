@@ -188,8 +188,8 @@ def check_engine(overrides: dict[str, str]) -> Engine:
     return engine
 
 
-def require_secret(key: str) -> None:
-    """Report missing credentials by identifier only."""
+def validate_proxy_setting(key: str) -> None:
+    """Validate a required proxy setting without returning its value."""
     value = os.getenv(key, "").strip()
     if not value:
         raise ValueError(f"Set {key}.")
@@ -357,7 +357,7 @@ def run_config_test(directory: Path, *, detailed: bool = True) -> int:
             ):
                 check(
                     label,
-                    lambda key=key: require_secret(key),
+                    lambda key=key: validate_proxy_setting(key),
                     "Set the corresponding credential in .env; the cookie secret must "
                     "be a Base64-encoded 16, 24, or 32-byte key.",
                 )

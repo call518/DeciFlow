@@ -159,10 +159,10 @@ def test_cookie_key_validation_does_not_expose_value(
         base64.urlsafe_b64encode(b"x" * (32 if valid else 3)).decode(),
     )
     if valid:
-        cli_config.require_secret("OAUTH2_PROXY_COOKIE_SECRET")
+        cli_config.validate_proxy_setting("OAUTH2_PROXY_COOKIE_SECRET")
     else:
         with pytest.raises(ValueError, match="16, 24, or 32"):
-            cli_config.require_secret("OAUTH2_PROXY_COOKIE_SECRET")
+            cli_config.validate_proxy_setting("OAUTH2_PROXY_COOKIE_SECRET")
 
 
 @pytest.mark.parametrize(
@@ -329,3 +329,39 @@ def test_diagnostics_do_not_print_exception_values(
     assert "[Failed] Application Resources" in captured.out
     assert "Config Test Failed" in captured.out
     assert calls == ["laya"]
+
+
+@pytest.mark.parametrize(
+    "key, value, label",
+    [
+        ("OAUTH2_PROXY_CLIENT_ID", "disposable-client-id", "Client ID"),
+        ("OAUTH2_PROXY_CLIENT_SECRET", "disposable-client-value", "Client Secret"),
+        (
+            "OAUTH2_PROXY_COOKIE_SECRET",
+            base64.urlsafe_b64encode(b"x" * 32).decode(),
+            "Cookie Secret",
+        ),
+    ],
+)
+def test_proxy_validation_never_returns_or_prints_setting_values(
+    configuration: tuple[Path, list[str]],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    key: str,
+    value: str,
+    label: str,
+) -> None:
+    directory, _ = configuration
+    path = directory / ".env"
+    path.write_text(
+        path.read_text().replace(
+            "OAUTH2_PROXY_ENABLED=false", "OAUTH2_PROXY_ENABLED=true"
+        )
+    )
+    monkeypatch.setenv(key, value)
+    assert cli_config.validate_proxy_setting(key) is None
+    # Other missing proxy prerequisites may fail; this credential must pass safely.
+    assert cli_config.run_config_test(directory) == 1
+    captured = capsys.readouterr()
+    assert f"[Passed] OAuth2-Proxy {label}" in captured.out
+    assert value not in captured.out + captured.err
