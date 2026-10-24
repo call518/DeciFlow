@@ -239,3 +239,20 @@ async def test_realtime_reads_new_logs_without_a_browser(
         ]
         assert [result["log"] for result in results] == ["new event"]
         assert calls == ["new event"]
+
+
+@pytest.mark.anyio
+async def test_unexpected_job_failure_is_logged_without_exception_values(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def fail() -> AsyncGenerator[str, None]:
+        yield server._encode({"type": "start", "total": None})
+        raise RuntimeError("disposable-sensitive-event")
+
+    job = Job({"mode": "batch"}, fail())
+    JOBS[job.id] = job
+    await job.task
+    assert job.state == "failed"
+    assert job.id in caplog.text
+    assert "RuntimeError" in caplog.text
+    assert "disposable-sensitive-event" not in caplog.text

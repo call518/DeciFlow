@@ -260,3 +260,43 @@ DeciFlow's original-command process replacement; use one process per data direct
 The application checks trusted origins. With `OAUTH2_PROXY_ENABLED=true`, both Docker
 and native deployments require Google sign-in through OAuth2-Proxy for UI/API requests.
 With false, access requires no sign-in. See [authentication](authentication.md).
+
+
+## Logging
+
+`DECIFLOW_LOG_DIR` selects DeciFlow's log directory (default `/var/log/deciflow`).
+These are operational logs; the original input logs, decisions, and Action results
+belong to Task History and result storage.
+
+| File | Contents and Use | Retention |
+| --- | --- | --- |
+| `access.log` | HTTP client address, method, request path, and response status. Start here to find failed requests; a 200 response can still carry a failed analysis result or stream event. | Rotates at 10 MiB, keeping 5 backups |
+| `server.log` | Uvicorn startup/shutdown, warnings, unhandled request exceptions, and application diagnostics for handled engine configuration, storage/I/O, Criteria generation, file-stream, background job, and reset failures. Serves the role of an error log, but includes informational messages. | Rotates at 10 MiB, keeping 5 backups |
+| `daemon.log` | Created by `deciflow run --daemon`; captures startup checks, general stdout/stderr, and the managed OAuth2-Proxy output. Check it when startup or Google sign-in fails. Uvicorn server/access records use their dedicated files without duplication here. | Appends across launches; no automatic rotation |
+
+Foreground and Docker execution retain Uvicorn console output as well as the
+server/access files. Docker does not create `daemon.log`; use
+`docker compose logs ui oauth2-proxy` for container console/proxy output when
+OAuth2-Proxy is enabled. Laya has its own service logs.
+
+For troubleshooting, find the request and timestamp in `access.log`, then inspect
+`server.log` at the same time. Application failure diagnostics identify the operation,
+exception type, code locations, and available OS/SQLite error codes. They omit
+exception values, source lines, local variables, request bodies, and provider bodies
+to avoid copying credentials or input data into these diagnostics. A wrapper's direct
+cause is used when present. They do not provide full exception text.
+
+Expected validation errors, access denials, and missing items are normally recorded
+only by their HTTP status and response; per-event classification/Action failures and
+SSH Host collection details remain in results and Task History. Engine health probes
+return connection status to the UI. Not every 4xx/5xx produces a separate diagnostic,
+and streaming failures can occur after HTTP 200. Uvicorn's unhandled-exception traces,
+access URLs, and third-party proxy output are not automatically redacted; protect
+log files and review them before sharing.
+
+An empty `DECIFLOW_LOG_DIR` disables server/access file logging and keeps console
+output; daemon mode requires a nonempty, existing, writable directory. Relative paths
+are resolved from DeciFlow's working/configuration directory. Configure host log
+rotation for `daemon.log`. Compose persists server/access logs in `deciflow-logs`;
+use a writable bind mount if host-directory access is needed. Restart DeciFlow after
+changing log settings.

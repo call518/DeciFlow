@@ -16,6 +16,7 @@ from uuid import uuid4
 import anyio
 
 from deciflow.classifier import EXECUTION_CONTROL, ExecutionControl, Result
+from deciflow.diagnostics import log_failure
 from deciflow.result_store import open_result_store
 
 
@@ -231,6 +232,7 @@ class Job:
             if not self.suspending:
                 self.state = "stopped"
         except Exception as error:  # noqa: BLE001 - preserve a terminal job result
+            log_failure(f"Analysis job {self.id}", error)
             self.state = "failed"
             self.append({"type": "error", "error": str(error)})
         finally:

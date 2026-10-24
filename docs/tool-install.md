@@ -100,10 +100,13 @@ deciflow stop
 `deciflow` without a command displays help. Foreground execution stops with Ctrl+C.
 `--daemon` detaches from the terminal and returns only after the UI and, when
 enabled, OAuth2-Proxy are listening. It prints the PID, URL, configuration, and
-`DECIFLOW_LOG_DIR/daemon.log`. This file captures startup, console, and proxy output;
-server/access logs retain their existing rotation. The daemon log appends across
+`DECIFLOW_LOG_DIR/daemon.log`. This file captures startup diagnostics, general console,
+and proxy output. Uvicorn server/access records go only to `server.log` and
+`access.log`, respectively, without duplication in `daemon.log`; their existing
+rotation is retained. The daemon log appends across
 runs; configure host log retention as needed. Daemon mode requires a nonempty,
 existing, writable `DECIFLOW_LOG_DIR`.
+See [Logging](configuration.md#logging) for the three log files, troubleshooting, and recording limits.
 
 A configuration directory can have only one CLI-managed process. `status` and
 `stop` use a private local control socket, not a saved PID to signal. They do not

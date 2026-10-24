@@ -768,10 +768,9 @@ Local Laya installation and execution are covered in the
 
 ### DeciFlow HTTP logs
 
-Set `DECIFLOW_LOG_DIR=/var/log/deciflow` in `.env` and restart DeciFlow to write timestamped
-`server.log` (startup and server errors) and `access.log` (client, request, HTTP status),
-while retaining console logs. The default is `/var/log/deciflow`; missing directories
-are created automatically with parent directories, requiring write permission. Relative paths start at the project directory. Each
-file rotates at 10 MiB with 5 backups. Empty disables file logging. This does not
-record browser interactions or classification results. Docker Compose already persists these logs in the `deciflow-logs` volume.
-For direct host-directory access, replace that volume mount with a writable bind mount.
+`server.log` records server activity and operational failures; `access.log` records
+HTTP requests. CLI daemon mode also writes startup, general console, and proxy output
+to `daemon.log`, without duplicating Uvicorn server/access records. Configure their
+directory with `DECIFLOW_LOG_DIR` (default `/var/log/deciflow`). See
+[Logging](docs/configuration.md#logging) for file roles, retention, troubleshooting,
+and recording limits.

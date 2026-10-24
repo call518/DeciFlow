@@ -61,6 +61,7 @@ from deciflow.config import (
 from deciflow.config_store import get_data_directory
 from deciflow.configured_sources import follow_configured, read_configured
 from deciflow.criteria_generation import generate_criteria, preview_samples
+from deciflow.diagnostics import log_failure
 from deciflow.hdfs_sources import (
     prepare_hdfs_sources,
     read_hdfs_sources,
@@ -183,6 +184,7 @@ async def handle_status(request: Request) -> Response:
     try:
         engine = get_engine()
     except ValueError as error:
+        log_failure("handle_status", error)
         return _json(503, {"error": str(error)})
     return _json(
         200,
@@ -249,7 +251,8 @@ async def handle_engine_health(request: Request) -> Response:
     """Check provider reachability without inference or exposing credentials."""
     try:
         engine = get_engine()
-    except ValueError:
+    except ValueError as error:
+        log_failure("Engine health configuration", error)
         return _json(503, {"error": "Invalid decision engine configuration."})
     async with httpx.AsyncClient(timeout=5) as client:
         state = await _check_engine_connection(engine, client)
@@ -448,8 +451,10 @@ async def handle_classify(request: Request) -> Response:
     try:
         engine = get_engine()
     except ValueError as error:
+        log_failure("handle_classify", error)
         return _json(503, {"error": str(error)})
     if engine.name == "jev" and not engine.api_key:
+        logging.getLogger("uvicorn.error").error("Jev API key is not configured.")
         return _json(
             503,
             {"error": "Set the JEV_API_KEY environment variable on the server."},
@@ -609,6 +614,7 @@ async def handle_file_events(
                             )
                         yield event
         except (OSError, UnicodeError, ValueError) as error:
+            log_failure("handle_file_events", error)
             yield _encode({"type": "error", "error": f"File source stopped: {error}"})
         finally:
             await records.aclose()
@@ -694,8 +700,11 @@ async def handle_file_source(request: Request) -> Response:
         values = body.get("sources")
         settings, events = await prepare_file_execution(mode, values)
     except EngineUnavailableError as error:
+        log_failure("handle_file_source", error)
         return _json(503, {"error": str(error)})
     except (ValueError, TypeError, OSError) as error:
+        if isinstance(error, OSError):
+            log_failure("handle_file_source", error)
         return _json(400, {"error": str(error)})
     if body.get("persist") is True:
         return _start_job(settings, events)
@@ -753,6 +762,8 @@ async def launch_task(task: Result, trigger: str) -> Result:
             JOBS[job.id] = job
             return job.snapshot()
         except (ValueError, TypeError, OSError) as error:
+            if isinstance(error, (OSError, EngineUnavailableError)):
+                log_failure("launch_task", error)
             return record_unstarted_run(task, "failed", trigger, str(error))
     finally:
         TASK_STARTING.discard(identity)
@@ -808,6 +819,8 @@ async def restore_task_runs() -> set[str]:
             job = Job(settings, events, get_data_directory(), restored=snapshot)
             JOBS[job.id] = job
         except (ValueError, TypeError, OSError) as error:
+            if isinstance(error, OSError):
+                log_failure("restore_task_runs", error)
             snapshot.update(
                 state="stopped" if snapshot.get("state") == "stopped" else "failed",
                 finishedAt=datetime.now(UTC).isoformat(),
@@ -1053,6 +1066,8 @@ async def handle_delete_check(request: Request) -> Response:
         references = sorted({item["description"] for item in details}, key=str.casefold)
         return _json(200, {"references": references, "details": details})
     except (ValueError, TypeError, OSError) as error:
+        if isinstance(error, OSError):
+            log_failure("handle_delete_check", error)
         return _json(400, {"error": str(error)})
 
 
@@ -1111,6 +1126,8 @@ async def handle_tasks(request: Request) -> Response:
             )
         return _json(200, {"tasks": tasks})
     except (ValueError, TypeError, OSError) as error:
+        if isinstance(error, OSError):
+            log_failure("handle_tasks", error)
         return _json(400, {"error": str(error)})
 
 
@@ -1155,6 +1172,8 @@ async def handle_task_operation(request: Request) -> Response:
             return _json(200, job.snapshot() if job else {"state": "idle"})
         return _json(202, await launch_task(task, "manual"))
     except (ValueError, TypeError, OSError) as error:
+        if isinstance(error, OSError):
+            log_failure("handle_task_operation", error)
         return _json(409, {"error": str(error)})
 
 
@@ -1208,6 +1227,8 @@ async def handle_test_ssh_host(request: Request) -> Response:
                 return _json(404, {"error": "SSH host not found."})
         return _json(200, await test_host_connection(value, trusted_key))
     except (ValueError, TypeError, OSError) as error:
+        if isinstance(error, OSError):
+            log_failure("handle_test_ssh_host", error)
         return _json(400, {"error": str(error)})
 
 
@@ -1240,6 +1261,8 @@ async def handle_ssh_hosts(request: Request) -> Response:
             delete_host(body.get("id"), [*saved, *active])
         return _json(200, {"hosts": load_hosts()})
     except (ValueError, TypeError, OSError) as error:
+        if isinstance(error, OSError):
+            log_failure("handle_ssh_hosts", error)
         return _json(400, {"error": str(error)})
 
 
@@ -1277,7 +1300,9 @@ async def handle_ssh_keys(request: Request) -> Response:
                 require_unused("SSH Key", body.get("id"))
                 delete_key(body.get("id"), active)
         return _json(200, {"keys": list_keys()})
-    except (ValueError, TypeError, OSError):
+    except (ValueError, TypeError, OSError) as error:
+        if isinstance(error, OSError):
+            log_failure("SSH key management", error)
         return _json(
             400,
             {
@@ -1313,6 +1338,8 @@ async def handle_sources(request: Request) -> Response:
         else:
             sources = load_sources()
     except (ValueError, TypeError, OSError) as error:
+        if isinstance(error, OSError):
+            log_failure("handle_sources", error)
         return _json(400, {"error": str(error)})
     return _json(200, {"sources": sources})
 
@@ -1329,9 +1356,12 @@ async def handle_hdfs_test(request: Request) -> Response:
         async with asyncio.timeout(20):
             result = await test_hdfs_source(spec)
         return _json(200, result)
-    except TimeoutError:
+    except TimeoutError as error:
+        log_failure("HDFS connection test", error)
         return _json(400, {"error": "HDFS connection test timed out."})
     except (ValueError, TypeError, OSError) as error:
+        if isinstance(error, OSError):
+            log_failure("handle_hdfs_test", error)
         return _json(400, {"error": str(error)})
 
 
@@ -1354,11 +1384,13 @@ async def handle_criteria_generation(request: Request) -> Response:
         if request.url.path.endswith("/samples"):
             return _json(200, {"samples": await preview_samples(body)})
         return _json(200, await generate_criteria(body))
-    except (httpx.HTTPError, TimeoutError):
+    except (httpx.HTTPError, TimeoutError) as error:
+        log_failure("handle_criteria_generation", error)
         return _json(
             502, {"error": "Source or OpenAI request timed out or failed. Retry."}
         )
-    except (ValueError, TypeError, OSError, KeyError):
+    except (ValueError, TypeError, OSError, KeyError) as error:
+        log_failure("handle_criteria_generation", error)
         # Provider bodies and Source contents may contain secrets; never echo them.
         return _json(
             400,
@@ -1395,6 +1427,8 @@ async def handle_criteria(request: Request) -> Response:
         else:
             profiles = deepcopy(PROFILES)
     except (ValueError, TypeError, OSError) as error:
+        if isinstance(error, OSError):
+            log_failure("handle_criteria", error)
         return _json(400, {"error": str(error)})
     return _json(200, {"profiles": profiles, "templates": DEFAULT_PROFILES})
 
@@ -1406,6 +1440,8 @@ async def handle_reset_action(request: Request) -> Response:
     try:
         action = await reset_action(request.path_params["action_id"])
     except (ValueError, TypeError, OSError) as error:
+        if isinstance(error, OSError):
+            log_failure("handle_reset_action", error)
         return _json(400, {"error": str(error)})
     return _json(
         200, {"action": {**action, "environmentStatus": get_action_status(action)}}
@@ -1462,6 +1498,8 @@ async def handle_actions(request: Request) -> Response:
                         require_unused("Action", action["id"])
             actions = await save_actions(values)
     except (ValueError, TypeError, OSError) as error:
+        if isinstance(error, OSError):
+            log_failure("handle_actions", error)
         return _json(400, {"error": str(error)})
     return _json(
         200,
@@ -1526,6 +1564,8 @@ async def handle_settings(request: Request) -> Response:
         )
         return _json(200, settings)
     except (ValueError, OSError) as error:
+        if isinstance(error, OSError):
+            log_failure("handle_settings", error)
         return _json(400, {"error": str(error)})
 
 
@@ -1545,6 +1585,8 @@ async def handle_configuration(request: Request) -> Response:
         metadata = await anyio.to_thread.run_sync(configuration_description)
         return _json(200, {**settings, **metadata})
     except (ValueError, TypeError, OSError) as error:
+        if isinstance(error, OSError):
+            log_failure("handle_configuration", error)
         return _json(400, {"error": str(error)})
 
 
@@ -1641,7 +1683,8 @@ async def handle_result_page(request: Request) -> Response:
         return _json(200, {**state, **page})
     except (ValueError, TypeError) as error:
         return _json(400, {"error": str(error)})
-    except (OSError, sqlite3.Error):
+    except (OSError, sqlite3.Error) as error:
+        log_failure("handle_result_page", error)
         return _json(503, {"error": "Result storage is unavailable."})
 
 
@@ -1768,8 +1811,8 @@ async def lifespan(application: Starlette) -> AsyncIterator[None]:
             try:
                 await anyio.to_thread.run_sync(reset_data, application.state.reset_root)
                 os.environ.pop("_DECIFLOW_RESET_ERROR", None)
-            except (OSError, ValueError, sqlite3.Error):
-                logging.getLogger("uvicorn.error").exception("DeciFlow reset failed.")
+            except (OSError, ValueError, sqlite3.Error) as error:
+                log_failure("DeciFlow reset", error)
                 os.environ["_DECIFLOW_RESET_ERROR"] = (
                     "Reset was incomplete. Check the server logs before retrying."
                 )
@@ -1851,7 +1894,9 @@ app = Starlette(
 
 
 def get_log_config() -> Result:
-    """Keep console logs and optionally rotate server/access files separately."""
+    """Rotate server/access files, keeping console copies outside daemon mode."""
+    from deciflow.process_control import DAEMON_ENV
+
     config = deepcopy(LOGGING_CONFIG)
     directory = os.getenv("DECIFLOW_LOG_DIR", DEFAULT_LOG_DIR).strip()
     if not directory:
@@ -1880,7 +1925,10 @@ def get_log_config() -> Result:
             "backupCount": 5,
             "encoding": "utf-8",
         }
-        config["loggers"][logger]["handlers"].append(name)
+        if os.getenv(DAEMON_ENV) == "1":
+            config["loggers"][logger]["handlers"] = [name]
+        else:
+            config["loggers"][logger]["handlers"].append(name)
     return config
 
 
