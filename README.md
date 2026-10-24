@@ -712,8 +712,9 @@ Validate API compatibility when upgrading Laya.
 
 ## Development
 
-Maintainers publish matching tag versions to TestPyPI and PyPI through the
-[tag release workflow](docs/tool-install.md#publish-from-a-git-tag).
+Maintainers publish matching tag versions to TestPyPI and PyPI, then create a
+GitHub Release with commit messages since the previous published Release through
+the [tag release workflow](docs/tool-install.md#publish-from-a-git-tag).
 
 For model evaluation commands and report fields, see [Laya log validation](docs/laya-validation.md).
 Evaluate the selected Laya model on 36 labeled cases across five profiles:

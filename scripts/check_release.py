@@ -8,15 +8,20 @@ from email.parser import BytesParser
 from pathlib import Path
 
 
-def check_release(tag: str, directory: Path) -> None:
-    """Validate a canonical release tag and the wheel/sdist prepared for upload."""
+def release_version(tag: str) -> str:
+    """Validate a canonical release tag and return its package version."""
     version = tag.removeprefix("v")
     number = r"(?:0|[1-9][0-9]*)"
     if not re.fullmatch(
         rf"{number}\.{number}\.{number}(?:(?:a|b|rc){number})?", version
     ):
         raise ValueError("Use a tag such as 0.5.7, v0.5.7, or 0.5.7rc1")
+    return version
 
+
+def check_release(tag: str, directory: Path) -> None:
+    """Validate a canonical release tag and the wheel/sdist prepared for upload."""
+    version = release_version(tag)
     wheels = list(directory.glob("*.whl"))
     sdists = list(directory.glob("*.tar.gz"))
     if len(wheels) != 1 or len(sdists) != 1:

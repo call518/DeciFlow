@@ -1,4 +1,4 @@
-name: Publish to TestPyPI and PyPI on Tag
+name: Publish Packages and GitHub Release on Tag
 
 on:
   push:
@@ -89,3 +89,27 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
+
+  release:
+    name: Publish GitHub Release
+    needs: publish-to-pypi
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    concurrency:
+      group: github-release-${{ github.repository }}
+      cancel-in-progress: false
+      queue: max
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - name: Check Out Tagged Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Publish Release with Commit Messages
+        run: python3 -m scripts.publish_release "$RELEASE_TAG"

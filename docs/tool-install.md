@@ -234,8 +234,10 @@ uv tool uninstall deciflow
 Maintainers publish with `.github/workflows/pypi-publish.yml`. A pushed tag starts
 Python 3.12 tests, builds an sdist and wheel, verifies their versions against the
 tag, and tests the installed wheel. The same artifacts are uploaded to **TestPyPI
-first**, then **PyPI** only after TestPyPI succeeds. Normal branch pushes do not
-publish packages; the separate pytest workflow checks Python 3.11 and 3.12.
+first**, then **PyPI** only after TestPyPI succeeds. A final, separate job creates
+a GitHub Release with English headings for the same tag only after PyPI succeeds. Normal branch
+pushes do not publish packages or Releases; the separate pytest workflow checks
+Python 3.11 and 3.12.
 
 `pyproject.toml` uses `dynamic = ["version"]` and Hatch's `hatch-vcs` plugin
 (backed by `setuptools-scm`). A clean `0.5.7` or `v0.5.7` tag produces package
@@ -259,11 +261,35 @@ Before the first tag push:
    chosen version tag on that commit. Pushing an old commit without this workflow
    does not use the new release process.
 
-Publishing uses GitHub OIDC with `id-token: write` only in the publishing jobs.
-The workflow does not create tags, commits, or GitHub Releases. Existing package
-versions cannot be overwritten. If TestPyPI succeeds but PyPI fails, fix the cause
-and rerun the failed job in the same workflow run to reuse its artifacts.
-Installing or running local checks does not upload anything.
+Package publishing uses GitHub OIDC with `id-token: write` only in the index
+publishing jobs. Only the GitHub Release job receives `contents: write` and uses
+the automatically provided `GITHUB_TOKEN`; no personal token or repository-wide
+write default is required. The workflow does not create tags or commits.
+
+Release notes collect **full commit messages**, including merge commits and breaking
+change descriptions, in oldest-first topological order with commit links. The range
+starts after the most recently **published GitHub Release**, not the preceding Git
+tag. Published prereleases count as a previous Release; drafts and the current tag
+are excluded. Tags without a Release do not narrow the range. With no published
+Release, all history reachable from the current tag is included. Commit messages
+are preserved verbatim rather than translated or summarized.
+
+The Release job checks that the remote tag, local tag, and checked-out commit match,
+and stops if the previous Release tag is missing or is not an ancestor. Existing
+published Releases are left unchanged on reruns; an existing draft for the same tag
+requires manual review. Tags ending in `aN`, `bN`, or `rcN` create prereleases and
+are not marked Latest. GitHub selects Latest automatically for normal Releases.
+Only Release jobs are serialized, with up to 100 pending jobs retained. Push version
+tags one at a time; concurrent or out-of-order publishing can make a newer Release
+an invalid baseline for an older tag, which fails safely rather than guessing.
+
+Existing package versions cannot be overwritten. If TestPyPI succeeds but PyPI fails,
+fix the cause and rerun the failed job in the same workflow run to reuse its artifacts.
+If only GitHub Release creation fails, rerun only the failed Release job; do not rerun
+successful package uploads. A Release failure does not roll back packages already
+published to either index. Installing or running local checks does not upload anything;
+`python3 -m scripts.publish_release TAG` is a publishing command for the workflow.
+
 
 ## Verify a Distribution
 

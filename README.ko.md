@@ -696,7 +696,8 @@ Laya 업그레이드 시 API 호환성을 검증합니다.
 ## 개발
 
 관리자는 [태그 릴리즈 워크플로](docs/tool-install.ko.md#git-태그로-게시)로
-태그와 같은 버전을 TestPyPI·PyPI에 게시합니다.
+태그와 같은 버전을 TestPyPI·PyPI에 게시한 뒤, 직전 게시된 Release 이후의 커밋
+메시지를 담은 GitHub Release를 생성합니다.
 
 모델 평가 명령과 보고서 필드는 [Laya 로그 검증](docs/laya-validation.ko.md)을 확인하세요.
 선택한 Laya 모델로 5개 프로필의 정답 사례 36개를 평가하려면:
