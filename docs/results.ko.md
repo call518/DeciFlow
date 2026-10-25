@@ -90,8 +90,18 @@ Uncertain이 아닙니다. 이는 DeciFlow의 고정 검토 기준이며 정답 
 요청의 `state`는 결과 JSON에서 `log` 또는 정규화한 `decisionInput`으로 확인하며,
 최상위 `state` 필드는 없습니다. 단독 `question` 필드도 사용하지 않습니다.
 
+
+예시는 로컬 파일이므로 `sourceHosts`에 `deciflowHost`와 같은 값을 넣습니다.
+두 필드는 Laya·Jev 응답 본문이 아닌 DeciFlow 결과 메타데이터이며, 응답 진단,
+저장·내보내기 결과와 Action 입력에도 포함됩니다.
+[호스트 설정](configuration.ko.md#결과-호스트-식별)을 참고하세요.
+
 ```json
 {
+  "sourceHosts": [
+    "analysis-01.example.com"
+  ],
+  "deciflowHost": "analysis-01.example.com",
   "requestedModel": "multilingual",
   "engine": "laya",
   "requestedAt": "2026-10-15T00:00:00+00:00",
@@ -317,7 +327,9 @@ Task 실행 정보와 호스트별 수집 상태는 실행 이력에 별도로 �
 | `log` | 한 청크로 제출한 원본 로그 내용. |
 | `decisionInput` / `inputNormalization` | 전처리로 모델 입력이 바뀐 경우에만 표시. 원본은 log에 유지. |
 | `source` | 로컬 파일의 실제 경로 또는 원격 입력의 ssh://사용자@호스트:포트/경로. |
-| `sourceId` / `sourceName` / `sourceType` | 등록 소스 ID·이름 스냅샷·local 또는 ssh 타입. 명시적 경로 API 입력에는 생략. |
+| `sourceId` / `sourceName` / `sourceType` | 등록 소스 ID·이름 스냅샷·local, ssh, hdfs, webhdfs 타입. 명시적 경로 API 입력에는 생략. |
+| `sourceHosts` | 수집 접근 지점 배열. 로컬은 `[deciflowHost]`, SSH는 해당 파일을 읽은 호스트만, HDFS/WebHDFS는 파일시스템 URI 또는 nameservice. 붙여넣기는 `[]`. 등록된 전체 호스트나 로그의 원래 발생 호스트를 뜻하지 않음. |
+| `deciflowHost` | DeciFlow 처리 호스트. 비어 있지 않은 `DECIFLOW_HOST`, 미설정 시 시스템 호스트명. Docker에서는 실제 호스트명을 명시. 저장된 값은 재생 시 유지. |
 | `hostId` / `hostName` / `hostAddress` / `hostPort` | 원격 호스트 식별·이름·접속 주소 스냅샷. Action 입력에도 포함. |
 | `chunkSequence` / `sourceFailure` | 원격 Source/Host별 청크 순번. sourceFailure는 엔진 판정 없이 발생한 접속·읽기 실패. |
 | `sourcePatterns` | 해당 파일을 선택한 로컬 경로·패턴 또는 호스트를 포함한 SSH·HDFS 패턴. |

@@ -283,7 +283,7 @@ function handleConfirmDelete(kind, name, description, identity=name) {
 
 const expandedJson = new WeakSet();
 function orderedResult(result) {
-  const metadata = ['requestedAt', 'decidedAt', 'schemaVersion', 'eventId', 'engine', 'engineConnection', 'requestedModel', 'source', 'sourceId', 'sourceName', 'sourceType', 'hostId', 'hostName', 'hostAddress', 'hostPort', 'sourceFailure', 'chunkSequence', 'sourcePatterns', 'line', 'lineEnd', 'lineCount', 'eventCount', 'profile', 'chunkEvents', 'incomplete', 'elapsedMs', 'requestBytes', 'inputBudget', 'httpStatus', 'responseContentType', 'responseHeaders', 'responseValidationError', 'action', 'actionExecution'];
+  const metadata = ['requestedAt', 'decidedAt', 'schemaVersion', 'eventId', 'engine', 'engineConnection', 'requestedModel', 'source', 'sourceId', 'sourceName', 'sourceType', 'sourceHosts', 'deciflowHost', 'hostId', 'hostName', 'hostAddress', 'hostPort', 'sourceFailure', 'chunkSequence', 'sourcePatterns', 'line', 'lineEnd', 'lineCount', 'eventCount', 'profile', 'chunkEvents', 'incomplete', 'elapsedMs', 'requestBytes', 'inputBudget', 'httpStatus', 'responseContentType', 'responseHeaders', 'responseValidationError', 'action', 'actionExecution'];
   return Object.fromEntries([
     ...metadata.filter(key => Object.hasOwn(result, key)).map(key => [key, result[key]]),
     ...Object.entries(result).filter(([key]) => !metadata.includes(key)),
@@ -296,7 +296,7 @@ function responseMessage(result) {
     const {answersInDecisions,...metadata}=body;body={...metadata,answers:result.decisions};
   }
   return {
-    ...Object.fromEntries(['engine','requestedModel','httpStatus','responseContentType','responseHeaders','responseValidationError','error'].filter(key=>Object.hasOwn(result,key)).map(key=>[key,result[key]])),
+    ...Object.fromEntries(['sourceHosts','deciflowHost','engine','requestedModel','httpStatus','responseContentType','responseHeaders','responseValidationError','error'].filter(key=>Object.hasOwn(result,key)).map(key=>[key,result[key]])),
     ...(!hasJson && !hasText?{message:['timeout','disconnected'].includes(result.engineConnection) || result.inputLimitExceeded || result.sourceFailure?'No provider response was received.':'The provider response was not recorded for this result.'}:{}),
     body,
   };
@@ -2621,6 +2621,8 @@ function render(updateList = true, incremental = false) {
         handleResultDisclosure(details,result,'action-error');row.append(details);
       }
     }
+    if(result.sourceHosts?.length)fields.push(['Source Hosts',result.sourceHosts.join(', ')]);
+    if(result.deciflowHost)fields.push(['DeciFlow Host',result.deciflowHost]);
     if (result.source) {
       const end=result.lineEnd || result.line;
       const multiple=end!==result.line;

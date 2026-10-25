@@ -2,7 +2,9 @@
 
 import asyncio
 import json
+import os
 import re
+import socket
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextvars import ContextVar
 from datetime import UTC, datetime
@@ -332,6 +334,21 @@ async def classify_log(
     return result
 
 
+def result_hosts(record: Result) -> Result:
+    """Identify the collection endpoint and processing host, not the event author."""
+    processor = os.getenv("DECIFLOW_HOST", "").strip() or socket.gethostname()
+    kind = record.get("sourceType")
+    if kind == "ssh":
+        source = record["hostAddress"]
+    elif kind in {"hdfs", "webhdfs"}:
+        source = record["hostId"]
+    elif record.get("source"):
+        source = processor
+    else:
+        source = None
+    return {"sourceHosts": [source] if source else [], "deciflowHost": processor}
+
+
 async def classify_batch(
     logs: list[str],
     classify: Classifier,
@@ -351,6 +368,7 @@ async def classify_batch(
                 result.update(error.metadata)
         if metadata is not None:
             result.update(metadata, lineCount=len(logs[index].splitlines()))
+        result.update(result_hosts(result))
         result["elapsedMs"] = int((perf_counter() - start) * 1000 + 0.5)
         return index, result
 
@@ -391,6 +409,7 @@ async def classify_stream(
             await control.admit()
         if record.get("_recoveredResult"):
             return number, record
+        record = {**record, **result_hosts(record)}
         start = perf_counter()
         try:
             if record.get("error"):

@@ -123,6 +123,8 @@ Action 실패로 표시합니다. 중복 패턴은 프로필, 청크 크기, Act
 포함됩니다. 이벤트 ID는 이번 실행을 식별하며, 같은 배치를 다시 실행하면 새 ID가
 생성됩니다. 코드에서 범주나 검토 표시를 기준으로 필터링할 수 있습니다.
 Laya와 Jev는 같은 계약을 사용합니다. 판정 실패·Source 읽기 실패·미할당 소스에는 실행하지 않습니다.
+모든 결과 입력에는 `sourceHosts`와 `deciflowHost`를 포함합니다.
+[결과 호스트 필드](results.ko.md)와 [호스트 설정](configuration.ko.md#결과-호스트-식별)을 참고하세요.
 원격 입력에는 `hostId`·`hostName`·`hostAddress`·`hostPort`·`chunkSequence`도
 포함하며, 로그 원문을 바꾸지 않고 대상 호스트를 식별합니다.
 

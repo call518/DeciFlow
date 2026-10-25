@@ -60,6 +60,7 @@ The native quick start explicitly overrides them with `./data` and `./logs`.
 | `OAUTH2_PROXY_ENABLED` | `false` | true: Google sign-in and HTTPS; false: unauthenticated HTTP demo. Docker and native |
 | `OAUTH2_PROXY_MANAGED` | `true` | CLI supervises the proxy process. Set false for a separate Docker proxy; skips host binary/HTTPS port availability checks while retaining the authentication UI |
 | `DECIFLOW_BIND_HOST` | `0.0.0.0` | HTTP bind address. Set 127.0.0.1 when adding OAuth2-Proxy to restrict direct access. Protected native mode enforces loopback; Compose does not publish the UI host port |
+| `DECIFLOW_HOST` | System hostname | Processing host identity in results; set the actual host explicitly in Docker. Blank uses the system hostname |
 | `DECISION_ENGINE` | `laya` | `laya` or `jev` |
 | `DECIFLOW_DATA_DIR` | `/var/lib/deciflow-data` | Shared Sources/Tasks/history/Actions/Criteria/SSH Key/host storage root; must be writable |
 | `DECIFLOW_CSRF_TRUSTED_ORIGINS` | Empty | Additional trusted UI origins, comma-separated. Same-origin requests need no setting; see [API origin protection](authentication.md#api-origin-protection) |
@@ -306,3 +307,15 @@ are resolved from DeciFlow's working/configuration directory. Configure host log
 rotation for `daemon.log`. Compose persists server/access logs in `deciflow-logs`;
 use a writable bind mount if host-directory access is needed. Restart DeciFlow after
 changing log settings.
+
+## Result Host Identity
+
+Each result records `deciflowHost` and an array `sourceHosts`. Local files use
+`[deciflowHost]`; SSH uses only the host that supplied that file, not every host
+registered on the Source. HDFS/WebHDFS uses the configured filesystem endpoint
+or nameservice, not the physical DataNode. Pasted text uses `[]`.
+These fields identify collection and processing locations, not necessarily the
+host that originally produced a forwarded log. Docker mounts are treated as local
+files. Values are saved with the result and retained during replay; changing host
+settings does not relabel historical results. Results, response diagnostics,
+JSON exports, and Action payloads expose these fields for both Laya and Jev.

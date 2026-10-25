@@ -255,7 +255,9 @@ truncation metadata and local byte-budget rejections are not counted as truncate
 This is log/state truncation, not a count of shortened question instructions.
 
 Displayed, copied, and exported result JSON starts with per-result metadata,
-including `requestedAt`, engine, source, and processing duration. Timestamps use
+including `requestedAt`, engine, source, `sourceHosts`, `deciflowHost`, and processing
+duration. Details shows **Source Hosts** and **DeciFlow Host**; response diagnostics
+also includes both fields. See [host identity](configuration.md#result-host-identity). Timestamps use
 ISO 8601 in UTC (`+00:00`); `requestedAt` is request preparation time, not completion.
 Result JSON keeps `requestedModel`, UTC `requestedAt`, request size, input budget,
 and the question/criteria snapshot. `providerResponse` preserves the returned

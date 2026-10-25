@@ -95,8 +95,18 @@ ISO 8601; durations use milliseconds. The API request's `state` is represented b
 `log` or normalized `decisionInput` in result JSON, not a top-level `state` field.
 There is no standalone `question` field.
 
+
+The example uses a local file, so `sourceHosts` contains the same value as
+`deciflowHost`. These are DeciFlow result metadata, not fields returned by Laya
+or Jev. They also appear in response diagnostics, stored/exported results, and
+Action input. See [host configuration](configuration.md#result-host-identity).
+
 ```json
 {
+  "sourceHosts": [
+    "analysis-01.example.com"
+  ],
+  "deciflowHost": "analysis-01.example.com",
   "requestedModel": "multilingual",
   "engine": "laya",
   "requestedAt": "2026-10-15T00:00:00+00:00",
@@ -323,7 +333,9 @@ and per-host collection status are stored separately in run history; see [Tasks]
 | `log` | Original log text submitted as one chunk. |
 | `decisionInput` / `inputNormalization` | Present only when preprocessing changed model input; the original stays in log. |
 | `source` | Resolved local file path, or ssh://user@host:port/path for remote input. |
-| `sourceId` / `sourceName` / `sourceType` | Registered source ID, name snapshot, and local or ssh type; omitted for explicit-path API input. |
+| `sourceId` / `sourceName` / `sourceType` | Registered source ID, name snapshot, and local, ssh, hdfs, or webhdfs type; omitted for explicit-path API input. |
+| `sourceHosts` | Array of collection endpoints: local files use `[deciflowHost]`; SSH uses only the host that supplied the file; HDFS/WebHDFS uses its filesystem URI or nameservice. Pasted text uses `[]`. Not the full registered host list or necessarily the original event host. |
+| `deciflowHost` | DeciFlow processing host: nonblank `DECIFLOW_HOST`, otherwise system hostname. Set explicitly in Docker to identify the actual host. Saved values remain unchanged during replay. |
 | `hostId` / `hostName` / `hostAddress` / `hostPort` | Remote host identity and connection-address snapshot; also included in Action input. |
 | `chunkSequence` / `sourceFailure` | Remote Source/Host chunk order; sourceFailure marks a read/connect failure without an engine decision. |
 | `sourcePatterns` | Local paths/patterns or qualified SSH/HDFS patterns matching this file. |

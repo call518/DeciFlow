@@ -21,6 +21,10 @@ Rocky Linux 8·9·10 호스트에 아래 도구와 Docker 실행 권한·외부 
 기본 HTTP 수신 주소는 `DECIFLOW_BIND_HOST=0.0.0.0`입니다. OAuth2-Proxy를 추가할 때는
 인증 우회를 막도록 `127.0.0.1`로 변경합니다.
 
+결과의 호스트 식별자는 기본적으로 시스템 호스트명을 사용합니다. Docker에서는
+`.env`의 `DECIFLOW_HOST`에 실제 호스트명을 지정하세요.
+[호스트 식별](docs/configuration.ko.md#결과-호스트-식별)을 참고하세요.
+
 설정 예시는 `.env.example`과 같은 순서입니다.
 동일 출처 UI 요청은 별도 출처 설정 없이 동작합니다. 예외 설정은
 [API 출처 보호](docs/authentication.ko.md#api-origin-protection)를 참고하세요.

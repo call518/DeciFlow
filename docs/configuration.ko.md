@@ -57,6 +57,7 @@ Docker는 컨테이너 내부 경로를 이름 있는 볼륨으로 보존하고,
 | `OAUTH2_PROXY_ENABLED` | `false` | true: Google 로그인·HTTPS, false: 인증 없는 HTTP 데모. Docker·네이티브 공통 |
 | `OAUTH2_PROXY_MANAGED` | `true` | CLI가 프록시 프로세스를 관리. 별도 Docker 프록시는 false; 호스트 바이너리·HTTPS 포트 점유 검사를 생략하며 인증 UI는 유지 |
 | `DECIFLOW_BIND_HOST` | `0.0.0.0` | HTTP 수신 주소. OAuth2-Proxy 추가 시 127.0.0.1로 변경해 직접 접속을 제한. 네이티브 인증 모드는 루프백 강제, Compose는 UI 호스트 포트 미공개 |
+| `DECIFLOW_HOST` | 시스템 호스트명 | 결과에 기록하는 처리 호스트. Docker에서는 실제 호스트명을 명시. 빈 값이면 시스템 호스트명 사용 |
 | `DECISION_ENGINE` | `laya` | `laya` 또는 `jev` |
 | `DECIFLOW_DATA_DIR` | `/var/lib/deciflow-data` | Sources·Tasks/이력·Actions·Criteria·SSH 키·호스트 공통 저장 루트; 쓰기 권한 필요 |
 | `DECIFLOW_CSRF_TRUSTED_ORIGINS` | 빈 값 | 쉼표로 구분한 추가 신뢰 UI 출처. 동일 출처 요청은 설정 불필요. [API 출처 보호](authentication.ko.md#api-origin-protection) 참고 |
@@ -286,3 +287,14 @@ Docker는 `daemon.log`를 만들지 않습니다. OAuth2-Proxy 활성화 시 컨
 DeciFlow 작업/설정 디렉터리 기준입니다. `daemon.log`는 호스트에서 회전 정책을 설정하세요.
 Compose는 `deciflow-logs`에 서버·접근 로그를 보존합니다. 호스트 디렉터리에서 접근하려면
 쓰기 가능한 바인드 마운트를 사용하세요. 로그 설정 변경 후 DeciFlow를 재시작하세요.
+
+## 결과 호스트 식별
+
+각 결과는 `deciflowHost`와 배열 `sourceHosts`를 기록합니다. 로컬 파일은
+`[deciflowHost]`, SSH는 해당 파일을 실제로 읽은 호스트만 기록하며 Source에
+등록된 전체 호스트를 넣지 않습니다. HDFS/WebHDFS는 실제 DataNode가 아닌 설정한
+파일시스템 접근 지점이나 nameservice를 기록합니다. 붙여넣기 텍스트는 `[]`입니다.
+이 값은 수집·처리 위치이며 전달된 로그의 원래 발생 호스트와는 다를 수 있습니다.
+Docker 마운트 파일은 로컬로 취급합니다. 결과와 함께 저장하고 재생 시 유지하므로
+설정 변경이 과거 결과의 호스트를 바꾸지 않습니다. Laya·Jev 모두 결과 화면,
+응답 진단, JSON 내보내기와 Action 입력에 이 필드를 포함합니다.

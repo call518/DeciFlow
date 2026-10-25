@@ -44,6 +44,7 @@ def list_configuration(directory: Path) -> None:
             **{key: str(field[2]) for key, field in FIELDS.items()},
             "PORT": "4000",
             "DECIFLOW_BIND_HOST": "0.0.0.0",
+            "DECIFLOW_HOST": socket.gethostname(),
             "DECIFLOW_DATA_DIR": "",
             "DECIFLOW_LOG_DIR": DEFAULT_LOG_DIR,
             "DECIFLOW_CSRF_TRUSTED_ORIGINS": "",
@@ -67,6 +68,9 @@ def list_configuration(directory: Path) -> None:
                 else "Default"
             )
             value = effective.get(key, os.getenv(key, default))
+            if key == "DECIFLOW_HOST" and not str(value).strip():
+                value = socket.gethostname()
+                source = "Default"
             if key == "DECIFLOW_DATA_DIR":
                 value = str(get_data_directory())
                 if not os.getenv(key, "").strip():

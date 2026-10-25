@@ -241,8 +241,10 @@ Choice 버튼은 건수를 표시하고 Not Assessed는 해당 건이 있을 때
 실패에 포함하고 범주 막대에서는 제외합니다. 메타데이터 누락·로컬 바이트 예산
 초과는 이 수에 포함하지 않습니다. 로그 본문 잘림이며 질문 지시문 잘림 수는 아닙니다.
 
-화면 표시·복사·내보내기 결과 JSON은 `requestedAt`, 엔진, 소스, 처리 시간 등
-건별 메타정보를 먼저 표시합니다. 시각은 UTC(`+00:00`)의 ISO 8601 형식이며,
+화면 표시·복사·내보내기 결과 JSON은 `requestedAt`, 엔진, 소스, `sourceHosts`,
+`deciflowHost`, 처리 시간 등 건별 메타정보를 먼저 표시합니다. Details에는
+**Source Hosts**·**DeciFlow Host**를 표시하며 응답 진단에도 두 필드를 포함합니다.
+[호스트 식별](configuration.ko.md#결과-호스트-식별)을 참고하세요. 시각은 UTC(`+00:00`)의 ISO 8601 형식이며,
 `requestedAt`은 요청 준비 시각으로 처리 완료 시각이 아닙니다.
 결과 JSON에 `requestedModel`, UTC `requestedAt`, 요청 크기, 입력 예산과
 질문·판정 기준을 남깁니다. `providerResponse`에는 응답 모델, 실제 체크포인트

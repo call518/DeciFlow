@@ -20,6 +20,9 @@ labels to match your deployment. Commands run as the DeciFlow owner. Omit `sudo`
 HTTP defaults to `DECIFLOW_BIND_HOST=0.0.0.0`. When adding OAuth2-Proxy, change it
 to `127.0.0.1` to prevent bypassing authentication.
 
+For result host identity, `DECIFLOW_HOST` defaults to the system hostname. In Docker,
+set it in `.env` to the actual host name; see [host identity](docs/configuration.md#result-host-identity).
+
 Settings follow the order in `.env.example`.
 Same-origin UI requests work without additional origin settings. See
 [API origin protection](docs/authentication.md#api-origin-protection) for exceptions.

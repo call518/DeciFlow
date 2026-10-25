@@ -126,6 +126,8 @@ plus `schemaVersion: 2`, `eventId`, UTC `decidedAt`, and `engine`. The event ID
 identifies this execution; rerunning a batch creates new IDs. Filter categories
 or review flags in your code. Both Laya and Jev use the same contract. Provider
 failures, Source read failures, and unassigned sources do not trigger Actions.
+All result inputs include `sourceHosts` and `deciflowHost`; see the
+[result host fields](results.md) and [host configuration](configuration.md#result-host-identity).
 Remote input also includes `hostId`, `hostName`, `hostAddress`, `hostPort`, and
 `chunkSequence`; these identify the source host without changing the log text.
 
