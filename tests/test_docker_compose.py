@@ -106,8 +106,11 @@ def test_compose_deployment(
 
 
 @pytest.mark.parametrize("profile", ["cpu", "cuda", ""])
+@pytest.mark.parametrize(
+    "extra_origins", ["", "https://admin.example.com,https://console.example.com"]
+)
 def test_google_auth_compose(
-    profile: str, tmp_path: Path, compose_project: Path
+    profile: str, extra_origins: str, tmp_path: Path, compose_project: Path
 ) -> None:
     """Protect all UI routes without exposing an alternate application port."""
     if shutil.which("docker") is None:
@@ -117,11 +120,13 @@ def test_google_auth_compose(
         f"COMPOSE_PROFILES={profile}\n"
         "OAUTH2_PROXY_ENABLED=true\n"
         "PORT=4567\n"
+        f"DECIFLOW_CSRF_TRUSTED_ORIGINS={extra_origins}\n"
         "OAUTH2_PROXY_PUBLIC_URL=https://deciflow.example.com:4443\n"
         "OAUTH2_PROXY_CLIENT_ID=test-client\n"
         "OAUTH2_PROXY_CLIENT_SECRET=test-secret\n"
         "OAUTH2_PROXY_COOKIE_SECRET=test-cookie-secret\n"
     )
+    (compose_project / ".env").write_text(env_file.read_text())
     env = {
         key: value
         for key, value in os.environ.items()
@@ -135,7 +140,6 @@ def test_google_auth_compose(
         "-f",
         "docker-compose.yml",
         "config",
-        "--no-env-resolution",
         "--format",
         "json",
     ]
@@ -153,9 +157,11 @@ def test_google_auth_compose(
         expected.add(f"laya-{profile}")
     assert set(services) == expected
     assert not services["ui"].get("ports")
-    assert services["ui"]["environment"]["DECIFLOW_CSRF_TRUSTED_ORIGINS"] == (
+    ui_environment = services["ui"]["environment"]
+    assert ui_environment["OAUTH2_PROXY_PUBLIC_URL"] == (
         "https://deciflow.example.com:4443"
     )
+    assert ui_environment["DECIFLOW_CSRF_TRUSTED_ORIGINS"] == extra_origins
     proxy = services["oauth2-proxy"]
     assert proxy["container_name"] == "DeciFlow-OAuth2-Proxy"
     assert proxy["image"] == "quay.io/oauth2-proxy/oauth2-proxy:v7.15.5"
