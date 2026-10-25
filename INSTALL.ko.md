@@ -15,8 +15,8 @@ Rocky Linux 8·9·10 호스트에 아래 도구와 Docker 실행 권한·외부 
 | 방식 | 필요한 도구 | 환경 파일 |
 | --- | --- | --- |
 | [1. PyPI: uv tool 또는 pip](#pypi) (권장) | Python 3.12, uv, Docker | `~/.config/deciflow/.env` |
-| [2. Docker Compose + Git Clone](#docker-compose) | Git, Docker Compose 2.20+ | `<checkout>/.env` |
-| [3. 프로세스 직접 실행 + Git Clone](#direct-processes) | Python 3.12, uv, Git, Docker | `<checkout>/.env` |
+| [2. Docker Compose](#docker-compose) | Git, Docker Compose 2.20+ | `<checkout>/.env` |
+| [3. 소스 직접 실행](#direct-processes) | Python 3.12, uv, Git, Docker | `<checkout>/.env` |
 
 기본 HTTP 수신 주소는 `DECIFLOW_BIND_HOST=0.0.0.0`입니다. OAuth2-Proxy를 추가할 때는
 인증 우회를 막도록 `127.0.0.1`로 변경합니다.
@@ -132,7 +132,8 @@ deciflow status
 ```
 
 **`http://YOUR_SERVER_IP:4000`**을 여세요. 설정 검사 실패 시 해당 항목을 해결한 뒤
-기동합니다. 첫 데모용 HTTP 로그를 만듭니다.
+기동합니다. 아래 명령으로 데모 입력 소스 파일을 직접 만듭니다. DeciFlow가 자동 생성하는
+파일이 아니며, 운영 로그(`server.log`, `access.log`, `daemon.log`)와는 별개입니다.
 
 ```bash
 cat > "$HOME/.config/deciflow/demo.log" <<'EOF'
@@ -152,7 +153,7 @@ HTTPS가 필요하면 [PyPI 인증 구성](docs/authentication.ko.md#pypi)을 �
 
 <a id="docker-compose"></a>
 
-## 2. Docker Compose + Git Clone
+## 2. Docker Compose
 
 ### 준비와 설정
 
@@ -209,7 +210,7 @@ HTTPS가 필요하면 [Compose 인증 구성](docs/authentication.ko.md#docker)�
 
 <a id="direct-processes"></a>
 
-## 3. 프로세스 직접 실행 + Git Clone
+## 3. 소스 직접 실행
 
 ### 준비와 설정
 

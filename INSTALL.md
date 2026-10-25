@@ -14,8 +14,8 @@ labels to match your deployment. Commands run as the DeciFlow owner. Omit `sudo`
 | Method | Required Tools | Environment File |
 | --- | --- | --- |
 | [1. PyPI: uv tool or pip](#pypi) (Recommended) | Python 3.12, uv, Docker | `~/.config/deciflow/.env` |
-| [2. Docker Compose + Git Clone](#docker-compose) | Git, Docker Compose 2.20+ | `<checkout>/.env` |
-| [3. Direct Process + Git Clone](#direct-processes) | Python 3.12, uv, Git, Docker | `<checkout>/.env` |
+| [2. Docker Compose](#docker-compose) | Git, Docker Compose 2.20+ | `<checkout>/.env` |
+| [3. Run from Source](#direct-processes) | Python 3.12, uv, Git, Docker | `<checkout>/.env` |
 
 HTTP defaults to `DECIFLOW_BIND_HOST=0.0.0.0`. When adding OAuth2-Proxy, change it
 to `127.0.0.1` to prevent bypassing authentication.
@@ -131,7 +131,9 @@ deciflow status
 ```
 
 Open **`http://YOUR_SERVER_IP:4000`**. If the config test fails, resolve its failed
-items before starting. For the first demo, create a small HTTP log:
+items before starting. Create the demo input source file explicitly below. DeciFlow does
+not generate this sample automatically; it is separate from its operational logs
+(`server.log`, `access.log`, and `daemon.log`).
 
 ```bash
 cat > "$HOME/.config/deciflow/demo.log" <<'EOF'
@@ -151,7 +153,7 @@ For optional HTTPS, follow [PyPI authentication](docs/authentication.md#pypi).
 
 <a id="docker-compose"></a>
 
-## 2. Docker Compose + Git Clone
+## 2. Docker Compose
 
 ### Prepare and Configure
 
@@ -209,7 +211,7 @@ For optional HTTPS, follow [Compose authentication](docs/authentication.md#docke
 
 <a id="direct-processes"></a>
 
-## 3. Direct Process + Git Clone
+## 3. Run from Source
 
 ### Prepare and Configure
 
