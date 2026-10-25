@@ -11,7 +11,7 @@ from pathlib import Path
 
 from deciflow.paths import RESOURCE_ROOT
 
-GUIDE = "https://github.com/call518/DeciFlow/blob/main/docs/tool-install.md"
+GUIDE = "https://github.com/call518/DeciFlow/blob/main/INSTALL.md"
 
 
 def prepare_workspace(directory: Path) -> bool:

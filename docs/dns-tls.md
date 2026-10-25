@@ -2,9 +2,16 @@
 
 [한국어](dns-tls.ko.md) | [Authentication](authentication.md) | [Documentation](README.md)
 
+**For a standard installation, start with [Certbot HTTP-01 in Authentication](authentication.md#certificates).**
+This guide covers DNS-01 when inbound port 80 is unavailable or existing BIND9/RFC2136
+automation is required. After issuance, continue with [the certificate preparation copy](authentication.md#certificate-files)
+and your selected method's file deployment and startup.
+
+<a id="dns01"></a>
+
 **DeciFlow** reads sources and serves the UI/API; the **Laya server** and **Jev service**
 provide inference. **OAuth2-Proxy** is the HTTPS entry point for browser/API access.
-This guide is required only for `OAUTH2_PROXY_ENABLED=true`. The default HTTP demo
+This guide is required only for `OAUTH2_PROXY_ENABLED=true`. HTTP execution with OAuth2-Proxy disabled
 needs no domain or certificate.
 
 This guide prepares DNS, issues a Let's Encrypt certificate with Certbot DNS-01,
@@ -17,18 +24,18 @@ DNS and certificate issuance apply to all installation methods. The deployment
 and renewal hook below use **Docker Compose**, `<checkout>/.env`, and
 `<checkout>/oauth2-proxy/tls/`. For **uv tool**, use `<config-dir>/oauth2-proxy/tls/`
 (default `~/.config/deciflow/oauth2-proxy/tls/`) alongside `<config-dir>/.env`.
-For **Git checkout native Python**, use the checkout paths. In both non-container
-methods, the private key must be readable by the account running DeciFlow; the
-Docker UID `65532` instructions do not apply. The supplied Docker renewal hook
-does not restart native processes: adapt deployment paths, ownership, and the
-process supervisor to your host. See the [uv tool guide](tool-install.md#optional-google-sign-in),
-[native guide](native.md), and [environment file locations](configuration.md#environment-file-locations).
+For **Git checkout direct processes**, use the checkout paths. These two methods
+run the standalone Docker proxy as the DeciFlow account UID, so that account owns
+the private key. Renewal needs certificate copying and Docker proxy recreation.
+Adapt the Compose-only hook below using the paths and recreation commands in
+[per-method authentication](authentication.md).
+
 
 ## Hosts and Example Values
 
 | Item | Example | Responsibility |
 | --- | --- | --- |
-| DeciFlow / Certbot host | Linux or WSL2, repository at `/opt/deciflow` | Runs Docker, Certbot, and the renewal scheduler |
+| DeciFlow / Certbot host | Rocky Linux, repository at `/opt/deciflow` | Runs Docker, Certbot, and the renewal scheduler |
 | Authoritative primary DNS | `192.0.2.53`, Ubuntu/Debian with BIND9 | Serves `example.com` and accepts restricted TXT updates |
 | Public application address | `203.0.113.10` | Router/server address reached by browsers |
 | Application domain | `deciflow.example.com` | Certificate name and public DNS record |
@@ -62,8 +69,8 @@ dig AAAA deciflow.example.com +short
 | ACME validation → authoritative DNS | Public DNS queries on TCP/UDP 53 |
 | Certbot → Let's Encrypt | Outbound HTTPS on TCP 443 |
 
-For a NAT deployment, forward external TCP 4443 to the Docker host's TCP 4443.
-Check host/Windows firewalls too. Do not publish the UI's internal port 4000.
+Check the host firewall so public TCP 4443 reaches OAuth2-Proxy.
+Do not publish the UI's internal port 4000.
 DNS-01 issuance does not require inbound web ports 80/443 or a running OAuth2-Proxy container;
 successful issuance alone does not establish browser connectivity on 4443.
 See [Let's Encrypt challenge types](https://letsencrypt.org/docs/challenge-types/#dns-01-challenge).
@@ -252,7 +259,9 @@ curl -i https://deciflow.example.com:4443/api/status
 
 Certificate validation must succeed; an unauthenticated main request may return
 403 with the sign-in page, while `/api/status` must return 401. Check from an
-external network too; testing inside the LAN does not establish that NAT works.
+the intended client network too; confirm public HTTPS reachability.
+
+<a id="dns01-renewal"></a>
 
 ## 5. Automate Renewal and OAuth2-Proxy Deployment
 
@@ -331,16 +340,11 @@ openssl s_client -connect deciflow.example.com:4443 -servername deciflow.example
 | `SERVFAIL` / journal permission error | BIND logs, zone-file/directory permissions, AppArmor/SELinux denials |
 | Certbot cannot find plugin | Plugin installed into the same environment as the running Certbot |
 | TXT present only on primary | Secondary transfer/notification and propagation delay |
-| Issuance succeeds but browser cannot connect | NAT 4443/TCP, host firewall, WSL routing, OAuth2-Proxy container state |
+| Issuance succeeds but browser cannot connect | Public 4443/TCP, host firewall, OAuth2-Proxy container state |
 | OAuth2-Proxy cannot read private key | Deployed key ownership UID 65532, mode 600, readable parent directory |
 | Browser still sees old certificate | Deploy hook copied renewed files and recreated OAuth2-Proxy; inspect hook logs |
 | Timer inactive or no future run | Actual unit name, enabled state, scheduler logs |
 | Google `redirect_uri_mismatch` | Exact HTTPS origin and callback, including :4443; see authentication guide |
-
-On WSL2, systemd must be enabled for systemd timers. A stopped WSL distribution or
-powered-off Windows host cannot execute scheduled renewals; arrange host uptime
-or a Windows-scheduled WSL invocation. Also ensure the Docker engine/context is
-available when the hook runs. See [WSL systemd setup](https://learn.microsoft.com/en-us/windows/wsl/systemd).
 
 Completion means public DNS is correct, issuance and renewal dry-run succeed, a
 future renewal is scheduled, the deployment hook succeeds, and external HTTPS

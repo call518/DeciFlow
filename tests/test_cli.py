@@ -32,7 +32,8 @@ def test_workspace_templates_preserve_user_files(tmp_path: Path) -> None:
     env = workspace / ".env"
     text = env.read_text()
     assert "LAYA_API_URL=http://127.0.0.1:8000/v1/systemone" in text
-    assert "DECIFLOW_DATA_DIR=\n" in text
+    assert "DECIFLOW_DATA_DIR=/var/lib/deciflow-data\n" in text
+    assert "DECIFLOW_BIND_HOST=0.0.0.0\n" in text
     assert "DECIFLOW_LOG_DIR=/var/log/deciflow\n" in text
     assert env.stat().st_mode & 0o777 == 0o600
     env.write_text("JEV_API_KEY=disposable-user-value\n")

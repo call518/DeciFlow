@@ -10,20 +10,20 @@ Laya 서버 설정은 Laya 호스트에서 관리하며, Compose는 `LAYA_API_KE
 
 ## 환경 파일 위치
 
-추천 순서는 **PyPI / uv tool → Docker Compose → Git 복제 기반 네이티브 Python**이며
-실행 방식 하나를 선택합니다. PyPI 설치 방법은
-[uv tool 안내](tool-install.ko.md)를 따르세요.
+환경에 맞는 실행 방식 하나를 선택합니다: **PyPI / pip 또는 uv tool(권장)**,
+**Docker Compose**, **Git 복제 기반 네이티브 Python**. PyPI 설치 방법은
+[PyPI 설치 안내](../INSTALL.ko.md#pypi)를 따르세요.
 아래 `<checkout>`은 호스트에 복제한 DeciFlow 저장소 루트입니다.
 
 | 방식 | DeciFlow가 읽는 파일 | 준비·선택 방법 |
 | --- | --- | --- |
-| PyPI / uv tool | `~/.config/deciflow/.env` | `deciflow init`으로 샘플 생성 후 수정 |
+| PyPI / pip 또는 uv tool | `~/.config/deciflow/.env` | `deciflow init`으로 샘플 생성 후 수정 |
 | Git clone + Docker Compose | 호스트 `<checkout>/.env`, UI 컨테이너 내부 `/app/.env`로 마운트 | `<checkout>/.env.example`을 `<checkout>/.env`로 복사하고 저장소에서 Compose 실행 |
 | Git clone + 네이티브 Python | `<checkout>/.env` | 샘플 복사 후 `uv run deciflow start --config-dir "$PWD"`, `uv run --extra laya python laya_server.py`가 같은 파일을 읽음 |
 
-uv tool의 `~`는 명령 실행 사용자의 홈입니다. 따라서 root는
+패키지 설치(pip 또는 uv tool)의 `~`는 명령 실행 사용자의 홈입니다. 따라서 root는
 `/root/.config/deciflow/.env`를 사용합니다. `--config-dir /path/to/deciflow-config`를
-지정하면 `init`, `config list`, `config test`, `run`, `status`, `stop` 모두
+지정하면 `init`, `config list`, `config test`, `start`, `status`, `stop` 모두
 `/path/to/deciflow-config/.env`를 사용하므로 매번 같은 옵션을 전달하세요.
 현재 셸 디렉터리의 `.env`를 자동 선택하지 않으며, 초기화는 기존 파일을 보존합니다.
 
@@ -35,7 +35,7 @@ Git 네이티브 CLI는 저장소에서 실행하고 `--config-dir "$PWD"`로 �
 
 Compose는 저장소 파일을 변수 치환과 UI의 `env_file`에 사용하고, DeciFlow는 기동 시
 마운트된 `/app/.env`도 읽습니다. `docker compose --env-file ...`만 지정해도 UI의
-`env_file`이나 마운트된 `/app/.env`가 바뀌지는 않으므로 uv tool 설정 파일로
+`env_file`이나 마운트된 `/app/.env`가 바뀌지는 않으므로 패키지 설치 설정 파일로
 Docker 배포 전체를 전환하는 방법이 아닙니다. `--config-dir`은 DeciFlow CLI 옵션이며
 Compose나 `server.py` 옵션이 아닙니다.
 
@@ -46,7 +46,7 @@ Docker의 `http://laya:8000`은 해당 네트워크 내부 주소이므로 호�
 
 설정 파일 위치와 `DECIFLOW_DATA_DIR`·`DECIFLOW_LOG_DIR`은 별개입니다. 기본값은
 데이터 `/var/lib/deciflow-data`(빈 값도 동일), 로그 `/var/log/deciflow`를 유지합니다.
-Docker는 컨테이너 내부 경로를 이름 있는 볼륨으로 보존하고, uv tool·네이티브는 호스트
+Docker는 컨테이너 내부 경로를 이름 있는 볼륨으로 보존하고, pip·uv tool·네이티브는 호스트
 디렉터리를 사용합니다. 네이티브 빠른 시작은 명시적으로 `./data`·`./logs`로 덮어씁니다.
 
 ## 환경 설정
@@ -55,10 +55,11 @@ Docker는 컨테이너 내부 경로를 이름 있는 볼륨으로 보존하고,
 | --- | --- | --- |
 | `COMPOSE_PROFILES` | 미설정(로컬 Laya 미실행) | Compose 전용. cpu·cuda 중 하나만 선택. .env.example은 cpu 지정 |
 | `OAUTH2_PROXY_ENABLED` | `false` | true: Google 로그인·HTTPS, false: 인증 없는 HTTP 데모. Docker·네이티브 공통 |
-| `DECIFLOW_BIND_HOST` | `127.0.0.1` | OAuth2-Proxy 비활성 시 HTTP 주소. 0.0.0.0은 외부 접속 허용; 활성 시 UI 포트 미공개 |
+| `OAUTH2_PROXY_MANAGED` | `true` | CLI가 프록시 프로세스를 관리. 별도 Docker 프록시는 false; 호스트 바이너리·HTTPS 포트 점유 검사를 생략하며 인증 UI는 유지 |
+| `DECIFLOW_BIND_HOST` | `0.0.0.0` | HTTP 수신 주소. OAuth2-Proxy 추가 시 127.0.0.1로 변경해 직접 접속을 제한. 네이티브 인증 모드는 루프백 강제, Compose는 UI 호스트 포트 미공개 |
 | `DECISION_ENGINE` | `laya` | `laya` 또는 `jev` |
 | `DECIFLOW_DATA_DIR` | `/var/lib/deciflow-data` | Sources·Tasks/이력·Actions·Criteria·SSH 키·호스트 공통 저장 루트; 쓰기 권한 필요 |
-| `DECIFLOW_CSRF_TRUSTED_ORIGINS` | 빈 값 | 쉼표로 구분한 신뢰 UI 출처. https://*.ngrok-free.app 지원. 출처 검사이며 인증 기능은 아님. OAuth2-Proxy 활성 시 OAUTH2_PROXY_PUBLIC_URL 사용 |
+| `DECIFLOW_CSRF_TRUSTED_ORIGINS` | 빈 값 | 쉼표로 구분한 추가 신뢰 UI 출처. 동일 출처 요청은 설정 불필요. [API 출처 보호](authentication.ko.md#api-origin-protection) 참고 |
 | `DECIFLOW_LOG_DIR` | `/var/log/deciflow` | 서버·접근 로그. 빈 값은 파일 기록 비활성화. Compose는 deciflow-logs에 보존 |
 | `PORT` | `4000` | UI 수신 포트. OAuth2-Proxy 비활성 시 Docker도 같은 포트를 공개 |
 | `OAUTH2_PROXY_PUBLIC_URL` | OAuth2-Proxy 활성 시 필수 | :4443을 포함한 공개 HTTPS 출처. 콜백·신뢰 UI 출처 설정 |
@@ -99,7 +100,7 @@ OAuth 값은 UI 재정의가 아닌 배포 설정입니다. Google 클라이언�
 **Restart DeciFlow**만으로 프록시 설정은 갱신되지 않습니다.
 `OAUTH2_PROXY_PUBLIC_URL` 변경 시 Google 등록 원본·리디렉션 URI도 바꾸고
 `docker compose up -d ui oauth2-proxy`를 실행하세요. 파일·인증서 갱신은
-[인증 운영 안내](authentication.ko.md#운영)를 참고하세요.
+[인증 운영 안내](authentication.ko.md#verify)를 참고하세요.
 
 `LAYA_HEAD_TOKENS=384`이면 매 Laya 요청에 `"head_max_len": 384`를 전송합니다.
 `LAYA_MAX_TOKENS=1024`는 `"max_len": 1024`를 전송합니다. 해당 요청에서
@@ -142,20 +143,10 @@ Jev 1.13은 state + 가장 긴 질문 32k, 전체 요청 64k 토큰 제한을 �
 `JEV_MAX_INPUT_BYTES`는 보수적 바이트 검사이며 토큰 할당량이 아닙니다.
 Jev 모델 가용성은 계정·API에 따르며 별칭의 제한은 바뀔 수 있습니다.
 
-요청 검증과 서버 설정은 [Laya 연동](laya-integration.ko.md)을
-참고하세요. 5개 프로필의 정답 라벨을 붙인 합성 사례 36개(헤더 변경 사례 포함)를
-평가하려면 다음을 실행합니다:
+요청 검증·서버 설정·정답 로그 평가는 [Laya 연동과 검증](laya.ko.md)을 참고하세요.
+평가는 선택적 검증 도구이며 DeciFlow 기동에 필요하지 않습니다.
 
-```bash
-uv run python -m scripts.evaluate_laya --output /tmp/laya-validation.json
-```
-
-보고서는 오분류 행렬, 요청 실패, Uncertain 수와 Certain 중 정답 수를 포함합니다.
-사례는 회귀 검증용이며 운영 정확도 추정 자료는 아닙니다.
-`--cases PATH`로 자체 정답 JSON(`log`, `expected`, 선택 사항 `profile`)을,
-`--model NAME`으로 비교할 체크포인트를 지정합니다. Laya만 사용하며 유료 Jev는
-호출하지 않습니다.
-
+<a id="storage"></a>
 
 ## 애플리케이션 영구 데이터
 
@@ -164,7 +155,7 @@ uv run python -m scripts.evaluate_laya --output /tmp/laya-validation.json
 | 경로 | 내용 |
 | --- | --- |
 | `deciflow.sqlite3` | Source·Criteria·Task·Action·SSH Host·SSH Key 메타데이터·일반 설정·실행 스냅샷·결과·리뷰·집계(SQLite WAL) |
-| `actions/<name>-<id>/` | Action 코드·venv·프로젝트·잠금 파일 |
+| `actions/<action-id>/` | Action 코드·venv·프로젝트·잠금 파일 |
 | `ssh-keys/<key-id>/` | 관리되는 개인키와 파생 공개키 |
 | `ssh-hosts/known_hosts` | DeciFlow에서 명시적으로 승인한 호스트 키 |
 
@@ -174,7 +165,20 @@ uv run python -m scripts.evaluate_laya --output /tmp/laya-validation.json
 엔진 동시 요청 제한은 실행의 모든 소스 Hosts가 공유하고 서로 다른 Task는 별도 제한을
 사용합니다. 예약·저장 제약은 [Tasks](tasks.ko.md)를 참고하세요.
 
-실행 중 DB 파일 하나만 복사하면 WAL의 데이터가 빠질 수 있습니다. 서버를 중지한 뒤 전체 데이터 경로를 백업하거나 SQLite 백업 API를 사용하세요. [결과 저장](result-storage.ko.md)을 참고하세요.
+### 백업과 보존
+
+SQLite는 별도 DB 서버 없이 정의·실행 결과·원본 입력·Action 결과·검토 내용을 저장합니다.
+데이터 디렉터리는 로컬 파일시스템에 두고, 활성 DB를 공유 네트워크 파일시스템에 두지
+마세요. 일관된 백업은 DeciFlow를 종료한 뒤 **전체 데이터 디렉터리**를 복사하거나
+SQLite 백업 API를 사용합니다. 실행 중 DB 파일 하나만 복사하면 WAL의 기록이 빠질 수
+있습니다. 백업에는 원본 입력과 SSH 개인키가 포함될 수 있으므로 보호해야 합니다.
+
+자동 이력 보존 기한이나 디스크 정리는 없습니다. Task 삭제를 확인하면 해당 정의·이력·
+결과·정정이 영구 삭제되지만 원본 Source 파일은 유지합니다. SQLite는 삭제 공간을
+재사용하므로 DB 파일이 즉시 줄어들지는 않을 수 있습니다. 전체 초기화 범위는
+[DeciFlow 초기화](#deciflow-초기화)를 확인하세요. 복구 조건은 [Task 복구](tasks.ko.md#서버-재시작-후-복구),
+페이지·필터·내보내기는 [사용법](usage.ko.md), 내부 저장 구조는
+[개발 가이드](development.ko.md#storage)를 참고하세요.
 
 ## DeciFlow 초기화
 

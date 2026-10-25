@@ -298,7 +298,7 @@ no execution is recoverable. See [Tasks](tasks.md).
 Use one DeciFlow server process/instance per data directory. Results and reviewer
 corrections persist in SQLite; only the current page is loaded in the browser.
 Filters, page position, and unsaved drafts remain browser-only. No automatic history
-retention limit is applied. See [Result storage](result-storage.md).
+retention limit is applied. See [Result storage](configuration.md#storage).
 
 The low-level `/api/classify` text API and `/api/file-source` file API remain
 available. With `persist: true`, they return a browser-independent **temporary SQLite-backed**

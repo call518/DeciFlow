@@ -415,18 +415,21 @@ def _matches_origin(origin: str, pattern: str) -> bool:
         return False
 
 
-def _allowed_origin(request: Request, *, files: bool = False) -> bool:
+def _allowed_origin(request: Request) -> bool:
+    """Accept the UI origin or explicitly trusted additional origins."""
     origin = request.headers.get("origin", "")
     allowed = {
         entry.strip()
         for entry in os.getenv("DECIFLOW_CSRF_TRUSTED_ORIGINS", "").split(",")
         if entry.strip()
     }
-    if origin and any(_matches_origin(origin, pattern) for pattern in allowed):
-        return True
-    if origin != f"http://{request.headers.get('host')}":
-        return False
-    return not files or urlsplit(origin).hostname in {"127.0.0.1", "localhost"}
+    if os.getenv("OAUTH2_PROXY_ENABLED") == "true":
+        allowed.add(os.getenv("OAUTH2_PROXY_PUBLIC_URL", ""))
+    else:
+        allowed.add(f"{request.url.scheme}://{request.headers.get('host', '')}")
+    return bool(origin) and any(
+        _matches_origin(origin, pattern) for pattern in allowed if pattern
+    )
 
 
 async def handle_classify(request: Request) -> Response:
@@ -682,11 +685,11 @@ async def prepare_file_execution(
 
 async def handle_file_source(request: Request) -> Response:
     """Start selected files, sharing the same preparation as Task executions."""
-    if not _allowed_origin(request, files=True):
+    if not _allowed_origin(request):
         return _json(
             403,
             {
-                "error": "File access denied. Add this UI origin to DECIFLOW_CSRF_TRUSTED_ORIGINS."
+                "error": "File access requires the UI origin or an explicitly trusted origin."
             },
         )
     try:
@@ -1050,7 +1053,7 @@ def require_unused(kind: str, identity: object) -> None:
 
 async def handle_delete_check(request: Request) -> Response:
     """Read current deletion blockers without changing registrations or files."""
-    if not _allowed_origin(request, files=True):
+    if not _allowed_origin(request):
         return _json(403, {"error": "Dependency checks require a trusted UI origin."})
     try:
         body = await request.json()
@@ -1072,8 +1075,8 @@ async def handle_delete_check(request: Request) -> Response:
 
 
 async def handle_tasks(request: Request) -> Response:
-    """Manage Tasks and execute them only from trusted file-access origins."""
-    if not _allowed_origin(request, files=True):
+    """Manage Tasks and execute them only from trusted UI origins."""
+    if not _allowed_origin(request):
         return _json(403, {"error": "Task management requires a trusted UI origin."})
     try:
         if request.method == "PUT":
@@ -1133,7 +1136,7 @@ async def handle_tasks(request: Request) -> Response:
 
 async def handle_task_operation(request: Request) -> Response:
     """Start, stop, or list executions of a registered Task."""
-    if not _allowed_origin(request, files=True):
+    if not _allowed_origin(request):
         return _json(403, {"error": "Task access requires a trusted UI origin."})
     identity = request.path_params["task_id"]
     task = next((item for item in load_tasks() if item["id"] == identity), None)
@@ -1209,8 +1212,8 @@ async def _action_results(
 
 
 async def handle_test_ssh_host(request: Request) -> Response:
-    """Test saved or draft SSH settings only from trusted file-access origins."""
-    if not _allowed_origin(request, files=True):
+    """Test saved or draft SSH settings only from trusted UI origins."""
+    if not _allowed_origin(request):
         return _json(403, {"error": "SSH host testing requires a trusted UI origin."})
     try:
         value = await request.json()
@@ -1233,8 +1236,8 @@ async def handle_test_ssh_host(request: Request) -> Response:
 
 
 async def handle_ssh_hosts(request: Request) -> Response:
-    """Manage shared SSH connections from trusted file-access origins."""
-    if not _allowed_origin(request, files=True):
+    """Manage shared SSH connections from trusted UI origins."""
+    if not _allowed_origin(request):
         return _json(
             403, {"error": "SSH host management requires a trusted UI origin."}
         )
@@ -1268,7 +1271,7 @@ async def handle_ssh_hosts(request: Request) -> Response:
 
 async def handle_ssh_keys(request: Request) -> Response:
     """Manage key pairs only from trusted file-access UI origins."""
-    if not _allowed_origin(request, files=True):
+    if not _allowed_origin(request):
         return _json(403, {"error": "SSH key management requires a trusted UI origin."})
     try:
         if request.method != "POST":
@@ -1313,8 +1316,8 @@ async def handle_ssh_keys(request: Request) -> Response:
 
 
 async def handle_sources(request: Request) -> Response:
-    """Read or replace source definitions using trusted file-access origins."""
-    if not _allowed_origin(request, files=True):
+    """Read or replace source definitions using trusted UI origins."""
+    if not _allowed_origin(request):
         return _json(403, {"error": "Source management requires a trusted UI origin."})
     try:
         if request.method == "PUT":
@@ -1346,7 +1349,7 @@ async def handle_sources(request: Request) -> Response:
 
 async def handle_hdfs_test(request: Request) -> Response:
     """Test draft HDFS settings only on an explicit trusted-origin request."""
-    if not _allowed_origin(request, files=True):
+    if not _allowed_origin(request):
         return _json(403, {"error": "HDFS testing requires a trusted UI origin."})
     try:
         body = await request.json()
@@ -1367,7 +1370,7 @@ async def handle_hdfs_test(request: Request) -> Response:
 
 async def handle_criteria_generation(request: Request) -> Response:
     """Preview Source inputs or generate a draft only from explicitly sent samples."""
-    if not _allowed_origin(request, files=True):
+    if not _allowed_origin(request):
         return _json(
             403, {"error": "Criteria generation requires a trusted UI origin."}
         )
@@ -1404,7 +1407,7 @@ async def handle_criteria_generation(request: Request) -> Response:
 
 async def handle_criteria(request: Request) -> Response:
     """Manage fixed-category profiles with the same trusted-origin rules as Actions."""
-    if not _allowed_origin(request, files=True):
+    if not _allowed_origin(request):
         return _json(
             403, {"error": "Criteria management requires a trusted UI origin."}
         )
@@ -1435,7 +1438,7 @@ async def handle_criteria(request: Request) -> Response:
 
 async def handle_reset_action(request: Request) -> Response:
     """Reset a saved environment using the same trusted-origin checks as Actions."""
-    if not _allowed_origin(request, files=True):
+    if not _allowed_origin(request):
         return _json(403, {"error": "Action reset requires a trusted UI origin."})
     try:
         action = await reset_action(request.path_params["action_id"])
@@ -1449,8 +1452,8 @@ async def handle_reset_action(request: Request) -> Response:
 
 
 async def handle_actions(request: Request) -> Response:
-    """List or replace local action registrations using file-access origin checks."""
-    if request.method != "GET" and not _allowed_origin(request, files=True):
+    """List or replace local action registrations using UI origin checks."""
+    if request.method != "GET" and not _allowed_origin(request):
         return _json(
             403, {"error": "Action registration requires a trusted UI origin."}
         )
@@ -1528,7 +1531,7 @@ async def handle_job(request: Request) -> Response:
             get_data_directory(), request.path_params["job_id"]
         )
         if archived:
-            if not _allowed_origin(request, files=True):
+            if not _allowed_origin(request):
                 return _json(403, {"error": "Job access requires a trusted UI origin."})
             snapshot = archived
             if request.url.path.endswith("/events"):
@@ -1541,7 +1544,7 @@ async def handle_job(request: Request) -> Response:
         return _json(
             404, {"error": "Job no longer exists. The server may have restarted."}
         )
-    if job.settings["mode"] != "paste" and not _allowed_origin(request, files=True):
+    if job.settings["mode"] != "paste" and not _allowed_origin(request):
         return _json(403, {"error": "Job access requires a trusted UI origin."})
     operation = request.url.path.rsplit("/", 1)[-1]
     if operation == "stop":
@@ -1555,7 +1558,7 @@ async def handle_job(request: Request) -> Response:
 
 async def handle_settings(request: Request) -> Response:
     """Read or save application preferences using trusted-origin checks."""
-    if not _allowed_origin(request, files=True):
+    if not _allowed_origin(request):
         return _json(403, {"error": "Settings access requires a trusted UI origin."})
     try:
         values = await request.json() if request.method == "PUT" else None
@@ -1571,7 +1574,7 @@ async def handle_settings(request: Request) -> Response:
 
 async def handle_configuration(request: Request) -> Response:
     """Read safe runtime metadata or atomically save application preferences."""
-    if not _allowed_origin(request, files=True):
+    if not _allowed_origin(request):
         return _json(403, {"error": "Configurations require a trusted UI origin."})
     if getattr(request.app.state, "reset_requested", False) or getattr(
         request.app.state, "restart_requested", False
@@ -1592,7 +1595,7 @@ async def handle_configuration(request: Request) -> Response:
 
 async def handle_result_page(request: Request) -> Response:
     """Query bounded result pages, save corrections, or stream a complete export."""
-    if not _allowed_origin(request, files=True):
+    if not _allowed_origin(request):
         return _json(403, {"error": "Result access requires a trusted UI origin."})
     identity = request.path_params["job_id"]
     job = JOBS.get(identity)
@@ -1694,7 +1697,7 @@ RESET_ERROR = os.environ.pop("_DECIFLOW_RESET_ERROR", "")
 
 async def handle_reset_status(request: Request) -> Response:
     """Describe reset scope and server identity to trusted UI origins."""
-    if not _allowed_origin(request, files=True):
+    if not _allowed_origin(request):
         return _json(403, {"error": "Reset requires a trusted UI origin."})
     try:
         return _json(
@@ -1720,7 +1723,7 @@ async def handle_reset_shutdown() -> None:
 
 async def handle_reset(request: Request) -> Response:
     """Accept explicit confirmation, then reset during graceful shutdown."""
-    if not _allowed_origin(request, files=True):
+    if not _allowed_origin(request):
         return _json(403, {"error": "Reset requires a trusted UI origin."})
     if getattr(request.app.state, "reset_requested", False) or getattr(
         request.app.state, "restart_requested", False
@@ -1748,7 +1751,7 @@ async def handle_reset(request: Request) -> Response:
 
 async def handle_restart(request: Request) -> Response:
     """Restart only DeciFlow after explicit confirmation, preserving its data."""
-    if not _allowed_origin(request, files=True):
+    if not _allowed_origin(request):
         return _json(403, {"error": "Restart requires a trusted UI origin."})
     if getattr(request.app.state, "reset_requested", False) or getattr(
         request.app.state, "restart_requested", False
@@ -1939,17 +1942,22 @@ def main(
     stop: Event | None = None,
     on_started: Callable[[], None] | None = None,
 ) -> None:
-    """Read local settings at startup; bind to loopback unless specified."""
+    """Load settings; expose HTTP by default and restrict protected native access."""
     load_startup_settings(ROOT / ".env")
-    from deciflow.native_proxy import proxy_enabled, run_with_proxy, serve
+    from deciflow.native_proxy import (
+        proxy_enabled,
+        proxy_managed,
+        run_with_proxy,
+        serve,
+    )
 
     protected = proxy_enabled()
     host = host or (
-        "127.0.0.1" if protected else os.getenv("DECIFLOW_BIND_HOST", "127.0.0.1")
+        "127.0.0.1" if protected else os.getenv("DECIFLOW_BIND_HOST", "0.0.0.0")
     )
     get_engine()
     port = int(os.getenv("PORT") or "4000")
-    if manage_proxy and protected:
+    if manage_proxy and protected and proxy_managed():
         app.state.managed_native_proxy = True
         run_with_proxy(
             uvicorn.Config(

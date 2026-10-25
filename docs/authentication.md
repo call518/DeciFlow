@@ -1,205 +1,344 @@
-# Google Sign-In and Email Allow List
+# Optional Google Sign-In with Docker
 
-[한국어](authentication.ko.md) | [Project README](../README.md)
+[한국어](authentication.ko.md) | [Installation](../INSTALL.md) | [Documentation](README.md)
 
-DeciFlow reads sources, calls the **Laya server** (self-hosted inference) or the
-**Jev service** (paid hosted inference), and serves the web UI and API.
-**OAuth2-Proxy** protects incoming browser/API traffic with Google sign-in and
-an administrator-maintained email allow list. It directly handles HTTPS and
-forwards authorized requests to DeciFlow; Nginx is not required.
-Source access, Laya/Jev calls, and Action delivery keep their existing authentication.
-All admitted users share DeciFlow's data and administrative capabilities; this
-does not add per-user storage or roles.
+Start DeciFlow using [INSTALL](../INSTALL.md) first. Add **OAuth2-Proxy in Docker**
+only when HTTPS/Google sign-in is needed. All approved users share DeciFlow data
+and administrative capabilities. Laya remains independent.
 
-This guide uses **Docker Compose**: run commands from the checkout and edit
-`<checkout>/.env`, mounted as `/app/.env` inside the UI container. OAuth2-Proxy
-files are in `<checkout>/oauth2-proxy/`. For installation without Docker, choose
-the recommended [uv tool guide](tool-install.md#optional-google-sign-in) or the
-[Git checkout native guide](native.md). Their configuration paths differ; see
-[environment file locations](configuration.md#environment-file-locations).
+Choose the section matching your DeciFlow installation after common preparation:
+[PyPI](#pypi) · [Docker Compose](#docker) · [Direct process](#source).
 
-Set `OAUTH2_PROXY_ENABLED=true` in `.env` to use this guide. The default `false`
-provides an HTTP demo at `http://localhost:4000` without OAuth or certificate files.
-With OAuth2-Proxy enabled, only HTTPS port 4443 is published; the UI has no host port.
-After changing the mode, run `docker compose up -d --remove-orphans`. This recreates
-the UI port bindings and removes an unused OAuth2-Proxy container without deleting data.
-Do not use `restart` alone to switch modes. Invalid enabled-mode settings stop
-startup; there is no automatic fallback to HTTP.
+| Method | `.env` and Proxy Directory Root |
+| --- | --- |
+| PyPI | `~/.config/deciflow` |
+| Docker Compose / Direct process | `<checkout>` |
 
-The entry point remains `docker-compose.yml`. It automatically selects the files
-in `compose/` from this setting; do not pass those files with `-f`.
-Docker Compose 2.20.0+ is required for this include mechanism.
+Native CLI installations use `OAUTH2_PROXY_MANAGED=false` to keep the proxy in
+Docker while retaining the signed-in account UI.
 
-## Prerequisites
+<a id="certificates"></a>
 
-- Docker with the Compose plugin, and the DeciFlow `.env`.
-- A domain pointing to the DeciFlow host, a trusted TLS certificate for that domain,
-  and TCP 4443 reachable on that host. DNS registration alone does not enable HTTPS.
-- A Google Cloud project where you can register an OAuth **Web application**.
+## Common Preparation
 
-The examples use `https://deciflow.example.com:4443`; replace it with your HTTPS origin.
-Certificate issuance/renewal and Google account setup are performed by the operator;
-the Compose configuration does not create them.
-For domain records, certificate issuance, renewal, and OAuth2-Proxy deployment, follow
-[DNS and TLS preparation](dns-tls.md) before continuing below.
-
-## 1. Register Google Sign-In
-
-In the [Google Cloud console](https://console.cloud.google.com/), configure the OAuth
-consent screen and create an OAuth client of type **Web application**:
-
-- Authorized JavaScript origin: `https://deciflow.example.com:4443`
-- Authorized redirect URI: `https://deciflow.example.com:4443/oauth2/callback`
-
-If the consent screen is in Testing mode, add your users as Google test users too.
-Google's test-user list and DeciFlow's allow list are separate checks.
-Keep the client ID and client secret for the next step. Do not send secrets in chat.
-See the [OAuth2-Proxy Google guide](https://oauth2-proxy.github.io/oauth2-proxy/configuration/providers/google/).
-
-## 2. Prepare Local Settings
-
-Run from the DeciFlow repository root on the Docker host:
+Assumes a domain reachable by browsers and TCP 4443 allowed. Set the domain once
+in this setup shell. `example.com` is documentation-only; use your actual domain.
 
 ```bash
-test -f .env || cp .env.example .env
-test -f oauth2-proxy/allowed-emails.txt || cp -T oauth2-proxy/allowed-emails.example.txt oauth2-proxy/allowed-emails.txt
-mkdir -p oauth2-proxy/tls
-chmod 600 .env
+export DECIFLOW_DOMAIN="deciflow.example.com"
+export DECIFLOW_HTTPS_URL="https://${DECIFLOW_DOMAIN}:4443"
+export DECIFLOW_CERT_DIR="$HOME/.config/deciflow-certificates/${DECIFLOW_DOMAIN}"
+```
+
+### Certificate: Choose One
+
+**Run Option 1 OR Option 2. Do not run both.**
+
+---
+
+#### Option 1: Let's Encrypt Certificate (Recommended)
+
+ public DNS must reach this host and TCP 80 must
+be available during HTTP-01 issuance/renewal. Python 3.12 and sudo are assumed.
+Complete Certbot's email/terms prompts.
+
+```bash
+sudo python3.12 -m venv /opt/deciflow-certbot
+sudo /opt/deciflow-certbot/bin/python -m pip install certbot
+sudo /opt/deciflow-certbot/bin/certbot certonly --standalone \
+  --cert-name "$DECIFLOW_DOMAIN" -d "$DECIFLOW_DOMAIN"
+```
+
+<a id="certificate-files"></a>
+
+Copy actual file contents (also use this step after [DNS-01](dns-tls.md#dns01) issuance):
+
+```bash
+install -d -m 700 "$DECIFLOW_CERT_DIR"
+sudo install -o "$(id -un)" -g "$(id -gn)" -m 644 \
+  "/etc/letsencrypt/live/$DECIFLOW_DOMAIN/fullchain.pem" "$DECIFLOW_CERT_DIR/fullchain.pem"
+sudo install -o "$(id -un)" -g "$(id -gn)" -m 600 \
+  "/etc/letsencrypt/live/$DECIFLOW_DOMAIN/privkey.pem" "$DECIFLOW_CERT_DIR/privkey.pem"
+```
+
+→ **[Certificate ready: skip the other option and go to Google settings](#google-settings)**
+
+---
+
+#### Option 2: Self-Signed Certificate
+
+ if option 1 is unavailable, skip Certbot and create the same
+files below. The browser will show a certificate warning; continue through it.
+
+```bash
+(
+  set -eu
+  umask 077
+  install -d -m 700 "$DECIFLOW_CERT_DIR"
+  openssl req -x509 -nodes -newkey rsa:2048 -sha256 -days 365 \
+    -subj "/CN=$DECIFLOW_DOMAIN" -addext "subjectAltName=DNS:$DECIFLOW_DOMAIN" \
+    -keyout "$DECIFLOW_CERT_DIR/privkey.pem" -out "$DECIFLOW_CERT_DIR/fullchain.pem"
+)
+```
+
+→ **[Certificate ready: skip the other option and go to Google settings](#google-settings)**
+
+---
+
+<a id="google-settings"></a>
+
+### Google and `.env`
+
+In [Google Cloud](https://console.cloud.google.com/), configure the consent screen,
+create an OAuth **Web application** client, and register the printed values.
+Add intended accounts as test users if the app is in Testing mode.
+
+```bash
+printf 'JavaScript origin: %s\n' "$DECIFLOW_HTTPS_URL"
+printf 'Redirect URI: %s/oauth2/callback\n' "$DECIFLOW_HTTPS_URL"
 openssl rand -base64 32
 ```
 
-Edit `.env`: set `OAUTH2_PROXY_ENABLED=true` and `OAUTH2_PROXY_PUBLIC_URL` to your HTTPS origin without a path
-or trailing slash, fill in `OAUTH2_PROXY_CLIENT_ID` and `OAUTH2_PROXY_CLIENT_SECRET`,
-and place the generated value in `OAUTH2_PROXY_COOKIE_SECRET`.
+Set `DECIFLOW_BIND_HOST` to `127.0.0.1` to block direct HTTP authentication bypass.
+Compose removes the host-published UI port while retaining container-network access.
 
-Edit `oauth2-proxy/allowed-emails.txt` to contain **only approved Google account
-email addresses, one per line**. Replace the example address. Do not use a domain
-wildcard or add `email_domains` to the proxy configuration.
+Use the last output as the cookie key. In your method's **existing `.env`**, apply
+the following output, replacing the three placeholders. Save actual URL values,
+not shell variable references.
 
-The email file uses exact addresses, not regular expressions or `*@domain` patterns.
-Lines starting with `#` are comments; put `#` in column one and do not use inline
-comments. Google sign-in accepts Gmail, Workspace, and other Google accounts.
-`email_domains` is a setting in `oauth2-proxy/oauth2-proxy.cfg`, not a file: adding
-a domain allows all Google accounts in that domain in addition to listed emails.
-The default empty list keeps admission restricted to the email file.
+```bash
+cat <<EOF
+DECIFLOW_BIND_HOST=127.0.0.1
+OAUTH2_PROXY_ENABLED=true
+OAUTH2_PROXY_MANAGED=false
+OAUTH2_PROXY_PUBLIC_URL=${DECIFLOW_HTTPS_URL}
+OAUTH2_PROXY_CLIENT_ID=REPLACE_WITH_GOOGLE_CLIENT_ID
+OAUTH2_PROXY_CLIENT_SECRET=REPLACE_WITH_GOOGLE_CLIENT_SECRET
+OAUTH2_PROXY_COOKIE_SECRET=REPLACE_WITH_GENERATED_COOKIE_KEY
+EOF
+```
 
-Place actual certificate files, rather than symlinks to files outside the mounted
-directory, at `oauth2-proxy/tls/fullchain.pem` and `oauth2-proxy/tls/privkey.pem`.
-The pinned image runs as UID 65532. Set private-key ownership and permissions:
+<a id="pypi"></a>
+
+## PyPI: uv tool or pip
+
+Use the initialized package settings and apply the common `.env` values.
+Activate the pip environment when applicable.
+
+```bash
+proxy_config_dir="$HOME/.config/deciflow"
+```
+
+```bash
+test -f "$proxy_config_dir/oauth2-proxy/allowed-emails.txt" || \
+  cp "$proxy_config_dir/oauth2-proxy/allowed-emails.example.txt" \
+     "$proxy_config_dir/oauth2-proxy/allowed-emails.txt"
+install -d -m 755 "$proxy_config_dir/oauth2-proxy/tls"
+install -m 644 "$DECIFLOW_CERT_DIR/fullchain.pem" "$proxy_config_dir/oauth2-proxy/tls/fullchain.pem"
+install -m 600 "$DECIFLOW_CERT_DIR/privkey.pem" "$proxy_config_dir/oauth2-proxy/tls/privkey.pem"
+```
+
+Edit `allowed-emails.txt` to contain approved Google emails, one per line;
+remove the example address. Keep `email_domains = []` in `oauth2-proxy.cfg`.
+
+Restart DeciFlow first. Protected native mode enforces loopback even if
+`0.0.0.0` is accidentally left in the setting. Config testing does not require a host proxy binary
+or an unused HTTPS port when `OAUTH2_PROXY_MANAGED=false`.
+
+```bash
+deciflow stop
+deciflow config test
+deciflow start --daemon
+```
+
+Then start the Docker proxy. Linux host networking reaches DeciFlow's loopback
+without exposing port 4000; the proxy reads files as the DeciFlow account.
+
+```bash
+docker run -d --name deciflow-oauth2-proxy --restart unless-stopped \
+  --network host --user "$(id -u):$(id -g)" \
+  --read-only --cap-drop ALL --security-opt no-new-privileges \
+  --env-file "$proxy_config_dir/.env" \
+  -v "$proxy_config_dir/oauth2-proxy:/etc/oauth2-proxy:ro,Z" \
+  quay.io/oauth2-proxy/oauth2-proxy:v7.15.5 \
+  --config=/etc/oauth2-proxy/oauth2-proxy.cfg \
+  --upstream=http://127.0.0.1:4000/ \
+  --redirect-url="${DECIFLOW_HTTPS_URL}/oauth2/callback"
+```
+
+Continue with [verification](#verify).
+
+<a id="docker"></a>
+
+## Docker Compose
+
+From the checkout root, apply the common values to its `.env`:
+
+```bash
+proxy_config_dir="$PWD"
+```
+
+```bash
+test -f "$proxy_config_dir/oauth2-proxy/allowed-emails.txt" || \
+  cp "$proxy_config_dir/oauth2-proxy/allowed-emails.example.txt" \
+     "$proxy_config_dir/oauth2-proxy/allowed-emails.txt"
+install -d -m 755 "$proxy_config_dir/oauth2-proxy/tls"
+install -m 644 "$DECIFLOW_CERT_DIR/fullchain.pem" "$proxy_config_dir/oauth2-proxy/tls/fullchain.pem"
+install -m 600 "$DECIFLOW_CERT_DIR/privkey.pem" "$proxy_config_dir/oauth2-proxy/tls/privkey.pem"
+```
+
+Edit `allowed-emails.txt` to contain approved Google emails, one per line;
+remove the example address. Keep `email_domains = []` in `oauth2-proxy.cfg`.
+
+The Compose proxy uses image UID 65532. Set permissions and recreate services:
 
 ```bash
 sudo chown 65532 oauth2-proxy/tls/privkey.pem
-sudo chmod 600 oauth2-proxy/tls/privkey.pem
-```
-
-Keep the public certificate and allow list readable by the container. After certificate
-renewal, replace the files, reapply key permissions, and recreate the proxy.
-The local settings, allow list, and TLS directory are excluded from Git and image builds.
-
-## 3. Validate and Start
-
-Check that the required files exist before starting. Compose disables automatic
-host-path creation for proxy mounts, but does not repair existing directories.
-If `allowed-emails.txt` is a directory, inspect its contents and move it aside
-before copying the example file again. Do not delete it without checking.
-
-```bash
-test -f oauth2-proxy/allowed-emails.txt &&
-  test -f oauth2-proxy/tls/fullchain.pem &&
-  test -f oauth2-proxy/tls/privkey.pem
-```
-
-Continue only if this check exits successfully. Validate without printing the
-rendered configuration, which contains secrets:
-
-```bash
+chmod 644 oauth2-proxy/oauth2-proxy.cfg oauth2-proxy/allowed-emails.txt
+sudo chcon -Rt container_file_t oauth2-proxy
 docker compose config --quiet
+docker compose up -d --remove-orphans --force-recreate ui oauth2-proxy
 ```
 
-Select CPU, CUDA, or external inference through `COMPOSE_PROFILES` in `.env`, then start:
+Compose removes the public UI port and exposes HTTPS on 4443.
+
+Continue with [verification](#verify).
+
+<a id="source"></a>
+
+## Direct Process
+
+From the checkout root, apply the common values to its `.env`:
 
 ```bash
-docker compose up -d
+proxy_config_dir="$PWD"
 ```
-
-Open your **HTTPS** origin. OAuth2-Proxy publishes port 4443; the DeciFlow UI port
-is removed from the host's published ports. Do not run another native DeciFlow
-process or a separate unprotected UI container on a publicly reachable port.
-Laya's existing port and API-key configuration are unchanged.
-
-OAuth2-Proxy v7.15.5 is pinned. It uses secure, HTTP-only host cookies, Google
-session refresh every hour, and an eight-hour session lifetime. API requests
-without a valid session receive **401**; reload the page to sign in again.
-Streaming uses a 100 ms flush interval and no upstream response timeout, allowing
-long-running result streams. A session expiring does not cancel background Tasks;
-an already-open stream is not continuously reauthorized.
-
-## 4. Verify Access
-
-Before exposing the service to users, verify:
-
-1. An incognito browser must sign in before viewing Main or a saved run URL.
-2. An approved account can load sources/settings and run a Task; an unlisted
-   account is denied. Being a Google test user alone must not grant access.
-3. Without cookies, `curl -i https://deciflow.example.com:4443/api/status` returns 401.
-   Forged user/email headers must not grant access.
-4. The host's former DeciFlow UI port is unreachable from another machine.
-5. Result events arrive during a run, including runs lasting over 30 seconds.
-   Check Laya and Jev separately if both are configured; Jev incurs API charges.
-6. Sign out at `https://deciflow.example.com:4443/oauth2/sign_out`, then reload Main;
-   API access must require sign-in again. This clears the proxy session, not the
-   Google account session.
-
-The automated local smoke test downloads OAuth2-Proxy v7.15.5 for Linux/macOS
-amd64/arm64, verifies its pinned official SHA-256 digest, and caches the archive in
-`~/.cache/deciflow/test-tools/` outside the repository. The executable and test TLS
-files use temporary pytest storage. OpenSSL and GitHub access are required on the
-first run; a verified cache avoids repeat downloads. Download or checksum errors
-fail the test instead of silently skipping it.
 
 ```bash
-uv run pytest -q tests/test_oauth2_proxy.py
+test -f "$proxy_config_dir/oauth2-proxy/allowed-emails.txt" || \
+  cp "$proxy_config_dir/oauth2-proxy/allowed-emails.example.txt" \
+     "$proxy_config_dir/oauth2-proxy/allowed-emails.txt"
+install -d -m 755 "$proxy_config_dir/oauth2-proxy/tls"
+install -m 644 "$DECIFLOW_CERT_DIR/fullchain.pem" "$proxy_config_dir/oauth2-proxy/tls/fullchain.pem"
+install -m 600 "$DECIFLOW_CERT_DIR/privkey.pem" "$proxy_config_dir/oauth2-proxy/tls/privkey.pem"
 ```
 
-For an offline environment or an existing executable, supply its absolute path:
+Edit `allowed-emails.txt` to contain approved Google emails, one per line;
+remove the example address. Keep `email_domains = []` in `oauth2-proxy.cfg`.
+
+Restart DeciFlow first. Protected native mode enforces loopback even if
+`0.0.0.0` is accidentally left in the setting. Config testing does not require a host proxy binary
+or an unused HTTPS port when `OAUTH2_PROXY_MANAGED=false`.
 
 ```bash
-OAUTH2_PROXY_BINARY=/path/to/oauth2-proxy uv run pytest -q tests/test_oauth2_proxy.py
+uv run deciflow stop --config-dir "$PWD"
+uv run deciflow config test --config-dir "$PWD"
+uv run deciflow start --daemon --config-dir "$PWD"
 ```
 
-The smoke test uses disposable local settings and a self-signed test certificate;
-it does not contact Google or use your credentials. A test-only public route checks
-stream forwarding. Real Google admission/rejection and production TLS still require
-the manual checks above.
-
-## Operations
-
-For an allow-list edit, the proxy watches for file changes, but editors that replace
-the bind-mounted file can leave the container reading the old file. Recreate only
-the proxy to reliably apply changes. Use the same command after updating
-`oauth2-proxy/oauth2-proxy.cfg`, Google credentials, the cookie key, or TLS files:
+Then start the Docker proxy. Linux host networking reaches DeciFlow's loopback
+without exposing port 4000; the proxy reads files as the DeciFlow account.
 
 ```bash
-docker compose up -d --no-deps --force-recreate oauth2-proxy
+docker run -d --name deciflow-oauth2-proxy --restart unless-stopped \
+  --network host --user "$(id -u):$(id -g)" \
+  --read-only --cap-drop ALL --security-opt no-new-privileges \
+  --env-file "$proxy_config_dir/.env" \
+  -v "$proxy_config_dir/oauth2-proxy:/etc/oauth2-proxy:ro,Z" \
+  quay.io/oauth2-proxy/oauth2-proxy:v7.15.5 \
+  --config=/etc/oauth2-proxy/oauth2-proxy.cfg \
+  --upstream=http://127.0.0.1:4000/ \
+  --redirect-url="${DECIFLOW_HTTPS_URL}/oauth2/callback"
 ```
 
-If `OAUTH2_PROXY_PUBLIC_URL` changes, update both authorized URLs in Google, including
-the port, then run `docker compose up -d ui oauth2-proxy` to update the callback and
-UI trusted origin. `redirect_uri_mismatch` means the requested callback does not
-exactly match a URI registered for that Google client.
+Continue with [verification](#verify).
 
-Keep `.env` in the same setting order and comment layout as `.env.example` while
-preserving your values. Do not print `docker compose config` without `--quiet`,
-because it renders secrets.
+<a id="verify"></a>
 
-For urgent session revocation, replace the cookie secret too and recreate the proxy;
-this invalidates all existing proxy cookies. Close existing connections if immediate
-disconnection is required. Restarting the proxy disconnects streams but does not stop Tasks.
+## Verify and Operate
 
-To stop web access while keeping background Tasks running:
+Without cookies, the API must return **401** and certificate validation must pass.
+For a self-signed certificate, add `--cacert "$DECIFLOW_CERT_DIR/fullchain.pem"`.
 
 ```bash
-docker compose stop oauth2-proxy
+curl --connect-timeout 5 --max-time 15 -i "${DECIFLOW_HTTPS_URL}/api/status"
 ```
 
-The UI remains internal; stopping the proxy does not enable unauthenticated access.
+Open the printed HTTPS URL in a private browser, sign in with an approved
+account, confirm the email badge, and repeat [the demo](../INSTALL.md#demo).
+An unlisted account must be denied. Sign Out is in the account menu.
+
+| Deployment | Logs | Apply Proxy/Certificate Changes |
+| --- | --- | --- |
+| Package / Direct process | `docker logs --tail=100 deciflow-oauth2-proxy` | `docker rm -f deciflow-oauth2-proxy`, then rerun its `docker run` command |
+| Compose | `docker compose logs --tail=100 oauth2-proxy` | `docker compose up -d --no-deps --force-recreate oauth2-proxy` |
+
+The native CLI no longer stops the separately operated proxy container; manage it
+with Docker. If the application port changes, update the standalone upstream too.
+Stopping a proxy leaves the native app on loopback, not public HTTP.
+
+<a id="renewal"></a>
+
+## Certificate Renewal
+
+For Let's Encrypt, test `sudo /opt/deciflow-certbot/bin/certbot renew --dry-run`
+and enable your Certbot renewal scheduler. After renewal, repeat the certificate
+preparation copy and your method's TLS copy, then recreate the proxy using the
+commands above. For self-signed certificates, regenerate before expiry instead.
+[DNS-01 operations](dns-tls.md#dns01-renewal) covers RFC2136 automation.
+
+<a id="proxy-config"></a>
+
+## Configuration Fields
+
+Container paths start at `/etc/oauth2-proxy/`; the procedures above mount that directory.
+
+| Setting | Default and Purpose |
+| --- | --- |
+| `provider` | `"google"`: Google sign-in provider. |
+| `https_address` | `"0.0.0.0:4443"`: HTTPS listener on all IPv4 interfaces, port 4443. This is a bind address, not the public domain. |
+| `tls_cert_file`, `tls_key_file` | `/etc/oauth2-proxy/tls/fullchain.pem` and `/etc/oauth2-proxy/tls/privkey.pem`: paths inside the container. |
+| `authenticated_emails_file` | `/etc/oauth2-proxy/allowed-emails.txt`: email file inside the container. |
+| `email_domains` | `[]`: keep the explicit email allow-list policy. Native configuration validation rejects a nonempty value. |
+| `reverse_proxy` | `false`: shipped setup terminates TLS at OAuth2-Proxy directly. |
+| `pass_access_token`, `pass_authorization_header`, `pass_basic_auth`, `pass_user_headers` | `false`: disable these credential/user-header forwarding options to DeciFlow. |
+| `cookie_name`, `cookie_path` | `"__Host-deciflow_session"`, `"/"`: host-scoped session cookie. |
+| `cookie_secure`, `cookie_httponly`, `cookie_samesite` | `true`, `true`, `"lax"`: HTTPS-only cookie, inaccessible to JavaScript, with SameSite protection. |
+| `cookie_refresh`, `cookie_expire` | `"1h"`, `"8h"`: refresh interval and session lifetime. |
+| `code_challenge_method` | `"S256"`: OAuth PKCE challenge method. |
+| `api_routes` | `["^/api(?:/|$)"]`: unauthenticated API requests receive 401 instead of a login-page redirect. |
+| `flush_interval`, `upstream_timeout` | `"100ms"`, `"0s"`: streaming flush interval and no upstream response timeout. |
+
+<a id="api-origin-protection"></a>
+
+## API Origin Protection
+
+DeciFlow checks the browser's `Origin` header for protected API requests,
+including Source/Task management, settings, and file access. This uses the
+[OWASP Origin-checking technique](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#using-standard-headers-to-verify-origin);
+`DECIFLOW_CSRF_TRUSTED_ORIGINS` is a DeciFlow setting, not an HTTP standard header.
+No CSRF tokens are issued or validated.
+
+Without OAuth2-Proxy, the origin must match the request scheme and Host
+(including the port). A browser on another computer can use the server IP or
+domain without extra configuration. With OAuth2-Proxy enabled,
+`OAUTH2_PROXY_PUBLIC_URL` supplies the expected external HTTPS origin even when
+the backend connection is HTTP. Forwarded headers are not read by this check;
+configure Uvicorn to trust only the actual proxy when enabling forwarded headers.
+
+Leave `DECIFLOW_CSRF_TRUSTED_ORIGINS` empty normally. To explicitly allow additional
+UI origins, list complete origins separated by commas, without trailing slashes:
+
+```dotenv
+DECIFLOW_CSRF_TRUSTED_ORIGINS=https://admin.example.com,https://console.example.com
+```
+
+Each entry grants access to protected API operations; allow only origins you
+control. HTTPS subdomain wildcards are supported, but exact origins are preferable.
+Missing, `null`, or unrecognized origins receive HTTP 403. Command-line API callers
+must also supply an accepted Origin. An allow-list entry does not enable CORS.
+
+This check mitigates browser cross-site requests; it does not authenticate callers.
+A direct HTTP client can forge Origin. Use OAuth2-Proxy for authentication and keep
+the backend inaccessible to untrusted clients. In HTTP mode, Host is supplied by
+the client; this check alone does not prevent DNS rebinding or direct API access.

@@ -2,9 +2,16 @@
 
 [English](dns-tls.md) | [인증 안내](authentication.ko.md) | [문서 안내](README.ko.md)
 
+**일반 설치는 [인증 문서의 Certbot HTTP-01 절차](authentication.ko.md#certificates)부터 시작하세요.**
+이 문서는 외부 80번을 사용할 수 없거나 기존 BIND9/RFC2136 DNS 자동화를 사용하는
+환경의 DNS-01 상세 안내입니다. 발급 후에는 인증 문서의 [인증서 준비 경로 복사](authentication.ko.md#certificate-files)부터 계속해
+선택한 방식의 파일 배치·기동을 완료하세요.
+
+<a id="dns01"></a>
+
 **DeciFlow**는 소스를 읽고 UI·API를 제공하며 **Laya 서버**와 **Jev 서비스**는
 추론을 담당합니다. **OAuth2-Proxy**는 브라우저·API 접근의 HTTPS 진입점입니다.
-이 안내는 `OAUTH2_PROXY_ENABLED=true`일 때만 필요합니다. 기본 HTTP 데모에는
+이 안내는 `OAUTH2_PROXY_ENABLED=true`일 때만 필요합니다. OAuth2-Proxy 미사용 HTTP 실행에는
 도메인·인증서가 필요하지 않습니다.
 
 이 문서는 DNS 준비, Certbot DNS-01을 통한 Let's Encrypt 인증서 발급,
@@ -17,18 +24,17 @@ DNS와 인증서 발급은 모든 설치 방식에 공통입니다. 아래 배�
 **Docker Compose**, `<checkout>/.env`, `<checkout>/oauth2-proxy/tls/` 기준입니다.
 **uv tool**은 `<config-dir>/.env`와 같은 설정 디렉터리의
 `<config-dir>/oauth2-proxy/tls/`(기본 `~/.config/deciflow/oauth2-proxy/tls/`)을 사용합니다.
-**Git 복제 기반 네이티브 Python**은 저장소 경로를 사용합니다. 두 비컨테이너 방식에서는
-DeciFlow 실행 계정이 개인 키를 읽을 수 있어야 하며 Docker UID `65532` 지침을
-적용하지 않습니다. 제공한 Docker 갱신 hook은 네이티브 프로세스를 재시작하지 않으므로
-배포 경로·소유자·프로세스 관리자를 호스트에 맞게 조정하세요.
-[uv tool 안내](tool-install.ko.md#선택적-google-로그인), [네이티브 안내](native.ko.md),
-[환경 파일 위치](configuration.ko.md#환경-파일-위치)를 참고하세요.
+**Git 복제 기반 프로세스 직접 실행**은 저장소 경로를 사용합니다. 이 두 방식의
+독립 Docker 프록시는 DeciFlow 계정 UID로 실행하므로 개인 키도 해당 계정 소유로 둡니다.
+갱신 후에는 인증서 복사와 Docker 프록시 재생성이 필요합니다. 아래 Compose 전용 훅은
+[설치 방식별 인증 구성](authentication.ko.md)에 맞춰 경로·재생성 명령을 조정하세요.
+
 
 ## 호스트와 예시 값
 
 | 항목 | 예시 | 역할 |
 | --- | --- | --- |
-| DeciFlow·Certbot 호스트 | Linux 또는 WSL2, 저장소 `/opt/deciflow` | Docker·Certbot·갱신 스케줄러 실행 |
+| DeciFlow·Certbot 호스트 | Rocky Linux, 저장소 `/opt/deciflow` | Docker·Certbot·갱신 스케줄러 실행 |
 | 권한 Primary DNS | `192.0.2.53`, Ubuntu/Debian의 BIND9 | `example.com` 응답과 제한된 TXT 업데이트 |
 | 앱의 공인 주소 | `203.0.113.10` | 브라우저가 접근할 공유기·서버 주소 |
 | 앱 도메인 | `deciflow.example.com` | 인증서 이름과 공개 DNS 레코드 |
@@ -60,8 +66,8 @@ dig AAAA deciflow.example.com +short
 | ACME 검증 → 권한 DNS | TCP/UDP 53의 공개 DNS 질의 |
 | Certbot → Let's Encrypt | 외부로 나가는 TCP 443 HTTPS |
 
-NAT 환경에서는 외부 TCP 4443을 Docker 호스트 TCP 4443으로 전달하고 호스트·Windows
-방화벽도 확인하세요. UI 내부 4000 포트는 공개하지 않습니다. DNS-01 발급에는
+공개 TCP 4443이 OAuth2-Proxy에 연결되도록 호스트 방화벽을 확인하세요.
+UI 내부 4000 포트는 공개하지 않습니다. DNS-01 발급에는
 외부에서 들어오는 웹 포트 80/443이나 실행 중인 OAuth2-Proxy가 필요하지 않습니다.
 인증서 발급 성공만으로 브라우저의 4443 접속이 보장되지는 않습니다.
 [Let's Encrypt 검증 방식](https://letsencrypt.org/docs/challenge-types/#dns-01-challenge)을 참고하세요.
@@ -244,7 +250,9 @@ curl -i https://deciflow.example.com:4443/api/status
 
 인증서 검증이 성공해야 합니다. 미인증 메인 요청에는 로그인 화면과 함께 403이
 표시될 수 있고 `/api/status`는 401이어야 합니다. 외부 네트워크에서도 확인하세요.
-LAN 내부 테스트만으로 NAT 동작을 확인할 수는 없습니다.
+실제 사용자 환경에서도 공개 HTTPS 접속을 확인하세요.
+
+<a id="dns01-renewal"></a>
 
 ## 5. 자동 갱신과 OAuth2-Proxy 반영
 
@@ -322,16 +330,11 @@ openssl s_client -connect deciflow.example.com:4443 -servername deciflow.example
 | `SERVFAIL` / 저널 권한 오류 | BIND 로그·Zone 파일과 디렉터리 권한·AppArmor/SELinux 거부 |
 | Certbot이 플러그인을 찾지 못함 | 실제 실행되는 Certbot과 같은 환경에 플러그인이 설치됐는지 |
 | Primary에서만 TXT가 조회됨 | Secondary 전송·알림·전파 대기 시간 |
-| 발급 성공 후 브라우저 접속 실패 | NAT 4443/TCP·호스트 방화벽·WSL 라우팅·OAuth2-Proxy 실행 상태 |
+| 발급 성공 후 브라우저 접속 실패 | 공개 4443/TCP·호스트 방화벽·OAuth2-Proxy 실행 상태 |
 | OAuth2-Proxy가 개인 키를 읽지 못함 | 배포한 키 UID 65532·권한 600·부모 디렉터리 접근 권한 |
 | 브라우저에 이전 인증서가 표시됨 | hook의 갱신 파일 복사·OAuth2-Proxy 재생성 여부와 로그 |
 | 타이머 비활성·다음 실행 없음 | 실제 unit 이름·활성 상태·스케줄러 로그 |
 | Google `redirect_uri_mismatch` | :4443까지 일치하는 HTTPS 출처·콜백. 인증 안내 참고 |
-
-WSL2의 systemd 타이머에는 systemd 활성화가 필요합니다. WSL 배포판이 중지되거나
-Windows가 종료되면 예약 갱신을 실행할 수 없으므로 가동 시간을 확보하거나 Windows
-예약 작업으로 WSL을 실행하는 방식을 마련하세요. hook 실행 시 Docker 엔진·context도
-사용 가능해야 합니다. [WSL systemd 설정](https://learn.microsoft.com/en-us/windows/wsl/systemd)을 참고하세요.
 
 완료 기준은 올바른 공개 DNS, 발급·갱신 dry-run 성공, 다음 갱신 예약,
 배포 hook 성공, 외부 HTTPS에서 배포한 인증서와 로그인·API 접근 제어 확인입니다.

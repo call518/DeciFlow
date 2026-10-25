@@ -116,7 +116,7 @@ Use **one server process/instance per data directory**. This is an in-process
 scheduler, without distributed workers or DAG dependencies. SQLite stores results;
 the server retains bounded event caches and aggregates, and the browser loads only
 the current page. No automatic disk retention/cleanup is applied. See
-[Result storage](result-storage.md) for configuration storage, pagination, backups, and limits.
+[Result storage](configuration.md#storage) for configuration storage, pagination, backups, and limits.
 
 ## API
 

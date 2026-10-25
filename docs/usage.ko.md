@@ -281,7 +281,7 @@ Task 정의·실행 상태·설정 스냅샷·결과·Action 실행 결과를
 데이터 경로마다 DeciFlow 서버 프로세스·인스턴스 하나를 사용합니다. 결과와 수동
 정정은 SQLite에 저장하며 브라우저는 현재 페이지만 유지합니다. 필터·페이지 위치·
 미저장 초안은 브라우저에만 남습니다. 자동 이력 정리는 없습니다.
-[결과 저장](result-storage.ko.md)을 참고하세요.
+[결과 저장](configuration.ko.md#storage)을 참고하세요.
 
 저수준 `/api/classify` 텍스트 API와 `/api/file-source` 파일 API는 유지합니다.
 `persist: true`는 HTTP 202로 브라우저와 독립된 **임시 SQLite 작업**을 생성하며

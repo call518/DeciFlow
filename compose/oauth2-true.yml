@@ -1,8 +1,4 @@
 services:
-  ui:
-    environment:
-      DECIFLOW_CSRF_TRUSTED_ORIGINS: ${OAUTH2_PROXY_PUBLIC_URL:?Set OAUTH2_PROXY_PUBLIC_URL in .env}
-
   oauth2-proxy:
     image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.5
     container_name: DeciFlow-OAuth2-Proxy

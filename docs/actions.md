@@ -160,7 +160,7 @@ Docker Compose already mounts the `deciflow-data` volume at `DECIFLOW_DATA_DIR`
 No separate host data directory is needed. If changing the data path, migrate
 existing Actions and prepare their environments at the new path, then apply the
 Compose configuration with `docker compose up -d ui`. Rebuilding the UI image is
-unnecessary for data-path changes. See [Docker deployment](../README.md#deciflow-docker).
+unnecessary for data-path changes. See [Docker deployment](../INSTALL.md#docker-compose).
 
 Syntax colors use vendored PrismJS 1.30.0 Core + Python (about 9.4 KiB, MIT). No external CDN is contacted at runtime; the versioned asset is browser-cacheable. Sources, license, and SHA-256 checksums are recorded in `public/vendor/prism/`; update these records and rerun UI checks when upgrading. Existing editor input and scrolling are preserved.
 

@@ -11,20 +11,20 @@ with DeciFlow. `COMPOSE_PROFILES` selects `cpu` or `cuda`; empty starts no local
 
 ## Environment File Locations
 
-Choose one execution method in this recommended order: **PyPI / uv tool → Docker
-Compose → Git checkout native Python**. Follow the
-[uv tool guide](tool-install.md) for installation from PyPI.
+Choose one execution method: **PyPI / pip or uv tool (recommended)**,
+**Docker Compose**, or **Git checkout native Python**. Follow the
+[PyPI installation guide](../INSTALL.md#pypi) for installation from PyPI.
 `<checkout>` below means the cloned DeciFlow repository root on the host.
 
 | Method | File Read by DeciFlow | How to Prepare or Select It |
 | --- | --- | --- |
-| PyPI / uv tool | `~/.config/deciflow/.env` | `deciflow init` creates templates; edit before startup |
+| PyPI / pip or uv tool | `~/.config/deciflow/.env` | `deciflow init` creates templates; edit before startup |
 | Git clone + Docker Compose | `<checkout>/.env` on the host, mounted at `/app/.env` in the UI container | Copy `<checkout>/.env.example` to `<checkout>/.env`; run Compose from the checkout |
 | Git clone + native Python | `<checkout>/.env` | Copy the template; `uv run deciflow start --config-dir "$PWD"` and `uv run --extra laya python laya_server.py` read this file |
 
-For uv tool, `~` is the home of the user running the command; root therefore uses
+For package installations (pip or uv tool), `~` is the home of the user running the command; root therefore uses
 `/root/.config/deciflow/.env`. `--config-dir /path/to/deciflow-config` selects
-`/path/to/deciflow-config/.env` for `init`, `config list`, `config test`, `run`, `status`, and `stop`.
+`/path/to/deciflow-config/.env` for `init`, `config list`, `config test`, `start`, `status`, and `stop`.
 Pass the same option every time. A `.env` in the shell's current directory is not
 automatically selected. Initialization preserves existing files.
 
@@ -38,7 +38,7 @@ server has its own configuration on its own host.
 Compose uses the checkout file for interpolation and the UI's `env_file`; DeciFlow
 also reads the mounted `/app/.env` at startup. `docker compose --env-file ...`
 alone does not change the UI's `env_file` or replace the mounted `/app/.env`.
-It is not a way to switch the whole Docker deployment to the uv tool file.
+It is not a way to switch the whole Docker deployment to the package installation file.
 `--config-dir` is a DeciFlow CLI option, not a Compose or `server.py` option.
 
 The files are independent, with no automatic search, synchronization, or fallback
@@ -49,7 +49,7 @@ only works inside its network; host-based execution needs a reachable Laya URL.
 These configuration paths are separate from `DECIFLOW_DATA_DIR` and
 `DECIFLOW_LOG_DIR`. Defaults remain `/var/lib/deciflow-data` (including a blank data
 setting) and `/var/log/deciflow`. Docker uses these paths inside the container and
-backs them with named volumes; uv tool/native execution uses host directories.
+backs them with named volumes; pip/uv tool/native execution uses host directories.
 The native quick start explicitly overrides them with `./data` and `./logs`.
 
 ## Environment Settings
@@ -58,10 +58,11 @@ The native quick start explicitly overrides them with `./data` and `./logs`.
 | --- | --- | --- |
 | `COMPOSE_PROFILES` | Unset (no local Laya) | Compose only: set cpu or cuda, exactly one; .env.example selects cpu |
 | `OAUTH2_PROXY_ENABLED` | `false` | true: Google sign-in and HTTPS; false: unauthenticated HTTP demo. Docker and native |
-| `DECIFLOW_BIND_HOST` | `127.0.0.1` | HTTP address when OAuth2-Proxy disabled; 0.0.0.0 allows external access. With OAuth2-Proxy enabled no UI port is published |
+| `OAUTH2_PROXY_MANAGED` | `true` | CLI supervises the proxy process. Set false for a separate Docker proxy; skips host binary/HTTPS port availability checks while retaining the authentication UI |
+| `DECIFLOW_BIND_HOST` | `0.0.0.0` | HTTP bind address. Set 127.0.0.1 when adding OAuth2-Proxy to restrict direct access. Protected native mode enforces loopback; Compose does not publish the UI host port |
 | `DECISION_ENGINE` | `laya` | `laya` or `jev` |
 | `DECIFLOW_DATA_DIR` | `/var/lib/deciflow-data` | Shared Sources/Tasks/history/Actions/Criteria/SSH Key/host storage root; must be writable |
-| `DECIFLOW_CSRF_TRUSTED_ORIGINS` | Empty | Comma-separated trusted UI origins, including optional https://*.ngrok-free.app; origin check only, not authentication. With OAuth2-Proxy enabled, uses OAUTH2_PROXY_PUBLIC_URL |
+| `DECIFLOW_CSRF_TRUSTED_ORIGINS` | Empty | Additional trusted UI origins, comma-separated. Same-origin requests need no setting; see [API origin protection](authentication.md#api-origin-protection) |
 | `DECIFLOW_LOG_DIR` | `/var/log/deciflow` | Server/access logs; empty disables file logging. Compose persists logs in deciflow-logs |
 | `PORT` | `4000` | UI listening port; also published by Docker when OAuth2-Proxy is disabled |
 | `OAUTH2_PROXY_PUBLIC_URL` | Required when OAuth2-Proxy enabled | Public HTTPS origin including :4443; sets callback and trusted UI origin |
@@ -102,7 +103,7 @@ ID/secret or cookie key requires `docker compose up -d --force-recreate oauth2-p
 **Restart DeciFlow** alone does not reload the proxy. After changing
 `OAUTH2_PROXY_PUBLIC_URL`, update Google's registered origin/redirect URI and run
 `docker compose up -d ui oauth2-proxy`. For files and certificate renewal, see
-[authentication operations](authentication.md#operations).
+[authentication operations](authentication.md#verify).
 
 `LAYA_HEAD_TOKENS=384` sends `"head_max_len": 384` in each Laya request.
 `LAYA_MAX_TOKENS=1024` similarly sends `"max_len": 1024`. Both override the
@@ -145,20 +146,10 @@ Jev 1.13 limits state + longest question to 32k tokens and the full request to
 64k. `JEV_MAX_INPUT_BYTES` is a conservative byte guard, not a token allocation.
 Jev model availability depends on the account/API; aliases may change limits.
 
-See [Laya integration](laya-integration.md) for request validation and
-server settings. Evaluate all five profiles
-with 36 labeled synthetic cases (including header variants):
+See [Laya Integration and Validation](laya.md) for request validation, server
+settings, and labeled-log evaluation. Evaluation is optional, not a startup prerequisite.
 
-```bash
-uv run python -m scripts.evaluate_laya --output /tmp/laya-validation.json
-```
-
-The report includes a confusion matrix, failures, uncertain counts, and correct
-predictions within the Certain group. These samples are regression probes, not a
-production accuracy estimate. Use `--cases PATH` for your own labeled JSON cases
-(`log`, `expected`, optional `profile`), or `--model NAME` to compare checkpoints.
-Evaluation uses only Laya, never paid Jev.
-
+<a id="storage"></a>
 
 ## Persistent application data
 
@@ -167,7 +158,7 @@ Evaluation uses only Laya, never paid Jev.
 | Path | Contents |
 | --- | --- |
 | `deciflow.sqlite3` | Sources, Criteria, Tasks, Actions, SSH Hosts, SSH Key metadata, application preferences, execution snapshots, results, reviews, and aggregates (SQLite WAL) |
-| `actions/<name>-<id>/` | Action code, venv, project, and lockfile |
+| `actions/<action-id>/` | Action code, venv, project, and lockfile |
 | `ssh-keys/<key-id>/` | Managed private key and derived public key |
 | `ssh-hosts/known_hosts` | Host keys explicitly approved in DeciFlow |
 
@@ -176,7 +167,22 @@ No automatic run-history cleanup is applied. Use one DeciFlow process per data
 directory. Per-run engine concurrency is shared by all source Hosts; different
 Tasks have separate limits. See [Tasks](tasks.md) for scheduling and storage limits.
 
-Copying only the live database can omit data in its WAL. Stop the server before backing up the whole data directory, or use the SQLite backup API. See [Result storage](result-storage.md).
+### Backups and Retention
+
+SQLite stores definitions, run results, original inputs, Action outcomes, and
+reviews without a separate database server. Use a local filesystem; do not place
+the active DB on a shared network filesystem. For consistent backups, stop DeciFlow
+and copy the **whole data directory**, or use SQLite's backup API. Copying just
+the live DB file can omit records in its WAL. Protect backups: they can contain
+original inputs and SSH private keys.
+
+There is no automatic history retention or disk cleanup. Confirmed Task deletion
+permanently removes its definition, history, results, and reviews; original Source
+files remain. SQLite reuses freed space, so the DB file may not shrink immediately.
+See [Reset DeciFlow](#reset-deciflow) for full reset scope,
+[Task recovery](tasks.md#recovery-after-a-server-restart) for recovery rules,
+[Usage](usage.md) for pages/filters/exports, and
+[Development](development.md#storage) for storage internals.
 
 ## Reset DeciFlow
 

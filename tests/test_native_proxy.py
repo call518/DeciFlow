@@ -74,6 +74,9 @@ def test_native_proxy_cleanup(
 
     monkeypatch.setattr(native_proxy.subprocess, "Popen", spawn)
     monkeypatch.setattr(native_proxy.uvicorn, "Server", Server)
+    monkeypatch.setenv(
+        "DECIFLOW_CSRF_TRUSTED_ORIGINS", "https://admin.example.com"
+    )
     config = uvicorn.Config("unused:app", port=4567)
     if crash:
         with pytest.raises(RuntimeError, match="OAuth2-Proxy exited"):
@@ -82,7 +85,7 @@ def test_native_proxy_cleanup(
         native_proxy.run_with_proxy(config, native_setup)
     assert children[0].poll() is not None
     assert native_proxy.os.environ["DECIFLOW_CSRF_TRUSTED_ORIGINS"] == (
-        "https://deciflow.example.com:4443"
+        "https://admin.example.com"
     )
 
 
@@ -96,8 +99,14 @@ def test_missing_native_credentials_fail_closed(
 
 
 @pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("managed", [False, True])
+@pytest.mark.parametrize("bind_host", [None, "0.0.0.0", "127.0.0.1"])
 def test_native_entrypoint_selects_access_mode(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, enabled: bool
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    enabled: bool,
+    managed: bool,
+    bind_host: str | None,
 ) -> None:
     """Use one native command; protected mode ignores an external UI bind."""
     from deciflow import server
@@ -105,7 +114,11 @@ def test_native_entrypoint_selects_access_mode(
     monkeypatch.setattr(server, "get_engine", lambda: None)
     monkeypatch.setattr(server, "get_log_config", lambda: None)
     monkeypatch.setenv("OAUTH2_PROXY_ENABLED", "true" if enabled else "false")
-    monkeypatch.setenv("DECIFLOW_BIND_HOST", "0.0.0.0")
+    monkeypatch.setenv("OAUTH2_PROXY_MANAGED", "true" if managed else "false")
+    if bind_host is None:
+        monkeypatch.delenv("DECIFLOW_BIND_HOST", raising=False)
+    else:
+        monkeypatch.setenv("DECIFLOW_BIND_HOST", bind_host)
     monkeypatch.setenv("PORT", "4567")
     calls = []
 
@@ -124,10 +137,24 @@ def test_native_entrypoint_selects_access_mode(
     monkeypatch.setattr(server.app.state, "restart_requested", False, raising=False)
     monkeypatch.setattr(server.app.state, "reset_requested", False, raising=False)
     server.main(manage_proxy=True)
-    if enabled:
+    if enabled and managed:
         assert calls == [("127.0.0.1", 4567, "protected"), "restart"]
+    elif enabled:
+        assert calls == [("127.0.0.1", 4567, "http")]
     else:
-        assert calls == [("0.0.0.0", 4567, "http")]
+        assert calls == [(bind_host or "0.0.0.0", 4567, "http")]
+
+
+@pytest.mark.parametrize("value", ["true", "false", "TRUE", "", "flase"])
+def test_proxy_management_is_explicit(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("OAUTH2_PROXY_MANAGED", value)
+    if value in {"true", "false"}:
+        assert native_proxy.proxy_managed() == (value == "true")
+    else:
+        with pytest.raises(ValueError, match="OAUTH2_PROXY_MANAGED"):
+            native_proxy.proxy_managed()
 
 
 def test_unset_mode_defaults_to_http(monkeypatch: pytest.MonkeyPatch) -> None:

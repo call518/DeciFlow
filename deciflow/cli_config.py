@@ -26,7 +26,7 @@ from dotenv.parser import parse_stream
 from deciflow.cli import GUIDE, check_storage_directory, storage_directories
 from deciflow.config import Engine, get_engine, load_startup_settings
 from deciflow.config_store import get_data_directory, get_database_path
-from deciflow.native_proxy import proxy_enabled, proxy_origin
+from deciflow.native_proxy import proxy_enabled, proxy_managed, proxy_origin
 from deciflow.paths import RESOURCE_ROOT
 from deciflow.runtime_config import FIELDS, effective_values
 from deciflow.server import ASSETS, DEFAULT_LOG_DIR, _check_engine_connection
@@ -43,11 +43,12 @@ def list_configuration(directory: Path) -> None:
         defaults = {
             **{key: str(field[2]) for key, field in FIELDS.items()},
             "PORT": "4000",
-            "DECIFLOW_BIND_HOST": "127.0.0.1",
+            "DECIFLOW_BIND_HOST": "0.0.0.0",
             "DECIFLOW_DATA_DIR": "",
             "DECIFLOW_LOG_DIR": DEFAULT_LOG_DIR,
             "DECIFLOW_CSRF_TRUSTED_ORIGINS": "",
             "OAUTH2_PROXY_ENABLED": "false",
+            "OAUTH2_PROXY_MANAGED": "true",
             "OAUTH2_PROXY_PUBLIC_URL": "",
             "OAUTH2_PROXY_CLIENT_ID": "",
             "OAUTH2_PROXY_CLIENT_SECRET": "",
@@ -70,12 +71,6 @@ def list_configuration(directory: Path) -> None:
                 value = str(get_data_directory())
                 if not os.getenv(key, "").strip():
                     source = "Default"
-            elif (
-                key == "DECIFLOW_CSRF_TRUSTED_ORIGINS"
-                and os.getenv("OAUTH2_PROXY_ENABLED") == "true"
-            ):
-                value = os.getenv("OAUTH2_PROXY_PUBLIC_URL", "")
-                source = "OAuth2-Proxy"
             if key.endswith(("_KEY", "_SECRET")):
                 value = "[Redacted]" if value else "(Not Set)"
             elif "URL" in key or key == "DECIFLOW_CSRF_TRUSTED_ORIGINS":
@@ -341,7 +336,7 @@ def run_config_test(directory: Path, *, detailed: bool = True) -> int:
             host = (
                 "127.0.0.1"
                 if protected
-                else os.getenv("DECIFLOW_BIND_HOST", "127.0.0.1")
+                else os.getenv("DECIFLOW_BIND_HOST", "0.0.0.0")
             )
             check(
                 "UI Listener",
@@ -349,7 +344,12 @@ def run_config_test(directory: Path, *, detailed: bool = True) -> int:
                 "Stop an existing instance or choose another address/port.",
             )
         if protected:
-            check("OAuth2-Proxy Executable", lambda: require_executable("oauth2-proxy"))
+            managed = check("OAuth2-Proxy Management", proxy_managed)
+            if managed:
+                check(
+                    "OAuth2-Proxy Executable",
+                    lambda: require_executable("oauth2-proxy"),
+                )
             for label, key in (
                 ("OAuth2-Proxy Client ID", "OAUTH2_PROXY_CLIENT_ID"),
                 ("OAuth2-Proxy Client Secret", "OAUTH2_PROXY_CLIENT_SECRET"),
@@ -371,7 +371,7 @@ def run_config_test(directory: Path, *, detailed: bool = True) -> int:
                 "Email Allow-List", lambda: check_emails(proxy / "allowed-emails.txt")
             )
             check("TLS Certificate and Key", lambda: check_tls(proxy))
-            if policy is not None:
+            if policy is not None and managed:
                 address = urlsplit(
                     "https://" + policy.get("https_address", "0.0.0.0:4443")
                 )

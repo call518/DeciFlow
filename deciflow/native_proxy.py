@@ -61,6 +61,14 @@ def proxy_enabled() -> bool:
     return value == "true"
 
 
+def proxy_managed() -> bool:
+    """Select CLI supervision or a separately operated proxy container."""
+    value = os.getenv("OAUTH2_PROXY_MANAGED", "true")
+    if value not in {"true", "false"}:
+        raise ValueError("OAUTH2_PROXY_MANAGED must be true or false")
+    return value == "true"
+
+
 def proxy_origin() -> str:
     """Validate the public HTTPS origin shared by startup and cli_config."""
     origin = os.getenv("OAUTH2_PROXY_PUBLIC_URL", "")
@@ -91,14 +99,17 @@ def run_with_proxy(
     """Supervise native OAuth2-Proxy and stop both processes when either exits."""
     binary = shutil.which("oauth2-proxy")
     if not binary:
-        raise ValueError("Install oauth2-proxy on PATH; see docs/native.md")
+        raise ValueError(
+            "OAuth2-Proxy executable not found; set OAUTH2_PROXY_MANAGED=false "
+            "for a Docker proxy. See docs/authentication.md."
+        )
     for key in (
         "OAUTH2_PROXY_CLIENT_ID",
         "OAUTH2_PROXY_CLIENT_SECRET",
         "OAUTH2_PROXY_COOKIE_SECRET",
     ):
         if not os.getenv(key):
-            raise ValueError(f"Set {key} in .env; see docs/native.md")
+            raise ValueError(f"Set {key} in .env; see docs/authentication.md")
     origin = proxy_origin()
     directory = root / "oauth2-proxy"
     for relative in (
@@ -110,7 +121,6 @@ def run_with_proxy(
         path = directory / relative
         with path.open("rb"):
             pass
-    os.environ["DECIFLOW_CSRF_TRUSTED_ORIGINS"] = origin
     command = [
         binary,
         f"--config={directory / 'oauth2-proxy.cfg'}",

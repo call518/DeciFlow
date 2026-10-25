@@ -369,3 +369,56 @@ async def test_status_exposes_authentication_mode_only(
         )
     assert response.json()["authenticationEnabled"] == (enabled == "true")
     assert "forged@example.com" not in response.text
+
+@pytest.mark.parametrize(
+    "url,origin,protected,public,extra,expected",
+    [
+        ("http://192.0.2.10:4000", "http://192.0.2.10:4000", False, "", "", True),
+        ("https://ui.example.com", "https://ui.example.com", False, "", "", True),
+        (
+            "http://ui:4000",
+            "https://ui.example.com",
+            True,
+            "https://ui.example.com",
+            "",
+            True,
+        ),
+        ("http://ui:4000", "http://ui:4000", True, "https://ui.example.com", "", False),
+        (
+            "http://ui:4000",
+            "https://admin.example.com",
+            True,
+            "https://ui.example.com",
+            "https://one.example.com, https://admin.example.com",
+            True,
+        ),
+        ("http://192.0.2.10:4000", "https://evil.example.com", False, "", "", False),
+        ("http://192.0.2.10:4000", "http://192.0.2.10:4001", False, "", "", False),
+        ("http://192.0.2.10:4000", "", False, "", "", False),
+        ("http://192.0.2.10:4000", "null", False, "", "", False),
+    ],
+)
+def test_ui_origin_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    url: str,
+    origin: str,
+    protected: bool,
+    public: str,
+    extra: str,
+    expected: bool,
+) -> None:
+    from starlette.requests import Request
+
+    monkeypatch.setenv("OAUTH2_PROXY_ENABLED", str(protected).lower())
+    monkeypatch.setenv("OAUTH2_PROXY_PUBLIC_URL", public)
+    monkeypatch.setenv("DECIFLOW_CSRF_TRUSTED_ORIGINS", extra)
+    request = httpx.Request("POST", url, headers={"Origin": origin})
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "scheme": request.url.scheme,
+        "path": "/",
+        "headers": [(key.lower(), value) for key, value in request.headers.raw],
+        "server": (request.url.host, request.url.port or 80),
+    }
+    assert server._allowed_origin(Request(scope)) is expected

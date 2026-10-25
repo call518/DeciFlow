@@ -67,6 +67,53 @@ def test_success_is_read_only_and_restores_working_directory(
     assert not (directory / "oauth2-proxy").exists()
 
 
+def test_external_proxy_keeps_validation_without_host_process_checks(
+    configuration: tuple[Path, list[str]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    directory, _ = configuration
+    with (directory / ".env").open("a") as stream:
+        stream.write("OAUTH2_PROXY_ENABLED=true\nOAUTH2_PROXY_MANAGED=false\n")
+    monkeypatch.delenv("OAUTH2_PROXY_ENABLED", raising=False)
+    monkeypatch.delenv("OAUTH2_PROXY_MANAGED", raising=False)
+    executables = []
+    listeners = []
+    checks = []
+    monkeypatch.setattr(cli_config, "require_executable", executables.append)
+    monkeypatch.setattr(
+        cli_config, "check_listener", lambda host, port: listeners.append((host, port))
+    )
+    monkeypatch.setattr(cli_config, "validate_proxy_setting", checks.append)
+    monkeypatch.setattr(cli_config, "proxy_origin", lambda: "https://demo.example.test")
+    monkeypatch.setattr(
+        cli_config, "read_proxy_policy", lambda path: {"https_address": "0.0.0.0:4443"}
+    )
+    monkeypatch.setattr(cli_config, "check_emails", lambda path: checks.append("emails"))
+    monkeypatch.setattr(cli_config, "check_tls", lambda path: checks.append("tls"))
+    assert cli_config.run_config_test(directory) == 0
+    assert executables == ["uv"]
+    assert listeners == [("127.0.0.1", 4000)]
+    assert checks == [
+        "OAUTH2_PROXY_CLIENT_ID",
+        "OAUTH2_PROXY_CLIENT_SECRET",
+        "OAUTH2_PROXY_COOKIE_SECRET",
+        "emails",
+        "tls",
+    ]
+
+
+def test_http_listener_defaults_to_all_interfaces(
+    configuration: tuple[Path, list[str]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    directory, _ = configuration
+    monkeypatch.delenv("DECIFLOW_BIND_HOST", raising=False)
+    listeners = []
+    monkeypatch.setattr(
+        cli_config, "check_listener", lambda host, port: listeners.append((host, port))
+    )
+    assert cli_config.run_config_test(directory) == 0
+    assert listeners == [("0.0.0.0", 4000)]
+
+
 def test_failures_do_not_stop_other_checks_and_have_terminal_colors(
     configuration: tuple[Path, list[str]],
     monkeypatch: pytest.MonkeyPatch,

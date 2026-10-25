@@ -156,7 +156,7 @@ Docker Compose는 `deciflow-data` 볼륨을 `DECIFLOW_DATA_DIR`
 밖에 있으므로 호스트에 별도 데이터 디렉터리가 필요하지 않습니다. 경로를 바꾸면
 기존 Actions를 이전하고 새 경로에 가상환경을 준비한 뒤
 `docker compose up -d ui`로 적용하세요. 데이터 경로 변경에는 UI 이미지 재빌드가
-필요하지 않습니다. [Docker 배포](../README.ko.md#deciflow-docker)를 참고하세요.
+필요하지 않습니다. [Docker 배포](../INSTALL.ko.md#docker-compose)를 참고하세요.
 
 구문 색상은 로컬에 포함한 PrismJS 1.30.0의 Core·Python 구성(약 9.4KiB, MIT)으로 처리합니다. 실행 중 외부 CDN을 요청하지 않으며 버전이 고정된 파일은 브라우저에 캐시합니다. 원본·라이선스·SHA-256은 `public/vendor/prism/`에 기록하며 버전 교체 시 해당 기록과 UI 검증을 함께 갱신합니다. 편집 입력·스크롤은 기존 방식을 유지합니다.
 
