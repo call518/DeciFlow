@@ -46,7 +46,7 @@ include = ["/deciflow", "/public", "/images", "/.env.example", "/docs/criteria.m
 
 [project.optional-dependencies]
 laya = [
-    "laya[serve]==0.4.8",
+    "laya[serve]==0.4.13",
 ]
 
 [tool.ruff]
