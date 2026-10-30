@@ -14,7 +14,7 @@ dependencies = [
     "croniter>=6.2.4",
     "httpx>=0.28.1",
     "pre-commit>=4.6.2",
-    "pyarrow==23.0.1",
+    "pyarrow==26.0.0",
     "python-dotenv>=1.2.4",
     "starlette>=1.7.0",
     "uvicorn>=0.54.0",
