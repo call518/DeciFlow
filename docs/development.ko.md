@@ -2,7 +2,7 @@
 
 [English](development.md) | [프로젝트 소개](../README.ko.md) | [설치](../INSTALL.ko.md)
 
-개발 명령은 [소스 직접 실행 설치](../INSTALL.ko.md#direct-processes)로 준비한
+개발 명령은 [소스 CLI 설치](../INSTALL.ko.md#direct-processes)로 준비한
 Git 저장소 루트에서 프로젝트 uv 환경으로 실행합니다. PyPI 명령 설치만으로는
 테스트 저장소가 준비되지 않습니다.
 
@@ -199,6 +199,9 @@ Compose는 Docker Hub에 공개된 `call518/deciflow-ui:0.0.2` 이미지를 사�
 `PORT`는 UI 포트(기본값: 4000)입니다. HTTP 모드는 `DECIFLOW_BIND_HOST`에
 해당 포트를 공개하고 OAuth2-Proxy 모드는 HTTPS 4443만 공개합니다.
 `pull_policy: always`로 `up` 실행 시마다 이미지 업데이트를 확인합니다.
+UI는 `deciflow start`를 거치지 않으므로 컨테이너에 `~/.config/deciflow/.env`가
+필요하지 않습니다. 기동·종료는 Compose로 관리합니다.
+[CLI와 서버 직접 실행 비교](configuration.ko.md#cli와-서버-직접-실행의-차이)를 참고하세요.
 UI·Laya 서비스는 `extra_hosts`로 `host.docker.internal`을 Docker 호스트 게이트웨이에 연결합니다. 기존 컨테이너에는 재생성 후 적용됩니다.
 
 <a id="docker-runtime"></a>

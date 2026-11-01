@@ -16,8 +16,10 @@
 
 [PyPI: pip 또는 uv tool](INSTALL.ko.md#pypi),
 [Docker Compose + Git Clone](INSTALL.ko.md#docker-compose),
-[소스 프로세스 직접 실행 + Git Clone](INSTALL.ko.md#direct-processes) 중 하나를 선택하세요.
+[Git 저장소에서 CLI 실행](INSTALL.ko.md#direct-processes) 중 하나를 선택하세요.
 설치 가이드는 방식별 요구사항·엔진 연결·저장 경로·인증·기동·검증·유지 관리를 설명합니다.
+CLI와 서버 직접 실행의 설정 경로·프로세스 관리 차이는
+[비교 안내](docs/configuration.ko.md#cli와-서버-직접-실행의-차이)를 참고하세요.
 
 ## 소개
 

@@ -15,7 +15,13 @@ labels to match your deployment. Commands run as the DeciFlow owner. Omit `sudo`
 | --- | --- | --- |
 | [1. PyPI: uv tool or pip](#pypi) (Recommended) | Python 3.12, uv, Docker | `~/.config/deciflow/.env` |
 | [2. Docker Compose](#docker-compose) | Git, Docker Compose 2.20+ | `<checkout>/.env` |
-| [3. Run from Source](#direct-processes) | Python 3.12, uv, Git, Docker | `<checkout>/.env` |
+| [3. Run from Source (CLI)](#direct-processes) | Python 3.12, uv, Git, Docker | `<checkout>/.env` |
+
+The package and source methods both use `deciflow start`; the source method
+selects the checkout with `--config-dir`. Compose calls the server directly and
+uses `/app/.env` inside the UI container. See
+[CLI and direct server startup](docs/configuration.md#cli-and-direct-server-startup)
+for the environment paths, startup checks, and process-management differences.
 
 HTTP defaults to `DECIFLOW_BIND_HOST=0.0.0.0`. When adding OAuth2-Proxy, change it
 to `127.0.0.1` to prevent bypassing authentication.
@@ -214,7 +220,7 @@ For optional HTTPS, follow [Compose authentication](docs/authentication.md#docke
 
 <a id="direct-processes"></a>
 
-## 3. Run from Source
+## 3. Run from Source (CLI)
 
 ### Prepare and Configure
 

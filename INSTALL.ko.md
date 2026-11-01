@@ -16,7 +16,12 @@ Rocky Linux 8·9·10 호스트에 아래 도구와 Docker 실행 권한·외부 
 | --- | --- | --- |
 | [1. PyPI: uv tool 또는 pip](#pypi) (권장) | Python 3.12, uv, Docker | `~/.config/deciflow/.env` |
 | [2. Docker Compose](#docker-compose) | Git, Docker Compose 2.20+ | `<checkout>/.env` |
-| [3. 소스 직접 실행](#direct-processes) | Python 3.12, uv, Git, Docker | `<checkout>/.env` |
+| [3. 소스에서 CLI 실행](#direct-processes) | Python 3.12, uv, Git, Docker | `<checkout>/.env` |
+
+패키지·소스 방식은 모두 `deciflow start`를 사용하며 소스 방식은 `--config-dir`로
+저장소를 선택합니다. Compose는 서버를 직접 호출하고 UI 컨테이너 내부 `/app/.env`를
+사용합니다. 환경 파일·기동 점검·프로세스 관리 차이는
+[CLI와 서버 직접 실행 비교](docs/configuration.ko.md#cli와-서버-직접-실행의-차이)를 참고하세요.
 
 기본 HTTP 수신 주소는 `DECIFLOW_BIND_HOST=0.0.0.0`입니다. OAuth2-Proxy를 추가할 때는
 인증 우회를 막도록 `127.0.0.1`로 변경합니다.
@@ -214,7 +219,7 @@ HTTPS가 필요하면 [Compose 인증 구성](docs/authentication.ko.md#docker)�
 
 <a id="direct-processes"></a>
 
-## 3. 소스 직접 실행
+## 3. 소스에서 CLI 실행
 
 ### 준비와 설정
 

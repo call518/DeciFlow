@@ -16,9 +16,11 @@
 
 Choose [PyPI: pip or uv tool](INSTALL.md#pypi),
 [Docker Compose with Git Clone](INSTALL.md#docker-compose), or
-[Direct Processes with Git Clone](INSTALL.md#direct-processes).
+[CLI from a Git Checkout](INSTALL.md#direct-processes).
 The installation guide covers prerequisites, engine connections, storage,
 authentication, startup, verification, and maintenance for each method.
+CLI and direct server startup use different configuration paths and process
+management; see the [comparison](docs/configuration.md#cli-and-direct-server-startup).
 
 ## Overview
 

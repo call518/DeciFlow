@@ -19,12 +19,13 @@ Laya 서버 설정은 Laya 호스트에서 관리하며, Compose는 `LAYA_API_KE
 | --- | --- | --- |
 | PyPI / pip 또는 uv tool | `~/.config/deciflow/.env` | `deciflow init`으로 샘플 생성 후 수정 |
 | Git clone + Docker Compose | 호스트 `<checkout>/.env`, UI 컨테이너 내부 `/app/.env`로 마운트 | `<checkout>/.env.example`을 `<checkout>/.env`로 복사하고 저장소에서 Compose 실행 |
-| Git clone + 네이티브 Python | `<checkout>/.env` | 샘플 복사 후 `uv run deciflow start --config-dir "$PWD"`, `uv run --extra laya python laya_server.py`가 같은 파일을 읽음 |
+| Git clone + 네이티브 Python | `<checkout>/.env` | 샘플 복사 후 `uv run deciflow start --config-dir "$PWD"`로 저장소를 명시적으로 선택 |
 
 패키지 설치(pip 또는 uv tool)의 `~`는 명령 실행 사용자의 홈입니다. 따라서 root는
-`/root/.config/deciflow/.env`를 사용합니다. `--config-dir /path/to/deciflow-config`를
-지정하면 `init`, `config list`, `config test`, `start`, `status`, `stop` 모두
-`/path/to/deciflow-config/.env`를 사용하므로 매번 같은 옵션을 전달하세요.
+`/root/.config/deciflow/.env`를 사용합니다. `--config-dir /path/to/deciflow-config`는
+설정 작업 공간을 선택합니다. `init`, `config list`, `config test`, `start`는 그 안의
+`.env`를 사용하고 `status` / `stop`은 같은 디렉터리로 CLI 관리 프로세스를 식별합니다.
+매번 같은 옵션을 전달하세요.
 현재 셸 디렉터리의 `.env`를 자동 선택하지 않으며, 초기화는 기존 파일을 보존합니다.
 
 Git 네이티브 CLI는 저장소에서 실행하고 `--config-dir "$PWD"`로 경로를 명시해야 합니다.
@@ -48,6 +49,30 @@ Docker의 `http://laya:8000`은 해당 네트워크 내부 주소이므로 호�
 데이터 `/var/lib/deciflow-data`(빈 값도 동일), 로그 `/var/log/deciflow`를 유지합니다.
 Docker는 컨테이너 내부 경로를 이름 있는 볼륨으로 보존하고, pip·uv tool·네이티브는 호스트
 디렉터리를 사용합니다. 네이티브 빠른 시작은 명시적으로 `./data`·`./logs`로 덮어씁니다.
+
+## CLI와 서버 직접 실행의 차이
+
+소스에서 설치하는 것과 서버를 직접 실행하는 것은 다른 선택입니다. 소스 설치 안내의
+`uv run deciflow start --config-dir "$PWD"`는 패키지 설치와 동일한 CLI를 호출합니다.
+모두 DeciFlow 서버를 실행하며 설정 선택과 프로세스 관리 방식이 다릅니다.
+
+| 실행 진입점 | 기동 점검·프로세스 관리 | 작업 디렉터리 |
+| --- | --- | --- |
+| `deciflow start`(`uv run deciflow start` 포함) | CLI 사전 점검·단일 실행 잠금·프로세스 등록·선택적 `--daemon`. 같은 `--config-dir`로 `deciflow status` / `stop` 사용 | 선택한 설정 디렉터리로 변경. 기본값은 `~/.config/deciflow` |
+| 준비된 저장소에서 `uv run python server.py` | CLI 사전 점검·프로세스 등록 없이 포그라운드 서버 기동. `Ctrl+C` 또는 프로세스 관리자로 종료 | 셸의 작업 디렉터리를 유지하며 `<checkout>/.env`를 읽음 |
+| `docker compose up -d` | UI 컨테이너가 의존성 설치 후 `server.main(host='0.0.0.0')`를 직접 호출. Compose 명령으로 관리 | `/app`. 마운트된 `/app/.env`와 Compose가 전달한 환경변수 사용 |
+
+네이티브 실행은 먼저 [소스 설치 안내](../INSTALL.ko.md#direct-processes)의 요구사항과
+엔진 준비를 완료하고 CLI 또는 포그라운드 `server.py` 중 하나를 선택하세요.
+같은 포트에 둘을 함께 실행하지 않습니다. 서버 직접 실행에도 서버의 설정 검증·인증·
+Task 복구는 적용되지만 `deciflow status` / `stop` 대상 프로세스로 등록되지는 않습니다.
+CLI는 준비된 `.env`가 필요합니다. 서버 직접 실행은 지정된 `.env`가 없으면 프로세스
+환경변수와 코드 기본값을 사용하며, 셸 디렉터리나 `~/.config/deciflow`에서 다른 파일을
+찾지 않습니다.
+
+Compose UI 컨테이너 내부에는 `~/.config/deciflow/.env`가 없어도 됩니다.
+프로젝트의 `.env`를 `env_file: .env`와 저장소 마운트 `.:/app:ro`로 전달하기 때문입니다.
+컨테이너 관리는 `deciflow start` / `stop` 대신 Compose 명령을 사용하세요.
 
 ## 환경 설정
 

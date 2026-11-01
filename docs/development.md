@@ -3,7 +3,7 @@
 [한국어](development.ko.md) | [Project Overview](../README.md) | [Installation](../INSTALL.md)
 
 Run development commands from a Git checkout prepared with
-[direct-process installation](../INSTALL.md#direct-processes). Use the project uv
+[source CLI installation](../INSTALL.md#direct-processes). Use the project uv
 environment; the installed PyPI command alone does not include this test checkout.
 
 Maintainers publish matching tag versions to TestPyPI and PyPI, then create a
@@ -210,6 +210,9 @@ on startup. Initial startup needs network access. Compose passes `.env` to the U
 `PORT` controls the UI port (default: 4000). HTTP mode publishes it on
 `DECIFLOW_BIND_HOST`; OAuth2-Proxy mode publishes only HTTPS on 4443.
 Compose checks for updated images on each `up` with `pull_policy: always`.
+The UI does not invoke `deciflow start`, so it does not need
+`~/.config/deciflow/.env` inside the container. Manage startup/shutdown with Compose.
+See [CLI and direct server startup](configuration.md#cli-and-direct-server-startup).
 The UI and Laya services map `host.docker.internal` to the Docker host gateway via `extra_hosts`. Recreate existing containers to apply this mapping.
 
 <a id="docker-runtime"></a>

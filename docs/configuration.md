@@ -20,12 +20,13 @@ Choose one execution method: **PyPI / pip or uv tool (recommended)**,
 | --- | --- | --- |
 | PyPI / pip or uv tool | `~/.config/deciflow/.env` | `deciflow init` creates templates; edit before startup |
 | Git clone + Docker Compose | `<checkout>/.env` on the host, mounted at `/app/.env` in the UI container | Copy `<checkout>/.env.example` to `<checkout>/.env`; run Compose from the checkout |
-| Git clone + native Python | `<checkout>/.env` | Copy the template; `uv run deciflow start --config-dir "$PWD"` and `uv run --extra laya python laya_server.py` read this file |
+| Git clone + native Python | `<checkout>/.env` | Copy the template; select the checkout explicitly with `uv run deciflow start --config-dir "$PWD"` |
 
 For package installations (pip or uv tool), `~` is the home of the user running the command; root therefore uses
 `/root/.config/deciflow/.env`. `--config-dir /path/to/deciflow-config` selects
-`/path/to/deciflow-config/.env` for `init`, `config list`, `config test`, `start`, `status`, and `stop`.
-Pass the same option every time. A `.env` in the shell's current directory is not
+the configuration workspace: `init`, `config list`, `config test`, and `start` use
+its `.env`; `status` and `stop` use the same directory to identify the CLI-managed
+process. Pass the same option every time. A `.env` in the shell's current directory is not
 automatically selected. Initialization preserves existing files.
 
 For Git native CLI execution, run from the checkout and select it explicitly with
@@ -51,6 +52,32 @@ These configuration paths are separate from `DECIFLOW_DATA_DIR` and
 setting) and `/var/log/deciflow`. Docker uses these paths inside the container and
 backs them with named volumes; pip/uv tool/native execution uses host directories.
 The native quick start explicitly overrides them with `./data` and `./logs`.
+
+## CLI and Direct Server Startup
+
+Installing from source and running the server directly are different choices.
+The source installation guide uses `uv run deciflow start --config-dir "$PWD"`,
+which invokes the same CLI as a package installation. All methods run the DeciFlow
+server; configuration selection and process management differ:
+
+| Entry Point | Startup Checks and Process Management | Working Directory |
+| --- | --- | --- |
+| `deciflow start` (including `uv run deciflow start`) | CLI preflight checks, single-instance lock, process registration, optional `--daemon`; manage with `deciflow status` / `stop` using the same `--config-dir` | Changes to the selected configuration directory; defaults to `~/.config/deciflow` |
+| `uv run python server.py` from a prepared checkout | Starts the server in the foreground without CLI preflight or process registration; stop with `Ctrl+C` or the process supervisor | Leaves the shell's working directory unchanged; reads `<checkout>/.env` |
+| `docker compose up -d` | The UI container installs dependencies, then calls `server.main(host='0.0.0.0')` directly; manage with Compose commands | `/app`; reads the mounted `/app/.env` and Compose-provided environment |
+
+For native execution, first complete the prerequisites and engine setup in the
+[source installation guide](../INSTALL.md#direct-processes), then choose CLI
+startup or the foreground `server.py` command. Do not start both on the same port.
+Direct execution retains server-side configuration validation, authentication and
+Task recovery; it does not register a process for `deciflow status` / `stop`.
+The CLI requires a prepared `.env`. Direct server startup uses process environment
+values and code defaults when its explicit `.env` is absent; it does not search
+the shell directory or `~/.config/deciflow` for another file.
+
+In Compose, `~/.config/deciflow/.env` inside the UI container is not required.
+The project's `.env` is supplied through `env_file: .env` and the checkout mount
+`.:/app:ro`. Use Compose to manage that container, not `deciflow start` / `stop`.
 
 ## Environment Settings
 
