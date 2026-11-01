@@ -357,7 +357,9 @@ then Type / Mode / Action (None when unset). Running/starting cards use a pale
 green background; Stopped cards use a subdued neutral background. Selected cards
 retain a left accent. Keep the pointer still for one second or focus a card for complete Source settings and
 Host names/SSH addresses in a scrollable tooltip. Click to show its current/latest
-results; Tasks without history show an empty result state. Start/stop Tasks in
+results; Tasks without history show an empty result state. Each card has one
+Pause/Resume button for its active run, disabled when no run can be controlled.
+Pausing lets in-flight work finish; Resume continues the same run. Start/stop Tasks in
 Tasks. See [Tasks](tasks.md) for scheduling and default Task restoration.
 
 Once visible, the tooltip stays open while the pointer is over the Task card or

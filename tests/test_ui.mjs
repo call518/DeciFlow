@@ -1963,14 +1963,14 @@ test('Main lists all saved Tasks in name order and opens current or latest runs'
     globalThis.watched=[]; handleWatchRun=async job=>watched.push(job.jobId);
     renderTaskMonitor();
   `,context);
-  const buttons=nodes.get('running-tasks').children;
+  const buttons=nodes.get('running-tasks').children.map(item=>item.children[0]);
   assert.deepEqual(buttons.map(button=>button.children[0].textContent),['Alpha','Zulu','Idle Task']);
   assert.ok(buttons.every(button=>button.attributes['aria-pressed']==='false'));
   await buttons[1].onclick();
   assert.equal(vm.runInContext('selectedTaskId',context),'z');
   assert.equal(vm.runInContext('watched.join()',context),'run-z');
-  assert.equal(nodes.get('running-tasks').children[1].attributes['aria-pressed'],'true');
-  await nodes.get('running-tasks').children[2].onclick();
+  assert.equal(nodes.get('running-tasks').children[1].children[0].attributes['aria-pressed'],'true');
+  await nodes.get('running-tasks').children[2].children[0].onclick();
   assert.equal(vm.runInContext('watched.join()',context),'run-z,old');
   vm.runInContext('registeredTasks=[];renderTaskMonitor()',context);
   assert.match(nodes.get('running-tasks').children[0].textContent,/No Enabled Tasks/);
@@ -2633,7 +2633,7 @@ test('Selecting a Task without history clears another Task results and statistic
   const {context,nodes}=workspace([]);
   await new Promise(resolve=>setImmediate(resolve));
   vm.runInContext("registeredTasks=[{id:'idle',name:'Never Run',mode:'batch',sources:[]}];results=[{input:'old',category:'normal',elapsedMs:1}];completed=1;completionOrder=[0];render();renderTaskMonitor();",context);
-  await nodes.get('running-tasks').children[0].onclick();
+  await nodes.get('running-tasks').children[0].children[0].onclick();
   assert.equal(vm.runInContext('results.length',context),0);
   assert.equal(vm.runInContext('completed',context),0);
   assert.equal(nodes.get('result-context').children[0].textContent,'Never Run');
@@ -2686,7 +2686,7 @@ test('SSH Host selector stays visible without a disclosure control',()=>{
 test('Task Monitor labels Source, type and optional Action without Host details',()=>{
   const {nodes,context}=workspace([]);
   vm.runInContext(`registeredSources=[{id:'remote',name:'System Logs',type:'ssh'}];sshHosts=[{id:'host',name:'Oracle'}];registeredActions=[{id:'ElasticSearch',name:'ElasticSearch'},{id:'Notify',name:'Notify'}];registeredTasks=[{id:'monitor',name:'Monitor',mode:'realtime',enabled:true,sources:[{sourceId:'remote',hostIds:['host'],actionId:'ElasticSearch'}],latestRun:{state:'stopped',counts:{completed:125,failed:2}}}];renderTaskMonitor()`,context);
-  const card=nodes.get('running-tasks').children[0];
+  const card=nodes.get('running-tasks').children[0].children[0];
   assert.equal(card.children.length,4);
   assert.deepEqual(card.children[1].children.map(node=>node.textContent),['Enabled','Stopped']);
   assert.equal(card.children[2].textContent,'Source: System Logs · Source Hosts: 1');
@@ -2699,8 +2699,8 @@ test('Task Monitor labels Source, type and optional Action without Host details'
   assert.equal(nodes.get('task-monitor-tooltip').hidden,true);
   assert.doesNotMatch(card.children[3].textContent,/Oracle|Host:/);
   vm.runInContext("registeredSources=[{id:'local',name:'DeciFlow',type:'local'}];registeredTasks[0].sources=[{sourceId:'local',actionId:''}];renderTaskMonitor()",context);
-  assert.equal(nodes.get('running-tasks').children[0].children[2].textContent,'Source: DeciFlow · Source Hosts: 1');
-  assert.equal(nodes.get('running-tasks').children[0].children[3].textContent,'Type: Local File / Mode: Realtime / Action: None');
+  assert.equal(nodes.get('running-tasks').children[0].children[0].children[2].textContent,'Source: DeciFlow · Source Hosts: 1');
+  assert.equal(nodes.get('running-tasks').children[0].children[0].children[3].textContent,'Type: Local File / Mode: Realtime / Action: None');
 });
 
 
@@ -2710,7 +2710,7 @@ test('Monitor availability and execution state use shared badge styling',()=>{
   assert.match(css,/\.monitor-state, \.monitor-availability\s*\{[^}]*height: 20px;[^}]*background: #e7ece9/);
   const {nodes,context}=workspace([]);
   vm.runInContext('renderTaskMonitor()',context);
-  const status=nodes.get('running-tasks').children[0].children[1];
+  const status=nodes.get('running-tasks').children[0].children[0].children[1];
   assert.equal(status.children[0].className,'monitor-availability enabled');
   assert.equal(status.children[1].className,'task-state monitor-state idle');
 });
@@ -2719,7 +2719,7 @@ test('Monitor availability and execution state use shared badge styling',()=>{
 test('Task Monitor card surface follows execution state independently of selection',()=>{
   const {nodes,context}=workspace([]);
   vm.runInContext(`registeredTasks=[{id:'active',name:'Active',mode:'realtime',activeRun:{}},{id:'stopped',name:'Stopped',mode:'realtime',latestRun:{state:'stopped'}}];selectedTaskId='stopped';renderTaskMonitor()`,context);
-  const cards=nodes.get('running-tasks').children;
+  const cards=nodes.get('running-tasks').children.map(item=>item.children[0]);
   assert.match(cards[0].className,/monitor-card-running/);
   assert.match(cards[1].className,/monitor-card-stopped/);
   assert.equal(cards[1].attributes['aria-pressed'],'true');
@@ -2739,7 +2739,7 @@ test('Source editor accepts multiple paths in one multiline field',async()=>{
 test('Monitor counts distinct Source Hosts while tooltip includes all assignments',()=>{
   const {nodes,context}=workspace([]);
   vm.runInContext(`registeredSources=[{id:'one',name:'Application',type:'ssh',path:'/var/log/app.log'},{id:'two',name:'System',type:'ssh',path:'/var/log/messages'}];sshHosts=[{id:'a',name:'Alpha',host:'alpha.example',username:'reader',port:22},{id:'b',name:'Beta',host:'beta.example',username:'logs',port:2222}];registeredActions=[{id:'ElasticSearch',name:'ElasticSearch'},{id:'Notify',name:'Notify'}];registeredTasks=[{id:'monitor',name:'Fleet',mode:'batch',enabled:true,sources:[{sourceId:'one',hostIds:['a','b'],actionId:'Notify',profile:'4e6d5417-611e-49e0-8e23-2444a0f49ee4',chunkEvents:2},{sourceId:'two',hostIds:['a'],actionId:''}]}];renderTaskMonitor()`,context);
-  const card=nodes.get('running-tasks').children[0];
+  const card=nodes.get('running-tasks').children[0].children[0];
   assert.equal(card.children[2].textContent,'Source: Application, System · Source Hosts: 2');
   assert.doesNotMatch(card.children[2].textContent,/Alpha|Beta/);
   card.getBoundingClientRect=()=>({left:10,top:10,bottom:90});
@@ -2772,7 +2772,7 @@ test('Task tooltip waits for one stationary second and stays open during movemen
   context.clearTimeout=id=>timers.delete(id);
   const advance=ms=>{now+=ms;for(const [id,timer] of [...timers])if(timer.due<=now){timers.delete(id);timer.callback();}};
   vm.runInContext('renderTaskMonitor()',context);
-  const card=nodes.get('running-tasks').children[0],tip=nodes.get('task-monitor-tooltip');
+  const card=nodes.get('running-tasks').children[0].children[0],tip=nodes.get('task-monitor-tooltip');
   card.getBoundingClientRect=()=>({left:10,top:10,bottom:90});
   card.onmouseenter();assert.equal(tip.hidden,true);
   advance(500);assert.equal(tip.hidden,true);
@@ -2952,7 +2952,7 @@ test('Action rename refreshes monitor labels while Tasks keep their UUID assignm
   await nodes.get('save-actions').onclick();
   assert.equal(vm.runInContext('registeredActions[0].id',context),'action-uuid');
   assert.equal(vm.runInContext('registeredTasks[0].sources[0].actionId',context),'action-uuid');
-  assert.match(nodes.get('running-tasks').children[0].children[3].textContent,/Action: Renamed/);
+  assert.match(nodes.get('running-tasks').children[0].children[0].children[3].textContent,/Action: Renamed/);
 });
 
 
@@ -3582,7 +3582,7 @@ test('Disabled Tasks are hidden from Task Monitor and return when enabled', asyn
   await new Promise(resolve=>setImmediate(resolve));
   vm.runInContext(`registeredTasks=[{id:'on',name:'Enabled Task',mode:'batch',sources:[],enabled:true},{id:'off',name:'Disabled Task',mode:'batch',sources:[],enabled:false}];renderTasks()`,context);
   assert.equal(nodes.get('running-tasks').children.length,1);
-  assert.equal(nodes.get('running-tasks').children[0].children[0].textContent,'Enabled Task');
+  assert.equal(nodes.get('running-tasks').children[0].children[0].children[0].textContent,'Enabled Task');
   assert.equal(nodes.get('task-list').children[0].children.length,3);
   vm.runInContext('registeredTasks[1].enabled=true;renderTasks()',context);
   assert.equal(nodes.get('running-tasks').children.length,2);
@@ -5176,4 +5176,44 @@ test('Decision picker omits a single Criteria name and groups mixed Criteria wit
       assert.match(nodes.get('active-result-filters').children[0].textContent,/^Decision: Area \(Choice\) → a/);
     }
   }
+});
+
+test('Task Monitor toggles Pause and Resume for the same run without selecting the card',async()=>{
+  const {nodes,context}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext("registeredTasks=[{id:'monitor',name:'Monitored Task',mode:'realtime',sources:[],activeRun:{jobId:'same-run',state:'running'}}];selectedTaskId='another-task';renderTaskMonitor()",context);
+  const control=()=>nodes.get('running-tasks').children[0].children[1];
+  const paths=[];let release;
+  context.fetch=async path=>{
+    paths.push(path);
+    if(path==='/api/tasks')return {ok:true,json:async()=>({tasks:vm.runInContext('registeredTasks',context)})};
+    if(path.endsWith('/pause'))await new Promise(resolve=>{release=resolve;});
+    vm.runInContext(`registeredTasks[0].activeRun.state='${path.endsWith('/pause')?'paused':'running'}'`,context);
+    return {ok:true,json:async()=>({jobId:'same-run'})};
+  };
+  assert.equal(control().textContent,'Pause');
+  const pending=control().onclick();
+  assert.equal(control().disabled,true);
+  await control().onclick();
+  assert.equal(paths.length,1);
+  release();await pending;
+  assert.equal(control().textContent,'Resume');assert.equal(control().disabled,false);
+  await control().onclick();
+  assert.equal(control().textContent,'Pause');assert.equal(control().disabled,false);
+  assert.equal(vm.runInContext('selectedTaskId',context),'another-task');
+  assert.deepEqual(paths,['/api/tasks/monitor/pause','/api/tasks','/api/tasks/monitor/resume','/api/tasks']);
+});
+
+test('Task Monitor disables unavailable controls and shows operation failures on Main',async()=>{
+  const {nodes,context}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
+  for(const state of ['idle','completed','failed','stopped','starting','pausing','paused','running']){
+    vm.runInContext(`registeredTasks=[{id:'monitor',name:'Monitor',sources:[],${state==='starting'?"starting:true,":''}activeRun:${['pausing','paused','running'].includes(state)?`{state:'${state}'}`:'null'},latestRun:{state:'${state}'}}];renderTaskMonitor()`,context);
+    const control=nodes.get('running-tasks').children[0].children[1];
+    assert.equal(control.textContent,['pausing','paused'].includes(state)?'Resume':'Pause');
+    assert.equal(Boolean(control.disabled),!['pausing','paused','running'].includes(state));
+  }
+  context.fetch=async()=>({ok:false,status:409,json:async()=>({error:'Task state changed; refresh and retry.'})});
+  await nodes.get('running-tasks').children[0].children[1].onclick();
+  assert.equal(nodes.get('task-monitor-message').hidden,false);
+  assert.match(nodes.get('task-monitor-message').textContent,/Task state changed/);
+  assert.equal(nodes.get('running-tasks').children[0].children[1].disabled,false);
 });

@@ -951,6 +951,7 @@ function handleShowTaskTooltip(button,task,definitions,mode,state) {
 }
 $('task-monitor-tooltip').onmouseenter=()=>clearTimeout(taskTooltipTimer);
 $('task-monitor-tooltip').onmouseleave=handleHideTaskTooltip;
+const pendingTaskOperations = new Set();
 function renderTaskMonitor() {
   const list=$('running-tasks'); list.replaceChildren();
   const tasks=registeredTasks.filter(task=>task.enabled!==false).sort((a,b)=>Number(Boolean(b.activeRun || b.starting))-Number(Boolean(a.activeRun || a.starting)) || compareNames(a,b));
@@ -999,7 +1000,13 @@ function renderTaskMonitor() {
     status.append(element('span',task.enabled===false?'Disabled':'Enabled',`monitor-availability ${task.enabled===false?'disabled':'enabled'}`),element('span',state[0].toUpperCase()+state.slice(1),`task-state monitor-state ${state}`));
     button.append(name,status,summary,details);
     button.onclick=()=>{cancelTooltip();return handleSelectTask(task.id);};
-    list.append(button);
+    const item=element('div','','monitor-task-item');
+    const paused=['paused','pausing'].includes(task.activeRun?.state);
+    const control=element('button',paused?'Resume':'Pause','quiet monitor-task-control');control.type='button';
+    control.setAttribute('aria-label',`${paused?'Resume':'Pause'} ${task.name}`);
+    control.disabled=pendingTaskOperations.has(task.id) || task.starting || !['running','paused','pausing'].includes(task.activeRun?.state);
+    control.onclick=()=>{cancelTooltip();return handlePauseTask(task.id,paused?'resume':'pause');};
+    item.append(button,control);list.append(item);
   }
   if(!tasks.length)list.append(element('p','No Enabled Tasks. Add a Task in Tasks.','caption'));
 
@@ -1221,13 +1228,19 @@ async function handleRunTask(identity) {
   }catch(error){$('message').className='error-message';handleMessage('message',error.message,true);}
 }
 async function handlePauseTask(identity,operation) {
+  if(pendingTaskOperations.has(identity))return;
+  pendingTaskOperations.add(identity);renderTaskMonitor();
   try {
     const response=await fetch(`/api/tasks/${identity}/${operation}`,{method:'POST'});
     if(response.status===404 || response.status===405)throw new Error('Pause/Resume is unavailable on the running server. After finishing or stopping active Tasks, restart the DeciFlow UI server or container and refresh this page. Restarting interrupts active executions.');
     const data=await readApiJsonResponse(response);if(!response.ok)throw new Error(data.error);
     await handleLoadTasks();
     if(pagedView?.id===data.jobId)await handleRefreshResults(false,true);
-  }catch(error){handleMessage('task-message',error.message,true);}
+  }catch(error){
+    handleMessage('task-message',error.message,true);
+    $('task-monitor-message').hidden=false;
+    handleMessage('task-monitor-message',error.message,true);
+  }finally{pendingTaskOperations.delete(identity);renderTaskMonitor();}
 }
 async function handleStopTask(identity) {
   try{const response=await fetch(`/api/tasks/${identity}/stop`,{method:'POST'});const data=await readApiJsonResponse(response);if(!response.ok)throw new Error(data.error);await handleLoadTasks();}
