@@ -1627,6 +1627,8 @@ button.danger:hover:not(:disabled) { background: #9c3028; border-color: #9c3028;
 .decision-option > button { justify-self: end; width: auto; }
 .decision-editor-tools { display: flex; gap: 8px; flex-wrap: wrap; }
 .result-disclosure { margin: 8px 0; }
+.result-source { margin: 8px 0; padding: 8px 10px; border: 1px solid #dce6df; border-radius: 6px; background: #f6f9f7; color: #38584a; font-weight: 700; overflow-wrap: anywhere; }
+.result-source-path { color: #246b8e; }
 .result-disclosure > summary, .original-input > summary { cursor: pointer; font-size: 14px; }
 .result-disclosure > .json-panel { margin-top: 10px; }
 .result-details > .view-details { grid-template-columns: minmax(0, 1fr); margin-top: 10px; }

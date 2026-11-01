@@ -138,7 +138,27 @@ function decisionCards(row) {
 }
 
 function logs(nodes) {
-  return nodes.get('results').children.map(row => row.children[1].children[1].textContent);
+  return nodes.get('results').children.map(row => row.children.find(child=>child.className==='original-input').children[1].textContent);
+}
+
+for(const engine of ['laya','jev']){
+  test(`${engine} shows the source path above Input for successful and failed results`,async()=>{
+    const event=result(0,false),source='/var/log/<untrusted>/application.log';
+    Object.assign(event.result,{source,line:7,lineEnd:9,engine});
+    const {context,nodes}=workspace([event]);await runTask(nodes);
+    for(const error of [false,true]){
+      if(error)vm.runInContext("results[0].error='request failed';render(false)",context);
+      const row=nodes.get('results').children[0];
+      const index=row.children.findIndex(child=>child.className==='original-input');
+      assert.equal(row.children[index-1].className,'caption result-source');
+      const location=row.children[index-1];
+      assert.equal(location.children[0].className,'result-source-label');
+      assert.equal(location.children[0].textContent,'Source: ');
+      assert.equal(location.children[1].className,'result-source-path');
+      assert.equal(location.children[1].textContent,source);
+      assert.equal(location.children[1].children.length,0);
+    }
+  });
 }
 
 test('arrival order, filtering, corrections, pagination and restart', async () => {
@@ -4379,7 +4399,7 @@ test('Result metadata is collapsed under Details while Action failures stay visi
   Object.assign(failure.result,{source:'ssh://host/logs',line:7,hostName:'Remote Host',hostAddress:'host',hostPort:22,actionExecution:{name:'Notify',status:'failed',elapsedMs:12,exitCode:7,error:'Connection refused'}});
   const {nodes,context}=workspace([{type:'start',engine:'laya',total:3},success,failure,plain]);
   await runTask(nodes);
-  const row=index=>nodes.get('results').children.find(row=>row.children[1].children[1].textContent===`log-${index}`);
+  const row=index=>nodes.get('results').children.find(row=>row.children.find(child=>child.className==='original-input')?.children[1].textContent===`log-${index}`);
   const details=index=>row(index).children.find(child=>child.children[0]?.textContent==='Details');
   assert.equal(details(0).open,false);
   assert.equal(details(1).open,false);

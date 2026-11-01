@@ -2638,6 +2638,11 @@ function render(updateList = true, incremental = false) {
     const tokenWarning=renderTokenWarning(result);
     if(tokenWarning){row.className+=' token-limited';top.prepend(tokenWarning);}
     row.append(top);
+    if(result.source){
+      const source=element('p','','caption result-source');
+      source.append(element('span','Source: ','result-source-label'),element('span',result.source,'result-source-path'));
+      row.append(source);
+    }
     const original=element('details','','original-input');original.append(element('summary','Input'),element('p',result.input,'log'));
     handleResultDisclosure(original,result,'input',result.inputFormat!=='jsonl');row.append(original);
     const fields=[];
