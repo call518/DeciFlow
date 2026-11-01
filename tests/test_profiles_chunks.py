@@ -294,7 +294,7 @@ async def test_realtime_discovers_globs_with_per_file_chunks(tmp_path: Path) -> 
         [
             {
                 "path": str(tmp_path / "*.log"),
-                "profile": "0181af82-c1ed-41c8-8cd3-22a385746b32",
+                "profile": "617706a3-c4ee-426f-81cf-7f5d80ecf67a",
                 "chunkEvents": 2,
             }
         ]
@@ -313,7 +313,7 @@ async def test_realtime_discovers_globs_with_per_file_chunks(tmp_path: Path) -> 
             assert (
                 first["profile"]
                 == second["profile"]
-                == "0181af82-c1ed-41c8-8cd3-22a385746b32"
+                == "617706a3-c4ee-426f-81cf-7f5d80ecf67a"
             )
         finally:
             pending.cancel()

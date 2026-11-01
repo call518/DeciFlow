@@ -10,7 +10,6 @@ RUN printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
       default-jre-headless \
-      tcpdump \
       net-tools \
       iputils-ping \
       dnsutils \

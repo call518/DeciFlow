@@ -7,7 +7,7 @@ import { test } from 'node:test';
 const prismRuntime=vm.createContext({});
 vm.runInContext(readFileSync(new URL('../public/vendor/prism/prism-python-1.30.0.min.js',import.meta.url),'utf8'),prismRuntime);
 const workspaceContexts = new WeakMap();
-const sampleProfileIds={"central_gov": "1dd02d79-f43e-49ef-a1f1-7a2ddfab1e8d", "consultation": "41bbe1dc-85cb-4ab0-ab79-cd7c4e6f8e72", "application": "617706a3-c4ee-426f-81cf-7f5d80ecf67a", "general": "4e6d5417-611e-49e0-8e23-2444a0f49ee4", "local_gov": "efb7c8ca-61c1-4785-b38d-0a86764ca758", "authentication": "702ecfa5-01fb-4321-9692-996134a10802", "network": "0181af82-c1ed-41c8-8cd3-22a385746b32", "http_access": "2e44ae00-7a3a-492d-8806-9177a8973582"};
+const sampleProfileIds={"central_gov": "1dd02d79-f43e-49ef-a1f1-7a2ddfab1e8d", "consultation": "41bbe1dc-85cb-4ab0-ab79-cd7c4e6f8e72", "application": "617706a3-c4ee-426f-81cf-7f5d80ecf67a", "general": "4e6d5417-611e-49e0-8e23-2444a0f49ee4", "local_gov": "efb7c8ca-61c1-4785-b38d-0a86764ca758", "authentication": "702ecfa5-01fb-4321-9692-996134a10802", "http_access": "2e44ae00-7a3a-492d-8806-9177a8973582"};
 function readProfileTemplate(name) {const {id,...profile}=JSON.parse(readFileSync(new URL(`../deciflow/profiles/${name}.json`,import.meta.url),'utf8'));return profile;}
 const systemProfile=readProfileTemplate('general');
 function profileFixture(label,instructions,criteria=systemProfile.questions.category.criteria) {
@@ -315,7 +315,7 @@ test('individual JSON reflects review changes and stays open after rendering', a
   const event = result(0);
   Object.assign(event.result, { profile: '2e44ae00-7a3a-492d-8806-9177a8973582', chunkEvents: 3, eventCount: 2, source: '/logs/access.log', line: 10, lineEnd: 11, input: '<script>example</script>' });
   const failed = result(1);
-  failed.result = { input: 'bad input', error: 'request failed', review: true, elapsedMs: 1, profile: '0181af82-c1ed-41c8-8cd3-22a385746b32' };
+  failed.result = { input: 'bad input', error: 'request failed', review: true, elapsedMs: 1, profile: '617706a3-c4ee-426f-81cf-7f5d80ecf67a' };
   const { nodes, context } = workspace([{ type: 'start', total: 2, engine: 'laya' }, event, failed]);
   await runTask(nodes);
   const row = nodes.get('results').children[1];
@@ -1492,7 +1492,7 @@ test('Reset Selections restores registered samples and clears Action assignments
   const values = new Map();
   const storage = { getItem: key => values.get(key) || null, setItem: (key, value) => values.set(key, value) };
   const { nodes, context } = workspace([], undefined, storage);
-  vm.runInContext("sourcePreferences.set('/host-logs/var/log/messages', {profile:'0181af82-c1ed-41c8-8cd3-22a385746b32', chunkEvents:9, actionId:'Notify'}); filePaths.realtime='/my/live.log';", context);
+  vm.runInContext("sourcePreferences.set('/host-logs/var/log/messages', {profile:'617706a3-c4ee-426f-81cf-7f5d80ecf67a', chunkEvents:9, actionId:'Notify'}); filePaths.realtime='/my/live.log';", context);
   nodes.get('file-path').value = '/custom.log'; nodes.get('file-path').oninput();
   nodes.get('reset-sources').onclick();
   assert.equal(nodes.get('file-path').value, vm.runInContext('defaultFilePaths.batch', context));

@@ -1322,7 +1322,7 @@ result = json.load(sys.stdin)
 # Use result["category"], result["input"], and result["source"] here.
 # Replace this handler with your notification, storage, or other integration.
 `;
-const profileLabels = { '4e6d5417-611e-49e0-8e23-2444a0f49ee4': 'Sample General System', '702ecfa5-01fb-4321-9692-996134a10802': 'Sample Authentication', '2e44ae00-7a3a-492d-8806-9177a8973582': 'Sample HTTP access', '617706a3-c4ee-426f-81cf-7f5d80ecf67a': 'Sample Application', '0181af82-c1ed-41c8-8cd3-22a385746b32': 'Sample Network / tcpdump text' };
+const profileLabels = { '4e6d5417-611e-49e0-8e23-2444a0f49ee4': 'Sample General System', '702ecfa5-01fb-4321-9692-996134a10802': 'Sample Authentication', '2e44ae00-7a3a-492d-8806-9177a8973582': 'Sample HTTP access', '617706a3-c4ee-426f-81cf-7f5d80ecf67a': 'Sample Application' };
 let registeredActions = [];
 let actionRows = [];
 let preparingActions = false;

@@ -63,7 +63,6 @@ Criteria는 Choice·Score·Noul 판단 항목의 개수·선택지·단계를 �
 | Sample Authentication | 인증·세션 결과, 서비스 장애, 악용 증거 |
 | Sample HTTP access | 응답, 요청 실패, 의심 접근 |
 | Sample Application | 애플리케이션 작업, 예외, 의존 서비스 |
-| Sample Network / tcpdump text | 텍스트의 연결·패킷 증거; 바이너리 PCAP 미지원 |
 
 프로필은 사이드바의 **Criteria**에서 추가·수정·삭제합니다.
 시스템 프로필은 Normal·Warning·Error·Security·Other를 유지하고 사용자 프로필은

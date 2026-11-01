@@ -44,12 +44,12 @@ def test_persistence_and_invalid_save(criteria_storage: Path) -> None:
         values["4e6d5417-611e-49e0-8e23-2444a0f49ee4"]
     )
     values["a9b5cb3b-1e1e-4559-8f71-365c651d176d"]["label"] = "Custom criteria"
-    values.pop("0181af82-c1ed-41c8-8cd3-22a385746b32")
+    values.pop("617706a3-c4ee-426f-81cf-7f5d80ecf67a")
     save_profiles(values)
     PROFILES.pop("a9b5cb3b-1e1e-4559-8f71-365c651d176d")
     load_profiles()
     assert PROFILES == values
-    assert "0181af82-c1ed-41c8-8cd3-22a385746b32" not in PROFILES
+    assert "617706a3-c4ee-426f-81cf-7f5d80ecf67a" not in PROFILES
     saved = load_records("criteria")
     values["a9b5cb3b-1e1e-4559-8f71-365c651d176d"]["questions"]["category"]["criteria"][
         "normal"
@@ -254,7 +254,7 @@ def test_startup_creates_criteria_and_preserves_existing_records(
     load_profiles()
     assert load_records("criteria") == expected
     expected["4e6d5417-611e-49e0-8e23-2444a0f49ee4"]["label"] = "Saved custom name"
-    expected.pop("0181af82-c1ed-41c8-8cd3-22a385746b32")
+    expected.pop("617706a3-c4ee-426f-81cf-7f5d80ecf67a")
     save_records("criteria", expected)
     load_profiles()
     assert PROFILES == expected

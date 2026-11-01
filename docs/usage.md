@@ -67,7 +67,6 @@ No ticket is created automatically. Missing or invalid answers fail the whole re
 | Sample Authentication | Authentication/session outcomes, service failures, and abuse |
 | Sample HTTP access | Responses, request failures, and suspicious access |
 | Sample Application | Application operations, exceptions, and dependencies |
-| Sample Network / tcpdump text | Connection/packet evidence in text; binary PCAP is unsupported |
 
 Use **Criteria** in the sidebar to add, edit, or delete profiles.
 System profiles retain Normal, Warning, Error, Security, and Other; custom

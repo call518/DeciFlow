@@ -13,7 +13,7 @@ from deciflow.result_payload import compact_result
 
 
 def test_all_templates_use_one_profile_format() -> None:
-    assert len(SAMPLE_PROFILE_IDS) == len(set(SAMPLE_PROFILE_IDS.values())) == 8
+    assert len(SAMPLE_PROFILE_IDS) == len(set(SAMPLE_PROFILE_IDS.values())) == 7
     assert set(DEFAULT_PROFILES) == set(SAMPLE_PROFILE_IDS.values())
     assert all(
         str(UUID(identity)) == identity and UUID(identity).version == 4

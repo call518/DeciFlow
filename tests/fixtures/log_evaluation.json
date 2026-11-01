@@ -140,30 +140,5 @@
     "profile": "617706a3-c4ee-426f-81cf-7f5d80ecf67a",
     "input": "opaque event without application context",
     "expected": "other"
-  },
-  {
-    "profile": "0181af82-c1ed-41c8-8cd3-22a385746b32",
-    "input": "TCP connection established: SYN, SYN-ACK, ACK; data acknowledged; orderly FIN close",
-    "expected": "normal"
-  },
-  {
-    "profile": "0181af82-c1ed-41c8-8cd3-22a385746b32",
-    "input": "TCP retransmission after packet loss; retransmitted data acknowledged",
-    "expected": "warning"
-  },
-  {
-    "profile": "0181af82-c1ed-41c8-8cd3-22a385746b32",
-    "input": "ICMP destination unreachable: host unreachable; connection failed",
-    "expected": "error"
-  },
-  {
-    "profile": "0181af82-c1ed-41c8-8cd3-22a385746b32",
-    "input": "Firewall: confirmed unauthorized traffic violates network access policy",
-    "expected": "security"
-  },
-  {
-    "profile": "0181af82-c1ed-41c8-8cd3-22a385746b32",
-    "input": "12:00:00 IP 192.0.2.10.42000 > 192.0.2.20.443: Flags [S], seq 1, length 0",
-    "expected": "other"
   }
 ]
