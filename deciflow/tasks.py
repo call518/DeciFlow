@@ -399,6 +399,7 @@ def record_unstarted_run(task: Result, state: str, trigger: str, error: str) -> 
         "startedAt": now,
         "finishedAt": now,
         "error": error,
+        "pausedMs": 0,
         "counts": {"completed": 0, "failed": 0, "actionFailed": 0},
     }
     events = [
@@ -409,7 +410,13 @@ def record_unstarted_run(task: Result, state: str, trigger: str, error: str) -> 
             "total": 0,
         },
         {"type": "error", "error": error},
-        {"type": "done", "state": state, "elapsedMs": 0, "activeProcessingMs": 0},
+        {
+            "type": "done",
+            "state": state,
+            "elapsedMs": 0,
+            "activeProcessingMs": 0,
+            "pausedMs": 0,
+        },
     ]
     store = open_result_store(get_data_directory())
     store.create(identity, run)

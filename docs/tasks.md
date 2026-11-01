@@ -14,6 +14,7 @@ A Source assignment can be set to **None** to temporarily release its dependency
 - Main lists enabled Tasks with running/starting Tasks first, then name order within each group. Click a Task to display its current or latest run; a fresh page has no selection. Disabled Tasks remain available in the Tasks management list.
 - The Tasks list provides an Enabled switch and Run, Stop, Pause / Resume, View, Edit, History, and Delete.
 - Task Monitor shows the Task name and availability/state on the first row, Source and distinct Source Host count on the second, then Type / Mode / Action on the third (Action: None if unset). Long assignments are truncated.
+- **Task Monitor controls:** Run/Stop appears to the left of Pause/Resume. Run starts a new execution; Stop ends the current run, including a paused run. Run is disabled while starting or when Source/Criteria assignments are incomplete. Requests disable both controls until they finish.
 - Keep the pointer still over a card for one second, or focus it with the keyboard, to open a styled tooltip with all Source paths, settings, and the complete Source Host list (names and SSH addresses). Local File counts DeciFlow as one Source Host.
 - Press Escape to dismiss the tooltip. Click to view results. Running Tasks remain first. Execution counts, times, and schedules stay in results and Tasks.
 
@@ -178,10 +179,13 @@ Clicking Run in Tasks automatically opens Main to show the selected Task results
 - Both Batch and Realtime support Pause. Source readers can retain a bounded number of prefetched records; no growing full-file queue is created. Realtime data written while paused is read after Resume if the original file is still available.
 - Rotation, truncation, removal, or SSH interruption can cause gaps under existing source rules. Pause survives a DeciFlow server restart for checkpoint-enabled executions: they recover as Paused and wait for Resume.
 
-Total elapsed time and whole-run Throughput include paused intervals and server downtime. Processing
-Time excludes waiting at the pause gate. **Pause Display Updates** only freezes the
-result list; it does not pause execution.
+- **Elapsed:** includes paused intervals and server downtime.
+- **Throughput:** uses Active Processing Time; paused intervals and downtime do not add to its denominator. Processing Time excludes waiting at the pause gate.
+- **Pause Display Updates:** freezes the result list without pausing execution.
 
+
+- **Paused time:** each run accumulates all fully Paused intervals, starting after admitted work drains. Resume, Stop, or failure closes the current interval; repeated Pause requests do not reset it. A new run starts at zero.
+- **History and recovery:** the accumulated value is stored with the run and retained after reload or restart. Server downtime is excluded from Paused time. While paused, timing heartbeats persist the value; an abrupt process loss may omit time since the last persisted heartbeat. Graceful shutdown saves the final interval.
 
 ## Recovery After A Server Restart
 

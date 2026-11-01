@@ -10,6 +10,7 @@ from contextlib import aclosing
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
@@ -75,6 +76,10 @@ class Job:
             if restored["state"] in {"paused", "pausing"}:
                 self.state = "paused"
                 self.control.ready.clear()
+        self.pause_timing: tuple[float, float | None] = (
+            float(restored.get("pausedMs", 0) or 0) if restored else 0.0,
+            perf_counter() if self.state == "paused" else None,
+        )
         self.temporary = (
             TemporaryDirectory(prefix="deciflow-job-") if storage_root is None else None
         )
@@ -141,8 +146,28 @@ class Job:
             "counts": self.counts,
             "hosts": list(self.hosts.values()),
             **self.progress,
+            "pausedMs": self.paused_ms(),
             **({"error": self.error} if self.error else {}),
         }
+
+    def paused_ms(self) -> int:
+        """Return accumulated user pause time, excluding process downtime."""
+        elapsed, started = self.pause_timing
+        return (
+            round(elapsed + (perf_counter() - started) * 1000)
+            if started is not None
+            else round(elapsed)
+        )
+
+    def _begin_pause(self) -> None:
+        elapsed, started = self.pause_timing
+        if started is None:
+            self.pause_timing = (elapsed, perf_counter())
+
+    def _finish_pause(self) -> None:
+        elapsed, started = self.pause_timing
+        if started is not None:
+            self.pause_timing = (elapsed + (perf_counter() - started) * 1000, None)
 
     def _persist(self) -> None:
         if not self.persistent or self.storage_failed:
@@ -173,12 +198,15 @@ class Job:
                 self.counts["actionFailed"] += 1
         if event["type"] == "done" and self.state != "running":
             self.finished_at = datetime.now(UTC).isoformat()
+        event["pausedMs"] = self.paused_ms()
         encoded = json.dumps(event, ensure_ascii=True, allow_nan=False) + "\n"
         for key in self.progress:
             if key in event:
                 self.progress[key] = event[key]
         if event["type"] == "timing":
             self.timing = encoded
+            if self.state == "paused":
+                self._persist()
         else:
             if not self.storage_failed:
                 try:
@@ -209,6 +237,7 @@ class Job:
                     if self.control.recovering and event["type"] == "start":
                         continue
                     if event["type"] == "done":
+                        self._finish_pause()
                         self.state = (
                             "completed"
                             if self.state in {"running", "pausing", "paused"}
@@ -220,22 +249,26 @@ class Job:
                             self.state = "failed"
                         event["state"] = self.state
                     elif event["type"] == "error":
+                        self._finish_pause()
                         self.state = "failed"
                     await self._append_event(event)
                     if event["type"] == "result":
                         self.control.active = max(0, self.control.active - 1)
                     if self.state == "pausing" and not self.control.active:
                         self.state = "paused"
+                        self._begin_pause()
                         await anyio.to_thread.run_sync(self._persist)
                         self.changed.set()
         except asyncio.CancelledError:
             if not self.suspending:
                 self.state = "stopped"
         except Exception as error:  # noqa: BLE001 - preserve a terminal job result
+            self._finish_pause()
             log_failure(f"Analysis job {self.id}", error)
             self.state = "failed"
             self.append({"type": "error", "error": str(error)})
         finally:
+            self._finish_pause()
             EXECUTION_CONTROL.reset(token)
             if not self.suspending:
                 if self.state in {"running", "pausing", "paused"}:
@@ -281,6 +314,8 @@ class Job:
             raise ValueError("This execution has already finished.")
         self.control.ready.clear()
         self.state = "pausing" if self.control.active else "paused"
+        if self.state == "paused":
+            self._begin_pause()
         await anyio.to_thread.run_sync(self._persist)
         self.changed.set()
 
@@ -288,6 +323,7 @@ class Job:
         """Continue the same execution with its retained source position."""
         if self.task.done() or self.state not in {"running", "pausing", "paused"}:
             raise ValueError("This execution has already finished.")
+        self._finish_pause()
         self.state = "running"
         self.control.ready.set()
         await anyio.to_thread.run_sync(self._persist)
@@ -301,6 +337,7 @@ class Job:
             await self.stop()
             return
         self.suspending = True
+        self._finish_pause()
         self.task.cancel()
         await asyncio.gather(self.task, return_exceptions=True)
         self._persist()
@@ -309,6 +346,7 @@ class Job:
         """Cancel analysis and its subprocesses, retaining completed results."""
         if self.task.done():
             return
+        self._finish_pause()
         self.state = "stopped"
         self.task.cancel()
         await asyncio.gather(self.task, return_exceptions=True)

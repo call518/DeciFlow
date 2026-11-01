@@ -218,11 +218,11 @@ retention limit is applied. See [Result storage](configuration.md#storage).
 | Action Success / Failed / Total | Completed Action successes / failures / total; excludes unassigned sources and failed decisions; independent of decision counts |
 | Needs Review | Successful chunks with any decision/record review reason; counted once per chunk; failures excluded |
 | Throughput | All successful results divided by Active Processing Time in seconds; excludes idle time and Action delivery, counts overlapping request time once, and shows zero before active processing |
-| Total Elapsed Time | Time since the run started, including idle periods |
+| Total Elapsed / Paused Time | Elapsed: time since run start, including pauses and downtime. Paused: cumulative fully Paused intervals in this run; excludes Pausing and server downtime. Missing historical measurements show N/A; the tooltip explains that pause time was not recorded. |
 | Active Processing Time | Time with at least one request in flight, counting overlap once; percentage of total elapsed time |
 | Processing Time | One compact card, the same size as the other metrics, showing Avg, Min, Max, P(50), P(95), and P(99) with small inline labels. All completed record durations, including failures; Action time excluded. Avg is the arithmetic mean; P(50) averages the central values; P(95)/P(99) use nearest rank. |
 
-Total Elapsed Time, Active Processing Time, and the values in Processing Time use
+Total Elapsed / Paused Time, Active Processing Time, and the values in Processing Time use
 ms, sec, min, hour, or day as appropriate. JSON duration values remain milliseconds.
 
 Action execution failures do not affect classification counts or engine connection status.
@@ -254,6 +254,7 @@ List View opens details directly beneath the selected row. Click the same View t
 All Views use shared compact label/value styling. Short values sit side by side; long values wrap as needed. Read-only input boxes are omitted. Code and public keys preserve their contents in text blocks with a maximum height. Narrow screens stack fields; editing forms are unchanged.
 
 - Task Monitor lists all saved Tasks, prioritizing running/starting Tasks. Cards show the name and Enabled/state badges, Source and distinct Source Host count, then Type / Mode / Action (None when unset).
+- **Task Monitor controls:** Run/Stop appears to the left of Pause/Resume. Run starts a new execution; Stop ends the current run, including a paused run. Run is disabled while starting or when Source/Criteria assignments are incomplete. Requests disable both controls until they finish.
 - Running/starting cards use a pale green background; Stopped cards use a subdued neutral background. Selected cards retain a left accent.
 - Keep the pointer still for one second or focus a card for complete Source settings and Host names/SSH addresses in a scrollable tooltip. Click to show its current/latest results; Tasks without history show an empty result state.
 - Each card has one Pause/Resume button for its active run, disabled when no run can be controlled. Pausing lets in-flight work finish; Resume continues the same run. Start/stop Tasks in Tasks. See [Tasks](tasks.md) for scheduling and default Task restoration.

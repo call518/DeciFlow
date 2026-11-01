@@ -270,6 +270,14 @@ textarea: focus {
 
 .metric:nth-child(5) strong { font-size: 18px; }
 
+.elapsed-metric { display: flex; flex-direction: column; justify-content: space-between; padding: 7px 12px; line-height: 13px; }
+.elapsed-times { display: grid; margin: 0; flex-shrink: 0; }
+.elapsed-times > div { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.elapsed-times dt { font-size: 10px; line-height: 16px; }
+.elapsed-times dd { margin: 0; min-width: 0; flex: 1; }
+.elapsed-times strong { margin: 0; font-size: 14px; line-height: 16px; }
+.elapsed-times > div:last-child strong { color: #476c8a; }
+
 .processing-metric { padding-top: 7px; padding-bottom: 7px; line-height: 14px; }
 
 .processing-times {
@@ -1568,8 +1576,9 @@ button.task-toggle:focus-visible { outline: 2px solid #24634a; outline-offset: 3
 
 .monitor-task-status { display: inline-flex; align-items: center; gap: 6px; }
 .monitor-task-item { position: relative; min-width: 0; }
-.monitor-task-item .monitor-task-sources, .monitor-task-item .monitor-task-details { padding-right: 76px; }
-.monitor-task-control { position: absolute; right: 12px; bottom: 10px; padding: 4px 8px; }
+.monitor-task-item .monitor-task-sources, .monitor-task-item .monitor-task-details { padding-right: 140px; }
+.monitor-task-controls { position: absolute; right: 12px; bottom: 10px; display: flex; gap: 6px; }
+.monitor-task-control { padding: 4px 8px; }
 
 .running-task.monitor-card-running, .running-task.monitor-card-starting { background: #e9f3ed; }
 .running-task.monitor-card-stopped { background: #f7f7f2; }

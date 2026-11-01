@@ -13,6 +13,7 @@
 - 수정은 새 실행에 적용하며 현재 실행은 기존 설정을 유지합니다. Task 비활성화는 현재 실행도 중지합니다. 저장된 복구 대상 실행을 포함해 사용 중이면 삭제를 차단합니다.
 
 - 비활성화한 Task는 Main의 Task Monitor에서 숨기며 Tasks 관리 목록에는 유지합니다. Main에서는 활성화한 Task 중 실행 중·시작 중인 Task를 먼저, 각 그룹 안에서는 이름순으로 표시한 목록에서 선택해 현재 또는 최근 실행 결과를 확인합니다.
+- **Task Monitor 조작:** Pause/Resume 왼쪽에 Run/Stop을 표시합니다. Run은 새 실행을 시작하고 Stop은 일시정지 중인 실행도 종료합니다. 시작 중이거나 Source·Criteria 할당이 불완전하면 Run을 비활성화하며, 요청 처리 중에는 두 버튼을 비활성화합니다.
 - 이력이 없으면 빈 결과를 표시하며 처음에는 선택하지 않은 상태입니다. Tasks 목록은 Enabled 토글과 Run·Stop·Pause / Resume·View·Edit·History·Delete를 제공합니다.
 - Task Monitor는 첫 행에 Task 이름·활성 여부·실행 상태, 다음 행에 Source와 중복을 제외한 Source Host 수를 표시하고 그 아래에 Type / Mode / Action을 표시합니다. Action이 없으면 None으로 표시합니다. 긴 설정은 말줄임합니다.
 - 항목 위에서 마우스를 1초간 움직이지 않거나 키보드 포커스를 두면 말풍선에 모든 Source 경로·설정·전체 Source Host 목록(이름·SSH 주소)을 표시합니다. Local File은 DeciFlow를 Source Host 1개로 셉니다. Escape로 말풍선을 닫습니다.
@@ -169,10 +170,13 @@ Tasks에서 Run을 누르면 Main으로 자동 이동하여 해당 Task의 실�
 - Batch와 Realtime 모두 지원합니다. 소스에서 미리 읽은 일부 건은 제한된 크기로 대기할 수 있지만 파일 전체를 계속 쌓는 대기열은 만들지 않습니다. Realtime은 원본 파일이 남아 있다면 일시정지 중 추가된 데이터를 Resume 후 읽습니다.
 - 파일 회전·잘림·삭제나 SSH 연결 중단에 따른 누락 가능성은 기존 소스 처리 규칙을 따릅니다. 체크포인트가 있는 실행은 DeciFlow 서버 재시작 후에도 Paused로 복구되어 Resume을 기다립니다.
 
-Total Elapsed Time과 전체 실행 기준 Throughput에는 일시정지와 서버 중단 시간이 포함됩니다.
-Processing Time에는 일시정지 게이트에서 기다린 시간이 포함되지 않습니다.
-**Pause Display Updates**는 결과 목록 갱신만 멈추며 실행을 일시정지하지 않습니다.
+- **Elapsed:** 일시정지와 서버 중단을 포함한 전체 경과 시간입니다.
+- **Throughput:** Active Processing Time을 기준으로 계산하므로 일시정지·서버 중단은 분모에 더하지 않습니다. Processing Time에도 일시정지 게이트의 대기 시간은 포함하지 않습니다.
+- **Pause Display Updates:** 결과 목록 갱신만 멈추며 실행을 일시정지하지 않습니다.
 
+
+- **Paused 시간:** 진행 중 작업이 끝난 뒤 실제 Paused 상태가 된 구간을 실행별로 합산합니다. Resume·Stop·실패 시 구간을 종료하고, Pause를 반복 요청해도 시작 시각을 초기화하지 않습니다. 새 실행은 0부터 집계합니다.
+- **History와 복구:** 누적값을 실행에 저장하므로 다시 열거나 재시작해도 유지합니다. 서버 중단은 Paused 시간에 포함하지 않습니다. 일시정지 중에는 시간 갱신 이벤트마다 저장하며, 비정상 종료 시 마지막 저장 이후 구간은 일부 누락될 수 있습니다. 정상 종료는 마지막 구간을 저장합니다.
 
 ## 서버 재시작 후 복구
 

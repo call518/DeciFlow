@@ -2345,7 +2345,7 @@ test('Static page, section and dialog headings consistently use Title Case', () 
   }
 });
 
-function pagedWorkspace(count=1000) {
+function pagedWorkspace(count=1000,pausedTime) {
   const state=workspace([]);
   let records=Array.from({length:count},(_,index)=>({sequence:index+1,result:{input:`record-${index+1}`,category:'normal',elapsedMs:1,review:false,hostId:'host-1'}}));
   let limit=50;
@@ -2361,7 +2361,7 @@ function pagedWorkspace(count=1000) {
       if(query.search)items=items.filter(item=>item.result.input.includes(query.search));
       items=items.toReversed();
       const summary={total:records.length,failed:0,review:0,truncated:0,processingMs:records.length,actionSuccess:0,actionFailed:0,groups:{all:records.length,certain:records.length,uncertain:0},categories:Object.fromEntries(['all','certain','uncertain'].map(group=>[group,{normal:group==='uncertain'?0:records.length,warning:0,error:0,security:0,other:0}])),hosts:{'host-1':{name:'Host',count:records.length,failed:0}},sources:{},processingPercentiles:{medianMs:1,p95Ms:1,p99Ms:1}};
-      return {ok:true,json:async()=>JSON.parse(JSON.stringify({snapshot:{jobId:'paged',state:'completed',settings:{mode:'batch',taskName:'Paged Task'},hosts:[],elapsedMs:1000},summary,sequence:records.length,...(query.onlySummary?{}:{items:items.slice(0,limit),hasNext:items.length>limit,limit})}))};
+      return {ok:true,json:async()=>JSON.parse(JSON.stringify({snapshot:{jobId:'paged',state:'completed',settings:{mode:'batch',taskName:'Paged Task'},hosts:[],elapsedMs:1000,pausedMs:pausedTime},summary,sequence:records.length,...(query.onlySummary?{}:{items:items.slice(0,limit),hasNext:items.length>limit,limit})}))};
     }
     if(path.endsWith('/review'))return {ok:true,json:async()=>({saved:true})};
     return original(path,options);
@@ -3641,8 +3641,26 @@ test('Task list polling does not overlap an outstanding request', async () => {
 });
 
 function elapsedValues(nodes) {
-  return [3,4].map(index=>nodes.get('summary').children[index].children[0].textContent);
+  const metrics=nodes.get('summary').children;
+  return [metrics[3].children[0].children[0].children[1].children[0].textContent,metrics[4].children[0].textContent];
 }
+
+test('Paused time uses stream measurements and preserves zero or unrecorded history',async()=>{
+  const {nodes}=workspace([{type:'start',engine:'laya',mode:'batch',total:0},{type:'timing',elapsedMs:65000,activeProcessingMs:1000,pausedMs:12000}]);
+  await runTask(nodes);
+  const pauseValue=nodes=>nodes.get('summary').children[3].children[0].children[1].children[1].children[0].textContent;
+  assert.equal(pauseValue(nodes),'12 sec');
+  assert.equal(elapsedValues(nodes)[0],'1 min 5 sec');
+  for(const [value,expected] of [[undefined,'N/A'],[0,'0 ms'],[12000,'12 sec']]){
+    const state=pagedWorkspace(1,value);
+    await vm.runInContext("handlePagedProcessing({jobId:'paged',state:'completed',settings:{mode:'batch'},pagedResults:true})",state.context);
+    assert.equal(pauseValue(state.nodes),expected);
+    const number=state.nodes.get('summary').children[3].children[0].children[1].children[1].children[0];
+    assert.equal(number.title,value===undefined?'Pause time was not recorded for this run.':expected);
+    await vm.runInContext('render(false)',state.context);
+    assert.equal(pauseValue(state.nodes),expected);
+  }
+});
 
 test('Elapsed times use separate metrics and review count appears beside host details', async () => {
   const {nodes,context}=workspace([]);
@@ -3650,7 +3668,7 @@ test('Elapsed times use separate metrics and review count appears beside host de
   vm.runInContext('elapsedMs=65000;activeProcessingMs=28900;render()',context);
   const metrics=nodes.get('summary').children;
   assert.equal(metrics.length,6);
-  assert.equal(metrics[3].textContent,'Total Elapsed Time');
+  assert.equal(metrics[3].textContent,'Total Elapsed / Paused Time');
   assert.equal(metrics[4].textContent,'Active Processing Time');
   assert.deepEqual(elapsedValues(nodes),['1 min 5 sec','28.9 sec (44.5%)']);
   assert.equal(nodes.get('needs-review-count').textContent,'Needs Review: 0');
@@ -5198,10 +5216,63 @@ test('Decision picker omits a single Criteria name and groups mixed Criteria wit
   }
 });
 
+test('Task Monitor Run and Stop share task APIs and disable duplicate operations',async()=>{
+  const {nodes,context}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext("registeredTasks=[{id:'monitor',name:'Monitor',mode:'batch',sources:[{sourceId:'source',profile:'profile'}]}];handleWatchRun=async()=>{};renderTaskMonitor()",context);
+  const controls=()=>nodes.get('running-tasks').children[0].children[1].children;
+  const paths=[];let release;
+  context.fetch=async path=>{
+    paths.push(path);
+    if(path==='/api/tasks')return {ok:true,json:async()=>({tasks:vm.runInContext('registeredTasks',context)})};
+    await new Promise(resolve=>{release=resolve;});
+    if(path.endsWith('/run'))vm.runInContext("registeredTasks[0].activeRun={jobId:'new-run',state:'running',settings:{mode:'batch'}}",context);
+    else vm.runInContext("registeredTasks[0].activeRun=null;registeredTasks[0].latestRun={jobId:'new-run',state:'stopped'}",context);
+    return {ok:true,json:async()=>({jobId:'new-run',state:'running',settings:{mode:'batch'}})};
+  };
+  assert.deepEqual(controls().map(x=>x.textContent),['Run','Pause']);
+  assert.equal(controls()[0].disabled,false);
+  const started=controls()[0].onclick();
+  assert.ok(controls().every(x=>x.disabled));
+  await controls()[0].onclick();assert.equal(paths.length,1);
+  release();await started;
+  assert.deepEqual(controls().map(x=>x.textContent),['Stop','Pause']);
+  assert.equal(controls()[0].disabled,false);
+  vm.runInContext("selectedTaskId='other-task'",context);
+  const stopped=controls()[0].onclick();
+  assert.ok(controls().every(x=>x.disabled));
+  await controls()[0].onclick();assert.equal(paths.length,3);
+  release();await stopped;
+  assert.deepEqual(controls().map(x=>x.textContent),['Run','Pause']);
+  assert.equal(controls()[1].disabled,true);
+  assert.equal(vm.runInContext('selectedTaskId',context),'other-task');
+  assert.deepEqual(paths,['/api/tasks/monitor/run','/api/tasks','/api/tasks/monitor/stop','/api/tasks']);
+});
+
+test('Task Monitor validates Run assignments and reports Run/Stop failures on Main',async()=>{
+  const {nodes,context}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
+  const controls=()=>nodes.get('running-tasks').children[0].children[1].children;
+  for(const [sources,starting] of [[[],false],[[{sourceId:'source'}],false],[[{sourceId:'source',profile:'profile'}],true]]){
+    vm.runInContext(`registeredTasks=[{id:'monitor',name:'Monitor',starting:${starting},sources:${JSON.stringify(sources)}}];renderTaskMonitor()`,context);
+    assert.equal(controls()[0].disabled,true);
+  }
+  for(const state of ['running','pausing','paused']){
+    vm.runInContext(`registeredTasks=[{id:'monitor',name:'Monitor',sources:[],activeRun:{state:'${state}'}}];renderTaskMonitor()`,context);
+    assert.equal(controls()[0].textContent,'Stop');assert.equal(controls()[0].disabled,false);
+  }
+  context.fetch=async()=>({ok:false,status:409,json:async()=>({error:'Task operation failed.'})});
+  for(const active of [false,true]){
+    vm.runInContext(`registeredTasks=[{id:'monitor',name:'Monitor',sources:[{sourceId:'source',profile:'profile'}],activeRun:${active?"{state:'running'}":'null'}}];renderTaskMonitor()`,context);
+    await controls()[0].onclick();
+    assert.equal(nodes.get('task-monitor-message').hidden,false);
+    assert.equal(nodes.get('task-monitor-message').textContent,'Task operation failed.');
+    assert.equal(controls()[0].disabled,false);
+  }
+});
+
 test('Task Monitor toggles Pause and Resume for the same run without selecting the card',async()=>{
   const {nodes,context}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
   vm.runInContext("registeredTasks=[{id:'monitor',name:'Monitored Task',mode:'realtime',sources:[],activeRun:{jobId:'same-run',state:'running'}}];selectedTaskId='another-task';renderTaskMonitor()",context);
-  const control=()=>nodes.get('running-tasks').children[0].children[1];
+  const control=()=>nodes.get('running-tasks').children[0].children[1].children[1];
   const paths=[];let release;
   context.fetch=async path=>{
     paths.push(path);
@@ -5227,15 +5298,15 @@ test('Task Monitor disables unavailable controls and shows operation failures on
   const {nodes,context}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
   for(const state of ['idle','completed','failed','stopped','starting','pausing','paused','running']){
     vm.runInContext(`registeredTasks=[{id:'monitor',name:'Monitor',sources:[],${state==='starting'?"starting:true,":''}activeRun:${['pausing','paused','running'].includes(state)?`{state:'${state}'}`:'null'},latestRun:{state:'${state}'}}];renderTaskMonitor()`,context);
-    const control=nodes.get('running-tasks').children[0].children[1];
+    const control=nodes.get('running-tasks').children[0].children[1].children[1];
     assert.equal(control.textContent,['pausing','paused'].includes(state)?'Resume':'Pause');
     assert.equal(Boolean(control.disabled),!['pausing','paused','running'].includes(state));
   }
   context.fetch=async()=>({ok:false,status:409,json:async()=>({error:'Task state changed; refresh and retry.'})});
-  await nodes.get('running-tasks').children[0].children[1].onclick();
+  await nodes.get('running-tasks').children[0].children[1].children[1].onclick();
   assert.equal(nodes.get('task-monitor-message').hidden,false);
   assert.match(nodes.get('task-monitor-message').textContent,/Task state changed/);
-  assert.equal(nodes.get('running-tasks').children[0].children[1].disabled,false);
+  assert.equal(nodes.get('running-tasks').children[0].children[1].children[1].disabled,false);
 });
 
 test('AI Analysis requires backend availability and a saved completed result, then opens an isolated popup',async()=>{

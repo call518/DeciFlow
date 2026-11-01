@@ -207,11 +207,11 @@ Main의 Task 결과는 약 1초마다 현재 페이지의 새 결과만 조회�
 | Action Success / Failed / Total | 완료된 Action 성공 / 실패 / 전체 실행 수. Action 미할당·의사결정 실패 청크는 제외하며 의사결정 집계와 독립 |
 | Needs Review | 항목별·기록 전체 검토 사유가 있는 성공 청크를 중복 없이 집계. 실패·거절 제외 |
 | Throughput | 선택한 실행의 전체 성공 결과 수 ÷ Active Processing Time(초); 유휴시간·Action 전달 시간 제외, 동시 요청 시간은 중복 없이 계산, 활성 처리 전에는 0 표시 |
-| Total Elapsed Time | 실행 시작 이후 전체 경과시간; 유휴시간 포함 |
+| Total Elapsed / Paused Time | Elapsed는 일시정지·서버 중단을 포함한 전체 경과 시간입니다. Paused는 해당 실행에서 실제 Paused 상태였던 누적 시간이며 Pausing·서버 중단은 제외합니다. 과거 측정값이 없으면 N/A로 표시하며 툴팁으로 측정값이 없음을 안내합니다. |
 | Active Processing Time | 요청이 하나 이상 진행 중인 구간을 중복 없이 합산; 전체 경과시간 대비 비율 |
 | Processing Time | 다른 지표와 같은 크기의 작은 박스 안에 Avg·Min·Max·P(50)·P(95)·P(99) 라벨과 값을 나란히 표시합니다. 실패를 포함한 전체 완료 레코드 기준이며 Action 시간은 제외합니다. Avg는 산술평균, P(50)은 가운데 값의 평균, P(95)·P(99)는 nearest-rank 방식입니다. |
 
-Total Elapsed Time·Active Processing Time·Processing Time의 값은 크기에 따라
+Total Elapsed / Paused Time·Active Processing Time·Processing Time의 값은 크기에 따라
 ms·sec·min·hour·day로 표시합니다. JSON 시간값은 밀리초를 유지합니다.
 
 Action 실행 실패는 판정 성공·실패 집계나 엔진 연결 상태에 영향을 주지 않습니다.
@@ -240,6 +240,7 @@ Delete를 누르면 서버에서 현재 의존성을 먼저 확인합니다. 사
 모든 View는 공통 라벨·값 형식으로 표시합니다. 짧은 값은 나란히 배치하고 긴 값만 필요한 만큼 줄바꿈합니다. 읽기 전용 입력칸은 사용하지 않으며 코드·공개키는 내용을 보존하는 제한 높이의 텍스트 블록으로 표시합니다. 좁은 화면에서는 세로로 배치하며 편집 폼에는 영향을 주지 않습니다.
 
 - Task Monitor는 활성화된 Task를 표시하며 실행 중·시작 중인 항목을 먼저 배치합니다.
+- **Task Monitor 조작:** Pause/Resume 왼쪽에 Run/Stop을 표시합니다. Run은 새 실행을 시작하고 Stop은 일시정지 중인 실행도 종료합니다. 시작 중이거나 Source·Criteria 할당이 불완전하면 Run을 비활성화하며, 요청 처리 중에는 두 버튼을 비활성화합니다.
 - 카드는 이름·Enabled/실행 상태 배지, Source·중복을 뺀 Source Host 수, Type / Mode / Action 순서로 표시하고 Action이 없으면 None을 표시합니다.
 - Running·Starting 배경은 연한 녹색, Stopped는 차분한 중간색이며 선택 항목은 왼쪽 강조선을 유지합니다. 항목 위에서 마우스를 1초간 움직이지 않거나 키보드 포커스를 두면 스크롤 가능한 말풍선에서 전체 Source 설정과 호스트 이름·SSH 주소를 확인합니다.
 - 클릭하면 현재·최근 실행 결과를 열고 이력이 없으면 빈 결과를 표시합니다. 각 카드의 Pause/Resume 버튼은 현재 실행을 제어하며 조작 가능한 실행이 없으면 비활성화됩니다. Pause는 진행 중인 요청을 마친 뒤 멈추고 Resume은 동일 실행을 이어갑니다.

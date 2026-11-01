@@ -136,6 +136,7 @@ async def test_stop_preserves_results_and_closes_producer() -> None:
             "state": "stopped",
             "elapsedMs": 23,
             "activeProcessingMs": 12,
+            "pausedMs": 0,
         }
 
 
@@ -185,7 +186,13 @@ async def test_stop_before_producer_starts_and_timing_is_not_accumulated() -> No
     await job.stop()
     events = [json.loads(event) async for event in job.stream()]
     assert events == [
-        {"type": "done", "state": "stopped", "elapsedMs": 99, "activeProcessingMs": 0}
+        {
+            "type": "done",
+            "state": "stopped",
+            "elapsedMs": 99,
+            "activeProcessingMs": 0,
+            "pausedMs": 0,
+        }
     ]
 
 

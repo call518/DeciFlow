@@ -345,6 +345,7 @@ const resultCursors = new WeakMap();
 let completionOrder = [];
 let elapsedMs = 0;
 let activeProcessingMs = 0;
+let pausedMs = null;
 let busy = false;
 let page = 0;
 let total = 0;
@@ -1002,12 +1003,18 @@ function renderTaskMonitor() {
     button.append(name,status,summary,details);
     button.onclick=()=>{cancelTooltip();return handleSelectTask(task.id);};
     const item=element('div','','monitor-task-item');
+    const controls=element('div','','monitor-task-controls');
+    const active=Boolean(task.activeRun);
+    const lifecycle=element('button',active?'Stop':'Run','quiet monitor-task-control');lifecycle.type='button';
+    lifecycle.setAttribute('aria-label',`${active?'Stop':'Run'} ${task.name}`);
+    lifecycle.disabled=pendingTaskOperations.has(task.id) || task.starting || (!active && (!task.sources?.length || task.sources.some(source=>!source.profile)));
+    lifecycle.onclick=()=>{cancelTooltip();return active?handleStopTask(task.id):handleRunTask(task.id);};
     const paused=['paused','pausing'].includes(task.activeRun?.state);
     const control=element('button',paused?'Resume':'Pause','quiet monitor-task-control');control.type='button';
     control.setAttribute('aria-label',`${paused?'Resume':'Pause'} ${task.name}`);
     control.disabled=pendingTaskOperations.has(task.id) || task.starting || !['running','paused','pausing'].includes(task.activeRun?.state);
     control.onclick=()=>{cancelTooltip();return handlePauseTask(task.id,paused?'resume':'pause');};
-    item.append(button,control);list.append(item);
+    controls.append(lifecycle,control);item.append(button,controls);list.append(item);
   }
   if(!tasks.length)list.append(element('p','No Enabled Tasks. Add a Task in Tasks.','caption'));
 
@@ -1218,15 +1225,25 @@ async function handleWatchRun(job) {
   monitoringPromise=handleProcessing(job);return monitoringPromise;
 }
 async function handleRunTask(identity) {
+  if(pendingTaskOperations.has(identity))return;
   const task=registeredTasks.find(task=>task.id===identity);
   if(!task){handleMessage('message','Select a saved Task first.',true);return;}
   followLatestTask=true;monitoringReady=true;selectedTaskId=identity;renderTaskMonitor();
+  if(task.activeRun){handleNavigation('main',null,`/runs/${task.activeRun.jobId}`);return handleWatchRun(task.activeRun);}
+  pendingTaskOperations.add(identity);renderTaskMonitor();
+  let job;
   try {
-    if(task.activeRun){handleNavigation('main',null,`/runs/${task.activeRun.jobId}`);return await handleWatchRun(task.activeRun);}
-    const response=await fetch(`/api/tasks/${identity}/run`,{method:'POST'});const job=await readApiJsonResponse(response);if(!response.ok)throw new Error(job.error);
+    const response=await fetch(`/api/tasks/${identity}/run`,{method:'POST'});job=await readApiJsonResponse(response);if(!response.ok)throw new Error(job.error);
     engineRunSequences.set(job.jobId,0);
-    await handleLoadTasks();handleNavigation('main',null,`/runs/${job.jobId}`);return await handleWatchRun(job);
-  }catch(error){$('message').className='error-message';handleMessage('message',error.message,true);}
+    await handleLoadTasks();
+  }catch(error){$('message').className='error-message';handleMessage('message',error.message,true);handleTaskOperationError(error);return;}
+  finally{pendingTaskOperations.delete(identity);renderTaskMonitor();}
+  handleNavigation('main',null,`/runs/${job.jobId}`);return handleWatchRun(job);
+}
+function handleTaskOperationError(error) {
+  handleMessage('task-message',error.message,true);
+  $('task-monitor-message').hidden=false;
+  handleMessage('task-monitor-message',error.message,true);
 }
 async function handlePauseTask(identity,operation) {
   if(pendingTaskOperations.has(identity))return;
@@ -1238,14 +1255,15 @@ async function handlePauseTask(identity,operation) {
     await handleLoadTasks();
     if(pagedView?.id===data.jobId)await handleRefreshResults(false,true);
   }catch(error){
-    handleMessage('task-message',error.message,true);
-    $('task-monitor-message').hidden=false;
-    handleMessage('task-monitor-message',error.message,true);
+    handleTaskOperationError(error);
   }finally{pendingTaskOperations.delete(identity);renderTaskMonitor();}
 }
 async function handleStopTask(identity) {
+  if(pendingTaskOperations.has(identity))return;
+  pendingTaskOperations.add(identity);renderTaskMonitor();
   try{const response=await fetch(`/api/tasks/${identity}/stop`,{method:'POST'});const data=await readApiJsonResponse(response);if(!response.ok)throw new Error(data.error);await handleLoadTasks();}
-  catch(error){handleMessage('task-message',error.message,true);}
+  catch(error){handleTaskOperationError(error);}
+  finally{pendingTaskOperations.delete(identity);renderTaskMonitor();}
 }
 async function handleSelectTask(identity) {
   followLatestTask=true;monitoringReady=true;
@@ -1257,7 +1275,7 @@ async function handleSelectTask(identity) {
   if(selection!==monitorSelection)return;
   pagedView=null;activeJobId=undefined;activeJobState=undefined;rememberJob('');
   results=[];completionOrder=[];pausedOrder=[];displayedOrder=[];completed=0;page=0;total=0;
-  elapsedMs=0;activeProcessingMs=0;runHosts=[];runSourcePatterns=[];updatesPaused=false;
+  elapsedMs=0;activeProcessingMs=0;pausedMs=null;runHosts=[];runSourcePatterns=[];updatesPaused=false;
   statisticsResults=undefined;filteredResults=undefined;renderedRows.clear();renderedPage=null;render();
   $('result-context').replaceChildren(element('strong',task?.name || 'Select a Task to view its results.','result-task-name'));
   $('message').className='';handleMessage('message',task?'No executions yet.':'');
@@ -2542,14 +2560,23 @@ function render(updateList = true, incremental = false) {
   const actionSuccess = stats.actionSuccess;
   const actionFailed = stats.actionFailed;
   const processingPercent = elapsedMs > 0 ? `${(activeProcessingMs / elapsedMs * 100).toFixed(1)}%` : 'N/A';
-  for (const [label, value] of [['Success / Failed / Total', `${stats.total-stats.failed} / ${stats.failed} / ${stats.total}`], ['Action Success / Failed / Total', `${actionSuccess} / ${actionFailed} / ${actionSuccess + actionFailed}`], ['Throughput', `${throughputText} chunks/s`], ['Total Elapsed Time', formatDuration(elapsedMs)], ['Active Processing Time', `${formatDuration(activeProcessingMs)} (${processingPercent})`], ['Processing Time', null]]) {
+  for (const [label, value] of [['Success / Failed / Total', `${stats.total-stats.failed} / ${stats.failed} / ${stats.total}`], ['Action Success / Failed / Total', `${actionSuccess} / ${actionFailed} / ${actionSuccess + actionFailed}`], ['Throughput', `${throughputText} chunks/s`], ['Total Elapsed / Paused Time', null], ['Active Processing Time', `${formatDuration(activeProcessingMs)} (${processingPercent})`], ['Processing Time', null]]) {
     const metric = element('div', label, 'metric');
     if (label === 'Success / Failed / Total') metric.title = 'Successfully classified / failed / total completed chunks. Total is success plus failure, not planned requests. Failures include connection errors, timeouts, rejected inputs, and invalid responses. Action failures do not change classification counts.';
     if (label === 'Action Success / Failed / Total') metric.title = 'Completed Action executions: success / failed / total. Unassigned sources and failed decisions do not run Actions. Action failures do not change decision counts.';
     if (label === 'Throughput') metric.title = 'Successful results divided by active classification seconds for the entire run. Overlapping requests count time once; idle time and Action delivery are excluded. Independent of filters and pages; not maximum engine capacity.';
     if(label==='Processing Time')metric.title='All completed record durations in this run, including failures and network/server wait; excludes Action time and waiting for input. Avg is the arithmetic mean; P(50) averages the central values; P(95)/P(99) use nearest rank. Independent of filters and pages.';
     if (label === 'Active Processing Time') metric.title = 'Time with at least one request in flight, counting overlapping requests once. Includes network/server wait, excludes idle time; not CPU utilization.';
-    if(label==='Processing Time') {
+    if(label==='Total Elapsed / Paused Time') {
+      metric.className+=' elapsed-metric';
+      metric.title='Paused time is included in total elapsed time. Counts fully Paused intervals, excluding Pausing and server downtime. N/A means this run has no saved pause measurement.';
+      const times=element('dl','','elapsed-times');
+      for(const [name,text] of [['Elapsed',formatDuration(elapsedMs)],['Paused',pausedMs===null?'N/A':formatDuration(pausedMs)]]){
+        const item=element('div',''),value=element('dd',''),number=element('strong',text);
+        number.title=name==='Paused' && pausedMs===null?'Pause time was not recorded for this run.':text;value.append(number);item.append(element('dt',name),value);times.append(item);
+      }
+      metric.append(times);
+    } else if(label==='Processing Time') {
       metric.className+=' processing-metric';
       const times=element('dl','','processing-times');
       times.setAttribute('aria-label','Processing Time Statistics');
@@ -2813,6 +2840,7 @@ async function handleProcessing(job) {
     await readEvents(response.body, event => {
       if (event.activeProcessingMs !== undefined) activeProcessingMs = event.activeProcessingMs;
       if (event.elapsedMs !== undefined) elapsedMs = event.elapsedMs;
+      if (event.pausedMs !== undefined) pausedMs = event.pausedMs;
       if (event.type === 'start') {
         handleResetChart();
         started = true;
@@ -2830,6 +2858,7 @@ async function handleProcessing(job) {
         displayedOrder = [];
         elapsedMs = 0;
         activeProcessingMs = 0;
+        pausedMs = event.pausedMs ?? null;
         page = 0;
         render(false);
       } else if (event.type === 'host-status') {
@@ -3043,7 +3072,7 @@ function handleExportResults(reviewedOnly=false) {
   }
   if (!completed || busy || activeJobState === 'running') return;
   const exportedResults=results.filter(result=>result && (!reviewedOnly || hasReviewerChange(result))).map(orderedResult);
-  const blob = new Blob([JSON.stringify({ mode: resultEngine, sourceMode: resultSourceMode, total, completed, elapsedMs, activeProcessingMs, results: exportedResults,...(reviewedOnly?{exportScope:'reviewed-changes',exported:exportedResults.length}:{}) }, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify({ mode: resultEngine, sourceMode: resultSourceMode, total, completed, elapsedMs, activeProcessingMs, pausedMs, results: exportedResults,...(reviewedOnly?{exportScope:'reviewed-changes',exported:exportedResults.length}:{}) }, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -3246,7 +3275,7 @@ async function handleRefreshResults(reset=false,poll=false) {
   view.summary={...data.summary,hosts:new Map(Object.entries(data.summary.hosts)),sources:new Map(Object.entries(data.summary.sources))};
   view.chartSummary=data.chartSummary;
   const snapshot=data.snapshot;activeJobState=snapshot.state;completed=data.summary.total;
-  elapsedMs=snapshot.elapsedMs || 0;activeProcessingMs=snapshot.activeProcessingMs || 0;
+  elapsedMs=snapshot.elapsedMs || 0;activeProcessingMs=snapshot.activeProcessingMs || 0;pausedMs=snapshot.pausedMs ?? null;
   resultEngine=snapshot.settings.engine || data.summary.engine || null;resultSourceMode=snapshot.settings.mode;
   runHosts=snapshot.hosts || [];runSourcePatterns=[...view.summary.sources.keys()];
   if(data.items){

@@ -1695,6 +1695,7 @@ async def handle_result_page(request: Request) -> Response:
                 "completed": state["summary"]["total"],
                 "elapsedMs": snapshot.get("elapsedMs", 0),
                 "activeProcessingMs": snapshot.get("activeProcessingMs", 0),
+                "pausedMs": snapshot.get("pausedMs"),
             }
 
             if reviewed_only:

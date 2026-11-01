@@ -568,6 +568,7 @@ class SQLiteResultStore:
                         "state": "stopped",
                         "elapsedMs": snapshot.get("elapsedMs", 0),
                         "activeProcessingMs": snapshot.get("activeProcessingMs", 0),
+                        "pausedMs": snapshot.get("pausedMs"),
                     },
                     snapshot,
                 )
