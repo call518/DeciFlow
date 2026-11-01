@@ -2,6 +2,9 @@
 
 [English](dns-tls.md) | [인증 안내](authentication.ko.md) | [문서 안내](README.ko.md)
 
+실행 전에 `export DECIFLOW_ENV_PATH="$HOME/.config/deciflow/.env"`로 환경 파일을 지정하세요. 자동 탐색은 없습니다.
+
+
 **일반 설치는 [인증 문서의 Certbot HTTP-01 절차](authentication.ko.md#certificates)부터 시작하세요.**
 이 문서는 외부 80번을 사용할 수 없거나 기존 BIND9/RFC2136 DNS 자동화를 사용하는
 환경의 DNS-01 상세 안내입니다. 발급 후에는 인증 문서의 [인증서 준비 경로 복사](authentication.ko.md#certificate-files)부터 계속해
@@ -14,20 +17,12 @@
 이 안내는 `OAUTH2_PROXY_ENABLED=true`일 때만 필요합니다. OAuth2-Proxy 미사용 HTTP 실행에는
 도메인·인증서가 필요하지 않습니다.
 
-이 문서는 DNS 준비, Certbot DNS-01을 통한 Let's Encrypt 인증서 발급,
-자동 갱신과 OAuth2-Proxy 반영을 안내합니다. 기존 권한 DNS 서버인 BIND9에
-RFC2136·TSIG 업데이트를 설정하는 방식입니다. DNS 사업자가 지원하는 Certbot
-플러그인도 다른 발급 방법입니다. 한 방법을 선택한 뒤 동일한 인증서 배포 단계를
-따르세요. BIND9 직접 운영은 DeciFlow의 필수 요구사항이 아닙니다.
+- 이 문서는 DNS 준비, Certbot DNS-01을 통한 Let's Encrypt 인증서 발급, 자동 갱신과 OAuth2-Proxy 반영을 안내합니다. 기존 권한 DNS 서버인 BIND9에 RFC2136·TSIG 업데이트를 설정하는 방식입니다.
+- DNS 사업자가 지원하는 Certbot 플러그인도 다른 발급 방법입니다. 한 방법을 선택한 뒤 동일한 인증서 배포 단계를 따르세요. BIND9 직접 운영은 DeciFlow의 필수 요구사항이 아닙니다.
 
-DNS와 인증서 발급은 모든 설치 방식에 공통입니다. 아래 배포·갱신 hook은
-**Docker Compose**, `<checkout>/.env`, `<checkout>/oauth2-proxy/tls/` 기준입니다.
-**uv tool**은 `<config-dir>/.env`와 같은 설정 디렉터리의
-`<config-dir>/oauth2-proxy/tls/`(기본 `~/.config/deciflow/oauth2-proxy/tls/`)을 사용합니다.
-**Git 복제 기반 프로세스 직접 실행**은 저장소 경로를 사용합니다. 이 두 방식의
-독립 Docker 프록시는 DeciFlow 계정 UID로 실행하므로 개인 키도 해당 계정 소유로 둡니다.
-갱신 후에는 인증서 복사와 Docker 프록시 재생성이 필요합니다. 아래 Compose 전용 훅은
-[설치 방식별 인증 구성](authentication.ko.md)에 맞춰 경로·재생성 명령을 조정하세요.
+- DNS와 인증서 발급은 모든 설치 방식에 공통입니다. 아래 배포·갱신 hook은 **Docker Compose**, `DECIFLOW_ENV_PATH`에 지정한 파일, `<checkout>/oauth2-proxy/tls/` 기준입니다.
+- **uv tool**과 **Git 복제 기반 프로세스 직접 실행**은 선택한 환경 파일의 상위 디렉토리(보통 `~/.config/deciflow`) 아래에 `oauth2-proxy/tls/`를 둡니다. 두 방식의 독립 Docker 프록시는 DeciFlow 계정 UID로 실행하므로 개인 키도 해당 계정 소유로 둡니다.
+- 갱신 후에는 인증서 복사와 Docker 프록시 재생성이 필요합니다. 아래 Compose 전용 훅은 [설치 방식별 인증 구성](authentication.ko.md)에 맞춰 경로·재생성 명령을 조정하세요.
 
 
 ## 호스트와 예시 값
@@ -66,11 +61,8 @@ dig AAAA deciflow.example.com +short
 | ACME 검증 → 권한 DNS | TCP/UDP 53의 공개 DNS 질의 |
 | Certbot → Let's Encrypt | 외부로 나가는 TCP 443 HTTPS |
 
-공개 TCP 4443이 OAuth2-Proxy에 연결되도록 호스트 방화벽을 확인하세요.
-UI 내부 4000 포트는 공개하지 않습니다. DNS-01 발급에는
-외부에서 들어오는 웹 포트 80/443이나 실행 중인 OAuth2-Proxy가 필요하지 않습니다.
-인증서 발급 성공만으로 브라우저의 4443 접속이 보장되지는 않습니다.
-[Let's Encrypt 검증 방식](https://letsencrypt.org/docs/challenge-types/#dns-01-challenge)을 참고하세요.
+- 공개 TCP 4443이 OAuth2-Proxy에 연결되도록 호스트 방화벽을 확인하세요. UI 내부 4000 포트는 공개하지 않습니다. DNS-01 발급에는 외부에서 들어오는 웹 포트 80/443이나 실행 중인 OAuth2-Proxy가 필요하지 않습니다.
+- 인증서 발급 성공만으로 브라우저의 4443 접속이 보장되지는 않습니다. [Let's Encrypt 검증 방식](https://letsencrypt.org/docs/challenge-types/#dns-01-challenge)을 참고하세요.
 
 ## 2. BIND9 업데이트 권한 제한
 
@@ -242,8 +234,8 @@ sudo install -o 65532 -m 600 /etc/letsencrypt/live/deciflow.example.com/privkey.
 일치하는 Google 콜백·클라이언트 인증정보·허용 목록을 준비한 뒤 Docker 호스트에서 실행합니다.
 
 ```bash
-docker compose config --quiet
-docker compose up -d
+docker compose --env-file "$DECIFLOW_ENV_PATH" config --quiet
+docker compose --env-file "$DECIFLOW_ENV_PATH" up -d
 curl -I https://deciflow.example.com:4443/
 curl -i https://deciflow.example.com:4443/api/status
 ```
@@ -279,7 +271,7 @@ systemctl cat certbot-renew.service
 
 Certbot과 Docker가 같은 호스트라면 root 소유 실행 파일
 `/etc/letsencrypt/renewal-hooks/deploy/deciflow-op.sh`를 아래 내용으로 작성합니다.
-저장소 경로·인증서 계보를 먼저 조정하세요. 스케줄러 계정이 Docker에 접근할 수 있고,
+환경 파일 경로·저장소 경로·인증서 계보를 먼저 조정하세요. 스케줄러 계정이 Docker에 접근할 수 있고,
 PATH에서 `docker`를 찾으며 올바른 Docker context를 사용해야 합니다.
 
 ```sh
@@ -290,11 +282,12 @@ if [ "${RENEWED_LINEAGE:-}" != "/etc/letsencrypt/live/deciflow.example.com" ]; t
     exit 0
 fi
 
+export DECIFLOW_ENV_PATH=/path/to/deciflow.env
 cd /opt/deciflow
 install -d -m 755 oauth2-proxy/tls
 install -m 644 "$RENEWED_LINEAGE/fullchain.pem" oauth2-proxy/tls/fullchain.pem
 install -o 65532 -m 600 "$RENEWED_LINEAGE/privkey.pem" oauth2-proxy/tls/privkey.pem
-docker compose up -d --no-deps --force-recreate oauth2-proxy
+docker compose --env-file "$DECIFLOW_ENV_PATH" up -d --no-deps --force-recreate oauth2-proxy
 ```
 
 ```bash
@@ -304,12 +297,8 @@ sudo sh -n /etc/letsencrypt/renewal-hooks/deploy/deciflow-op.sh
 sudo env RENEWED_LINEAGE=/etc/letsencrypt/live/deciflow.example.com /etc/letsencrypt/renewal-hooks/deploy/deciflow-op.sh
 ```
 
-마지막 명령은 현재 인증서로 배포를 테스트하며 **OAuth2-Proxy를 재생성**합니다.
-브라우저 스트림이 잠시 끊기지만 UI·Laya·백그라운드 Task는 계속 실행됩니다.
-계보 검사는 다른 인증서에 대한 실행을 건너뜁니다. Certbot은 갱신 성공 후 deploy hook을
-실행하며 일반 `--dry-run`만으로 이 hook이 테스트되지는 않습니다.
-ACME staging 인증서를 운영 서비스에 배포하지 마세요.
-[Certbot 갱신·hook 안내](https://eff-certbot.readthedocs.io/en/stable/using.html#renewing-certificates)를 참고하세요.
+- 마지막 명령은 현재 인증서로 배포를 테스트하며 **OAuth2-Proxy를 재생성**합니다. 브라우저 스트림이 잠시 끊기지만 UI·Laya·백그라운드 Task는 계속 실행됩니다. 계보 검사는 다른 인증서에 대한 실행을 건너뜁니다.
+- Certbot은 갱신 성공 후 deploy hook을 실행하며 일반 `--dry-run`만으로 이 hook이 테스트되지는 않습니다. ACME staging 인증서를 운영 서비스에 배포하지 마세요. [Certbot 갱신·hook 안내](https://eff-certbot.readthedocs.io/en/stable/using.html#renewing-certificates)를 참고하세요.
 
 Certbot이 다른 호스트에 있다면 안전한 인증서 전송과 원격 OAuth2-Proxy 재생성 방식으로
 배포 hook을 조정하세요. 위 스크립트는 Certbot·Docker가 같은 호스트인 경우입니다.

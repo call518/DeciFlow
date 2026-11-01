@@ -2,14 +2,13 @@
 
 import argparse
 import os
-import shlex
 import shutil
 import sys
 import tempfile
 from importlib.metadata import version
 from pathlib import Path
 
-from deciflow.paths import RESOURCE_ROOT
+from deciflow.paths import RESOURCE_ROOT, default_config_directory, resolve_env_path
 
 GUIDE = "https://github.com/call518/DeciFlow/blob/main/INSTALL.md"
 
@@ -27,19 +26,9 @@ def prepare_workspace(directory: Path) -> bool:
     if env.exists():
         return False
     text = (RESOURCE_ROOT / ".env.example").read_text()
-    replacements = {
-        "COMPOSE_PROFILES": "",
-        "LAYA_API_URL": "http://127.0.0.1:8000/v1/systemone",
-    }
-    lines = [
-        f"{line.split('=', 1)[0]}={replacements[line.split('=', 1)[0]]}"
-        if not line.startswith("#") and line.split("=", 1)[0] in replacements
-        else line
-        for line in text.splitlines()
-    ]
     with env.open("x", encoding="utf-8") as output:
         env.chmod(0o600)
-        output.write("\n".join(lines) + "\n")
+        output.write(text)
     return True
 
 
@@ -69,66 +58,56 @@ def check_storage_directory(key: str, path: Path) -> None:
 
 
 def main() -> None:
+    """Run the CLI while keeping the caller's file selector unchanged."""
+    previous = os.getenv("DECIFLOW_ENV_PATH")
+    try:
+        _main()
+    finally:
+        if previous is None:
+            os.environ.pop("DECIFLOW_ENV_PATH", None)
+        else:
+            os.environ["DECIFLOW_ENV_PATH"] = previous
+
+
+def _main() -> None:
     """Initialize or inspect configuration, or validate and start DeciFlow."""
-    location = argparse.ArgumentParser(add_help=False)
-    location.add_argument(
-        "--config-dir",
-        type=Path,
-        default=argparse.SUPPRESS,
-        help="directory containing .env and oauth2-proxy files (default: ~/.config/deciflow)",
-    )
     parser = argparse.ArgumentParser(
-        description="Start DeciFlow after checking its configuration.",
-        parents=[location],
+        description="Start DeciFlow using DECIFLOW_ENV_PATH."
     )
     parser.add_argument("--version", action="version", version=version("deciflow"))
     commands = parser.add_subparsers(dest="command")
-    start = commands.add_parser(
-        "start", parents=[location], help="validate and start DeciFlow"
-    )
+    start = commands.add_parser("start", help="validate and start DeciFlow")
     start.add_argument(
         "--daemon", action="store_true", help="start detached with file logging"
     )
-    commands.add_parser(
-        "status", parents=[location], help="show this installation's process status"
-    )
-    commands.add_parser(
-        "stop", parents=[location], help="stop this installation gracefully"
-    )
-    commands.add_parser(
-        "init", parents=[location], help="create configuration templates"
-    )
-    config = commands.add_parser(
-        "config", parents=[location], help="inspect configuration"
-    )
+    commands.add_parser("status", help="show this installation's process status")
+    commands.add_parser("stop", help="stop this installation gracefully")
+    commands.add_parser("init", help="create configuration templates")
+    config = commands.add_parser("config", help="inspect configuration")
     config_commands = config.add_subparsers(dest="config_command", required=True)
+    config_commands.add_parser("test", help="check startup prerequisites")
     config_commands.add_parser(
-        "test", parents=[location], help="check startup prerequisites"
-    )
-    config_commands.add_parser(
-        "list", parents=[location], help="list effective settings with secrets redacted"
+        "list", help="list effective settings with secrets redacted"
     )
     args = parser.parse_args()
     if args.command is None:
         parser.print_help()
         return
-    directory = (
-        getattr(args, "config_dir", Path.home() / ".config" / "deciflow")
-        .expanduser()
-        .resolve()
-    )
-    check_command = shlex.join(
-        ["deciflow", "config", "test", "--config-dir", str(directory)]
-    )
+    check_command = "deciflow config test"
     try:
         if args.command == "init":
+            directory = default_config_directory()
             created = prepare_workspace(directory)
             print(
                 f"{'Created' if created else 'Preserved'} {directory / '.env'}. "
-                "Edit the configuration, then run:\n"
-                f"{check_command}"
+                "Edit the configuration, then register this in your shell startup file:\n"
+                'export DECIFLOW_ENV_PATH="$HOME/.config/deciflow/.env"\n'
+                f"Then run: {check_command}"
             )
             return
+        selected = resolve_env_path()
+        os.environ["DECIFLOW_ENV_PATH"] = str(selected)
+        directory = selected.parent
         if args.command in {"status", "stop"}:
             from deciflow import process_control
 
@@ -149,21 +128,10 @@ def main() -> None:
             raise SystemExit(run_config_test(directory))
         from deciflow.process_control import DAEMON_ENV, RunLock, Runtime, launch_daemon
 
-        if not directory.is_dir():
-            raise ValueError(
-                f"Run deciflow init --config-dir {shlex.quote(str(directory))}"
-            )
         with RunLock(directory) as lock:
             result = run_config_test(directory, detailed=False)
             if result:
-                advice = (
-                    check_command
-                    if (directory / ".env").is_file()
-                    else shlex.join(
-                        ["deciflow", "init", "--config-dir", str(directory)]
-                    )
-                )
-                print(f"Run: {advice}", file=sys.stderr)
+                print(f"Run: {check_command}", file=sys.stderr)
                 raise SystemExit(result)
             os.chdir(directory)
             if args.daemon:
@@ -172,15 +140,13 @@ def main() -> None:
             from deciflow import server
 
             server.ROOT = directory
-            print(f"Configuration: {directory / '.env'}", flush=True)
+            print(f"Configuration: {selected}", flush=True)
             # Inherit the lock and mode across UI exec-based restarts.
             sys.orig_argv = [
                 sys.executable,
                 "-m",
                 "deciflow.cli",
                 "start",
-                "--config-dir",
-                str(directory),
             ]
             with Runtime(directory, os.getenv(DAEMON_ENV) == "1") as runtime:
                 try:

@@ -57,7 +57,7 @@ class RunLock:
             except BlockingIOError:
                 raise ValueError(
                     "DeciFlow is already running for this configuration. "
-                    "Use deciflow status or deciflow stop with the same --config-dir."
+                    "Use deciflow status or deciflow stop with the same DECIFLOW_ENV_PATH."
                 ) from None
             os.set_inheritable(self.fd, True)
             os.environ[LOCK_ENV] = str(self.fd)
@@ -263,8 +263,6 @@ def launch_daemon(directory: Path, lock: RunLock) -> None:
                 "-m",
                 "deciflow.cli",
                 "start",
-                "--config-dir",
-                str(directory),
             ],
             cwd=directory,
             env={**os.environ, DAEMON_ENV: "1"},

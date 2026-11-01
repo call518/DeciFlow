@@ -34,6 +34,7 @@ def engine_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(server.app.state, "restart_requested", False, raising=False)
     monkeypatch.setenv("DECIFLOW_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("DECIFLOW_LOG_DIR", "")
+    monkeypatch.delenv("DECIFLOW_ENV_PATH", raising=False)
     monkeypatch.delenv("DECIFLOW_CSRF_TRUSTED_ORIGINS", raising=False)
     monkeypatch.setenv("DECISION_ENGINE", "jev")
     monkeypatch.setenv("JEV_API_KEY", "test-key")

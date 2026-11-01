@@ -1,3 +1,6 @@
+# Use ./compose.sh up|down for the environment file selected by DECIFLOW_ENV_PATH.
+# Or explicitly select a file for Compose interpolation and profiles:
+# docker compose --env-file "$DECIFLOW_ENV_PATH" up -d
 name: deciflow
 
 include:

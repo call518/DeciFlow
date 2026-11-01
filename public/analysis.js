@@ -63,6 +63,7 @@ async function handleLoadAnalysis() {
     available=data.configuration.available;
     $('identity').textContent=`Result #${data.resultNumber} · Run: ${run}`;
     $('analysis-input').textContent=data.context.input;
+    $('analysis-input-section').hidden=false;
     const {input,...context}=data.context;
     $('analysis-context').textContent=JSON.stringify(context,null,2);
     $('analysis-evidence').hidden=false;

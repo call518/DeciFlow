@@ -56,7 +56,6 @@ from deciflow.config import (
     JEV_REQUEST_TOKENS,
     Engine,
     get_engine,
-    load_startup_settings,
 )
 from deciflow.config_store import get_data_directory
 from deciflow.configured_sources import follow_configured, read_configured
@@ -69,7 +68,7 @@ from deciflow.hdfs_sources import (
 )
 from deciflow.host_sources import host_metadata, read_host_sources
 from deciflow.jobs import JOBS, Job, read_archived_run, replay_archived_run
-from deciflow.paths import RESOURCE_ROOT
+from deciflow.paths import RESOURCE_ROOT, default_config_directory, resolve_env_path
 from deciflow.profiles import (
     DEFAULT_PROFILES,
     GENERAL_PROFILE_ID,
@@ -123,7 +122,7 @@ from deciflow.tasks import (
     task_runs,
 )
 
-ROOT = RESOURCE_ROOT
+ROOT = default_config_directory()
 DEFAULT_LOG_DIR = "/var/log/deciflow"
 HEADERS = {"X-Content-Type-Options": "nosniff", "Cache-Control": "no-store"}
 ASSETS = {
@@ -2017,7 +2016,12 @@ def main(
     on_started: Callable[[], None] | None = None,
 ) -> None:
     """Load settings; expose HTTP by default and restrict protected native access."""
-    load_startup_settings(ROOT / ".env")
+    global ROOT
+    from deciflow.cli_config import read_environment
+
+    environment_file = resolve_env_path()
+    ROOT = environment_file.parent
+    read_environment(environment_file)
     from deciflow.native_proxy import (
         proxy_enabled,
         proxy_managed,

@@ -2,6 +2,8 @@
 
 [한국어](authentication.ko.md) | [Installation](../INSTALL.md) | [Documentation](README.md)
 
+Before running commands, select the environment file with `export DECIFLOW_ENV_PATH="$HOME/.config/deciflow/.env"`. Files are not searched automatically.
+
 Start DeciFlow using [INSTALL](../INSTALL.md) first. Add **OAuth2-Proxy in Docker**
 only when HTTPS/Google sign-in is needed. All approved users share DeciFlow data
 and administrative capabilities. Laya remains independent.
@@ -9,10 +11,13 @@ and administrative capabilities. Laya remains independent.
 Choose the section matching your DeciFlow installation after common preparation:
 [PyPI](#pypi) · [Docker Compose](#docker) · [Direct process](#source).
 
-| Method | `.env` and Proxy Directory Root |
+All methods require `DECIFLOW_ENV_PATH` to select the environment file. Proxy files use the directories below.
+
+| Method | Proxy File Directory Root |
 | --- | --- |
-| PyPI | `~/.config/deciflow` |
-| Docker Compose / Direct process | `<checkout>` |
+| PyPI | Parent directory of `DECIFLOW_ENV_PATH` |
+| Docker Compose | `<checkout>` |
+| Direct process | Parent directory of `DECIFLOW_ENV_PATH` |
 
 Native CLI installations use `OAUTH2_PROXY_MANAGED=false` to keep the proxy in
 Docker while retaining the signed-in account UI.
@@ -126,7 +131,7 @@ Use the initialized package settings and apply the common `.env` values.
 Activate the pip environment when applicable.
 
 ```bash
-proxy_config_dir="$HOME/.config/deciflow"
+proxy_config_dir="$(dirname -- "$DECIFLOW_ENV_PATH")"
 ```
 
 ```bash
@@ -172,7 +177,7 @@ Continue with [verification](#verify).
 
 ## Docker Compose
 
-From the checkout root, apply the common values to its `.env`:
+Edit `~/.config/deciflow/.env` with the values above and run commands from the checkout:
 
 ```bash
 proxy_config_dir="$PWD"
@@ -196,8 +201,8 @@ The Compose proxy uses image UID 65532. Set permissions and recreate services:
 sudo chown 65532 oauth2-proxy/tls/privkey.pem
 chmod 644 oauth2-proxy/oauth2-proxy.cfg oauth2-proxy/allowed-emails.txt
 sudo chcon -Rt container_file_t oauth2-proxy
-docker compose config --quiet
-docker compose up -d --remove-orphans --force-recreate ui oauth2-proxy
+docker compose --env-file "$DECIFLOW_ENV_PATH" config --quiet
+docker compose --env-file "$DECIFLOW_ENV_PATH" up -d --remove-orphans --force-recreate ui oauth2-proxy
 ```
 
 Compose removes the public UI port and exposes HTTPS on 4443.
@@ -208,10 +213,10 @@ Continue with [verification](#verify).
 
 ## Direct Process
 
-From the checkout root, apply the common values to its `.env`:
+Edit `~/.config/deciflow/.env` with the values above and run commands from the checkout:
 
 ```bash
-proxy_config_dir="$PWD"
+proxy_config_dir="$(dirname -- "$DECIFLOW_ENV_PATH")"
 ```
 
 ```bash
@@ -231,9 +236,9 @@ Restart DeciFlow first. Protected native mode enforces loopback even if
 or an unused HTTPS port when `OAUTH2_PROXY_MANAGED=false`.
 
 ```bash
-uv run deciflow stop --config-dir "$PWD"
-uv run deciflow config test --config-dir "$PWD"
-uv run deciflow start --daemon --config-dir "$PWD"
+uv run deciflow stop
+uv run deciflow config test
+uv run deciflow start --daemon
 ```
 
 Then start the Docker proxy. Linux host networking reaches DeciFlow's loopback
@@ -271,7 +276,7 @@ An unlisted account must be denied. Sign Out is in the account menu.
 | Deployment | Logs | Apply Proxy/Certificate Changes |
 | --- | --- | --- |
 | Package / Direct process | `docker logs --tail=100 deciflow-oauth2-proxy` | `docker rm -f deciflow-oauth2-proxy`, then rerun its `docker run` command |
-| Compose | `docker compose logs --tail=100 oauth2-proxy` | `docker compose up -d --no-deps --force-recreate oauth2-proxy` |
+| Compose | `docker compose --env-file "$DECIFLOW_ENV_PATH" logs --tail=100 oauth2-proxy` | `docker compose --env-file "$DECIFLOW_ENV_PATH" up -d --no-deps --force-recreate oauth2-proxy` |
 
 The native CLI no longer stops the separately operated proxy container; manage it
 with Docker. If the application port changes, update the standalone upstream too.
@@ -313,18 +318,11 @@ Container paths start at `/etc/oauth2-proxy/`; the procedures above mount that d
 
 ## API Origin Protection
 
-DeciFlow checks the browser's `Origin` header for protected API requests,
-including Source/Task management, settings, and file access. This uses the
-[OWASP Origin-checking technique](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#using-standard-headers-to-verify-origin);
-`DECIFLOW_CSRF_TRUSTED_ORIGINS` is a DeciFlow setting, not an HTTP standard header.
-No CSRF tokens are issued or validated.
+- DeciFlow checks the browser's `Origin` header for protected API requests, including Source/Task management, settings, and file access. This uses the [OWASP Origin-checking technique](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#using-standard-headers-to-verify-origin); `DECIFLOW_CSRF_TRUSTED_ORIGINS` is a DeciFlow setting, not an HTTP standard header.
+- No CSRF tokens are issued or validated.
 
-Without OAuth2-Proxy, the origin must match the request scheme and Host
-(including the port). A browser on another computer can use the server IP or
-domain without extra configuration. With OAuth2-Proxy enabled,
-`OAUTH2_PROXY_PUBLIC_URL` supplies the expected external HTTPS origin even when
-the backend connection is HTTP. Forwarded headers are not read by this check;
-configure Uvicorn to trust only the actual proxy when enabling forwarded headers.
+- Without OAuth2-Proxy, the origin must match the request scheme and Host (including the port). A browser on another computer can use the server IP or domain without extra configuration.
+- With OAuth2-Proxy enabled, `OAUTH2_PROXY_PUBLIC_URL` supplies the expected external HTTPS origin even when the backend connection is HTTP. Forwarded headers are not read by this check; configure Uvicorn to trust only the actual proxy when enabling forwarded headers.
 
 Leave `DECIFLOW_CSRF_TRUSTED_ORIGINS` empty normally. To explicitly allow additional
 UI origins, list complete origins separated by commas, without trailing slashes:

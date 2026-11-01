@@ -1,49 +1,29 @@
 # 요청 및 결과 JSON
 
-저장·내보내기 성공 결과에는 간결한 v2 계약을 적용합니다. 원문은 `input`에 한 번 두며,
-판정 정의가 있으면 반복 요청 `questions`는 생략합니다. 동일한 제공자 답변은
-`providerResponse.answersInDecisions`로 `decisions`를 참조합니다. 아래 원시 요청·
-분류기 진단 예시는 추가 필드를 포함할 수 있습니다. [Action 결과 계약](actions.ko.md#간결한-결과-json-계약-버전-2)을 참고하세요.
+- 저장·내보내기 성공 결과에는 간결한 v2 계약을 적용합니다. 원문은 `input`에 한 번 두며, 판정 정의가 있으면 반복 요청 `questions`는 생략합니다. 동일한 제공자 답변은 `providerResponse.answersInDecisions`로 `decisions`를 참조합니다.
+- 아래 원시 요청· 분류기 진단 예시는 추가 필드를 포함할 수 있습니다. [Action 결과 계약](actions.ko.md#간결한-결과-json-계약-버전-2)을 참고하세요.
 
 [English](results.md) | [한국어](results.ko.md) | [문서 안내](README.ko.md) | [README](../README.ko.md)
 
-Criteria에서 하나의 텍스트 `state`에 대한 `choice`·`score`·`noul` 질문을 정의합니다.
-Laya와 Jev는 같은 가변 질문 맵을 사용합니다. 기존 시스템 프로필은 category·urgency·ticket을
-사용하며 사용자 프로필은 ID·선택지·항목 수를 지정합니다. JSONL은 추출한 본문 필드를
-state로 전달합니다. 아래 예시는 기존 HTTP access 로그 흐름입니다.
+- Criteria에서 하나의 텍스트 `state`에 대한 `choice`·`score`·`noul` 질문을 정의합니다. Laya와 Jev는 같은 가변 질문 맵을 사용합니다.
+- 기존 시스템 프로필은 category·urgency·ticket을 사용하며 사용자 프로필은 ID·선택지·항목 수를 지정합니다. JSONL은 추출한 본문 필드를 state로 전달합니다. 아래 예시는 기존 HTTP access 로그 흐름입니다.
 
 
 ## AI Analysis
 
-각 결과 카드에 **AI Analysis** 버튼이 있습니다. DeciFlow의 `.env`에
-`OPENAI_API_KEY`와 전용 `OPENAI_ANALYSIS_MODEL`을 모두 지정한 뒤 DeciFlow를
-재시작하고 브라우저를 새로고침하세요. 분석 모델의 기본값은 `gpt-5.6-terra`이며
-명시적으로 비워 두면 비활성화됩니다. `OPENAI_CRITERIA_MODEL`은 Criteria 작성에만 사용합니다.
-실행 방법에 따라 네이티브 DeciFlow 프로세스를 재시작하거나 Docker 환경 설정을
-변경한 뒤 UI 컨테이너를 재생성합니다. 두 방법 중 사용하는 방식 하나를 적용하세요.
+- 각 결과 카드에 **AI Analysis** 버튼이 있습니다. DeciFlow의 `.env`에 `OPENAI_API_KEY`와 전용 `OPENAI_ANALYSIS_MODEL`을 모두 지정한 뒤 DeciFlow를 재시작하고 브라우저를 새로고침하세요.
+- 분석 모델의 기본값은 `gpt-5.6-terra`이며 명시적으로 비워 두면 비활성화됩니다. `OPENAI_CRITERIA_MODEL`은 Criteria 작성에만 사용합니다. 실행 방법에 따라 네이티브 DeciFlow 프로세스를 재시작하거나 Docker 환경 설정을 변경한 뒤 UI 컨테이너를 재생성합니다.
+- 두 방법 중 사용하는 방식 하나를 적용하세요.
 
-입력이 있는 저장된 성공 판정에서 버튼을 누르면 이동·크기 조절이 가능한 별도 팝업 창을 열고 한 번 분석합니다.
-최대 1040 × 820 크기로 요청하며 화면에 맞게 줄이고 기존 확인창 스타일과 닫기 버튼을
-사용합니다. 브라우저 설정에 따라 팝업이 차단되거나 탭으로 열릴 수 있습니다.
-실패 결과와 입력이 없는 결과는 분석할 수 없습니다. 서버는 원본 입력, 정규화된
-`decisionInput`(있는 경우), 실행 당시 기준, 판정·확률, 입력 제한 메타데이터,
-사용자 정정 내용을 읽습니다. 선택한 근거만 OpenAI에 전송하며 API 비용이 발생합니다.
-키는 백엔드에만 보관합니다. 분석 모델은 판정의 근거·다른 해석·부족한 문맥·추가 확인
-사항을 검토합니다. 원래 엔진의 내부 사고 과정을 복원할 수 없으며 원래 답이 옳다고
-전제하지 않습니다.
-**판정 결과**는 저장된 엔진 출력을, **AI 검토 의견**은 분석 모델의 평가와 다른 해석을
-뜻합니다. 분석이 새 판정을 만들거나 저장된 결과를 바꾸지는 않습니다.
+- 입력이 있는 저장된 성공 판정에서 버튼을 누르면 이동·크기 조절이 가능한 별도 팝업 창을 열고 한 번 분석합니다. 최대 1040 × 820 크기로 요청하며 화면에 맞게 줄이고 기존 확인창 스타일과 닫기 버튼을 사용합니다. 브라우저 설정에 따라 팝업이 차단되거나 탭으로 열릴 수 있습니다.
+- 실패 결과와 입력이 없는 결과는 분석할 수 없습니다. 서버는 원본 입력, 정규화된 `decisionInput`(있는 경우), 실행 당시 기준, 판정·확률, 입력 제한 메타데이터, 사용자 정정 내용을 읽습니다. 선택한 근거만 OpenAI에 전송하며 API 비용이 발생합니다.
+- 키는 백엔드에만 보관합니다. 분석 모델은 판정의 근거·다른 해석·부족한 문맥·추가 확인 사항을 검토합니다. 원래 엔진의 내부 사고 과정을 복원할 수 없으며 원래 답이 옳다고 전제하지 않습니다.
+- **판정 결과**는 저장된 엔진 출력을, **AI 검토 의견**은 분석 모델의 평가와 다른 해석을 뜻합니다. 분석이 새 판정을 만들거나 저장된 결과를 바꾸지는 않습니다.
 
-분석 언어는 브라우저 설정에 따라 한국어 또는 영어이며 기존 판정·리뷰·Action은
-변경하지 않습니다. 텍스트 결과와 입력·기준을 표시합니다. 그 아래 기본적으로 접힌
-**Analysis Metadata**에서 요청/응답 모델·응답 상태·네트워크 시간을 포함한 요청 소요
-시간·토큰 사용량(캐시 입력·추론 토큰 세부 항목 포함)·서비스 등급·응답/요청 ID·
-제공자 생성 시각(UTC)을 확인할 수 있습니다. 없는 값은 0 대신 Not Reported로
-표시하며 접이식 정보를 펼치는 동작은 API 요청을 만들지 않습니다.
-분석은 실행 이력·내보내기에 저장하지 않습니다. 창 새로고침이나
-**Analyze Again**은 새 유료 요청이며 실패 시 자동 재시도하지 않습니다.
-UTF-8 JSON 기준 200,000바이트를 넘는 분석 입력은 전송하거나 조용히 자르지 않고
-거부합니다.
+- 분석 언어는 브라우저 설정에 따라 한국어 또는 영어이며 기존 판정·리뷰·Action은 변경하지 않습니다. 텍스트 결과와 입력·기준을 표시합니다.
+- 그 아래 기본적으로 접힌 **Analysis Metadata**에서 요청/응답 모델·응답 상태·네트워크 시간을 포함한 요청 소요 시간·토큰 사용량(캐시 입력·추론 토큰 세부 항목 포함)·서비스 등급·응답/요청 ID· 제공자 생성 시각(UTC)을 확인할 수 있습니다.
+- 없는 값은 0 대신 Not Reported로 표시하며 접이식 정보를 펼치는 동작은 API 요청을 만들지 않습니다. 분석은 실행 이력·내보내기에 저장하지 않습니다. 창 새로고침이나 **Analyze Again**은 새 유료 요청이며 실패 시 자동 재시도하지 않습니다.
+- UTF-8 JSON 기준 200,000바이트를 넘는 분석 입력은 전송하거나 조용히 자르지 않고 거부합니다.
 
 
 ## 요청 본문
@@ -105,24 +85,16 @@ API 키는 Authorization 헤더로 전달하며 예시에는 포함하지 않습
 확률·시각·소요 시간은 예시 값입니다. `usage`에는 `truncated`만 표시했습니다.
 실제 Laya 응답은 토큰 수·선택지 진단·라우팅 정보를 더 포함할 수 있습니다.
 
-`questions`에는 세 질문, `providerResponse.answers`에는 원본 답변을 보존합니다.
-예시의 분류는 Normal 82%, 긴급도는 **0.3**
-(`0×0.75 + 1×0.20 + 2×0.05 + 3×0`), 티켓 필요 확률은 **12%**입니다.
-긴급도는 0~3의 연속 기댓값이며 반올림한 등급이나 확률이 아닙니다.
-`decisions.ticket.noul`는 작업 티켓 발행이 필요할 확률이며 티켓을 자동 생성하지 않습니다.
-답변 누락·유효하지 않은 답변은 전체 판정을 실패시킵니다.
-엔진 고유 `confidence`는 범주 확률과 별개입니다.
+- `questions`에는 세 질문, `providerResponse.answers`에는 원본 답변을 보존합니다. 예시의 분류는 Normal 82%, 긴급도는 **0.3** (`0×0.75 + 1×0.20 + 2×0.05 + 3×0`), 티켓 필요 확률은 **12%**입니다. 긴급도는 0~3의 연속 기댓값이며 반올림한 등급이나 확률이 아닙니다.
+- `decisions.ticket.noul`는 작업 티켓 발행이 필요할 확률이며 티켓을 자동 생성하지 않습니다. 답변 누락·유효하지 않은 답변은 전체 판정을 실패시킵니다. 엔진 고유 `confidence`는 범주 확률과 별개입니다.
 
 선택 확률이 70% 이상이고 상위 두 범주의 확률 차이가 10%p 이상이므로 예시는
 Uncertain이 아닙니다. 이는 DeciFlow의 고정 검토 기준이며 정답 보장이 아닙니다.
 [불확실성·검토 규칙](usage.ko.md#불확실성과-사람의-검토)을 참고하세요.
 
-이 예시는 Action None입니다. 성공 판정 후 할당된 Action을 실행할 때만
-`schemaVersion`·`eventId`·`decidedAt`을 추가하고, 실행 후 `actionExecution`에
-결과를 기록합니다. `requestedAt`은 로그 시각이 아닌 요청 준비 시각이며,
-`decidedAt`은 Action 실행 전 시각입니다. 시각은 UTC ISO 8601, 소요 시간은 ms입니다.
-요청의 `state`는 결과 JSON에서 `input` 또는 정규화한 `decisionInput`으로 확인하며,
-최상위 `state` 필드는 없습니다. 단독 `question` 필드도 사용하지 않습니다.
+- 이 예시는 Action None입니다. 성공 판정 후 할당된 Action을 실행할 때만 `schemaVersion`·`eventId`·`decidedAt`을 추가하고, 실행 후 `actionExecution`에 결과를 기록합니다.
+- `requestedAt`은 로그 시각이 아닌 요청 준비 시각이며, `decidedAt`은 Action 실행 전 시각입니다. 시각은 UTC ISO 8601, 소요 시간은 ms입니다.
+- 요청의 `state`는 결과 JSON에서 `input` 또는 정규화한 `decisionInput`으로 확인하며, 최상위 `state` 필드는 없습니다. 단독 `question` 필드도 사용하지 않습니다.
 
 
 예시는 로컬 파일이므로 `sourceHosts`에 `deciflowHost`와 같은 값을 넣습니다.
@@ -332,11 +304,8 @@ Uncertain이 아닙니다. 이는 DeciFlow의 고정 검토 기준이며 정답 
 }
 ```
 
-원격 Source/Host 정보는 결과·Action 입력의 메타데이터이며 엔진의 `state`에
-붙이지 않습니다. `chunkSequence`는 Source/Host 스트림마다 1부터 시작하는 수집 순서로,
-병렬 요청의 완료 순서는 다를 수 있습니다. SSH 수집 실패에는 `sourceFailure: true`,
-`error`, 호스트·소스 정보를 남기고 Category·Urgency·Ticket 답변은 만들지 않습니다.
-Task 실행 정보와 호스트별 수집 상태는 실행 이력에 별도로 저장합니다. [Tasks](tasks.ko.md)를 참고하세요.
+- 원격 Source/Host 정보는 결과·Action 입력의 메타데이터이며 엔진의 `state`에 붙이지 않습니다. `chunkSequence`는 Source/Host 스트림마다 1부터 시작하는 수집 순서로, 병렬 요청의 완료 순서는 다를 수 있습니다.
+- SSH 수집 실패에는 `sourceFailure: true`, `error`, 호스트·소스 정보를 남기고 Category·Urgency·Ticket 답변은 만들지 않습니다. Task 실행 정보와 호스트별 수집 상태는 실행 이력에 별도로 저장합니다. [Tasks](tasks.ko.md)를 참고하세요.
 
 ## 필드 설명
 
@@ -426,16 +395,9 @@ Jev도 같은 최상위 결과 구조를 사용하며, `providerResponse`는 엔
 
 ## 리뷰 변경분 내보내기
 
-**Export Reviewed JSON**은 별도 데이터셋에 중복 저장하지 않고 기존 결과 DB에서
-선택한 실행의 변경 리뷰만 조회합니다. AI `category`는 보존하고 사람의 판단은
-`reviewerDecisions`로 포함합니다. `exportScope: "reviewed-changes"`, 내보낸
-건수 `exported`, 일치한 결과 객체 전체를 내보냅니다. 일치 항목이 없으면 `results`는
-빈 배열이며 `total`/`completed`는 원래 실행 전체의 값입니다. 모델별 미세조정
-형식으로 변환하는 기능은 아닙니다. Task 삭제 시 리뷰도 삭제되므로 보존하려면 먼저
-내려받으세요.
+- **Export Reviewed JSON**은 별도 데이터셋에 중복 저장하지 않고 기존 결과 DB에서 선택한 실행의 변경 리뷰만 조회합니다. AI `category`는 보존하고 사람의 판단은 `reviewerDecisions`로 포함합니다.
+- `exportScope: "reviewed-changes"`, 내보낸 건수 `exported`, 일치한 결과 객체 전체를 내보냅니다. 일치 항목이 없으면 `results`는 빈 배열이며 `total`/`completed`는 원래 실행 전체의 값입니다. 모델별 미세조정 형식으로 변환하는 기능은 아닙니다.
+- Task 삭제 시 리뷰도 삭제되므로 보존하려면 먼저 내려받으세요.
 
-Native HDFS 결과의 Source URI는 `hdfs://namenode[:port]/path`이며 WebHDFS는
-`webhdfs://host[:port]/path`, HTTPS는 `swebhdfs://host[:port]/path`입니다.
-Host 메타데이터는 실제 블록을 제공하는 DataNode가 아닌 설정한 NameNode/nameservice
-또는 WebHDFS 엔드포인트를 나타냅니다. User·티켓 캐시·위임 토큰·CA 파일 설정은
-결과나 AI 입력에 포함하지 않습니다.
+- Native HDFS 결과의 Source URI는 `hdfs://namenode[:port]/path`이며 WebHDFS는 `webhdfs://host[:port]/path`, HTTPS는 `swebhdfs://host[:port]/path`입니다.
+- Host 메타데이터는 실제 블록을 제공하는 DataNode가 아닌 설정한 NameNode/nameservice 또는 WebHDFS 엔드포인트를 나타냅니다. User·티켓 캐시·위임 토큰·CA 파일 설정은 결과나 AI 입력에 포함하지 않습니다.

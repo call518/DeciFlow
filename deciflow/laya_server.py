@@ -86,9 +86,9 @@ class LogRouter:
 
 def main() -> None:
     """Load shared credentials and start Laya on loopback, port 8000."""
-    from deciflow.paths import RESOURCE_ROOT
+    from deciflow.paths import resolve_env_path
 
-    load_dotenv(RESOURCE_ROOT / ".env")
+    load_dotenv(resolve_env_path())
     os.environ.setdefault("LAYA_HOST", "127.0.0.1")
     os.environ.setdefault("LAYA_DEVICE", "cpu")
     os.environ.setdefault("LAYA_MODELS", get_model("laya"))

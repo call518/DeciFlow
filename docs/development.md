@@ -2,6 +2,8 @@
 
 [한국어](development.ko.md) | [Project Overview](../README.md) | [Installation](../INSTALL.md)
 
+Before running commands, select the environment file with `export DECIFLOW_ENV_PATH="$HOME/.config/deciflow/.env"`. Files are not searched automatically.
+
 Run development commands from a Git checkout prepared with
 [source CLI installation](../INSTALL.md#direct-processes). Use the project uv
 environment; the installed PyPI command alone does not include this test checkout.
@@ -50,22 +52,13 @@ Local Laya installation and execution are covered in the
 
 ## Publish from a Git Tag
 
-Maintainers publish with `.github/workflows/pypi-publish.yml`. A pushed tag starts
-Python 3.12 tests, builds an sdist and wheel, verifies their versions against the
-tag, and tests the installed wheel. The same artifacts are uploaded to **TestPyPI
-first**, then **PyPI** only after TestPyPI succeeds. A final, separate job creates
-a GitHub Release with English headings for the same tag only after PyPI succeeds. Normal branch
-pushes do not publish packages or Releases; the separate pytest workflow checks
-Python 3.11 and 3.12.
+- Maintainers publish with `.github/workflows/pypi-publish.yml`. A pushed tag starts Python 3.12 tests, builds an sdist and wheel, verifies their versions against the tag, and tests the installed wheel.
+- The same artifacts are uploaded to **TestPyPI first**, then **PyPI** only after TestPyPI succeeds. A final, separate job creates a GitHub Release with English headings for the same tag only after PyPI succeeds.
+- Normal branch pushes do not publish packages or Releases; the separate pytest workflow checks Python 3.11 and 3.12.
 
-`pyproject.toml` uses `dynamic = ["version"]` and Hatch's `hatch-vcs` plugin
-(backed by `setuptools-scm`). A clean `0.5.7` or `v0.5.7` tag produces package
-version `0.5.7`; these are examples, not a selected release version. Canonical
-prerelease tags such as `0.5.7rc1` are also accepted and publish to both indexes.
-Commits after a tag or a modified checkout produce development versions. CI fetches
-full Git history so version detection works. No manual version edit or API token
-is needed. Install Git when building from a checkout; published sdists retain
-version metadata so wheel builds from an sdist do not need Git history.
+- `pyproject.toml` uses `dynamic = ["version"]` and Hatch's `hatch-vcs` plugin (backed by `setuptools-scm`). A clean `0.5.7` or `v0.5.7` tag produces package version `0.5.7`; these are examples, not a selected release version.
+- Canonical prerelease tags such as `0.5.7rc1` are also accepted and publish to both indexes. Commits after a tag or a modified checkout produce development versions. CI fetches full Git history so version detection works.
+- No manual version edit or API token is needed. Install Git when building from a checkout; published sdists retain version metadata so wheel builds from an sdist do not need Git history.
 
 Before the first tag push:
 
@@ -85,29 +78,18 @@ publishing jobs. Only the GitHub Release job receives `contents: write` and uses
 the automatically provided `GITHUB_TOKEN`; no personal token or repository-wide
 write default is required. The workflow does not create tags or commits.
 
-Release notes collect **full commit messages**, including merge commits and breaking
-change descriptions, in oldest-first topological order with commit links. The range
-starts after the most recently **published GitHub Release**, not the preceding Git
-tag. Published prereleases count as a previous Release; drafts and the current tag
-are excluded. Tags without a Release do not narrow the range. With no published
-Release, all history reachable from the current tag is included. Commit messages
-are preserved verbatim rather than translated or summarized.
+- Release notes collect **full commit messages**, including merge commits and breaking change descriptions, in oldest-first topological order with commit links. The range starts after the most recently **published GitHub Release**, not the preceding Git tag.
+- Published prereleases count as a previous Release; drafts and the current tag are excluded. Tags without a Release do not narrow the range. With no published Release, all history reachable from the current tag is included.
+- Commit messages are preserved verbatim rather than translated or summarized.
 
-The Release job checks that the remote tag, local tag, and checked-out commit match,
-and stops if the previous Release tag is missing or is not an ancestor. Existing
-published Releases are left unchanged on reruns; an existing draft for the same tag
-requires manual review. Tags ending in `aN`, `bN`, or `rcN` create prereleases and
-are not marked Latest. GitHub selects Latest automatically for normal Releases.
-Only Release jobs are serialized, with up to 100 pending jobs retained. Push version
-tags one at a time; concurrent or out-of-order publishing can make a newer Release
-an invalid baseline for an older tag, which fails safely rather than guessing.
+- The Release job checks that the remote tag, local tag, and checked-out commit match, and stops if the previous Release tag is missing or is not an ancestor.
+- Existing published Releases are left unchanged on reruns; an existing draft for the same tag requires manual review. Tags ending in `aN`, `bN`, or `rcN` create prereleases and are not marked Latest.
+- GitHub selects Latest automatically for normal Releases. Only Release jobs are serialized, with up to 100 pending jobs retained.
+- Push version tags one at a time; concurrent or out-of-order publishing can make a newer Release an invalid baseline for an older tag, which fails safely rather than guessing.
 
-Existing package versions cannot be overwritten. If TestPyPI succeeds but PyPI fails,
-fix the cause and rerun the failed job in the same workflow run to reuse its artifacts.
-If only GitHub Release creation fails, rerun only the failed Release job; do not rerun
-successful package uploads. A Release failure does not roll back packages already
-published to either index. Installing or running local checks does not upload anything;
-`python3 -m scripts.publish_release TAG` is a publishing command for the workflow.
+- Existing package versions cannot be overwritten. If TestPyPI succeeds but PyPI fails, fix the cause and rerun the failed job in the same workflow run to reuse its artifacts.
+- If only GitHub Release creation fails, rerun only the failed Release job; do not rerun successful package uploads. A Release failure does not roll back packages already published to either index.
+- Installing or running local checks does not upload anything; `python3 -m scripts.publish_release TAG` is a publishing command for the workflow.
 
 
 ## Verify a Distribution
@@ -132,12 +114,8 @@ Actions runs this check after pytest on both Python 3.11 and 3.12.
 
 Run from a prepared Git checkout root.
 
-The automated local smoke test downloads OAuth2-Proxy v7.15.5 for Linux/macOS
-amd64/arm64, verifies its pinned official SHA-256 digest, and caches the archive in
-`~/.cache/deciflow/test-tools/` outside the repository. The executable and test TLS
-files use temporary pytest storage. OpenSSL and GitHub access are required on the
-first run; a verified cache avoids repeat downloads. Download or checksum errors
-fail the test instead of silently skipping it.
+- The automated local smoke test downloads OAuth2-Proxy v7.15.5 for Linux/macOS amd64/arm64, verifies its pinned official SHA-256 digest, and caches the archive in `~/.cache/deciflow/test-tools/` outside the repository.
+- The executable and test TLS files use temporary pytest storage. OpenSSL and GitHub access are required on the first run; a verified cache avoids repeat downloads. Download or checksum errors fail the test instead of silently skipping it.
 
 ```bash
 uv run pytest -q tests/test_oauth2_proxy.py
@@ -200,20 +178,13 @@ Docker with Compose, not local Python/uv/CUDA. Configure `.env` for Laya or Jev 
 For external Laya or Jev, set `COMPOSE_PROFILES=` and start the selected access mode:
 
 ```bash
-docker compose up -d
+docker compose --env-file "$DECIFLOW_ENV_PATH" up -d
 ```
 
-Compose uses the published `call518/deciflow-ui:0.0.2` image from Docker Hub.
-The image provides Python, uv, and operational utilities. The repository is mounted
-read-only at `/app`; `uv sync --frozen` installs dependencies into `deciflow-venv`
-on startup. Initial startup needs network access. Compose passes `.env` to the UI;
-`PORT` controls the UI port (default: 4000). HTTP mode publishes it on
-`DECIFLOW_BIND_HOST`; OAuth2-Proxy mode publishes only HTTPS on 4443.
-Compose checks for updated images on each `up` with `pull_policy: always`.
-The UI does not invoke `deciflow start`, so it does not need
-`~/.config/deciflow/.env` inside the container. Manage startup/shutdown with Compose.
-See [CLI and direct server startup](configuration.md#cli-and-direct-server-startup).
-The UI and Laya services map `host.docker.internal` to the Docker host gateway via `extra_hosts`. Recreate existing containers to apply this mapping.
+- Compose uses the published `call518/deciflow-ui:0.0.2` image from Docker Hub. The image provides Python, uv, and operational utilities. The repository is mounted read-only at `/app`; `uv sync --frozen` installs dependencies into `deciflow-venv` on startup.
+- Initial startup needs network access. Compose passes `.env` to the UI; `PORT` controls the UI port (default: 4000). HTTP mode publishes it on `DECIFLOW_BIND_HOST`; OAuth2-Proxy mode publishes only HTTPS on 4443.
+- Compose checks for updated images on each `up` with `pull_policy: always`. The UI calls the server directly and reads `/etc/deciflow.env` from the read-only host configuration mount. Manage startup/shutdown with Compose. See [CLI and direct server startup](configuration.md#cli-and-direct-server-startup).
+- The UI and Laya services map `host.docker.internal` to the Docker host gateway via `extra_hosts`. Recreate existing containers to apply this mapping.
 
 <a id="docker-runtime"></a>
 
@@ -262,19 +233,12 @@ connectivity, Kerberos authentication, or cluster compatibility.
 | `x-laya` | YAML anchor for shared Laya settings; not an additional container. |
 | Named volumes | deciflow-venv, deciflow-data, deciflow-logs, and deciflow-laya-model-cache retain their existing names. |
 
-Compose reads `.env` for interpolation and passes it to the UI through `env_file`.
-Only the declared Laya server variables are passed to Laya; its API key uses the same
-`LAYA_API_KEY`. Process environment values override `.env` during interpolation.
-`COMPOSE_PROFILES` is independent of `DECISION_ENGINE`: for Jev or external Laya,
-leave profiles empty; UI remains enabled and OAuth2-Proxy follows OAUTH2_PROXY_ENABLED. The UI can start before Laya is ready;
-check Laya readiness before analyzing logs. There is no automatic paid fallback.
+- Compose reads `$DECIFLOW_ENV_PATH` for interpolation using `--env-file` and passes the same file to the UI through `env_file` and a read-only mount. Only the declared Laya server variables are passed to Laya; its API key uses the same `LAYA_API_KEY`.
+- Process environment values override `.env` during interpolation. `COMPOSE_PROFILES` is independent of `DECISION_ENGINE`: for Jev or external Laya, leave profiles empty; UI remains enabled and OAuth2-Proxy follows OAUTH2_PROXY_ENABLED.
+- The UI can start before Laya is ready; check Laya readiness before analyzing logs. There is no automatic paid fallback.
 
-With OAuth2-Proxy enabled, only HTTPS on 4443 is published; open `OAUTH2_PROXY_PUBLIC_URL`.
-With OAuth2-Proxy disabled, open `http://localhost:4000` (or your configured HTTP host/port).
-Laya's separate API remains on 8000.
-The `deciflow-data` volume stores Sources, Tasks and run history, Actions, Criteria, SSH Key pairs, and SSH Hosts at `DECIFLOW_DATA_DIR`
-(default: `/var/lib/deciflow-data`); `deciflow-logs` stores server logs.
-Use absolute container paths for custom data/log directories.
+- With OAuth2-Proxy enabled, only HTTPS on 4443 is published; open `OAUTH2_PROXY_PUBLIC_URL`. With OAuth2-Proxy disabled, open `http://localhost:4000` (or your configured HTTP host/port). Laya's separate API remains on 8000.
+- The `deciflow-data` volume stores Sources, Tasks and run history, Actions, Criteria, SSH Key pairs, and SSH Hosts at `DECIFLOW_DATA_DIR` (default: `/var/lib/deciflow-data`); `deciflow-logs` stores server logs. Use absolute container paths for custom data/log directories.
 
 ##### Mount host log directories
 
@@ -286,34 +250,20 @@ Host `/var/log` and repository `sample-logs` are mounted read-only at
       - /your/logs:/host-logs/custom:ro
 ```
 
-Apply mount changes with `docker compose up -d ui`. Recreating the UI interrupts
+Apply mount changes with `docker compose --env-file "$DECIFLOW_ENV_PATH" up -d ui`. Recreating the UI interrupts
 active executions; Task history remains in the data volume. In the UI, use the container
 path `/host-logs/custom/app.log`. The process needs permission to read host files.
 
 ##### Connection settings and restart
 
-The Compose Laya address is `http://laya:8000/v1/systemone`; for an external server,
-use an address reachable from the container. `127.0.0.1` refers to the UI container.
-Sidebar host/OS/IP information describes the container.
-For `.env` engine settings (`DECISION_ENGINE`, `LAYA_*`, `JEV_*`), use Docker
-Desktop Restart on DeciFlow-UI or `docker compose restart ui`, then refresh the
-browser. **Restart DeciFlow** is also available in Configurations. UI overrides take precedence; clear them to use changed `.env` values. The UI reloads explicit engine settings from the mounted file at startup.
-Ports, mounts, Compose profiles, and Laya service settings still require
-`docker compose up -d` to recreate affected containers.
-For source changes, run `docker compose restart ui` and refresh the browser after UI
-changes. If you modify the Dockerfile, build the UI image explicitly with
-`docker build --tag call518/deciflow-ui:0.0.2 .`, then run
-`docker compose up -d --force-recreate ui`.
-Stop DeciFlow before switching source versions.
+- The Compose Laya address is `http://laya:8000/v1/systemone`; for an external server, use an address reachable from the container. `127.0.0.1` refers to the UI container. Sidebar host/OS/IP information describes the container.
+- For `.env` engine settings (`DECISION_ENGINE`, `LAYA_*`, `JEV_*`), use Docker Desktop Restart on DeciFlow-UI or `docker compose --env-file "$DECIFLOW_ENV_PATH" restart ui`, then refresh the browser. **Restart DeciFlow** is also available in Configurations.
+- UI overrides take precedence; clear them to use changed `.env` values. The UI reloads explicit engine settings from the mounted file at startup.
+- Ports, mounts, Compose profiles, and Laya service settings still require `docker compose --env-file "$DECIFLOW_ENV_PATH" up -d` to recreate affected containers. For source changes, run `docker compose --env-file "$DECIFLOW_ENV_PATH" restart ui` and refresh the browser after UI changes.
+- If you modify the Dockerfile, build the UI image explicitly with `docker build --tag call518/deciflow-ui:0.0.2 .`, then run `docker compose --env-file "$DECIFLOW_ENV_PATH" up -d --force-recreate ui`. Stop DeciFlow before switching source versions.
 
-With OAuth2-Proxy enabled, Compose sets the UI trusted origin from
-`OAUTH2_PROXY_PUBLIC_URL`, including its HTTPS
-port. After changing this URL, update the Google authorized origin/redirect URI too
-and run `docker compose up -d ui oauth2-proxy`. Additional trusted UI origins can be set with
-`DECIFLOW_CSRF_TRUSTED_ORIGINS`; they do not replace the public URL.
-Native networking and authentication are covered in the [native guide](../INSTALL.md#direct-processes).
-See [authentication operations](authentication.md#verify) for credential,
-allow-list, and certificate changes.
+- With OAuth2-Proxy enabled, Compose sets the UI trusted origin from `OAUTH2_PROXY_PUBLIC_URL`, including its HTTPS port. After changing this URL, update the Google authorized origin/redirect URI too and run `docker compose --env-file "$DECIFLOW_ENV_PATH" up -d ui oauth2-proxy`.
+- Additional trusted UI origins can be set with `DECIFLOW_CSRF_TRUSTED_ORIGINS`; they do not replace the public URL. Native networking and authentication are covered in the [native guide](../INSTALL.md#direct-processes). See [authentication operations](authentication.md#verify) for credential, allow-list, and certificate changes.
 
 ### Appendix — Custom Docker images (optional)
 
@@ -341,15 +291,15 @@ Validate API compatibility when upgrading Laya.
 
 ### Update or Stop Docker
 
-Use `docker compose stop` to stop containers, or `docker compose down` to remove
+Use `docker compose --env-file "$DECIFLOW_ENV_PATH" stop` to stop containers, or `docker compose --env-file "$DECIFLOW_ENV_PATH" down` to remove
 the stack's containers and networks. `down` preserves named data volumes; do not add
 `--volumes` when results must be retained. Stop executions and back up the required
 data/settings before updating the source. From the repository root:
 
 ```bash
-docker compose down
+docker compose --env-file "$DECIFLOW_ENV_PATH" down
 git pull --ff-only
-docker compose up -d --remove-orphans
+docker compose --env-file "$DECIFLOW_ENV_PATH" up -d --remove-orphans
 ```
 
 Preserve the existing `.env` and review changed settings instead of copying it again.

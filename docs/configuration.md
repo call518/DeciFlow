@@ -2,82 +2,59 @@
 
 [English](configuration.md) | [한국어](configuration.ko.md) | [Documentation](README.md) | [README](../README.md)
 
-DeciFlow operational settings can be edited in **Settings → Configurations**.
-Saved UI overrides take precedence over `.env`/process environment values, then
-code defaults. Clearing **Use UI Override** restores the environment/default value.
-The initial environment setup remains in `.env`.
-Laya server settings are managed on the Laya host; Compose shares `LAYA_API_KEY`
-with DeciFlow. `COMPOSE_PROFILES` selects `cpu` or `cuda`; empty starts no local Laya container.
+- DeciFlow operational settings can be edited in **Settings → Configurations**. Saved UI overrides take precedence over `.env`/process environment values, then code defaults. Clearing **Use UI Override** restores the environment/default value.
+- The initial environment setup remains in `.env`. Laya server settings are managed on the Laya host; Compose shares `LAYA_API_KEY` with DeciFlow. `COMPOSE_PROFILES` selects `cpu` or `cuda`; empty starts no local Laya container.
 
 ## Environment File Locations
 
-Choose one execution method: **PyPI / pip or uv tool (recommended)**,
-**Docker Compose**, or **Git checkout native Python**. Follow the
-[PyPI installation guide](../INSTALL.md#pypi) for installation from PyPI.
-`<checkout>` below means the cloned DeciFlow repository root on the host.
+- **File selection:** CLI, direct server startup, and `./compose.sh up|down` read only the file specified by `DECIFLOW_ENV_PATH`.
+- **Required variable:** `DECIFLOW_ENV_PATH` must be set and nonempty.
+- **Failure:** a missing or unreadable file stops execution.
+- **No fallback:** home and working directories are not searched, and files are never merged.
 
-| Method | File Read by DeciFlow | How to Prepare or Select It |
-| --- | --- | --- |
-| PyPI / pip or uv tool | `~/.config/deciflow/.env` | `deciflow init` creates templates; edit before startup |
-| Git clone + Docker Compose | `<checkout>/.env` on the host, mounted at `/app/.env` in the UI container | Copy `<checkout>/.env.example` to `<checkout>/.env`; run Compose from the checkout |
-| Git clone + native Python | `<checkout>/.env` | Copy the template; select the checkout explicitly with `uv run deciflow start --config-dir "$PWD"` |
+`deciflow init` creates `~/.config/deciflow/.env` from `.env.example` unchanged,
+without replacing existing files. It does not require `DECIFLOW_ENV_PATH` and does
+not change the parent shell. For a Compose host without Python, use the file
+preparation in the [installation guide](../INSTALL.md#docker-compose).
 
-For package installations (pip or uv tool), `~` is the home of the user running the command; root therefore uses
-`/root/.config/deciflow/.env`. `--config-dir /path/to/deciflow-config` selects
-the configuration workspace: `init`, `config list`, `config test`, and `start` use
-its `.env`; `status` and `stop` use the same directory to identify the CLI-managed
-process. Pass the same option every time. A `.env` in the shell's current directory is not
-automatically selected. Initialization preserves existing files.
+Register the path in `~/.bashrc` (or `/etc/bashrc` for all users), and also export
+it in the current shell:
 
-For Git native CLI execution, run from the checkout and select it explicitly with
-`--config-dir "$PWD"`; otherwise the CLI uses `~/.config/deciflow`. The direct
-`server.py` script reads the checkout file regardless of the shell directory.
-Run documented commands from the checkout so relative Source paths are predictable.
-The local Laya adapter reads that same checkout file. A separately deployed Laya
-server has its own configuration on its own host.
+```bash
+export DECIFLOW_ENV_PATH="$HOME/.config/deciflow/.env"
+```
 
-Compose uses the checkout file for interpolation and the UI's `env_file`; DeciFlow
-also reads the mounted `/app/.env` at startup. `docker compose --env-file ...`
-alone does not change the UI's `env_file` or replace the mounted `/app/.env`.
-It is not a way to switch the whole Docker deployment to the package installation file.
-`--config-dir` is a DeciFlow CLI option, not a Compose or `server.py` option.
-
-The files are independent, with no automatic search, synchronization, or fallback
-between them. To deliberately reuse a native checkout file with the installed
-command, pass `--config-dir /path/to/DeciFlow`. Docker's `http://laya:8000` address
-only works inside its network; host-based execution needs a reachable Laya URL.
-
-These configuration paths are separate from `DECIFLOW_DATA_DIR` and
-`DECIFLOW_LOG_DIR`. Defaults remain `/var/lib/deciflow-data` (including a blank data
-setting) and `/var/log/deciflow`. Docker uses these paths inside the container and
-backs them with named volumes; pip/uv tool/native execution uses host directories.
-The native quick start explicitly overrides them with `./data` and `./logs`.
+Set this variable in the invoking shell, not inside the file it selects.
+Use an absolute path for consistent behavior across directories and manual
+Compose commands. Other file names and locations are allowed.
 
 ## CLI and Direct Server Startup
 
-Installing from source and running the server directly are different choices.
-The source installation guide uses `uv run deciflow start --config-dir "$PWD"`,
-which invokes the same CLI as a package installation. All methods run the DeciFlow
-server; configuration selection and process management differ:
-
-| Entry Point | Startup Checks and Process Management | Working Directory |
+| Execution Method | Environment File | Startup and Shutdown |
 | --- | --- | --- |
-| `deciflow start` (including `uv run deciflow start`) | CLI preflight checks, single-instance lock, process registration, optional `--daemon`; manage with `deciflow status` / `stop` using the same `--config-dir` | Changes to the selected configuration directory; defaults to `~/.config/deciflow` |
-| `uv run python server.py` from a prepared checkout | Starts the server in the foreground without CLI preflight or process registration; stop with `Ctrl+C` or the process supervisor | Leaves the shell's working directory unchanged; reads `<checkout>/.env` |
-| `docker compose up -d` | The UI container installs dependencies, then calls `server.main(host='0.0.0.0')` directly; manage with Compose commands | `/app`; reads the mounted `/app/.env` and Compose-provided environment |
+| `deciflow start` or `uv run deciflow start` | `DECIFLOW_ENV_PATH` | CLI preflight, single-instance lock, optional `--daemon`; use `status` / `stop` with the same variable |
+| `uv run python server.py` | `DECIFLOW_ENV_PATH` | Server validation, authentication, and Task recovery; foreground process, stopped with `Ctrl+C` or a supervisor |
+| `./compose.sh up` / `./compose.sh down` | `DECIFLOW_ENV_PATH` | Compose lifecycle; selected file is mounted read-only at `/etc/deciflow.env` inside the UI container |
 
-For native execution, first complete the prerequisites and engine setup in the
-[source installation guide](../INSTALL.md#direct-processes), then choose CLI
-startup or the foreground `server.py` command. Do not start both on the same port.
-Direct execution retains server-side configuration validation, authentication and
-Task recovery; it does not register a process for `deciflow status` / `stop`.
-The CLI requires a prepared `.env`. Direct server startup uses process environment
-values and code defaults when its explicit `.env` is absent; it does not search
-the shell directory or `~/.config/deciflow` for another file.
+CLI process registration and native OAuth2-Proxy files use the selected file's
+parent directory. Direct server startup is not registered with CLI process
+management. `init` always creates templates in `~/.config/deciflow`.
 
-In Compose, `~/.config/deciflow/.env` inside the UI container is not required.
-The project's `.env` is supplied through `env_file: .env` and the checkout mount
-`.:/app:ro`. Use Compose to manage that container, not `deciflow start` / `stop`.
+For manual Compose commands, pass the exported absolute path explicitly:
+
+```bash
+docker compose --env-file "$DECIFLOW_ENV_PATH" up -d
+docker compose --env-file "$DECIFLOW_ENV_PATH" down
+```
+
+Both commands parse Compose variables and the OAuth configuration, so both need
+`--env-file`. The script supplies it automatically and locates the Compose project
+relative to itself, independently of the invocation directory.
+
+File selection does not convert engine URLs or paths. Configure `LAYA_API_URL`
+for the execution environment; container `127.0.0.1` does not refer to the host.
+Sharing the file does not share the data store: Compose uses named volumes.
+Saved UI overrides retain their precedence. Prefer absolute storage paths.
 
 ## Environment Settings
 
@@ -109,46 +86,28 @@ The project's `.env` is supplied through `env_file: .env` and the checkout mount
 | `JEV_MAX_INPUT_BYTES` | `30000` | Jev request JSON budget in UTF-8 bytes; range 1–30000 |
 | `JEV_CONCURRENCY` | `4` | Maximum simultaneous Jev requests per run; positive integer |
 
-`.env.example` overrides some code defaults: LAYA_API_URL uses the Compose hostname
-`laya`, LAYA_MODEL is `multilingual`, and JEV_MODEL is `jev-latest`. Trusted UI origins
-are empty by default; `https://*.ngrok-free.app` is an optional example. Existing `.env` values
-are not overwritten. For native DeciFlow or an external Laya host, set the reachable
-URL explicitly. Both CPU and CUDA publish port 8000.
-UI overrides remain authoritative after restart. At UI startup, explicit `DECISION_ENGINE`, `LAYA_*`, and `JEV_*` entries in the
-mounted `.env` override the inherited engine environment. After changing environment engine settings or credentials,
-use **Restart DeciFlow**, Docker Desktop Restart on DeciFlow-UI, or `docker compose restart ui`, then
-refresh the browser. Missing entries retain inherited values. Other settings retain
-environment precedence. Changes to ports, mounts, Compose profiles, or the Laya
-service require `docker compose up -d` to recreate affected containers. For native
-execution, restart the Python process.
-See [request/result JSON](results.md) for state, the three questions, and outputs.
+- `.env.example` overrides some code defaults: LAYA_API_URL uses the Compose hostname `laya`, LAYA_MODEL is `multilingual`, and JEV_MODEL is `jev-latest`. Trusted UI origins are empty by default; `https://*.ngrok-free.app` is an optional example.
+- Existing `.env` values are not overwritten. For native DeciFlow or an external Laya host, set the reachable URL explicitly. Both CPU and CUDA publish port 8000. UI overrides remain authoritative after restart.
+- At UI startup, explicit `DECISION_ENGINE`, `LAYA_*`, and `JEV_*` entries in the mounted `.env` override the inherited engine environment.
+- After changing environment engine settings or credentials, use **Restart DeciFlow**, Docker Desktop Restart on DeciFlow-UI, or `docker compose --env-file "$DECIFLOW_ENV_PATH" restart ui`, then refresh the browser. Missing entries retain inherited values. Other settings retain environment precedence.
+- Changes to ports, mounts, Compose profiles, or the Laya service require `docker compose --env-file "$DECIFLOW_ENV_PATH" up -d` to recreate affected containers. For native execution, restart the Python process. See [request/result JSON](results.md) for state, the three questions, and outputs.
 
-After changing OAuth2-Proxy mode or the bind address, run `docker compose up -d --remove-orphans`
+After changing OAuth2-Proxy mode or the bind address, run `docker compose --env-file "$DECIFLOW_ENV_PATH" up -d --remove-orphans`
 for Docker, or stop and start native DeciFlow again. External HTTP without OAuth2-Proxy gives
 anyone who can connect access to management features.
 
-OAuth settings are deployment settings, not UI overrides. Changing a Google client
-ID/secret or cookie key requires `docker compose up -d --force-recreate oauth2-proxy`;
-**Restart DeciFlow** alone does not reload the proxy. After changing
-`OAUTH2_PROXY_PUBLIC_URL`, update Google's registered origin/redirect URI and run
-`docker compose up -d ui oauth2-proxy`. For files and certificate renewal, see
-[authentication operations](authentication.md#verify).
+- OAuth settings are deployment settings, not UI overrides. Changing a Google client ID/secret or cookie key requires `docker compose --env-file "$DECIFLOW_ENV_PATH" up -d --force-recreate oauth2-proxy`; **Restart DeciFlow** alone does not reload the proxy.
+- After changing `OAUTH2_PROXY_PUBLIC_URL`, update Google's registered origin/redirect URI and run `docker compose --env-file "$DECIFLOW_ENV_PATH" up -d ui oauth2-proxy`. For files and certificate renewal, see [authentication operations](authentication.md#verify).
 
 `LAYA_HEAD_TOKENS=384` sends `"head_max_len": 384` in each Laya request.
 `LAYA_MAX_TOKENS=1024` similarly sends `"max_len": 1024`. Both override the
 checkpoint defaults for that call. Apply `.env` changes as described above.
 These are DeciFlow settings; no remote Docker change is needed to send them.
 
-**Leave `LAYA_MAX_TOKENS=` blank for built-in models.** DeciFlow automatically
-selects the window from `LAYA_MODEL`: English 512, Multilingual/Typed-decisions
-8192. When switching built-in models, change only `LAYA_MODEL`; no token-budget
-edit is needed while this value is blank. Custom models require an explicit budget.
-An explicit value overrides automatic selection. English accepts up to 512; other models up to
-8192. The question budget must be positive and below the selected window.
-256 is a default, not a Laya API maximum. These are **DeciFlow validation limits**.
-The official checkpoint defaults are English 512/192 and the others 1024/256.
-The server separately caps both overrides with `LAYA_MAX_TOKEN_BUDGET` (default
-8192); exceeding its cap returns 422. Budgets appear in result JSON `inputBudget`.
+- **Leave `LAYA_MAX_TOKENS=` blank for built-in models.** DeciFlow automatically selects the window from `LAYA_MODEL`: English 512, Multilingual/Typed-decisions 8192.
+- When switching built-in models, change only `LAYA_MODEL`; no token-budget edit is needed while this value is blank. Custom models require an explicit budget. An explicit value overrides automatic selection. English accepts up to 512; other models up to 8192.
+- The question budget must be positive and below the selected window. 256 is a default, not a Laya API maximum. These are **DeciFlow validation limits**. The official checkpoint defaults are English 512/192 and the others 1024/256.
+- The server separately caps both overrides with `LAYA_MAX_TOKEN_BUDGET` (default 8192); exceeding its cap returns 422. Budgets appear in result JSON `inputBudget`.
 
 Budgets are not fixed reservations: actual log space depends on the rendered
 question, not simply `max_len - head_max_len`. `usage.truncated` describes log
@@ -156,19 +115,12 @@ truncation, not complete instruction preservation. When Laya reports collapsed
 category options, DeciFlow marks the prediction Uncertain/Needs Review and shows
 why, while preserving the original category, probabilities, and provider response.
 
-For a custom checkpoint, register its name with remote server `LAYA_EXTRA_MODELS`,
-then set `LAYA_MODEL` to that name and explicitly set `LAYA_MAX_TOKENS` within
-its verified capacity. Names use letters, digits, `_` or `-`, starting with a
-letter; URLs/paths are not accepted. The response must confirm the requested
-custom name in `routing.model`; silent routing to another model is rejected.
-DeciFlow does not install or train models.
+- For a custom checkpoint, register its name with remote server `LAYA_EXTRA_MODELS`, then set `LAYA_MODEL` to that name and explicitly set `LAYA_MAX_TOKENS` within its verified capacity.
+- Names use letters, digits, `_` or `-`, starting with a letter; URLs/paths are not accepted. The response must confirm the requested custom name in `routing.model`; silent routing to another model is rejected.
+- DeciFlow does not install or train models.
 
-Concurrency applies to Batch and Realtime Tasks and direct API requests. Laya v0.4.1 uses one inference
-worker: `LAYA_CONCURRENCY` controls client requests, while server
-`LAYA_MAX_CONCURRENT` controls admission (default 16; excess returns 503).
-Neither is GPU inference parallelism. Keep server `LAYA_JEV_STRICT=0` for
-truncation/routing metadata; CPU `LAYA_THREADS` should not exceed physical cores.
-File Batch still sends individual requests, not a native inference batch.
+- Concurrency applies to Batch and Realtime Tasks and direct API requests. Laya v0.4.1 uses one inference worker: `LAYA_CONCURRENCY` controls client requests, while server `LAYA_MAX_CONCURRENT` controls admission (default 16; excess returns 503).
+- Neither is GPU inference parallelism. Keep server `LAYA_JEV_STRICT=0` for truncation/routing metadata; CPU `LAYA_THREADS` should not exceed physical cores. File Batch still sends individual requests, not a native inference batch.
 
 Jev ignores Laya budgets. Its API has no equivalent `head_max_len` control;
 Jev 1.13 limits state + longest question to 32k tokens and the full request to
@@ -198,12 +150,8 @@ Tasks have separate limits. See [Tasks](tasks.md) for scheduling and storage lim
 
 ### Backups and Retention
 
-SQLite stores definitions, run results, original inputs, Action outcomes, and
-reviews without a separate database server. Use a local filesystem; do not place
-the active DB on a shared network filesystem. For consistent backups, stop DeciFlow
-and copy the **whole data directory**, or use SQLite's backup API. Copying just
-the live DB file can omit records in its WAL. Protect backups: they can contain
-original inputs and SSH private keys.
+- SQLite stores definitions, run results, original inputs, Action outcomes, and reviews without a separate database server. Use a local filesystem; do not place the active DB on a shared network filesystem.
+- For consistent backups, stop DeciFlow and copy the **whole data directory**, or use SQLite's backup API. Copying just the live DB file can omit records in its WAL. Protect backups: they can contain original inputs and SSH private keys.
 
 There is no automatic history retention or disk cleanup. Confirmed Task deletion
 permanently removes its definition, history, results, and reviews; original Source
@@ -215,89 +163,50 @@ See [Reset DeciFlow](#reset-deciflow) for full reset scope,
 
 ## Reset DeciFlow
 
-Open **Settings → Configurations → Reset DeciFlow**. The in-app warning lists
-what will be lost and the exact `DECIFLOW_DATA_DIR` path. Cancel, Escape, or the
-close button makes no change. **Yes, Reset DeciFlow** permanently deletes entries
-in that directory, including hidden files, except `ssh-keys` and its registration, after stopping the scheduler,
-Tasks, and Action subprocesses and closing SQLite. The directory itself remains;
-child symlinks are removed without deleting their external targets.
+- Open **Settings → Configurations → Reset DeciFlow**. The in-app warning lists what will be lost and the exact `DECIFLOW_DATA_DIR` path. Cancel, Escape, or the close button makes no change.
+- **Yes, Reset DeciFlow** permanently deletes entries in that directory, including hidden files, except `ssh-keys` and its registration, after stopping the scheduler, Tasks, and Action subprocesses and closing SQLite.
+- The directory itself remains; child symlinks are removed without deleting their external targets.
 
-This removes Sources, Tasks, Actions and their environments, custom Criteria,
-results/history/reviews, managed SSH Hosts, approved known_hosts, and saved
-settings. SSH key files and their IDs/names are preserved and remain usable.
-Back up the data directory and export any results/reviews first.
-Application files, `.env`, Laya/model caches, and inputs/logs outside the data
-directory remain unchanged. Put only DeciFlow-managed data in the configured root.
+- This removes Sources, Tasks, Actions and their environments, custom Criteria, results/history/reviews, managed SSH Hosts, approved known_hosts, and saved settings. SSH key files and their IDs/names are preserved and remain usable.
+- Back up the data directory and export any results/reviews first. Application files, `.env`, Laya/model caches, and inputs/logs outside the data directory remain unchanged. Put only DeciFlow-managed data in the configured root.
 
-The server replaces its process with the original Python command; no Docker socket
-or Docker control permission is required. Use one server process per data directory.
-Sample Criteria, sample Sources, the disabled default Task, and default settings
-return. The browser waits for a new server instance and reloads; it does not retry
-the destructive request. An incomplete cleanup is reported in red after restart;
-check server logs before retrying. Existing Task runs do not resume because their
-definitions have been deleted.
+- The server replaces its process with the original Python command; no Docker socket or Docker control permission is required. Use one server process per data directory. Sample Criteria, sample Sources, the disabled default Task, and default settings return.
+- The browser waits for a new server instance and reloads; it does not retry the destructive request. An incomplete cleanup is reported in red after restart; check server logs before retrying.
+- Existing Task runs do not resume because their definitions have been deleted.
 
-Trusted UI origins only: `POST /api/reset/status` describes the directory and
-server instance; `POST /api/reset` requires
-`{ "confirmation": "RESET DECIFLOW" }` and returns HTTP 202 before graceful
-shutdown. Repeated requests during a reset are rejected. Protected system/project
-roots and a symlink used as the data root are rejected. This maintenance API has
-the same trusted-origin boundary as file and Action management; do not expose it
-to untrusted users.
+- Trusted UI origins only: `POST /api/reset/status` describes the directory and server instance; `POST /api/reset` requires `{ "confirmation": "RESET DECIFLOW" }` and returns HTTP 202 before graceful shutdown. Repeated requests during a reset are rejected.
+- Protected system/project roots and a symlink used as the data root are rejected. This maintenance API has the same trusted-origin boundary as file and Action management; do not expose it to untrusted users.
 
 In **Settings → Configurations**, edit settings and select **Save Changes** at the bottom to apply them together. **Reset DeciFlow** is a separate immediate action with its own confirmation.
 
 ## Runtime configurations
 
-**Configurations → Save Changes** saves results per page and enabled runtime overrides
-atomically in SQLite. Runtime fields cover Decision Engine, Laya URL/model/total and
-question token budgets/concurrency, Jev model/request byte budget/concurrency, and
-OpenAI Criteria authoring model. Each field shows its environment identifier, source,
-application timing, concise help, and the English reference comments from `.env.example`.
-Both engines' effective configuration is validated before saving. Switching to Jev
-requires a configured `JEV_API_KEY` and an explicit cost confirmation; there is no fallback.
-The browser reloads to reflect saved runtime settings; the server need not restart.
+- **Configurations → Save Changes** saves results per page and enabled runtime overrides atomically in SQLite.
+- Runtime fields cover Decision Engine, Laya URL/model/total and question token budgets/concurrency, Jev model/request byte budget/concurrency, and OpenAI Criteria authoring model.
+- Each field shows its environment identifier, source, application timing, concise help, and the English reference comments from `.env.example`. Both engines' effective configuration is validated before saving.
+- Switching to Jev requires a configured `JEV_API_KEY` and an explicit cost confirmation; there is no fallback. The browser reloads to reflect saved runtime settings; the server need not restart.
 
-New runs use the saved configuration. Active runs retain their engine, model, URL,
-budgets and concurrency. Recoverable new runs persist these non-secret settings and
-restore them even if Configurations changed. Existing legacy runs without such a
-snapshot still stop recovery if the engine/model changed. Credentials are read from
-the environment and never saved in run snapshots. AI Criteria generation uses the
-settings captured when that request starts.
+- New runs use the saved configuration. Active runs retain their engine, model, URL, budgets and concurrency. Recoverable new runs persist these non-secret settings and restore them even if Configurations changed.
+- Existing legacy runs without such a snapshot still stop recovery if the engine/model changed. Credentials are read from the environment and never saved in run snapshots. AI Criteria generation uses the settings captured when that request starts.
 
 `OPENAI_ANALYSIS_MODEL` is managed separately in `.env` and displayed read-only
 under Environment and Deployment. It is never substituted with the Criteria model.
 
-API keys (`LAYA_API_KEY`, `JEV_API_KEY`, `OPENAI_API_KEY`) remain in `.env`; the UI
-shows only whether they are set. Server port, data/log directories, trusted origins,
-and Compose profiles stay under deployment control. The Environment and Deployment
-section describes them without offering edits. Remote Laya model loading, GPU, workers,
-ports and mounts remain settings of that host/container. A UI override never edits `.env`.
+- API keys (`LAYA_API_KEY`, `JEV_API_KEY`, `OPENAI_API_KEY`) remain in `.env`; the UI shows only whether they are set. Server port, data/log directories, trusted origins, and Compose profiles stay under deployment control.
+- The Environment and Deployment section describes them without offering edits. Remote Laya model loading, GPU, workers, ports and mounts remain settings of that host/container. A UI override never edits `.env`.
 
 ## Restart DeciFlow
 
-**Restart DeciFlow**, below **Reset DeciFlow**, restarts only the DeciFlow Python
-process without deleting application data. Its confirmation reports active runs and
-unsaved configuration changes. Cancel/Escape does nothing. Active jobs are suspended
-with checkpoints; eligible enabled Tasks recover under their original IDs/settings,
-paused jobs stay paused, and ordinary Task recovery rules still apply. In-flight
-external inference may already have reached the provider; Actions retain the existing
-conservative recovery behavior. This is not a guarantee of uninterrupted or exactly-once execution.
+- **Restart DeciFlow**, below **Reset DeciFlow**, restarts only the DeciFlow Python process without deleting application data. Its confirmation reports active runs and unsaved configuration changes. Cancel/Escape does nothing.
+- Active jobs are suspended with checkpoints; eligible enabled Tasks recover under their original IDs/settings, paused jobs stay paused, and ordinary Task recovery rules still apply.
+- In-flight external inference may already have reached the provider; Actions retain the existing conservative recovery behavior. This is not a guarantee of uninterrupted or exactly-once execution.
 
-The UI sends one confirmed restart request, waits up to 60 seconds for a new server
-instance, then reloads. If the server has not returned, it displays an error; check
-server logs and refresh manually. Concurrent Reset/Restart requests are rejected.
-Restart reloads engine/credential entries from the mounted `.env`; it does not restart
-Laya, reload its models, or apply Docker port/mount/profile/GPU changes. Recreate the
-affected containers for those changes. External process invocation must support
-DeciFlow's original-command process replacement; use one process per data directory.
+- The UI sends one confirmed restart request, waits up to 60 seconds for a new server instance, then reloads. If the server has not returned, it displays an error; check server logs and refresh manually. Concurrent Reset/Restart requests are rejected.
+- Restart reloads engine/credential entries from the mounted `.env`; it does not restart Laya, reload its models, or apply Docker port/mount/profile/GPU changes. Recreate the affected containers for those changes.
+- External process invocation must support DeciFlow's original-command process replacement; use one process per data directory.
 
-`POST /api/configuration` reads safe metadata. `PUT /api/configuration` accepts
-`resultsPerPage` and `runtimeOverrides` (only supported non-secret environment identifiers).
-`POST /api/restart` requires `{ "confirmation": "RESTART DECIFLOW" }` and returns 202.
-The application checks trusted origins. With `OAUTH2_PROXY_ENABLED=true`, both Docker
-and native deployments require Google sign-in through OAuth2-Proxy for UI/API requests.
-With false, access requires no sign-in. See [authentication](authentication.md).
+- `POST /api/configuration` reads safe metadata. `PUT /api/configuration` accepts `resultsPerPage` and `runtimeOverrides` (only supported non-secret environment identifiers). `POST /api/restart` requires `{ "confirmation": "RESTART DECIFLOW" }` and returns 202. The application checks trusted origins.
+- With `OAUTH2_PROXY_ENABLED=true`, both Docker and native deployments require Google sign-in through OAuth2-Proxy for UI/API requests. With false, access requires no sign-in. See [authentication](authentication.md).
 
 
 ## Logging
@@ -314,39 +223,22 @@ belong to Task History and result storage.
 
 Foreground and Docker execution retain Uvicorn console output as well as the
 server/access files. Docker does not create `daemon.log`; use
-`docker compose logs ui oauth2-proxy` for container console/proxy output when
+`docker compose --env-file "$DECIFLOW_ENV_PATH" logs ui oauth2-proxy` for container console/proxy output when
 OAuth2-Proxy is enabled. Laya has its own service logs.
 
-For troubleshooting, find the request and timestamp in `access.log`, then inspect
-`server.log` at the same time. Application failure diagnostics identify the operation,
-exception type, code locations, and available OS/SQLite error codes. They omit
-exception values, source lines, local variables, request bodies, and provider bodies
-to avoid copying credentials or input data into these diagnostics. A wrapper's direct
-cause is used when present. They do not provide full exception text.
+- For troubleshooting, find the request and timestamp in `access.log`, then inspect `server.log` at the same time. Application failure diagnostics identify the operation, exception type, code locations, and available OS/SQLite error codes. They omit exception values, source lines, local variables, request bodies, and provider bodies to avoid copying credentials or input data into these diagnostics.
+- A wrapper's direct cause is used when present. They do not provide full exception text.
 
-Expected validation errors, access denials, and missing items are normally recorded
-only by their HTTP status and response; per-event classification/Action failures and
-SSH Host collection details remain in results and Task History. Engine health probes
-return connection status to the UI. Not every 4xx/5xx produces a separate diagnostic,
-and streaming failures can occur after HTTP 200. Uvicorn's unhandled-exception traces,
-access URLs, and third-party proxy output are not automatically redacted; protect
-log files and review them before sharing.
+- Expected validation errors, access denials, and missing items are normally recorded only by their HTTP status and response; per-event classification/Action failures and SSH Host collection details remain in results and Task History.
+- Engine health probes return connection status to the UI. Not every 4xx/5xx produces a separate diagnostic, and streaming failures can occur after HTTP 200.
+- Uvicorn's unhandled-exception traces, access URLs, and third-party proxy output are not automatically redacted; protect log files and review them before sharing.
 
-An empty `DECIFLOW_LOG_DIR` disables server/access file logging and keeps console
-output; daemon mode requires a nonempty, existing, writable directory. Relative paths
-are resolved from DeciFlow's working/configuration directory. Configure host log
-rotation for `daemon.log`. Compose persists server/access logs in `deciflow-logs`;
-use a writable bind mount if host-directory access is needed. Restart DeciFlow after
-changing log settings.
+- An empty `DECIFLOW_LOG_DIR` disables server/access file logging and keeps console output; daemon mode requires a nonempty, existing, writable directory. Relative paths are resolved from DeciFlow's working/configuration directory.
+- Configure host log rotation for `daemon.log`. Compose persists server/access logs in `deciflow-logs`; use a writable bind mount if host-directory access is needed. Restart DeciFlow after changing log settings.
 
 ## Result Host Identity
 
-Each result records `deciflowHost` and an array `sourceHosts`. Local files use
-`[deciflowHost]`; SSH uses only the host that supplied that file, not every host
-registered on the Source. HDFS/WebHDFS uses the configured filesystem endpoint
-or nameservice, not the physical DataNode. Pasted text uses `[]`.
-These fields identify collection and processing locations, not necessarily the
-host that originally produced a forwarded log. Docker mounts are treated as local
-files. Values are saved with the result and retained during replay; changing host
-settings does not relabel historical results. Results, response diagnostics,
-JSON exports, and Action payloads expose these fields for both Laya and Jev.
+- Each result records `deciflowHost` and an array `sourceHosts`. Local files use `[deciflowHost]`; SSH uses only the host that supplied that file, not every host registered on the Source.
+- HDFS/WebHDFS uses the configured filesystem endpoint or nameservice, not the physical DataNode. Pasted text uses `[]`. These fields identify collection and processing locations, not necessarily the host that originally produced a forwarded log.
+- Docker mounts are treated as local files. Values are saved with the result and retained during replay; changing host settings does not relabel historical results.
+- Results, response diagnostics, JSON exports, and Action payloads expose these fields for both Laya and Jev.

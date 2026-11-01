@@ -2,6 +2,9 @@
 
 [English](authentication.md) | [설치](../INSTALL.ko.md) | [문서 안내](README.ko.md)
 
+실행 전에 `export DECIFLOW_ENV_PATH="$HOME/.config/deciflow/.env"`로 환경 파일을 지정하세요. 자동 탐색은 없습니다.
+
+
 먼저 [INSTALL](../INSTALL.ko.md)로 DeciFlow를 기동하세요. HTTPS·Google 로그인이
 필요할 때만 **OAuth2-Proxy를 Docker로 추가**합니다. 승인 사용자는 DeciFlow 데이터와
 관리 기능을 공유하며 Laya는 별도로 운영합니다.
@@ -9,10 +12,13 @@
 공통 준비 후 DeciFlow 설치 방식에 맞는 절차 하나를 선택합니다.
 [PyPI](#pypi) · [Docker Compose](#docker) · [프로세스 직접 실행](#source).
 
-| 방식 | `.env`·프록시 디렉터리의 루트 |
+모든 방식은 `DECIFLOW_ENV_PATH`에 지정한 파일을 읽으며 프록시 파일 위치는 다음과 같습니다.
+
+| 방식 | 프록시 파일 디렉터리 루트 |
 | --- | --- |
-| PyPI | `~/.config/deciflow` |
-| Docker Compose / 직접 실행 | `<checkout>` |
+| PyPI | `DECIFLOW_ENV_PATH`에 지정한 파일의 상위 디렉토리 |
+| Docker Compose | `<checkout>` |
+| 직접 실행 | `DECIFLOW_ENV_PATH`에 지정한 파일의 상위 디렉토리 |
 
 CLI 설치는 `OAUTH2_PROXY_MANAGED=false`로 프록시를 Docker에서 운영하면서
 로그인 계정 UI를 유지합니다.
@@ -124,7 +130,7 @@ EOF
 초기화된 패키지 설정에 위 공통 `.env` 값을 적용합니다. pip 방식은 가상환경을 활성화하세요.
 
 ```bash
-proxy_config_dir="$HOME/.config/deciflow"
+proxy_config_dir="$(dirname -- "$DECIFLOW_ENV_PATH")"
 ```
 
 ```bash
@@ -170,7 +176,7 @@ docker run -d --name deciflow-oauth2-proxy --restart unless-stopped \
 
 ## Docker Compose
 
-저장소 루트에서 해당 `.env`에 공통 값을 적용합니다.
+`~/.config/deciflow/.env`에 위 설정을 적용하고 저장소 루트에서 명령을 실행합니다.
 
 ```bash
 proxy_config_dir="$PWD"
@@ -194,8 +200,8 @@ Compose 프록시는 이미지 UID 65532를 사용합니다. 권한을 지정하
 sudo chown 65532 oauth2-proxy/tls/privkey.pem
 chmod 644 oauth2-proxy/oauth2-proxy.cfg oauth2-proxy/allowed-emails.txt
 sudo chcon -Rt container_file_t oauth2-proxy
-docker compose config --quiet
-docker compose up -d --remove-orphans --force-recreate ui oauth2-proxy
+docker compose --env-file "$DECIFLOW_ENV_PATH" config --quiet
+docker compose --env-file "$DECIFLOW_ENV_PATH" up -d --remove-orphans --force-recreate ui oauth2-proxy
 ```
 
 Compose가 UI 공개 포트를 제거하고 HTTPS 4443을 공개합니다.
@@ -206,10 +212,10 @@ Compose가 UI 공개 포트를 제거하고 HTTPS 4443을 공개합니다.
 
 ## 프로세스 직접 실행
 
-저장소 루트에서 해당 `.env`에 공통 값을 적용합니다.
+`~/.config/deciflow/.env`에 위 설정을 적용하고 저장소 루트에서 명령을 실행합니다.
 
 ```bash
-proxy_config_dir="$PWD"
+proxy_config_dir="$(dirname -- "$DECIFLOW_ENV_PATH")"
 ```
 
 ```bash
@@ -229,9 +235,9 @@ install -m 600 "$DECIFLOW_CERT_DIR/privkey.pem" "$proxy_config_dir/oauth2-proxy/
 HTTPS 포트 미점유 여부를 검사하지 않습니다.
 
 ```bash
-uv run deciflow stop --config-dir "$PWD"
-uv run deciflow config test --config-dir "$PWD"
-uv run deciflow start --daemon --config-dir "$PWD"
+uv run deciflow stop
+uv run deciflow config test
+uv run deciflow start --daemon
 ```
 
 이후 Docker 프록시를 기동합니다. Linux 호스트 네트워크로 DeciFlow 루프백에 연결하므로
@@ -269,7 +275,7 @@ curl --connect-timeout 5 --max-time 15 -i "${DECIFLOW_HTTPS_URL}/api/status"
 | 배포 | 로그 | 프록시·인증서 변경 적용 |
 | --- | --- | --- |
 | 패키지 / 직접 실행 | `docker logs --tail=100 deciflow-oauth2-proxy` | `docker rm -f deciflow-oauth2-proxy` 후 해당 `docker run` 재실행 |
-| Compose | `docker compose logs --tail=100 oauth2-proxy` | `docker compose up -d --no-deps --force-recreate oauth2-proxy` |
+| Compose | `docker compose --env-file "$DECIFLOW_ENV_PATH" logs --tail=100 oauth2-proxy` | `docker compose --env-file "$DECIFLOW_ENV_PATH" up -d --no-deps --force-recreate oauth2-proxy` |
 
 별도 운영하는 프록시 컨테이너는 CLI가 종료하지 않으며 Docker로 관리합니다.
 애플리케이션 포트를 바꾸면 단독 컨테이너 upstream도 수정하세요.
@@ -279,11 +285,8 @@ curl --connect-timeout 5 --max-time 15 -i "${DECIFLOW_HTTPS_URL}/api/status"
 
 ## 인증서 갱신
 
-Let's Encrypt는 `sudo /opt/deciflow-certbot/bin/certbot renew --dry-run`으로 검사하고
-사용 중인 Certbot 갱신 예약 작업을 활성화합니다. 갱신 후 준비 경로의 인증서 복사와
-각 방식의 TLS 복사를 다시 수행하고 위 명령으로 프록시를 재생성하세요.
-자체 서명은 만료 전에 재생성합니다.
-RFC2136 자동화는 [DNS-01 운영](dns-tls.ko.md#dns01-renewal)을 참고하세요.
+- Let's Encrypt는 `sudo /opt/deciflow-certbot/bin/certbot renew --dry-run`으로 검사하고 사용 중인 Certbot 갱신 예약 작업을 활성화합니다. 갱신 후 준비 경로의 인증서 복사와 각 방식의 TLS 복사를 다시 수행하고 위 명령으로 프록시를 재생성하세요. 자체 서명은 만료 전에 재생성합니다.
+- RFC2136 자동화는 [DNS-01 운영](dns-tls.ko.md#dns01-renewal)을 참고하세요.
 
 <a id="proxy-config"></a>
 
@@ -311,17 +314,11 @@ RFC2136 자동화는 [DNS-01 운영](dns-tls.ko.md#dns01-renewal)을 참고하�
 
 ## API 출처 보호
 
-DeciFlow는 Source·Task 관리, 설정, 파일 접근 등 보호 대상 API 요청의
-브라우저 `Origin` 헤더를 검사합니다.
-[OWASP가 안내하는 Origin 검사 기법](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#using-standard-headers-to-verify-origin)을 사용하며,
-`DECIFLOW_CSRF_TRUSTED_ORIGINS`는 HTTP 표준 헤더가 아닌 DeciFlow 설정입니다.
-CSRF 토큰을 발급하거나 검증하지는 않습니다.
+- DeciFlow는 Source·Task 관리, 설정, 파일 접근 등 보호 대상 API 요청의 브라우저 `Origin` 헤더를 검사합니다. [OWASP가 안내하는 Origin 검사 기법](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#using-standard-headers-to-verify-origin)을 사용하며, `DECIFLOW_CSRF_TRUSTED_ORIGINS`는 HTTP 표준 헤더가 아닌 DeciFlow 설정입니다.
+- CSRF 토큰을 발급하거나 검증하지는 않습니다.
 
-OAuth2-Proxy를 사용하지 않으면 요청의 스킴과 Host(포트 포함)가 출처와 같아야 합니다.
-다른 PC에서도 서버 IP나 도메인으로 접속하면 별도 설정 없이 동작합니다.
-OAuth2-Proxy를 활성화하면 백엔드 연결이 HTTP여도 `OAUTH2_PROXY_PUBLIC_URL`을
-외부 HTTPS 출처로 사용합니다. 이 검사 자체는 전달 헤더를 읽지 않습니다.
-전달 헤더를 활성화한다면 Uvicorn이 실제 프록시만 신뢰하도록 설정하세요.
+- OAuth2-Proxy를 사용하지 않으면 요청의 스킴과 Host(포트 포함)가 출처와 같아야 합니다. 다른 PC에서도 서버 IP나 도메인으로 접속하면 별도 설정 없이 동작합니다.
+- OAuth2-Proxy를 활성화하면 백엔드 연결이 HTTP여도 `OAUTH2_PROXY_PUBLIC_URL`을 외부 HTTPS 출처로 사용합니다. 이 검사 자체는 전달 헤더를 읽지 않습니다. 전달 헤더를 활성화한다면 Uvicorn이 실제 프록시만 신뢰하도록 설정하세요.
 
 일반적으로 `DECIFLOW_CSRF_TRUSTED_ORIGINS`는 비워 둡니다. 추가 UI 출처를 명시적으로
 허용할 때만 전체 출처를 쉼표로 구분해 등록하며, 끝에 슬래시는 붙이지 않습니다.

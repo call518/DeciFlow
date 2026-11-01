@@ -2,13 +2,12 @@
 
 [English](laya.md) | [한국어](laya.ko.md) | [문서 안내](README.ko.md) | [README](../README.ko.md)
 
+Compose 명령을 실행하기 전에 `export DECIFLOW_ENV_PATH="$HOME/.config/deciflow/.env"`로 사용할 환경 파일을 지정하세요.
+
 ## 요청 구성
 
-DeciFlow는 TEXT 청크 또는 JSONL에서 추출한 텍스트를 `state`로 보내며 Criteria의
-가변 질문 맵을 `questions`에 담습니다. 질문 수·이름·`choice`·`score`·`noul` 조합은
-프로필마다 다릅니다. 기본 시스템 프로필의 category·urgency·ticket은 한 예시입니다.
-Laya·Jev는 [`classifier.py`](../deciflow/classifier.py)의 요청 생성·결과 검증·UI 동작을
-공유합니다. [요청·결과 JSON](results.ko.md)과 [Criteria](criteria.ko.md)를 참고하세요.
+- DeciFlow는 TEXT 청크 또는 JSONL에서 추출한 텍스트를 `state`로 보내며 Criteria의 가변 질문 맵을 `questions`에 담습니다. 질문 수·이름·`choice`·`score`·`noul` 조합은 프로필마다 다릅니다.
+- 기본 시스템 프로필의 category·urgency·ticket은 한 예시입니다. Laya·Jev는 [`classifier.py`](../deciflow/classifier.py)의 요청 생성·결과 검증·UI 동작을 공유합니다. [요청·결과 JSON](results.ko.md)과 [Criteria](criteria.ko.md)를 참고하세요.
 
 | 설정 | DeciFlow 동작 |
 | --- | --- |
@@ -102,9 +101,9 @@ DeciFlow는 모델 학습·확률 보정·네이티브 추론 배치·실제 서
 Docker Compose:
 
 ```bash
-docker compose exec ui uv run --no-sync python -m scripts.evaluate_laya \
+docker compose --env-file "$DECIFLOW_ENV_PATH" exec ui uv run --no-sync python -m scripts.evaluate_laya \
   --output /tmp/laya-validation.json
-docker compose cp ui:/tmp/laya-validation.json /tmp/laya-validation.json
+docker compose --env-file "$DECIFLOW_ENV_PATH" cp ui:/tmp/laya-validation.json /tmp/laya-validation.json
 ```
 
 로컬 Python:
@@ -113,11 +112,8 @@ docker compose cp ui:/tmp/laya-validation.json /tmp/laya-validation.json
 uv run python -m scripts.evaluate_laya --output /tmp/laya-validation.json
 ```
 
-기본값은 [5개 프로필의 합성 사례 36개](../tests/fixtures/log_evaluation.json)이며,
-동시 요청은 최대 두 개로 제한합니다. 평가에는 [`deciflow/profiles/`](../deciflow/profiles/)의 번들
-기준을 사용하며 UI에서 수정·저장한 기준은 읽지 않습니다.
-UI에서 편집한 기준은 정답 로그를 UTF-8 파일로 만들고 Local File Source로 등록한 뒤,
-해당 프로필을 선택한 Batch Task를 실행해 Main에서 결과를 검증하세요.
+- 기본값은 [5개 프로필의 합성 사례 36개](../tests/fixtures/log_evaluation.json)이며, 동시 요청은 최대 두 개로 제한합니다. 평가에는 [`deciflow/profiles/`](../deciflow/profiles/)의 번들 기준을 사용하며 UI에서 수정·저장한 기준은 읽지 않습니다.
+- UI에서 편집한 기준은 정답 로그를 UTF-8 파일로 만들고 Local File Source로 등록한 뒤, 해당 프로필을 선택한 Batch Task를 실행해 Main에서 결과를 검증하세요.
 
 준비된 모델을 비교하려면 선택한 명령에 `--model` 옵션을 반복해서 추가합니다:
 
@@ -182,48 +178,38 @@ Certain은 DeciFlow의 확률·선택지 구별 검사를 통과했다는 뜻이
 기존 공용 Laya 서버에 연결하거나 아래 절차로 원격 노드에 서버를 구성하세요.
 이미 서버가 있다면 구성 절차를 건너뛰고 DeciFlow 연결 설정만 적용합니다.
 
-Laya 호스트의 복제한 저장소에서 [docker-compose.yml](../docker-compose.yml)을 사용합니다.
-`.env.example`의 기본값은 CPU이며, 호환 NVIDIA GPU가 있으면 추론 성능을 높일 수 있습니다.
-실제 성능은 하드웨어와 작업량에 따라 달라집니다.
-Laya 서비스만 선택해도 Compose는 OAuth 값을 포함한 전체 `.env`를 검증합니다.
-먼저 [배포 설정](authentication.ko.md)을 완료하세요.
+- Laya 호스트의 복제한 저장소에서 [docker-compose.yml](../docker-compose.yml)을 사용합니다. `.env.example`의 기본값은 CPU이며, 호환 NVIDIA GPU가 있으면 추론 성능을 높일 수 있습니다. 실제 성능은 하드웨어와 작업량에 따라 달라집니다.
+- Laya 서비스만 선택해도 Compose는 OAuth 값을 포함한 전체 `.env`를 검증합니다. 먼저 [배포 설정](authentication.ko.md)을 완료하세요.
 
 ##### CPU 실행
 
 `.env`에서 `COMPOSE_PROFILES=cpu`를 설정한 뒤 실행하세요:
 
 ```bash
-docker compose up -d laya-cpu
+docker compose --env-file "$DECIFLOW_ENV_PATH" up -d laya-cpu
 ```
 
-Laya와 DeciFlow를 함께 실행하려면 대신 `docker compose up -d`를 사용합니다.
-두 Laya 방식 모두 호스트 포트 **8000**, `deciflow-laya-model-cache` 공유 볼륨,
-`english`·`multilingual`·`typed-decisions` 사전 적재를 사용합니다.
-프로필은 하나만 선택하세요. 이 구성에서 CPU·CUDA를 동시에 실행할 수 없습니다.
-`.env`의 `LAYA_API_KEY`를 Laya와 DeciFlow가 함께 사용하며, 빈 키는 인증을 비활성화합니다.
+- Laya와 DeciFlow를 함께 실행하려면 대신 `docker compose --env-file "$DECIFLOW_ENV_PATH" up -d`를 사용합니다. 두 Laya 방식 모두 호스트 포트 **8000**, `deciflow-laya-model-cache` 공유 볼륨, `english`·`multilingual`·`typed-decisions` 사전 적재를 사용합니다.
+- 프로필은 하나만 선택하세요. 이 구성에서 CPU·CUDA를 동시에 실행할 수 없습니다. `.env`의 `LAYA_API_KEY`를 Laya와 DeciFlow가 함께 사용하며, 빈 키는 인증을 비활성화합니다.
 
 <a id="laya-gpu"></a>
 
 ##### 선택 사항: GPU 가속(CUDA)
 
-CUDA 실행에는 호환 NVIDIA GPU·드라이버와
-[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)이 필요합니다.
-`nvidia-smi`로 GPU·드라이버를 확인하세요. `CUDA Version`은 드라이버의 지원 버전이며
-설치된 Toolkit 버전이 아닙니다. 이 컨테이너에는 로컬 CUDA Toolkit이 필요하지 않습니다.
-CUDA 13.0 이미지에는 [580 이상 드라이버](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html)가 필요합니다.
-CUDA 서비스는 모든 GPU를 사용하도록 요청하며 CPU 서비스는 GPU를 요청하지 않습니다.
+- CUDA 실행에는 호환 NVIDIA GPU·드라이버와 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)이 필요합니다. `nvidia-smi`로 GPU·드라이버를 확인하세요. `CUDA Version`은 드라이버의 지원 버전이며 설치된 Toolkit 버전이 아닙니다.
+- 이 컨테이너에는 로컬 CUDA Toolkit이 필요하지 않습니다. CUDA 13.0 이미지에는 [580 이상 드라이버](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html)가 필요합니다. CUDA 서비스는 모든 GPU를 사용하도록 요청하며 CPU 서비스는 GPU를 요청하지 않습니다.
 
 기존 배포를 전환하려면 필요한 결과를 내보낸 뒤 **프로필을 수정하기 전에** 현재 구성을 종료하세요:
 
 ```bash
-docker compose down
+docker compose --env-file "$DECIFLOW_ENV_PATH" down
 ```
 
 `.env`에서 `COMPOSE_PROFILES=cuda`로 변경하고 실행하세요:
 
 ```bash
-docker compose up -d
-docker compose logs --follow laya-cuda
+docker compose --env-file "$DECIFLOW_ENV_PATH" up -d
+docker compose --env-file "$DECIFLOW_ENV_PATH" logs --follow laya-cuda
 ```
 
 CPU로 돌아가려면 같은 절차에서 `COMPOSE_PROFILES=cpu`를 사용합니다.
@@ -237,7 +223,7 @@ CPU로 돌아가려면 같은 절차에서 `COMPOSE_PROFILES=cpu`를 사용합�
 CUDA를 사용하면 `laya-cpu`를 `laya-cuda`로 바꾸세요:
 
 ```bash
-docker compose exec laya-cpu python -c 'import os, urllib.request; r = urllib.request.Request("http://127.0.0.1:8000/health", headers={"Authorization": "Bearer " + os.environ["LAYA_API_KEY"]}); print(urllib.request.urlopen(r).read().decode())'
+docker compose --env-file "$DECIFLOW_ENV_PATH" exec laya-cpu python -c 'import os, urllib.request; r = urllib.request.Request("http://127.0.0.1:8000/health", headers={"Authorization": "Bearer " + os.environ["LAYA_API_KEY"]}); print(urllib.request.urlopen(r).read().decode())'
 ```
 
 CUDA 사용 시 `checkpoint_devices`·`device`와 `cpu_fallbacks`로 실제 GPU 사용을 확인합니다.
@@ -247,11 +233,11 @@ CUDA 사용 시 `checkpoint_devices`·`device`와 `cpu_fallbacks`로 실제 GPU 
 
 | 작업 | 명령 |
 | --- | --- |
-| 상태 | `docker compose ps` |
-| 로그 | `docker compose logs --tail=100` |
-| 중지 | `docker compose stop` |
-| 재개 | `docker compose start` |
-| 컨테이너 제거 | `docker compose down` |
+| 상태 | `docker compose --env-file "$DECIFLOW_ENV_PATH" ps` |
+| 로그 | `docker compose --env-file "$DECIFLOW_ENV_PATH" logs --tail=100` |
+| 중지 | `docker compose --env-file "$DECIFLOW_ENV_PATH" stop` |
+| 재개 | `docker compose --env-file "$DECIFLOW_ENV_PATH" start` |
+| 컨테이너 제거 | `docker compose --env-file "$DECIFLOW_ENV_PATH" down` |
 
 `down`은 이름 있는 볼륨을 유지합니다. 데이터를 보존하려면 `--volumes`를 추가하지 마세요.
 네이티브 실행과 Docker 중 하나를 선택하세요.
@@ -269,5 +255,5 @@ LAYA_API_KEY=changeme
 PORT=4000
 ```
 
-`COMPOSE_PROFILES=`로 두고 `docker compose up -d`를 실행하면 로컬 Laya 없이 UI가 시작되며 OAuth2-Proxy는 OAUTH2_PROXY_ENABLED에 따릅니다.
+`COMPOSE_PROFILES=`로 두고 `docker compose --env-file "$DECIFLOW_ENV_PATH" up -d`를 실행하면 로컬 Laya 없이 UI가 시작되며 OAuth2-Proxy는 OAUTH2_PROXY_ENABLED에 따릅니다.
 Docker 없이 실행하려면 [네이티브 안내](../INSTALL.ko.md#direct-processes)를 따르세요.

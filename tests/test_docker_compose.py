@@ -13,12 +13,50 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_explicit_environment_file_mount(
+    compose_project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    if shutil.which("docker") is None:
+        pytest.skip("Docker Compose is required for configuration validation")
+    selected = compose_project / "custom settings.env"
+    selected.write_text("OAUTH2_PROXY_ENABLED=false\nPORT=4568\n")
+    monkeypatch.setenv("DECIFLOW_ENV_PATH", str(selected))
+    result = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "--env-file",
+            str(selected),
+            "-f",
+            str(compose_project / "docker-compose.yml"),
+            "config",
+            "--format",
+            "json",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    ui = json.loads(result.stdout)["services"]["ui"]
+    assert ui["environment"]["DECIFLOW_ENV_PATH"] == "/etc/deciflow.env"
+    assert ui["environment"]["PORT"] == "4568"
+    mount = next(v for v in ui["volumes"] if v["target"] == "/etc/deciflow.env")
+    assert mount["source"] == str(selected)
+    assert mount["read_only"] is True
+
+
 @pytest.fixture
-def compose_project(tmp_path: Path) -> Path:
+def compose_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Validate public deployment files without the developer's private .env."""
     shutil.copytree(ROOT / "compose", tmp_path / "compose")
     shutil.copy(ROOT / "docker-compose.yml", tmp_path / "docker-compose.yml")
-    (tmp_path / ".env").touch()
+    home = tmp_path / "home"
+    configuration = home / ".config" / "deciflow"
+    configuration.mkdir(parents=True)
+    (configuration / ".env").touch()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("DECIFLOW_ENV_PATH", str(configuration / ".env"))
+    (tmp_path / ".env").write_text("LAYA_API_KEY=unselected-checkout-key\n")
     return tmp_path
 
 
@@ -34,7 +72,7 @@ def test_compose_deployment(
     )
     if version.returncode:
         pytest.skip("Docker Compose is required for configuration validation")
-    env_file = tmp_path / "compose.env"
+    env_file = Path(os.environ["HOME"]) / ".config/deciflow/.env"
     env_file.write_text(
         f"COMPOSE_PROFILES={profile}\n"
         "OAUTH2_PROXY_ENABLED=true\n"
@@ -50,7 +88,8 @@ def test_compose_deployment(
     env = {
         key: value
         for key, value in os.environ.items()
-        if not key.startswith(("COMPOSE_", "LAYA_", "DECIFLOW_", "OAUTH2_"))
+        if key == "DECIFLOW_ENV_PATH"
+        or not key.startswith(("COMPOSE_", "LAYA_", "DECIFLOW_", "OAUTH2_"))
         and key != "PORT"
     }
     result = subprocess.run(
@@ -81,6 +120,10 @@ def test_compose_deployment(
     assert ui["environment"]["DECIFLOW_DATA_DIR"] == "/custom/data"
     mounts = {mount["target"]: mount for mount in ui["volumes"]}
     assert mounts["/app"]["read_only"] is True
+    assert mounts["/etc/deciflow.env"]["read_only"] is True
+    assert mounts["/etc/deciflow.env"]["source"] == str(
+        Path(os.environ["HOME"]) / ".config/deciflow/.env"
+    )
     assert mounts["/host-logs/var/log"]["read_only"] is True
     assert mounts["/custom/data"]["source"] == "data"
     assert mounts["/custom/logs"]["source"] == "logs"
@@ -115,7 +158,7 @@ def test_google_auth_compose(
     """Protect all UI routes without exposing an alternate application port."""
     if shutil.which("docker") is None:
         pytest.skip("Docker Compose is required for configuration validation")
-    env_file = tmp_path / "oauth2.env"
+    env_file = Path(os.environ["HOME"]) / ".config/deciflow/.env"
     env_file.write_text(
         f"COMPOSE_PROFILES={profile}\n"
         "OAUTH2_PROXY_ENABLED=true\n"
@@ -126,11 +169,12 @@ def test_google_auth_compose(
         "OAUTH2_PROXY_CLIENT_SECRET=test-secret\n"
         "OAUTH2_PROXY_COOKIE_SECRET=test-cookie-secret\n"
     )
-    (compose_project / ".env").write_text(env_file.read_text())
     env = {
         key: value
         for key, value in os.environ.items()
-        if not key.startswith(("COMPOSE_", "OAUTH2_", "DECIFLOW_")) and key != "PORT"
+        if key == "DECIFLOW_ENV_PATH"
+        or not key.startswith(("COMPOSE_", "OAUTH2_", "DECIFLOW_"))
+        and key != "PORT"
     }
     command = [
         "docker",
@@ -228,14 +272,14 @@ def test_google_auth_policy() -> None:
 
 @pytest.mark.parametrize("profile", ["cpu", "cuda", ""])
 @pytest.mark.parametrize("bind_host", ["127.0.0.1", "0.0.0.0"])
-def test_http_demo_without_oauth(tmp_path: Path, profile: str, bind_host: str) -> None:
+def test_http_demo_without_oauth(
+    tmp_path: Path, profile: str, bind_host: str, compose_project: Path
+) -> None:
     """A fresh checkout needs neither private OAuth files nor credentials."""
     if shutil.which("docker") is None:
         pytest.skip("Docker Compose is required")
-    # Copy only public deployment files: no actual .env, TLS or email allow list.
-    shutil.copytree(ROOT / "compose", tmp_path / "compose")
-    shutil.copy(ROOT / "docker-compose.yml", tmp_path / "docker-compose.yml")
-    (tmp_path / ".env").write_text(
+    env_file = Path(os.environ["HOME"]) / ".config/deciflow/.env"
+    env_file.write_text(
         f"COMPOSE_PROFILES={profile}\n"
         "OAUTH2_PROXY_ENABLED=false\n"
         f"DECIFLOW_BIND_HOST={bind_host}\nPORT=4567\n"
@@ -243,10 +287,20 @@ def test_http_demo_without_oauth(tmp_path: Path, profile: str, bind_host: str) -
     env = {
         key: value
         for key, value in os.environ.items()
-        if not key.startswith(("COMPOSE_", "OAUTH2_", "DECIFLOW_")) and key != "PORT"
+        if key == "DECIFLOW_ENV_PATH"
+        or not key.startswith(("COMPOSE_", "OAUTH2_", "DECIFLOW_"))
+        and key != "PORT"
     }
     result = subprocess.run(
-        ["docker", "compose", "config", "--format", "json"],
+        [
+            "docker",
+            "compose",
+            "--env-file",
+            str(env_file),
+            "config",
+            "--format",
+            "json",
+        ],
         cwd=tmp_path,
         env=env,
         capture_output=True,

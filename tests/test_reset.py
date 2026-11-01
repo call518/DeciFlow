@@ -185,3 +185,16 @@ def test_reset_preserves_ssh_key_files_and_registration(
     assert get_key(key["id"])["name"] == "Keep Key"
     assert [item["id"] for item in list_keys()] == [key["id"]]
     assert load_tasks() == []
+
+
+def test_reset_protects_shared_configuration_outside_working_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    configuration = home / ".config" / "deciflow"
+    configuration.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    for path in (configuration, configuration.parent):
+        monkeypatch.setenv("DECIFLOW_DATA_DIR", str(path))
+        with pytest.raises(ValueError, match="configuration"):
+            reset_directory()

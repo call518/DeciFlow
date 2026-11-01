@@ -110,7 +110,10 @@ def test_native_entrypoint_selects_access_mode(
 ) -> None:
     """Use one native command; protected mode ignores an external UI bind."""
     from deciflow import server
-    monkeypatch.setattr(server, "load_startup_settings", lambda path: None)
+
+    monkeypatch.setattr(server, "ROOT", tmp_path)
+    monkeypatch.setenv("DECIFLOW_ENV_PATH", str(tmp_path / ".env"))
+    (tmp_path / ".env").touch()
     monkeypatch.setattr(server, "get_engine", lambda: None)
     monkeypatch.setattr(server, "get_log_config", lambda: None)
     monkeypatch.setenv("OAUTH2_PROXY_ENABLED", "true" if enabled else "false")

@@ -1,12 +1,5 @@
 # Criteria Management
 
-The list’s **Manage → Ref.** button and Edit’s **References** link open a
-reference dialog. View displays the same details directly above its configuration
-under **References**. Task assignments, active executions, and recoverable runs
-show only type, name, and ID. Available ID links open details in a new tab;
-references are fetched when opened.
-
-
 [English](criteria.md) | [한국어](criteria.ko.md) | [Documentation](README.md) | [README](../README.md)
 
 Manage decision profiles under **Criteria**. Laya and Jev use the same definitions
@@ -20,13 +13,9 @@ and result `profile`/`profileId` values. Renaming preserves the ID; Add and Clon
 create a new UUID. This identifies the whole profile; each **Decision ID** below
 identifies one question within it. Sample UUIDs are fixed in the bundled JSON files.
 
-Default Chart Decision selects exactly one existing decision of any type. It is only a
-display preference and does not change AI answers, uncertainty, or filters. Every
-decision is available in Overview. Use **Set as Default** in
-Overview or change it in the Criteria editor. This saves a preference per Criteria
-in SQLite and applies when reopening runs or refreshing Main. Selecting a chart
-without saving is temporary; historical result metadata remains unchanged. Score charts round weighted scores to
-the nearest level (half up); Noul charts show Yes probability ranges.
+- Default Chart Decision selects exactly one existing decision of any type. It is only a display preference and does not change AI answers, uncertainty, or filters. Every decision is available in Overview.
+- Use **Set as Default** in Overview or change it in the Criteria editor. This saves a preference per Criteria in SQLite and applies when reopening runs or refreshing Main.
+- Selecting a chart without saving is temporary; historical result metadata remains unchanged. Score charts round weighted scores to the nearest level (half up); Noul charts show Yes probability ranges.
 
 For each Choice option, **Needs Review** explicitly marks selections requiring human
 review, such as unknown/other. The saved `reviewOptions` list contains those option
@@ -92,14 +81,9 @@ staff owe a follow-up at the end of the conversation. Count promised callbacks a
 outstanding work; exclude actions owed only by the customer. Use Unknown when
 evidence is insufficient. Write labels and rules in Korean.”
 
-Generation replaces the current new-profile draft. Invalid, duplicate, refused,
-or incomplete responses do not populate the editor or change saved Criteria.
-Generation failure preserves the draft and sample edits so you can retry.
-Validation checks structure and required fields, not business-rule accuracy.
-Samples come from the beginning of matched inputs and may miss rare cases.
-Criteria generation drafts rules; actual classification still uses Laya or Jev
-with no provider fallback. The separate [AI Analysis](results.md#ai-analysis)
-feature reviews individual decisions on demand. Existing profiles can be cloned before generating a new draft.
+- Generation replaces the current new-profile draft. Invalid, duplicate, refused, or incomplete responses do not populate the editor or change saved Criteria. Generation failure preserves the draft and sample edits so you can retry.
+- Validation checks structure and required fields, not business-rule accuracy. Samples come from the beginning of matched inputs and may miss rare cases. Criteria generation drafts rules; actual classification still uses Laya or Jev with no provider fallback.
+- The separate [AI Analysis](results.md#ai-analysis) feature reviews individual decisions on demand. Existing profiles can be cloned before generating a new draft.
 
 ## Understand the Three Parts First
 
@@ -235,12 +219,8 @@ without calling an external API or tokenizer server.
 
 Name and Display Name are not counted as decision instructions.
 
-These are **rough character-based estimates**, not exact model tokenizer counts or
-billing. They account for question formatting, options and the app's shared safety
-instructions, but actual tokenizer results vary. **Input conversations are excluded.**
-Being below the displayed limit therefore does not guarantee that the full request
-fits or instructions remain intact. Limits show N/A until server settings load.
-Warnings do not prevent saving.
+- These are **rough character-based estimates**, not exact model tokenizer counts or billing. They account for question formatting, options and the app's shared safety instructions, but actual tokenizer results vary.
+- **Input conversations are excluded.** Being below the displayed limit therefore does not guarantee that the full request fits or instructions remain intact. Limits show N/A until server settings load. Warnings do not prevent saving.
 
 ## Author, Save, and Assign
 
@@ -278,21 +258,13 @@ Changes and is blocked while Tasks reference the profile.
 
 ## Existing System Profiles
 
-All profiles appear in one searchable **Criteria** list with View, Edit, Clone, and
-Delete. **Sample General System** is an ordinary optional profile: edit
-it directly, or update its Task assignments before deleting it. Deletion survives
-restart; a template remains available through **Start From Template**. A new profile
-can be written manually or generated with AI even when no profiles are saved.
-All templates, manually authored profiles, and AI-generated profiles use the same
-typed decision definitions. Shared instructions apply to every decision.
+- All profiles appear in one searchable **Criteria** list with View, Edit, Clone, and Delete. **Sample General System** is an ordinary optional profile: edit it directly, or update its Task assignments before deleting it.
+- Deletion survives restart; a template remains available through **Start From Template**. A new profile can be written manually or generated with AI even when no profiles are saved.
+- All templates, manually authored profiles, and AI-generated profiles use the same typed decision definitions. Shared instructions apply to every decision.
 
-First initialization provides the system examples and **Sample VOC Asia Culture Center Consulting QnA**. On every startup, existing installations also receive the consultation
-sample if neither its ID nor its name exists. Saved profiles are never overwritten;
-deleting this required sample causes it to return on the next startup. Other
-examples remain available through **Start From Template** without a data reset.
-Consultation status describes the end of the conversation, not later business
-completion. Question-only inputs need inquiry criteria rather than unsupported
-judgments about resolution or promised follow-up.
+- First initialization provides the system examples and **Sample VOC Asia Culture Center Consulting QnA**. On every startup, existing installations also receive the consultation sample if neither its ID nor its name exists.
+- Saved profiles are never overwritten; deleting this required sample causes it to return on the next startup. Other examples remain available through **Start From Template** without a data reset.
+- Consultation status describes the end of the conversation, not later business completion. Question-only inputs need inquiry criteria rather than unsupported judgments about resolution or promised follow-up.
 
 ## Results, Review, and Storage
 
@@ -334,14 +306,10 @@ for per-decision uncertainty and review reasons.
 
 ## Revise Existing Criteria With AI
 
-In Edit, expand **Generate With AI**. The same **Analysis Purpose Mode** and
-**Additional Instructions** fields are available as in creation. **Automatic (ChatGPT)**
-reviews the current draft and infers its existing objective; **Manual** requires an
-**Analysis Purpose**. The current draft is sent to OpenAI; Source samples are optional. This
-incurs OpenAI API charges. Review the returned draft and select **Save Changes**
-to persist it under the same Criteria ID. Generation does not save automatically.
-Existing runs retain their original Criteria. Replies are discarded if the editor
-is closed, reopened, or changed while the request is pending.
+- In Edit, expand **Generate With AI**. The same **Analysis Purpose Mode** and **Additional Instructions** fields are available as in creation.
+- **Automatic (ChatGPT)** reviews the current draft and infers its existing objective; **Manual** requires an **Analysis Purpose**. The current draft is sent to OpenAI; Source samples are optional. This incurs OpenAI API charges.
+- Review the returned draft and select **Save Changes** to persist it under the same Criteria ID. Generation does not save automatically. Existing runs retain their original Criteria.
+- Replies are discarded if the editor is closed, reopened, or changed while the request is pending.
 
 Sample previews show 10 items per page in a scrollable area. Previous/Next
 changes only the visible page; edits and removals persist. Generation sends all
@@ -349,10 +317,13 @@ remaining samples across every page, without fetching or resampling on page chan
 
 ## Additional Authoring Instructions
 
-Creation and revision both provide optional **Additional Instructions** (up to
-4,000 characters) in Automatic and Manual modes. Leave blank to use only the
-application authoring rules. Use this field for label language, requested changes,
-or other authoring preferences. It is sent separately as user input; application
-instructions, the authoring guide, schema, and budgets take precedence. Conflicting
-parts must be ignored. This field is not saved as a separate classification rule;
-review the generated Criteria for compatible business rules before saving.
+- Creation and revision both provide optional **Additional Instructions** (up to 4,000 characters) in Automatic and Manual modes. Leave blank to use only the application authoring rules.
+- Use this field for label language, requested changes, or other authoring preferences. It is sent separately as user input; application instructions, the authoring guide, schema, and budgets take precedence. Conflicting parts must be ignored. This field is not saved as a separate classification rule; review the generated Criteria for compatible business rules before saving.
+
+## Reference Details
+
+The list’s **Manage → Ref.** button and Edit’s **References** link open a
+reference dialog. View displays the same details directly above its configuration
+under **References**. Task assignments, active executions, and recoverable runs
+show only type, name, and ID. Available ID links open details in a new tab;
+references are fetched when opened.

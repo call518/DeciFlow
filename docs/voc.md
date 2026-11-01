@@ -8,31 +8,17 @@ Existing system-log Tasks remain supported; assign Sources and Criteria per Task
 
 ## Government QnA Sample
 
-**Sample VOC Central Gov Consulting QnA** is also added at startup, including to existing
-installations. Its Source uses `/host-logs/sample-logs/voc-central-gov-consulting-qna.jsonl`,
-JSONL (Line), and Content Field `consulting_content` (3,965 records).
-The **Sample VOC Central Gov Consulting QnA** Criteria classify Policy Area,
-Response Type, Follow-up Owner, Urgency, and Follow-up Required. They distinguish
-rule explanations, application guidance, referrals, completed processing, and
-explicitly outstanding agency actions. Referrals and contact footers alone do not
-create agency follow-up obligations; the profiles do not verify current law.
-The provided **Sample VOC Central Gov Consulting QnA** Task uses Korean Criteria,
-Batch / Manual, Events/Chunk 1, and Action None. It starts disabled with Resume on
-Restart off. Enable it and click Run to analyze the sample. Saved edits are preserved.
+- **Sample VOC Central Gov Consulting QnA** is also added at startup, including to existing installations. Its Source uses `/host-logs/sample-logs/voc-central-gov-consulting-qna.jsonl`, JSONL (Line), and Content Field `consulting_content` (3,965 records).
+- The **Sample VOC Central Gov Consulting QnA** Criteria classify Policy Area, Response Type, Follow-up Owner, Urgency, and Follow-up Required. They distinguish rule explanations, application guidance, referrals, completed processing, and explicitly outstanding agency actions.
+- Referrals and contact footers alone do not create agency follow-up obligations; the profiles do not verify current law. The provided **Sample VOC Central Gov Consulting QnA** Task uses Korean Criteria, Batch / Manual, Events/Chunk 1, and Action None. It starts disabled with Resume on Restart off.
+- Enable it and click Run to analyze the sample. Saved edits are preserved.
 
 ## Local Government QnA Sample
 
-**Sample VOC Local Gov Consulting QnA** Source, Criteria, and Task are added at startup,
-including to existing installations; saved edits are preserved. The Source reads
-`/host-logs/sample-logs/voc-local-gov-consulting-qna.jsonl` (3,280 records) as
-JSONL (Line), with Content Field `상담내용`. Only this field is sent for classification;
-`지방자치단체명` and `상담담당부서` remain original record metadata, including empty departments.
-The Korean Criteria cover local policy area, response type, follow-up owner, urgency,
-and follow-up required. General project schedules and improvement plans alone do not
-count as outstanding commitments for an individual inquiry. The Task uses Batch / Manual,
-Events/Chunk 1, and Action None, with Enabled and Resume on Restart off. Start
-DeciFlow-UI, enable the Task, and click Run. For native execution,
-change the Source path to the sample file's actual local path.
+- **Sample VOC Local Gov Consulting QnA** Source, Criteria, and Task are added at startup, including to existing installations; saved edits are preserved. The Source reads `/host-logs/sample-logs/voc-local-gov-consulting-qna.jsonl` (3,280 records) as JSONL (Line), with Content Field `상담내용`.
+- Only this field is sent for classification; `지방자치단체명` and `상담담당부서` remain original record metadata, including empty departments. The Korean Criteria cover local policy area, response type, follow-up owner, urgency, and follow-up required.
+- General project schedules and improvement plans alone do not count as outstanding commitments for an individual inquiry. The Task uses Batch / Manual, Events/Chunk 1, and Action None, with Enabled and Resume on Restart off.
+- Start DeciFlow-UI, enable the Task, and click Run. For native execution, change the Source path to the sample file's actual local path.
 
 ## 1. Run the Bundled Sample
 
@@ -55,12 +41,9 @@ change the Source path to the sample file's actual local path.
 | Action | None |
 | Enabled / Resume on Restart | Both off when first provided |
 
-The path assumes the Docker Compose mount. For native execution, change the Source
-to the actual file path. Each line contains one JSON object, with the entire
-conversation in the `consulting_content` string. Encode conversation line breaks
-as JSON string `\n` escapes. All **841 records are independent consultations**,
-including repeated content. Blank lines are skipped. Malformed JSON, missing or
-empty content, and other invalid records are reported as failures.
+- The path assumes the Docker Compose mount. For native execution, change the Source to the actual file path. Each line contains one JSON object, with the entire conversation in the `consulting_content` string.
+- Encode conversation line breaks as JSON string `\n` escapes. All **841 records are independent consultations**, including repeated content. Blank lines are skipped.
+- Malformed JSON, missing or empty content, and other invalid records are reported as failures.
 
 `voc-central-gov-consulting-qna.jsonl` is another consultation dataset with Content
 Field `consulting_content`. For inputs without responses or processing history,
@@ -105,12 +88,8 @@ Besides `LAYA_MAX_TOKENS` for state plus one question, Laya applies
 Instructions are repeated per question. A zero state Truncated count does not
 prove that the entire instruction text survived.
 
-The full VOC instructions do not fit a 256-token head budget. With the installed
-multilingual tokenizer, the sample with Korean options needs at most 471 head
-tokens; **`LAYA_HEAD_TOKENS=512` preserves every instruction**. Supplied conversation
-states use at most 1,600 tokens, so adding the heads still fits the current 8,192
-context limit. These measurements apply to this dataset, sample and tokenizer,
-not arbitrary future data.
+- The full VOC instructions do not fit a 256-token head budget. With the installed multilingual tokenizer, the sample with Korean options needs at most 471 head tokens; **`LAYA_HEAD_TOKENS=512` preserves every instruction**.
+- Supplied conversation states use at most 1,600 tokens, so adding the heads still fits the current 8,192 context limit. These measurements apply to this dataset, sample and tokenizer, not arbitrary future data.
 
 To use the complete sample instructions with Laya, set `LAYA_HEAD_TOKENS=512` in
 `.env`, Restart DeciFlow-UI, and start a new run. Active runs retain previous

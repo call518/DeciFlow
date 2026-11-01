@@ -14,13 +14,19 @@
 
 **[Installation and Configuration → INSTALL.md](INSTALL.md)**
 
-Choose [PyPI: pip or uv tool](INSTALL.md#pypi),
-[Docker Compose with Git Clone](INSTALL.md#docker-compose), or
-[CLI from a Git Checkout](INSTALL.md#direct-processes).
+Choose one installation method:
+
+- [PyPI: pip or uv tool](INSTALL.md#pypi)
+- [Docker Compose with Git Clone](INSTALL.md#docker-compose)
+- [CLI from a Git Checkout](INSTALL.md#direct-processes)
+
 The installation guide covers prerequisites, engine connections, storage,
 authentication, startup, verification, and maintenance for each method.
-CLI and direct server startup use different configuration paths and process
-management; see the [comparison](docs/configuration.md#cli-and-direct-server-startup).
+
+- **Configuration:** CLI, direct server startup, and `compose.sh` read only the file selected by `DECIFLOW_ENV_PATH`.
+- **Initialization:** `deciflow init` creates `~/.config/deciflow/.env`; export its path before running DeciFlow.
+- **Reference:** see [configuration](docs/configuration.md#environment-file-locations).
+
 
 ## Overview
 
@@ -30,11 +36,10 @@ after classification. It reads local, SSH, and HDFS Sources and displays results
 a browser. Existing files can be investigated in Batch mode; Realtime mode follows
 new log events.
 
-The **Laya server** runs the decision model on the same host or a separate host.
-**Jev** is an alternative paid hosted inference API. DeciFlow reads the data and
-sends events to the selected engine. Laya is the default, with no automatic fallback
-to paid Jev. DeciFlow nodes connected to a shared Laya server need no local GPU or
-PyTorch. **OAuth2-Proxy** optionally provides Google sign-in and HTTPS.
+- **Laya server:** runs the decision model on the same host or a separate host. DeciFlow nodes connected to a shared Laya server need no local GPU or PyTorch.
+- **Jev:** alternative paid hosted inference API. DeciFlow reads the data and sends events to the selected engine; Laya is the default, with no automatic fallback to paid Jev.
+- **OAuth2-Proxy:** optional Google sign-in and HTTPS.
+
 
 ## Concepts
 

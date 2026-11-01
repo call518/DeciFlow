@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 from deciflow.classifier import DecisionError, Result, classify_log
 from deciflow.config import Engine, get_engine
+from deciflow.paths import resolve_env_path
 from deciflow.profiles import GENERAL_PROFILE_ID, PROFILES
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -87,7 +88,7 @@ def main() -> None:
         "--output", type=Path, default=Path("/tmp/laya-validation.json")
     )
     args = parser.parse_args()
-    load_dotenv(ROOT / ".env")
+    load_dotenv(resolve_env_path())
     engine = get_engine()
     if engine.name != "laya":
         parser.error(

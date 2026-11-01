@@ -15,13 +15,11 @@ Rocky Linux 8·9·10 호스트에 아래 도구와 Docker 실행 권한·외부 
 | 방식 | 필요한 도구 | 환경 파일 |
 | --- | --- | --- |
 | [1. PyPI: uv tool 또는 pip](#pypi) (권장) | Python 3.12, uv, Docker | `~/.config/deciflow/.env` |
-| [2. Docker Compose](#docker-compose) | Git, Docker Compose 2.20+ | `<checkout>/.env` |
-| [3. 소스에서 CLI 실행](#direct-processes) | Python 3.12, uv, Git, Docker | `<checkout>/.env` |
+| [2. Docker Compose](#docker-compose) | Git, Docker Compose 2.20+ | `~/.config/deciflow/.env` |
+| [3. 소스에서 CLI 실행](#direct-processes) | Python 3.12, uv, Git, Docker | `~/.config/deciflow/.env` |
 
-패키지·소스 방식은 모두 `deciflow start`를 사용하며 소스 방식은 `--config-dir`로
-저장소를 선택합니다. Compose는 서버를 직접 호출하고 UI 컨테이너 내부 `/app/.env`를
-사용합니다. 환경 파일·기동 점검·프로세스 관리 차이는
-[CLI와 서버 직접 실행 비교](docs/configuration.ko.md#cli와-서버-직접-실행의-차이)를 참고하세요.
+- 세 방식 모두 `DECIFLOW_ENV_PATH`에 지정한 파일만 사용합니다. [파일 탐색 규칙](docs/configuration.ko.md#환경-파일-위치)을 참고하세요. 패키지·소스는 `deciflow start`를 사용하고 Compose는 서버를 직접 호출하여 같은 호스트 파일을 컨테이너 내부 `/etc/deciflow.env`로 읽습니다.
+- 기동 점검·프로세스 관리 차이는 [CLI와 서버 직접 실행 비교](docs/configuration.ko.md#cli와-서버-직접-실행의-차이)를 참고하세요.
 
 기본 HTTP 수신 주소는 `DECIFLOW_BIND_HOST=0.0.0.0`입니다. OAuth2-Proxy를 추가할 때는
 인증 우회를 막도록 `127.0.0.1`로 변경합니다.
@@ -88,6 +86,7 @@ python -m pip install deciflow
 
 ```bash
 deciflow init
+export DECIFLOW_ENV_PATH="$HOME/.config/deciflow/.env"
 sudo mkdir -p /var/lib/deciflow-data /var/log/deciflow
 sudo chown "$(id -un):$(id -gn)" /var/lib/deciflow-data /var/log/deciflow
 ```
@@ -126,7 +125,7 @@ sudo systemctl enable --now docker
 
 ```bash
 docker run -d --name deciflow-laya --restart unless-stopped \
-  -p 127.0.0.1:8000:8000 --env-file "$HOME/.config/deciflow/.env" \
+  -p 127.0.0.1:8000:8000 --env-file "$DECIFLOW_ENV_PATH" \
   -e LAYA_HOST=0.0.0.0 -e LAYA_DEVICE=cpu \
   -e LAYA_MODELS=multilingual -e LAYA_PRELOAD=1 \
   -v deciflow-laya-cache:/home/laya/.cache/huggingface \
@@ -153,10 +152,8 @@ EOF
 realpath "$HOME/.config/deciflow/demo.log"
 ```
 
-출력된 경로로 [데모 실행](#demo)을 진행하세요. 종료·기동은 `deciflow stop`,
-`deciflow start --daemon`입니다. pip 방식은 해당 가상환경을 활성화합니다.
-Laya는 `docker stop deciflow-laya` / `docker start deciflow-laya`로 별도 관리합니다.
-HTTPS가 필요하면 [PyPI 인증 구성](docs/authentication.ko.md#pypi)을 따르세요.
+- 출력된 경로로 [데모 실행](#demo)을 진행하세요. 종료·기동은 `deciflow stop`, `deciflow start --daemon`입니다. pip 방식은 해당 가상환경을 활성화합니다. Laya는 `docker stop deciflow-laya` / `docker start deciflow-laya`로 별도 관리합니다.
+- HTTPS가 필요하면 [PyPI 인증 구성](docs/authentication.ko.md#pypi)을 따르세요.
 
 → **[이 방식 설치 완료: 다른 방식은 생략하고 데모 실행으로 이동](#demo)**
 
@@ -169,11 +166,13 @@ HTTPS가 필요하면 [PyPI 인증 구성](docs/authentication.ko.md#pypi)을 �
 ```bash
 git clone https://github.com/call518/DeciFlow.git
 cd DeciFlow
-test -f .env || cp .env.example .env
-chmod 600 .env
+install -d -m 700 "$HOME/.config/deciflow"
+test -f "$HOME/.config/deciflow/.env" || \
+  install -m 600 .env.example "$HOME/.config/deciflow/.env"
+export DECIFLOW_ENV_PATH="$HOME/.config/deciflow/.env"
 ```
 
-**`<checkout>/.env`**를 수정합니다.
+**`~/.config/deciflow/.env`**를 수정합니다.
 
 ```dotenv
 COMPOSE_PROFILES=cpu
@@ -204,15 +203,40 @@ sudo systemctl enable --now docker
 ```
 
 ```bash
-docker compose up -d --remove-orphans
-docker compose logs -f laya-cpu
+docker compose --env-file "$DECIFLOW_ENV_PATH" up -d --remove-orphans
+docker compose --env-file "$DECIFLOW_ENV_PATH" logs -f laya-cpu
 ```
+
+기동·종료 명령을 간단히 실행하려면 저장소의 스크립트를 사용합니다.
+
+```bash
+./compose.sh up
+./compose.sh down
+```
+
+- **다른 디렉토리:** `/path/to/DeciFlow/compose.sh up`으로 실행합니다. 스크립트 위치를 기준으로 Compose 프로젝트를 찾습니다.
+- **설정 파일:** `DECIFLOW_ENV_PATH`에 지정한 파일만 사용합니다.
+- **설정 검증:** 변수 미설정·빈 값·잘못된 파일이면 즉시 실패하며 다른 파일을 찾지 않습니다.
+
+| 명령 | 동작 |
+| --- | --- |
+| `up` | `--remove-orphans`와 함께 백그라운드 기동 |
+| `down` | 컨테이너·네트워크 제거, 이름 있는 볼륨 보존 |
+
+`~/.bashrc` 또는 전체 사용자용 `/etc/bashrc`에 등록하고 현재 셸에서도 export하세요.
+
+```bash
+export DECIFLOW_ENV_PATH="$HOME/.config/deciflow/.env"
+```
+
+- **Compose 직접 실행:** 위 예시처럼 `--env-file "$DECIFLOW_ENV_PATH"`을 전달합니다.
+- **`down`에도 필요한 이유:** 두 명령 모두 Compose 변수와 OAuth 구성을 해석합니다. 스크립트는 옵션을 자동으로 전달합니다.
 
 모델 적재 후 `Ctrl+C`로 로그 보기를 종료하고 **`http://YOUR_SERVER_IP:4000`**을 여세요.
 [데모 실행](#demo)의 Source 경로는 **`/host-logs/sample-logs/access-100.log`**입니다.
 
-종료·기동은 `docker compose stop` / `docker compose start`, `.env` 변경 후에는
-`docker compose up -d --remove-orphans`를 사용합니다. 데이터는 이름 있는 볼륨에 보존합니다.
+종료·기동은 `docker compose --env-file "$DECIFLOW_ENV_PATH" stop` / `docker compose --env-file "$DECIFLOW_ENV_PATH" start`, `.env` 변경 후에는
+`docker compose --env-file "$DECIFLOW_ENV_PATH" up -d --remove-orphans`를 사용합니다. 데이터는 이름 있는 볼륨에 보존합니다.
 HTTPS가 필요하면 [Compose 인증 구성](docs/authentication.ko.md#docker)을 따르세요.
 
 → **[이 방식 설치 완료: 다른 방식은 생략하고 데모 실행으로 이동](#demo)**
@@ -229,14 +253,14 @@ DeciFlow만 저장소에서 실행하고 Laya는 Docker를 사용합니다.
 ```bash
 git clone https://github.com/call518/DeciFlow.git
 cd DeciFlow
-test -f .env || cp .env.example .env
-chmod 600 .env
 uv sync --frozen
+uv run deciflow init
+export DECIFLOW_ENV_PATH="$HOME/.config/deciflow/.env"
 sudo mkdir -p /var/lib/deciflow-data /var/log/deciflow
 sudo chown "$(id -un):$(id -gn)" /var/lib/deciflow-data /var/log/deciflow
 ```
 
-**`<checkout>/.env`**를 수정합니다.
+**`~/.config/deciflow/.env`**를 수정합니다.
 
 ```dotenv
 COMPOSE_PROFILES=
@@ -252,7 +276,7 @@ LAYA_HEAD_TOKENS=512
 DECIFLOW_DATA_DIR=/var/lib/deciflow-data
 ```
 
-저장소의 `.env`로 Laya를 기동합니다.
+같은 설정 파일로 Laya를 기동합니다.
 
 Docker가 없다면 먼저 설치하고 데몬을 기동합니다. 이미 준비되어 있다면 생략하세요.
 root 계정은 `sudo`를 생략합니다.
@@ -265,7 +289,7 @@ sudo systemctl enable --now docker
 
 ```bash
 docker run -d --name deciflow-laya --restart unless-stopped \
-  -p 127.0.0.1:8000:8000 --env-file "$PWD/.env" \
+  -p 127.0.0.1:8000:8000 --env-file "$DECIFLOW_ENV_PATH" \
   -e LAYA_HOST=0.0.0.0 -e LAYA_DEVICE=cpu \
   -e LAYA_MODELS=multilingual -e LAYA_PRELOAD=1 \
   -v deciflow-laya-cache:/home/laya/.cache/huggingface \
@@ -276,16 +300,13 @@ docker logs -f deciflow-laya
 적재 후 `Ctrl+C`로 로그 보기를 종료하고 DeciFlow를 기동합니다.
 
 ```bash
-uv run deciflow config test --config-dir "$PWD"
-uv run deciflow start --daemon --config-dir "$PWD"
+uv run deciflow config test
+uv run deciflow start --daemon
 realpath sample-logs/access-100.log
 ```
 
-**`http://YOUR_SERVER_IP:4000`**을 열고 출력된 절대 경로로 [데모 실행](#demo)을 진행합니다.
-항상 `--config-dir "$PWD"`로 이 저장소의 설정을 선택하세요.
-종료는 `uv run deciflow stop --config-dir "$PWD"`, 기동은 위 명령을 사용합니다.
-데이터·로그는 `/var/lib/deciflow-data`·`/var/log/deciflow`에 남고 Laya는 Docker에서 별도 관리합니다.
-HTTPS가 필요하면 [직접 실행 인증 구성](docs/authentication.ko.md#source)을 따르세요.
+- **`http://YOUR_SERVER_IP:4000`**을 열고 출력된 절대 경로로 [데모 실행](#demo)을 진행합니다. CLI는 `~/.config/deciflow/.env`를 읽습니다. 종료는 `uv run deciflow stop`, 기동은 위 명령을 사용합니다.
+- 데이터·로그는 `/var/lib/deciflow-data`·`/var/log/deciflow`에 남고 Laya는 Docker에서 별도 관리합니다. HTTPS가 필요하면 [직접 실행 인증 구성](docs/authentication.ko.md#source)을 따르세요.
 
 → **[이 방식 설치 완료: 다른 방식은 생략하고 데모 실행으로 이동](#demo)**
 
@@ -309,8 +330,8 @@ Laya의 키 등 컨테이너 환경을 바꿨다면 `docker rm -f deciflow-laya`
 해당 `docker run` 명령으로 재생성합니다. 단순 stop/start는 `.env`를 다시 읽지 않습니다.
 
 - 패키지: `deciflow status`, 로그는 `/var/log/deciflow/`.
-- 저장소: `uv run deciflow status --config-dir "$PWD"`, 로그는 `/var/log/deciflow/`.
-- Compose: `docker compose ps`, `docker compose logs --tail=100 ui laya-cpu`.
+- 저장소: `uv run deciflow status`, 로그는 `/var/log/deciflow/`.
+- Compose: `docker compose --env-file "$DECIFLOW_ENV_PATH" ps`, `docker compose --env-file "$DECIFLOW_ENV_PATH" logs --tail=100 ui laya-cpu`.
 - 최초 Laya 모델 다운로드·적재에는 시간이 걸립니다. `config test`의 엔진 연결 실패 시
   Laya 준비 상태를 확인하며 유료 Jev로 바꿀 필요는 없습니다.
 

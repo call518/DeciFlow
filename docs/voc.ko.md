@@ -8,31 +8,19 @@
 
 ## 정부기관 QnA 샘플
 
-**Sample VOC Central Gov Consulting QnA**는 기존 설치를 포함해 시작 시 자동 추가됩니다.
-Source는 `/host-logs/sample-logs/voc-central-gov-consulting-qna.jsonl`,
-JSONL (Line), Content Field `consulting_content`를 사용합니다(3,965건).
-**Sample VOC Central Gov Consulting QnA** Criteria는 행정·정책 분야,
-답변 유형, 후속 처리 주체, 긴급도, 기관 후속 처리 필요성을 판단합니다.
-법령 설명·신청 안내·관할 기관 문의 안내·개별 처리 완료·기관의 명시적 미완료 조치를
-구분합니다. 문의 안내나 말미 연락처만으로 기관의 후속 처리 의무를 추정하지 않으며
-법령의 현행성을 검증하지 않습니다.
-기본 **Sample VOC Central Gov Consulting QnA** Task는 한국어 Criteria,
-Batch / Manual, Events/Chunk 1, Action None으로 연결되며 Enable과 Resume on Restart는
-꺼져 있습니다. 활성화 후 Run으로 실행하세요. 저장된 사용자 수정은 유지합니다.
+- **Sample VOC Central Gov Consulting QnA**는 기존 설치를 포함해 시작 시 자동 추가됩니다. Source는 `/host-logs/sample-logs/voc-central-gov-consulting-qna.jsonl`, JSONL (Line), Content Field `consulting_content`를 사용합니다(3,965건).
+- **Sample VOC Central Gov Consulting QnA** Criteria는 행정·정책 분야, 답변 유형, 후속 처리 주체, 긴급도, 기관 후속 처리 필요성을 판단합니다. 법령 설명·신청 안내·관할 기관 문의 안내·개별 처리 완료·기관의 명시적 미완료 조치를 구분합니다.
+- 문의 안내나 말미 연락처만으로 기관의 후속 처리 의무를 추정하지 않으며 법령의 현행성을 검증하지 않습니다.
+- 기본 **Sample VOC Central Gov Consulting QnA** Task는 한국어 Criteria, Batch / Manual, Events/Chunk 1, Action None으로 연결되며 Enable과 Resume on Restart는 꺼져 있습니다.
+- 활성화 후 Run으로 실행하세요. 저장된 사용자 수정은 유지합니다.
 
 ## 지방자치단체 QnA 샘플
 
-**Sample VOC Local Gov Consulting QnA** Source, Criteria, Task는 기존 설치에도 시작 시
-자동 추가되며 저장된 사용자 수정은 유지합니다. Source는
-`/host-logs/sample-logs/voc-local-gov-consulting-qna.jsonl`(3,280건)을
-JSONL (Line), Content Field `상담내용`으로 읽습니다. 이 필드만 분류에 전달하고
-`지방자치단체명`과 `상담담당부서`는 빈 부서명을 포함해 원본 메타데이터로 보존합니다.
-한국어 Criteria는 지방행정 분야, 답변 유형, 후속 조치 담당, 긴급도, 후속 조치 필요성을
-판단합니다. 일반적인 사업 일정이나 개선 계획만으로 개별 민원의 미완료 약속으로
-판단하지 않습니다. Task는 Batch / Manual, Events/Chunk 1, Action None이며
-Enabled와 Resume on Restart는 꺼져 있습니다. DeciFlow-UI를 시작하고
-Task를 활성화한 뒤 Run으로 실행하세요. 네이티브 실행 시 Source 경로를 실제 로컬
-샘플 파일 경로로 변경하세요.
+- **Sample VOC Local Gov Consulting QnA** Source, Criteria, Task는 기존 설치에도 시작 시 자동 추가되며 저장된 사용자 수정은 유지합니다.
+- Source는 `/host-logs/sample-logs/voc-local-gov-consulting-qna.jsonl`(3,280건)을 JSONL (Line), Content Field `상담내용`으로 읽습니다. 이 필드만 분류에 전달하고 `지방자치단체명`과 `상담담당부서`는 빈 부서명을 포함해 원본 메타데이터로 보존합니다.
+- 한국어 Criteria는 지방행정 분야, 답변 유형, 후속 조치 담당, 긴급도, 후속 조치 필요성을 판단합니다. 일반적인 사업 일정이나 개선 계획만으로 개별 민원의 미완료 약속으로 판단하지 않습니다.
+- Task는 Batch / Manual, Events/Chunk 1, Action None이며 Enabled와 Resume on Restart는 꺼져 있습니다. DeciFlow-UI를 시작하고 Task를 활성화한 뒤 Run으로 실행하세요.
+- 네이티브 실행 시 Source 경로를 실제 로컬 샘플 파일 경로로 변경하세요.
 
 ## 1. 기본 샘플 실행
 
@@ -55,11 +43,8 @@ Task를 활성화한 뒤 Run으로 실행하세요. 네이티브 실행 시 Sour
 | Action | None |
 | Enabled / Resume on Restart | 최초 제공 시 모두 꺼짐 |
 
-경로는 Docker Compose 마운트 기준입니다. 네이티브 실행에서는 Source 경로를 실제
-파일 위치로 수정하세요. 파일은 한 줄에 JSON 객체 하나이며 `consulting_content`에
-전체 대화 문자열을 넣습니다. 대화 안의 줄바꿈은 JSON 문자열의 `\n`으로 표현합니다.
-제공 파일의 **841건을 각각 별도 상담으로 처리**하며 같은 내용도 합치지 않습니다.
-빈 줄은 건너뛰고, 잘못된 JSON·누락되거나 비어 있는 본문 등은 실패로 표시합니다.
+- 경로는 Docker Compose 마운트 기준입니다. 네이티브 실행에서는 Source 경로를 실제 파일 위치로 수정하세요. 파일은 한 줄에 JSON 객체 하나이며 `consulting_content`에 전체 대화 문자열을 넣습니다.
+- 대화 안의 줄바꿈은 JSON 문자열의 `\n`으로 표현합니다. 제공 파일의 **841건을 각각 별도 상담으로 처리**하며 같은 내용도 합치지 않습니다. 빈 줄은 건너뛰고, 잘못된 JSON·누락되거나 비어 있는 본문 등은 실패로 표시합니다.
 
 `voc-central-gov-consulting-qna.jsonl`은 다른 상담 자료이며 Content Field는
 `consulting_content`입니다. 답변이나 처리 경과가 없는 입력에는 문의 유형 중심의
@@ -102,11 +87,8 @@ Laya는 상담 본문과 질문을 합친 `LAYA_MAX_TOKENS` 한도 외에, 각 �
 선택지에 `LAYA_HEAD_TOKENS` 예산을 적용합니다. 공통 Decision Instructions도
 질문마다 반복됩니다. 본문의 Truncated 표시가 0이어도 지시문 뒤쪽은 잘릴 수 있습니다.
 
-현재 VOC 전체 지시문은 질문 예산 256에서 완전히 보존되지 않습니다. 설치된
-multilingual 토크나이저로 한국어 선택지를 적용한 샘플을 측정하면 질문별 head는
-최대 471토큰이며, **`LAYA_HEAD_TOKENS=512`에서 모든 지시문이 보존**됩니다.
-제공 상담 본문은 최대 1,600토큰으로, head를 더해도 현재 전체 한도 8,192 안에 들어갑니다.
-이는 제공 파일·현재 샘플·해당 토크나이저의 측정값이며 다른 자료도 같다는 뜻은 아닙니다.
+- 현재 VOC 전체 지시문은 질문 예산 256에서 완전히 보존되지 않습니다. 설치된 multilingual 토크나이저로 한국어 선택지를 적용한 샘플을 측정하면 질문별 head는 최대 471토큰이며, **`LAYA_HEAD_TOKENS=512`에서 모든 지시문이 보존**됩니다.
+- 제공 상담 본문은 최대 1,600토큰으로, head를 더해도 현재 전체 한도 8,192 안에 들어갑니다. 이는 제공 파일·현재 샘플·해당 토크나이저의 측정값이며 다른 자료도 같다는 뜻은 아닙니다.
 
 Laya로 이 샘플의 전체 지시문을 사용하려면 `.env`의 `LAYA_HEAD_TOKENS`를 512로
 설정하고 DeciFlow-UI를 Restart한 뒤 새 실행을 시작하세요. 진행 중인 실행은 이전

@@ -81,8 +81,9 @@ def main() -> None:
             check=True,
         )
         executable = root / "bin" / "deciflow"
-        workspace = root / "workspace"
-        command = [str(executable), "start", "--config-dir", workspace.name]
+        workspace = root / "home/.config/deciflow"
+        env.update(HOME=str(root / "home"), DECIFLOW_ENV_PATH=str(workspace / ".env"))
+        command = [str(executable), "start"]
         subprocess.run([str(executable), "--help"], cwd=root, env=env, check=True)
         uninitialized = subprocess.run(
             command,
@@ -96,7 +97,7 @@ def main() -> None:
         assert uninitialized.returncode == 1 and not workspace.exists()
         assert "deciflow init" in uninitialized.stderr
         subprocess.run(
-            [str(executable), "init", "--config-dir", workspace.name],
+            [str(executable), "init"],
             cwd=root,
             env=env,
             check=True,
@@ -128,7 +129,7 @@ def main() -> None:
         cleanup.callback(thread.join)
         cleanup.callback(engine.shutdown)
         subprocess.run(
-            [str(executable), "config", "test", "--config-dir", workspace.name],
+            [str(executable), "config", "test"],
             cwd=root,
             env=env,
             check=True,
@@ -142,7 +143,7 @@ def main() -> None:
             )
         )
         unavailable = subprocess.run(
-            [str(executable), "config", "test", "--config-dir", workspace.name],
+            [str(executable), "config", "test"],
             check=False,
             cwd=root,
             env=env,
@@ -166,7 +167,7 @@ def main() -> None:
         assert not (workspace / "data" / "deciflow.sqlite3").exists()
         config.write_bytes(saved)
         subprocess.run(
-            [str(executable), "config", "list", "--config-dir", workspace.name],
+            [str(executable), "config", "list"],
             cwd=root,
             env=env,
             check=True,
@@ -241,8 +242,8 @@ def main() -> None:
                     "Installed server did not stop after SIGINT"
                 ) from None
         assert process.returncode == 0, log.read_text()
-        managed = [str(executable), "status", "--config-dir", workspace.name]
-        shutdown = [str(executable), "stop", "--config-dir", workspace.name]
+        managed = [str(executable), "status"]
+        shutdown = [str(executable), "stop"]
         try:
             subprocess.run(
                 command + ["--daemon"], cwd=root, env=env, check=True, timeout=90

@@ -18,13 +18,13 @@
     </header>
     <section class="ssh-trust-body">
       <p id="identity" class="caption"></p>
+      <details id="analysis-input-section" hidden><summary>Input</summary><pre id="analysis-input"></pre></details>
       <p class="caption">Decision Result reports the saved engine output. AI Review Opinion provides an independent assessment, not the engine's internal reasoning. Saved decisions and Actions remain unchanged.</p>
       <p class="caption">Analysis sends the selected input, Criteria, and decision to OpenAI and incurs API charges. Reloading or choosing Analyze Again starts another request.</p>
       <p id="analysis-status" role="status">Loading saved result…</p>
       <div id="analysis-content" class="analysis-content"></div>
     </section>
     <section id="analysis-evidence" class="ssh-trust-body analysis-window-evidence" hidden>
-      <details><summary>Input</summary><pre id="analysis-input"></pre></details>
       <details><summary>Saved Criteria and Decision</summary><pre id="analysis-context"></pre></details>
       <details id="analysis-metadata" hidden>
         <summary>Analysis Metadata</summary>

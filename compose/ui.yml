@@ -8,11 +8,18 @@ services:
     pull_policy: always
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    env_file: .env
+    env_file: ${DECIFLOW_ENV_PATH:?Set DECIFLOW_ENV_PATH to your configuration file}
     environment:
+      DECIFLOW_ENV_PATH: /etc/deciflow.env
       DECIFLOW_DATA_DIR: ${DECIFLOW_DATA_DIR:-/var/lib/deciflow-data}
     volumes:
       - .:/app:ro
+      - type: bind
+        source: ${DECIFLOW_ENV_PATH:?Set DECIFLOW_ENV_PATH to your configuration file}
+        target: /etc/deciflow.env
+        read_only: true
+        bind:
+          create_host_path: false
       - venv:/opt/deciflow-venv
       - /var/log:/host-logs/var/log:ro
       - ./sample-logs:/host-logs/sample-logs:ro

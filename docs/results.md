@@ -1,10 +1,7 @@
 # Request and result JSON
 
-Persisted and exported successful results use the compact v2 contract: input text
-lives once in `input`, repeated request `questions` are omitted when definitions are
-available, and identical provider answers reference `decisions` using
-`providerResponse.answersInDecisions`. Raw request/classifier diagnostic examples
-below can contain additional fields. See [Action result contract](actions.md#compact-result-json-contract-version-2).
+- Persisted and exported successful results use the compact v2 contract: input text lives once in `input`, repeated request `questions` are omitted when definitions are available, and identical provider answers reference `decisions` using `providerResponse.answersInDecisions`.
+- Raw request/classifier diagnostic examples below can contain additional fields. See [Action result contract](actions.md#compact-result-json-contract-version-2).
 
 [English](results.md) | [한국어](results.ko.md) | [Documentation](README.md) | [README](../README.md)
 
@@ -17,37 +14,19 @@ The examples below retain the system HTTP access workflow.
 
 ## AI Analysis
 
-Each result card has an **AI Analysis** button. Configure both `OPENAI_API_KEY`
-and the dedicated `OPENAI_ANALYSIS_MODEL` in DeciFlow's `.env`, then restart
-DeciFlow and refresh the browser. The model defaults to `gpt-5.6-terra`; an
-explicitly blank model disables analysis. `OPENAI_CRITERIA_MODEL` remains exclusive to Criteria authoring.
-Use one execution method: restart the native DeciFlow process, or recreate the UI
-container after changing Docker environment settings.
+- Each result card has an **AI Analysis** button. Configure both `OPENAI_API_KEY` and the dedicated `OPENAI_ANALYSIS_MODEL` in DeciFlow's `.env`, then restart DeciFlow and refresh the browser. The model defaults to `gpt-5.6-terra`; an explicitly blank model disables analysis.
+- `OPENAI_CRITERIA_MODEL` remains exclusive to Criteria authoring. Use one execution method: restart the native DeciFlow process, or recreate the UI container after changing Docker environment settings.
 
-For a saved, completed decision with input, clicking opens a movable, resizable popup window and
-requests analysis once. It requests up to 1040 × 820 pixels, fits the available
-screen, and uses the shared confirmation-window styling with a close button.
-Browser settings may block popups or open them as tabs. Failed results and results
-without input cannot be analyzed.
-The server reads the original input, any normalized `decisionInput`, frozen run
-Criteria, decisions/probabilities, input-limit metadata, and reviewer corrections.
-It sends only the selected evidence to OpenAI; API charges apply. API keys stay on
-the backend. The analysis model reviews supporting evidence, alternatives, missing
-context and further checks; it cannot recover the original engine's internal
-reasoning and must not assume the original answer is correct.
-**Decision Result** reports the saved engine output; **AI Review Opinion** contains
-the analysis model's assessment and alternatives, without creating a new decision.
+- For a saved, completed decision with input, clicking opens a movable, resizable popup window and requests analysis once. It requests up to 1040 × 820 pixels, fits the available screen, and uses the shared confirmation-window styling with a close button.
+- Browser settings may block popups or open them as tabs. Failed results and results without input cannot be analyzed.
+- The server reads the original input, any normalized `decisionInput`, frozen run Criteria, decisions/probabilities, input-limit metadata, and reviewer corrections. It sends only the selected evidence to OpenAI; API charges apply. API keys stay on the backend.
+- The analysis model reviews supporting evidence, alternatives, missing context and further checks; it cannot recover the original engine's internal reasoning and must not assume the original answer is correct.
+- **Decision Result** reports the saved engine output; **AI Review Opinion** contains the analysis model's assessment and alternatives, without creating a new decision.
 
-The analysis follows the browser language (Korean or English) and leaves decisions,
-reviews and Actions unchanged. Results are shown as text; input and saved Criteria
-are expandable. A collapsed **Analysis Metadata** section below them summarizes
-the requested/response models, response status, request duration (including network
-time), token usage (including cached input and reasoning token subsets), service
-tier, response/request IDs, and the provider creation time in UTC. Missing values
-show Not Reported rather than zero. Expanding details does not make API requests.
-Analysis is not saved in execution history or exports. Reloading the window or choosing **Analyze Again** makes another paid
-request; failures are not retried automatically. Inputs above 200,000 UTF-8 JSON
-bytes are rejected without being sent or silently truncated.
+- The analysis follows the browser language (Korean or English) and leaves decisions, reviews and Actions unchanged. Results are shown as text; input and saved Criteria are expandable.
+- A collapsed **Analysis Metadata** section below them summarizes the requested/response models, response status, request duration (including network time), token usage (including cached input and reasoning token subsets), service tier, response/request IDs, and the provider creation time in UTC.
+- Missing values show Not Reported rather than zero. Expanding details does not make API requests. Analysis is not saved in execution history or exports.
+- Reloading the window or choosing **Analyze Again** makes another paid request; failures are not retried automatically. Inputs above 200,000 UTF-8 JSON bytes are rejected without being sent or silently truncated.
 
 
 ## Request body
@@ -111,25 +90,17 @@ not a live model prediction or benchmark. Probabilities, timestamps, and elapsed
 time are example values. Only `usage.truncated` is shown; real Laya responses can
 include token counts, option diagnostics, and routing metadata.
 
-The same three questions appear in `questions`; raw answers are retained in
-`providerResponse.answers`. The example selects Normal at 82%, with urgency
-**0.3** (`0×0.75 + 1×0.20 + 2×0.05 + 3×0`) and ticket need **12%**.
-Urgency is a continuous expected value from 0 to 3, not a rounded class or a
-probability. `decisions.ticket.noul` is the probability that issuing a work ticket is
-needed; no ticket is created automatically. Missing or invalid answers fail the
-whole decision. Provider `confidence` is separate from category probability.
+- The same three questions appear in `questions`; raw answers are retained in `providerResponse.answers`. The example selects Normal at 82%, with urgency **0.3** (`0×0.75 + 1×0.20 + 2×0.05 + 3×0`) and ticket need **12%**.
+- Urgency is a continuous expected value from 0 to 3, not a rounded class or a probability. `decisions.ticket.noul` is the probability that issuing a work ticket is needed; no ticket is created automatically. Missing or invalid answers fail the whole decision.
+- Provider `confidence` is separate from category probability.
 
 The result is not Uncertain: its selected probability is at least 70% and its
 highest-two probability gap is at least 10 percentage points. These are fixed
 DeciFlow review heuristics, not proof of correctness. See [review rules](usage.md#uncertainty-and-human-review).
 
-This example has Action None. `schemaVersion`, `eventId`, and `decidedAt` are
-added only when an assigned Action runs after successful classification;
-`actionExecution` then records its outcome. `requestedAt` is request preparation
-time, not log time; `decidedAt` is recorded before the Action. Timestamps use UTC
-ISO 8601; durations use milliseconds. The API request's `state` is represented by
-`input` or normalized `decisionInput` in result JSON, not a top-level `state` field.
-There is no standalone `question` field.
+- This example has Action None. `schemaVersion`, `eventId`, and `decidedAt` are added only when an assigned Action runs after successful classification; `actionExecution` then records its outcome.
+- `requestedAt` is request preparation time, not log time; `decidedAt` is recorded before the Action. Timestamps use UTC ISO 8601; durations use milliseconds.
+- The API request's `state` is represented by `input` or normalized `decisionInput` in result JSON, not a top-level `state` field. There is no standalone `question` field.
 
 
 The example uses a local file, so `sourceHosts` contains the same value as
@@ -339,12 +310,8 @@ Action input. See [host configuration](configuration.md#result-host-identity).
 }
 ```
 
-Remote Source/Host identity is metadata on each result and Action input; it is not
-prepended to the provider's `state`. `chunkSequence` starts at 1 per Source/Host
-stream and follows collection order; parallel requests may finish out of order.
-SSH collection failures have `sourceFailure: true`, an `error`, and host/source
-metadata, without fabricated category, urgency, or ticket answers. Task run context
-and per-host collection status are stored separately in run history; see [Tasks](tasks.md).
+- Remote Source/Host identity is metadata on each result and Action input; it is not prepended to the provider's `state`. `chunkSequence` starts at 1 per Source/Host stream and follows collection order; parallel requests may finish out of order.
+- SSH collection failures have `sourceFailure: true`, an `error`, and host/source metadata, without fabricated category, urgency, or ticket answers. Task run context and per-host collection status are stored separately in run history; see [Tasks](tasks.md).
 
 ## Field reference
 
@@ -434,14 +401,9 @@ Jev uses the same top-level result structure; `providerResponse` varies by engin
 
 ## Reviewed Result Export
 
-**Export Reviewed JSON** queries the existing result database for changed human
-labels in the selected run, without duplicating results in a separate dataset.
-The AI `decisions` remain unchanged; human corrections are in `reviewerDecisions`.
-The export includes `exportScope: "reviewed-changes"`, an `exported` count, and
-the complete matching result objects. No matches produces an empty `results`
-array. Run-level `total`/`completed` still describe the original run. This is a
-reviewed-result export, not a model-specific fine-tuning file. Task deletion also
-deletes these reviews; download them first if they must be retained.
+- **Export Reviewed JSON** queries the existing result database for changed human labels in the selected run, without duplicating results in a separate dataset. The AI `decisions` remain unchanged; human corrections are in `reviewerDecisions`.
+- The export includes `exportScope: "reviewed-changes"`, an `exported` count, and the complete matching result objects. No matches produces an empty `results` array. Run-level `total`/`completed` still describe the original run. This is a reviewed-result export, not a model-specific fine-tuning file.
+- Task deletion also deletes these reviews; download them first if they must be retained.
 
 Native HDFS results use `hdfs://namenode[:port]/path`; WebHDFS uses
 `webhdfs://host[:port]/path` or `swebhdfs://host[:port]/path` for HTTPS.

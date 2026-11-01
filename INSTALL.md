@@ -14,12 +14,12 @@ labels to match your deployment. Commands run as the DeciFlow owner. Omit `sudo`
 | Method | Required Tools | Environment File |
 | --- | --- | --- |
 | [1. PyPI: uv tool or pip](#pypi) (Recommended) | Python 3.12, uv, Docker | `~/.config/deciflow/.env` |
-| [2. Docker Compose](#docker-compose) | Git, Docker Compose 2.20+ | `<checkout>/.env` |
-| [3. Run from Source (CLI)](#direct-processes) | Python 3.12, uv, Git, Docker | `<checkout>/.env` |
+| [2. Docker Compose](#docker-compose) | Git, Docker Compose 2.20+ | `~/.config/deciflow/.env` |
+| [3. Run from Source (CLI)](#direct-processes) | Python 3.12, uv, Git, Docker | `~/.config/deciflow/.env` |
 
-The package and source methods both use `deciflow start`; the source method
-selects the checkout with `--config-dir`. Compose calls the server directly and
-uses `/app/.env` inside the UI container. See
+All three methods require `DECIFLOW_ENV_PATH` to select the environment file; see [file selection](docs/configuration.md#environment-file-locations). The package and source methods
+use `deciflow start`; Compose calls the server directly and reads the same host
+file at `/etc/deciflow.env` inside the UI container. See
 [CLI and direct server startup](docs/configuration.md#cli-and-direct-server-startup)
 for the environment paths, startup checks, and process-management differences.
 
@@ -87,6 +87,7 @@ access.** Omit `sudo` when running as root:
 
 ```bash
 deciflow init
+export DECIFLOW_ENV_PATH="$HOME/.config/deciflow/.env"
 sudo mkdir -p /var/lib/deciflow-data /var/log/deciflow
 sudo chown "$(id -un):$(id -gn)" /var/lib/deciflow-data /var/log/deciflow
 ```
@@ -125,7 +126,7 @@ sudo systemctl enable --now docker
 
 ```bash
 docker run -d --name deciflow-laya --restart unless-stopped \
-  -p 127.0.0.1:8000:8000 --env-file "$HOME/.config/deciflow/.env" \
+  -p 127.0.0.1:8000:8000 --env-file "$DECIFLOW_ENV_PATH" \
   -e LAYA_HOST=0.0.0.0 -e LAYA_DEVICE=cpu \
   -e LAYA_MODELS=multilingual -e LAYA_PRELOAD=1 \
   -v deciflow-laya-cache:/home/laya/.cache/huggingface \
@@ -169,11 +170,13 @@ For optional HTTPS, follow [PyPI authentication](docs/authentication.md#pypi).
 ```bash
 git clone https://github.com/call518/DeciFlow.git
 cd DeciFlow
-test -f .env || cp .env.example .env
-chmod 600 .env
+install -d -m 700 "$HOME/.config/deciflow"
+test -f "$HOME/.config/deciflow/.env" || \
+  install -m 600 .env.example "$HOME/.config/deciflow/.env"
+export DECIFLOW_ENV_PATH="$HOME/.config/deciflow/.env"
 ```
 
-Edit **`<checkout>/.env`**:
+Edit **`~/.config/deciflow/.env`**:
 
 ```dotenv
 COMPOSE_PROFILES=cpu
@@ -204,16 +207,42 @@ sudo systemctl enable --now docker
 ```
 
 ```bash
-docker compose up -d --remove-orphans
-docker compose logs -f laya-cpu
+docker compose --env-file "$DECIFLOW_ENV_PATH" up -d --remove-orphans
+docker compose --env-file "$DECIFLOW_ENV_PATH" logs -f laya-cpu
 ```
+
+For shorter lifecycle commands, use the repository's script:
+
+```bash
+./compose.sh up
+./compose.sh down
+```
+
+- **Other directories:** use `/path/to/DeciFlow/compose.sh up`. The script locates the Compose project relative to itself.
+- **Configuration:** only the file selected by `DECIFLOW_ENV_PATH` is used.
+- **Validation:** a missing, empty, or invalid selector stops execution; no other file is tried.
+
+| Command | Behavior |
+| --- | --- |
+| `up` | Start detached with `--remove-orphans` |
+| `down` | Remove containers and networks; preserve named volumes |
+
+Register the environment variable in `~/.bashrc` (or `/etc/bashrc` for all users)
+and export it in the current shell:
+
+```bash
+export DECIFLOW_ENV_PATH="$HOME/.config/deciflow/.env"
+```
+
+- **Manual Compose commands:** pass `--env-file "$DECIFLOW_ENV_PATH"` as shown above.
+- **Why `down` also needs it:** Compose parses variables and the OAuth configuration for both lifecycle commands. The script supplies the option automatically.
 
 After model loading, exit log viewing with `Ctrl+C` and open
 **`http://YOUR_SERVER_IP:4000`**. In [Run the Demo](#demo), use Source path
 **`/host-logs/sample-logs/access-100.log`**.
 
-Stop/start with `docker compose stop` / `docker compose start`; after `.env`
-changes use `docker compose up -d --remove-orphans`. Named volumes preserve data.
+Stop/start with `docker compose --env-file "$DECIFLOW_ENV_PATH" stop` / `docker compose --env-file "$DECIFLOW_ENV_PATH" start`; after `.env`
+changes use `docker compose --env-file "$DECIFLOW_ENV_PATH" up -d --remove-orphans`. Named volumes preserve data.
 For optional HTTPS, follow [Compose authentication](docs/authentication.md#docker).
 
 → **[Method complete: skip other methods and go to Run the Demo](#demo)**
@@ -230,14 +259,14 @@ extra and a second native Python process are unnecessary.
 ```bash
 git clone https://github.com/call518/DeciFlow.git
 cd DeciFlow
-test -f .env || cp .env.example .env
-chmod 600 .env
 uv sync --frozen
+uv run deciflow init
+export DECIFLOW_ENV_PATH="$HOME/.config/deciflow/.env"
 sudo mkdir -p /var/lib/deciflow-data /var/log/deciflow
 sudo chown "$(id -un):$(id -gn)" /var/lib/deciflow-data /var/log/deciflow
 ```
 
-Edit **`<checkout>/.env`**:
+Edit **`~/.config/deciflow/.env`**:
 
 ```dotenv
 COMPOSE_PROFILES=
@@ -253,7 +282,7 @@ LAYA_HEAD_TOKENS=512
 DECIFLOW_DATA_DIR=/var/lib/deciflow-data
 ```
 
-Start Laya with the checkout's `.env`:
+Start Laya with the shared `.env`:
 
 If Docker is not installed, install it and start the daemon first. Skip if already prepared.
 Omit `sudo` when running as root.
@@ -266,7 +295,7 @@ sudo systemctl enable --now docker
 
 ```bash
 docker run -d --name deciflow-laya --restart unless-stopped \
-  -p 127.0.0.1:8000:8000 --env-file "$PWD/.env" \
+  -p 127.0.0.1:8000:8000 --env-file "$DECIFLOW_ENV_PATH" \
   -e LAYA_HOST=0.0.0.0 -e LAYA_DEVICE=cpu \
   -e LAYA_MODELS=multilingual -e LAYA_PRELOAD=1 \
   -v deciflow-laya-cache:/home/laya/.cache/huggingface \
@@ -277,14 +306,14 @@ docker logs -f deciflow-laya
 After loading, leave the log viewer with `Ctrl+C`, then start DeciFlow:
 
 ```bash
-uv run deciflow config test --config-dir "$PWD"
-uv run deciflow start --daemon --config-dir "$PWD"
+uv run deciflow config test
+uv run deciflow start --daemon
 realpath sample-logs/access-100.log
 ```
 
 Open **`http://YOUR_SERVER_IP:4000`** and use the printed absolute path in
-[Run the Demo](#demo). Always select this checkout with `--config-dir "$PWD"`.
-Stop with `uv run deciflow stop --config-dir "$PWD"`; start with the command above.
+[Run the Demo](#demo). The CLI reads `~/.config/deciflow/.env`.
+Stop with `uv run deciflow stop`; start with the command above.
 Data/logs stay in `/var/lib/deciflow-data` / `/var/log/deciflow`. Laya is managed separately in Docker.
 For optional HTTPS, follow [direct-process authentication](docs/authentication.md#source).
 
@@ -310,8 +339,8 @@ If Laya container settings such as its key change, use `docker rm -f deciflow-la
 and rerun its `docker run` command. A simple stop/start does not reread `.env`.
 
 - Package: `deciflow status`; logs under `/var/log/deciflow/`.
-- Checkout: `uv run deciflow status --config-dir "$PWD"`; logs under `/var/log/deciflow/`.
-- Compose: `docker compose ps` and `docker compose logs --tail=100 ui laya-cpu`.
+- Checkout: `uv run deciflow status`; logs under `/var/log/deciflow/`.
+- Compose: `docker compose --env-file "$DECIFLOW_ENV_PATH" ps` and `docker compose --env-file "$DECIFLOW_ENV_PATH" logs --tail=100 ui laya-cpu`.
 - Laya startup takes time on the first model download. A failed `config test`
   engine connection is not a reason to switch to paid Jev.
 

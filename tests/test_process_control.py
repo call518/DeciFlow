@@ -85,9 +85,9 @@ def invoke(
     directory: Path, env: dict[str, str], *args: str
 ) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, "-m", "deciflow.cli", *args, "--config-dir", str(directory)],
+        [sys.executable, "-m", "deciflow.cli", *args],
         cwd=ROOT,
-        env=env,
+        env={**env, "DECIFLOW_ENV_PATH": str(directory / ".env")},
         capture_output=True,
         text=True,
         check=False,
@@ -181,7 +181,7 @@ def test_daemon_requires_file_logging(installation) -> None:
 def test_status_does_not_initialize(tmp_path: Path) -> None:
     directory = tmp_path / "absent"
     result = invoke(directory, dict(os.environ), "status")
-    assert result.returncode == 3 and "Not Running" in result.stdout
+    assert result.returncode == 1 and "Configuration file not found" in result.stderr
     assert not directory.exists()
 
 

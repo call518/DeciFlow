@@ -2,15 +2,12 @@
 
 [English](laya.md) | [한국어](laya.ko.md) | [Documentation](README.md) | [README](../README.md)
 
+Before running Compose commands, select the environment file with `export DECIFLOW_ENV_PATH="$HOME/.config/deciflow/.env"`.
+
 ## Request contract
 
-DeciFlow sends a TEXT chunk or text extracted from JSONL as `state`, with the
-Criteria profile's variable question map in `questions`. Question count, names,
-and the mix of `choice`, `score`, and `noul` vary by profile. The system profile's
-category, urgency, and ticket questions are one example. Laya and Jev share
-request construction, result validation, and UI behavior in
-[`classifier.py`](../deciflow/classifier.py). See [request/result JSON](results.md)
-and [Criteria](criteria.md).
+- DeciFlow sends a TEXT chunk or text extracted from JSONL as `state`, with the Criteria profile's variable question map in `questions`. Question count, names, and the mix of `choice`, `score`, and `noul` vary by profile.
+- The system profile's category, urgency, and ticket questions are one example. Laya and Jev share request construction, result validation, and UI behavior in [`classifier.py`](../deciflow/classifier.py). See [request/result JSON](results.md) and [Criteria](criteria.md).
 
 | Setting | DeciFlow behavior |
 | --- | --- |
@@ -77,12 +74,8 @@ interpolated settings such as `LAYA_API_KEY` are read from `.env` for Laya.
 
 ## Limits
 
-DeciFlow does not train or calibrate models, use native inference batching, or
-check complete instruction preservation with the served tokenizer. Category
-probabilities and review thresholds do not establish prediction accuracy.
-The Docker Hub image's installed Laya version and model revisions must be checked
-on the running server; repository configuration alone does not identify them.
-The upstream references below describe Laya v0.4.1 behavior.
+- DeciFlow does not train or calibrate models, use native inference batching, or check complete instruction preservation with the served tokenizer. Category probabilities and review thresholds do not establish prediction accuracy.
+- The Docker Hub image's installed Laya version and model revisions must be checked on the running server; repository configuration alone does not identify them. The upstream references below describe Laya v0.4.1 behavior.
 
 <a id="evaluation"></a>
 
@@ -108,9 +101,9 @@ available on the Laya server. Choose one execution method:
 Docker Compose:
 
 ```bash
-docker compose exec ui uv run --no-sync python -m scripts.evaluate_laya \
+docker compose --env-file "$DECIFLOW_ENV_PATH" exec ui uv run --no-sync python -m scripts.evaluate_laya \
   --output /tmp/laya-validation.json
-docker compose cp ui:/tmp/laya-validation.json /tmp/laya-validation.json
+docker compose --env-file "$DECIFLOW_ENV_PATH" cp ui:/tmp/laya-validation.json /tmp/laya-validation.json
 ```
 
 Local Python:
@@ -119,11 +112,8 @@ Local Python:
 uv run python -m scripts.evaluate_laya --output /tmp/laya-validation.json
 ```
 
-By default, the evaluator uses [36 synthetic cases across five profiles](../tests/fixtures/log_evaluation.json)
-and caps concurrent requests at two. It uses the bundled profile definitions in
-[`deciflow/profiles/`](../deciflow/profiles/), not profiles edited and saved through the UI.
-For UI-edited criteria, put the labeled logs in a UTF-8 file, register a Local File
-Source, and run a Batch Task with that criteria profile. Inspect its results in Main.
+- By default, the evaluator uses [36 synthetic cases across five profiles](../tests/fixtures/log_evaluation.json) and caps concurrent requests at two. It uses the bundled profile definitions in [`deciflow/profiles/`](../deciflow/profiles/), not profiles edited and saved through the UI.
+- For UI-edited criteria, put the labeled logs in a UTF-8 file, register a Local File Source, and run a Batch Task with that criteria profile. Inspect its results in Main.
 
 To compare prepared models, repeat `--model` (append these options to the chosen command):
 
@@ -200,38 +190,31 @@ only a Laya service. Complete [deployment setup](authentication.md) first.
 Set `COMPOSE_PROFILES=cpu` in `.env`, then run:
 
 ```bash
-docker compose up -d laya-cpu
+docker compose --env-file "$DECIFLOW_ENV_PATH" up -d laya-cpu
 ```
 
-For Laya and DeciFlow together, use `docker compose up -d` instead.
-Both Laya variants publish host port **8000**, share the `deciflow-laya-model-cache`
-volume, and preload `english`, `multilingual`, and `typed-decisions`.
-Choose exactly one profile; CPU and CUDA cannot run together with this configuration.
-`LAYA_API_KEY` in `.env` configures both Laya and DeciFlow; an empty key disables authentication.
+- For Laya and DeciFlow together, use `docker compose --env-file "$DECIFLOW_ENV_PATH" up -d` instead. Both Laya variants publish host port **8000**, share the `deciflow-laya-model-cache` volume, and preload `english`, `multilingual`, and `typed-decisions`.
+- Choose exactly one profile; CPU and CUDA cannot run together with this configuration. `LAYA_API_KEY` in `.env` configures both Laya and DeciFlow; an empty key disables authentication.
 
 <a id="laya-gpu"></a>
 
 ##### Optional: GPU acceleration (CUDA)
 
-CUDA additionally requires a compatible NVIDIA GPU, a driver, and
-[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
-Check the GPU and driver with `nvidia-smi`: its `CUDA Version` describes driver
-support, not the installed Toolkit. These containers need no local CUDA Toolkit.
-The CUDA 13.0 image requires [driver 580 or newer](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html).
-The CUDA service reserves all GPUs; the CPU service requests none.
+- CUDA additionally requires a compatible NVIDIA GPU, a driver, and [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). Check the GPU and driver with `nvidia-smi`: its `CUDA Version` describes driver support, not the installed Toolkit. These containers need no local CUDA Toolkit.
+- The CUDA 13.0 image requires [driver 580 or newer](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html). The CUDA service reserves all GPUs; the CPU service requests none.
 
 To switch an existing deployment, export any results you need, then stop the current
 stack **before editing the profile**:
 
 ```bash
-docker compose down
+docker compose --env-file "$DECIFLOW_ENV_PATH" down
 ```
 
 Set `COMPOSE_PROFILES=cuda` in `.env`, then run:
 
 ```bash
-docker compose up -d
-docker compose logs --follow laya-cuda
+docker compose --env-file "$DECIFLOW_ENV_PATH" up -d
+docker compose --env-file "$DECIFLOW_ENV_PATH" logs --follow laya-cuda
 ```
 
 To return to CPU, follow the same steps with `COMPOSE_PROFILES=cpu`.
@@ -245,7 +228,7 @@ Use the server's key for the health request. This command reads it inside the
 selected container without printing it; replace `laya-cpu` with `laya-cuda` for CUDA:
 
 ```bash
-docker compose exec laya-cpu python -c 'import os, urllib.request; r = urllib.request.Request("http://127.0.0.1:8000/health", headers={"Authorization": "Bearer " + os.environ["LAYA_API_KEY"]}); print(urllib.request.urlopen(r).read().decode())'
+docker compose --env-file "$DECIFLOW_ENV_PATH" exec laya-cpu python -c 'import os, urllib.request; r = urllib.request.Request("http://127.0.0.1:8000/health", headers={"Authorization": "Bearer " + os.environ["LAYA_API_KEY"]}); print(urllib.request.urlopen(r).read().decode())'
 ```
 
 For CUDA, inspect `checkpoint_devices`/`device` and `cpu_fallbacks` to verify GPU use.
@@ -255,11 +238,11 @@ take several minutes; inspect container logs for startup errors.
 
 | Action | Command |
 | --- | --- |
-| Status | `docker compose ps` |
-| Logs | `docker compose logs --tail=100` |
-| Stop | `docker compose stop` |
-| Resume | `docker compose start` |
-| Remove containers | `docker compose down` |
+| Status | `docker compose --env-file "$DECIFLOW_ENV_PATH" ps` |
+| Logs | `docker compose --env-file "$DECIFLOW_ENV_PATH" logs --tail=100` |
+| Stop | `docker compose --env-file "$DECIFLOW_ENV_PATH" stop` |
+| Resume | `docker compose --env-file "$DECIFLOW_ENV_PATH" start` |
+| Remove containers | `docker compose --env-file "$DECIFLOW_ENV_PATH" down` |
 
 `down` preserves named volumes. Do not add `--volumes` if you need to keep data.
 Choose either native execution or Docker.
@@ -277,5 +260,5 @@ LAYA_API_KEY=changeme
 PORT=4000
 ```
 
-Set `COMPOSE_PROFILES=` and run `docker compose up -d`; UI starts without local Laya; OAuth2-Proxy follows OAUTH2_PROXY_ENABLED.
+Set `COMPOSE_PROFILES=` and run `docker compose --env-file "$DECIFLOW_ENV_PATH" up -d`; UI starts without local Laya; OAuth2-Proxy follows OAUTH2_PROXY_ENABLED.
 For execution without Docker, follow the [native guide](../INSTALL.md#direct-processes).

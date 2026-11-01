@@ -26,6 +26,7 @@ def configuration(
     (tmp_path / "data").mkdir()
     (tmp_path / "logs").mkdir()
     path = directory / ".env"
+    monkeypatch.setenv("DECIFLOW_ENV_PATH", str(path))
     path.write_text(
         "DECISION_ENGINE=laya\nLAYA_API_URL=http://engine.test/v1/systemone\n"
         "OAUTH2_PROXY_ENABLED=false\n"
@@ -131,9 +132,10 @@ def test_failures_do_not_stop_other_checks_and_have_terminal_colors(
 
 
 def test_missing_workspace_is_not_created(
-    tmp_path: Path, capsys: pytest.CaptureFixture
+    tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     directory = tmp_path / "missing"
+    monkeypatch.setenv("DECIFLOW_ENV_PATH", str(directory / ".env"))
     assert cli_config.run_config_test(directory) == 1
     assert not directory.exists()
     assert "Config Test Failed" in capsys.readouterr().out
@@ -171,6 +173,7 @@ def test_enabled_proxy_reports_all_missing_prerequisites(
 ) -> None:
     directory, _ = configuration
     path = directory / ".env"
+    monkeypatch.setenv("DECIFLOW_ENV_PATH", str(path))
     path.write_text(
         path.read_text().replace(
             "OAUTH2_PROXY_ENABLED=false", "OAUTH2_PROXY_ENABLED=true"
@@ -265,7 +268,7 @@ def test_cli_dispatch_does_not_initialize_workspace(
 ) -> None:
     directory = tmp_path / "missing"
     monkeypatch.setattr(
-        sys, "argv", ["deciflow", "config", "test", "--config-dir", str(directory)]
+        sys, "argv", ["deciflow", "config", "test"]
     )
     monkeypatch.setattr(cli_config, "run_config_test", lambda path: 1)
     with pytest.raises(SystemExit) as result:
@@ -297,6 +300,7 @@ def test_config_list_redacts_secrets_and_does_not_create_database(
 ) -> None:
     directory, calls = configuration
     path = directory / ".env"
+    monkeypatch.setenv("DECIFLOW_ENV_PATH", str(path))
     for key in (
         "JEV_API_KEY",
         "OAUTH2_PROXY_CLIENT_SECRET",
@@ -400,6 +404,7 @@ def test_proxy_validation_never_returns_or_prints_setting_values(
 ) -> None:
     directory, _ = configuration
     path = directory / ".env"
+    monkeypatch.setenv("DECIFLOW_ENV_PATH", str(path))
     path.write_text(
         path.read_text().replace(
             "OAUTH2_PROXY_ENABLED=false", "OAUTH2_PROXY_ENABLED=true"

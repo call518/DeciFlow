@@ -45,6 +45,9 @@
   When multiple execution methods exist, state whether users choose one or combine
   them, and distinguish each method's requirements and steps explicitly.
 
+- Prefer numbered steps for procedures, tables for comparisons, and short lists
+  for conditions; keep explanatory prose brief and preserve essential details.
+
 - Define DeciFlow, the Laya server, and the Jev service before describing their
   interactions. Name the application or host explicitly when giving requirements,
   settings, or commands; avoid undefined labels such as "remote client" or "server".

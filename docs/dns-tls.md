@@ -2,6 +2,8 @@
 
 [한국어](dns-tls.ko.md) | [Authentication](authentication.md) | [Documentation](README.md)
 
+Before running commands, select the environment file with `export DECIFLOW_ENV_PATH="$HOME/.config/deciflow/.env"`. Files are not searched automatically.
+
 **For a standard installation, start with [Certbot HTTP-01 in Authentication](authentication.md#certificates).**
 This guide covers DNS-01 when inbound port 80 is unavailable or existing BIND9/RFC2136
 automation is required. After issuance, continue with [the certificate preparation copy](authentication.md#certificate-files)
@@ -20,15 +22,9 @@ with RFC2136/TSIG updates. A DNS provider's supported Certbot plugin is another
 issuance method; choose one method, then use the same certificate deployment steps.
 Operating your own BIND9 server is not a DeciFlow requirement.
 
-DNS and certificate issuance apply to all installation methods. The deployment
-and renewal hook below use **Docker Compose**, `<checkout>/.env`, and
-`<checkout>/oauth2-proxy/tls/`. For **uv tool**, use `<config-dir>/oauth2-proxy/tls/`
-(default `~/.config/deciflow/oauth2-proxy/tls/`) alongside `<config-dir>/.env`.
-For **Git checkout direct processes**, use the checkout paths. These two methods
-run the standalone Docker proxy as the DeciFlow account UID, so that account owns
-the private key. Renewal needs certificate copying and Docker proxy recreation.
-Adapt the Compose-only hook below using the paths and recreation commands in
-[per-method authentication](authentication.md).
+- DNS and certificate issuance apply to all installation methods. The deployment and renewal hook below use **Docker Compose**, the file selected by `DECIFLOW_ENV_PATH`, and `<checkout>/oauth2-proxy/tls/`.
+- For **uv tool** and **Git checkout direct processes**, place `oauth2-proxy/tls/` under the selected environment file's parent directory (normally `~/.config/deciflow`). These two methods run the standalone Docker proxy as the DeciFlow account UID, so that account owns the private key.
+- Renewal needs certificate copying and Docker proxy recreation. Adapt the Compose-only hook below using the paths and recreation commands in [per-method authentication](authentication.md).
 
 
 ## Hosts and Example Values
@@ -251,8 +247,8 @@ callback including the port, and prepare the client credentials and allow list.
 Then validate and start on the Docker host:
 
 ```bash
-docker compose config --quiet
-docker compose up -d
+docker compose --env-file "$DECIFLOW_ENV_PATH" config --quiet
+docker compose --env-file "$DECIFLOW_ENV_PATH" up -d
 curl -I https://deciflow.example.com:4443/
 curl -i https://deciflow.example.com:4443/api/status
 ```
@@ -288,7 +284,7 @@ configure the supported renewal scheduler for your Certbot installation.
 
 For the same Certbot/Docker host, create the root-owned executable
 `/etc/letsencrypt/renewal-hooks/deploy/deciflow-op.sh` with the following content.
-Change the repository path and lineage first. The scheduler's account must have
+Change the environment file path, repository path, and lineage first. The scheduler's account must have
 Docker access, and `docker` must be on its PATH with the correct Docker context:
 
 ```sh
@@ -299,11 +295,12 @@ if [ "${RENEWED_LINEAGE:-}" != "/etc/letsencrypt/live/deciflow.example.com" ]; t
     exit 0
 fi
 
+export DECIFLOW_ENV_PATH=/path/to/deciflow.env
 cd /opt/deciflow
 install -d -m 755 oauth2-proxy/tls
 install -m 644 "$RENEWED_LINEAGE/fullchain.pem" oauth2-proxy/tls/fullchain.pem
 install -o 65532 -m 600 "$RENEWED_LINEAGE/privkey.pem" oauth2-proxy/tls/privkey.pem
-docker compose up -d --no-deps --force-recreate oauth2-proxy
+docker compose --env-file "$DECIFLOW_ENV_PATH" up -d --no-deps --force-recreate oauth2-proxy
 ```
 
 ```bash
@@ -313,12 +310,8 @@ sudo sh -n /etc/letsencrypt/renewal-hooks/deploy/deciflow-op.sh
 sudo env RENEWED_LINEAGE=/etc/letsencrypt/live/deciflow.example.com /etc/letsencrypt/renewal-hooks/deploy/deciflow-op.sh
 ```
 
-The last command tests deployment with the current certificate and **recreates OAuth2-Proxy**;
-browser streams disconnect briefly, while UI/Laya and background Tasks stay running.
-The lineage guard skips other certificates. Certbot runs a deploy hook after a
-successful renewal; an ordinary `--dry-run` does not test this hook. Do not deploy
-an ACME staging certificate to the production service. See
-[Certbot renewal and hooks](https://eff-certbot.readthedocs.io/en/stable/using.html#renewing-certificates).
+- The last command tests deployment with the current certificate and **recreates OAuth2-Proxy**; browser streams disconnect briefly, while UI/Laya and background Tasks stay running. The lineage guard skips other certificates.
+- Certbot runs a deploy hook after a successful renewal; an ordinary `--dry-run` does not test this hook. Do not deploy an ACME staging certificate to the production service. See [Certbot renewal and hooks](https://eff-certbot.readthedocs.io/en/stable/using.html#renewing-certificates).
 
 If Certbot is on another host, replace the local deployment hook with your secure
 certificate transfer and remote OAuth2-Proxy recreation process; the above script assumes

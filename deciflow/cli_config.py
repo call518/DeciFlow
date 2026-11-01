@@ -5,7 +5,6 @@ import base64
 import json
 import os
 import re
-import shlex
 import shutil
 import socket
 import sqlite3
@@ -34,10 +33,11 @@ from deciflow.server import ASSETS, DEFAULT_LOG_DIR, _check_engine_connection
 
 def list_configuration(directory: Path) -> None:
     """List known effective settings without inference, DB creation, or secret values."""
+    environment_file = Path(os.environ["DECIFLOW_ENV_PATH"])
     original = Path.cwd()
     try:
         os.chdir(directory)
-        read_environment(directory / ".env")
+        read_environment(environment_file)
         overrides = read_overrides()
         effective = effective_values(overrides)
         defaults = {
@@ -58,7 +58,7 @@ def list_configuration(directory: Path) -> None:
             "JEV_API_KEY": "",
             "OPENAI_API_KEY": "",
         }
-        print(f"DeciFlow Configuration · {directory / '.env'}")
+        print(f"DeciFlow Configuration · {environment_file}")
         for key, default in defaults.items():
             source = (
                 "UI Override"
@@ -291,15 +291,13 @@ def run_config_test(directory: Path, *, detailed: bool = True) -> int:
             print(f"[{mark}] {label}", flush=True)
         return result
 
+    environment_file = Path(os.environ["DECIFLOW_ENV_PATH"])
     if detailed:
-        print(f"DeciFlow Config Test · {directory / '.env'}", flush=True)
+        print(f"DeciFlow Config Test · {environment_file}", flush=True)
     if not directory.is_dir():
         check("Configuration Directory", lambda: list(directory.iterdir()))
         if detailed:
-            print(
-                "Run: "
-                + shlex.join(["deciflow", "init", "--config-dir", str(directory)])
-            )
+            print("Run: deciflow init")
         mark = "\033[91mFailed\033[0m" if color else "Failed"
         print(f"\nConfig Test {mark}: 0 passed, 1 failed.")
         return 1
@@ -308,8 +306,8 @@ def run_config_test(directory: Path, *, detailed: bool = True) -> int:
         os.chdir(directory)
         ready = check(
             "Environment File",
-            lambda: read_environment(directory / ".env"),
-            "Edit .env; use deciflow init with this --config-dir if the template is missing.",
+            lambda: read_environment(environment_file),
+            "Edit .env; check DECIFLOW_ENV_PATH or run deciflow init if the template is missing.",
         )
         check("Application Resources", check_resources)
         directories = check("Storage Settings", storage_directories)

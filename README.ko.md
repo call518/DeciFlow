@@ -14,12 +14,18 @@
 
 **[설치와 설정 → INSTALL.ko.md](INSTALL.ko.md)**
 
-[PyPI: pip 또는 uv tool](INSTALL.ko.md#pypi),
-[Docker Compose + Git Clone](INSTALL.ko.md#docker-compose),
-[Git 저장소에서 CLI 실행](INSTALL.ko.md#direct-processes) 중 하나를 선택하세요.
+설치 방식 하나를 선택하세요.
+
+- [PyPI: pip 또는 uv tool](INSTALL.ko.md#pypi)
+- [Docker Compose + Git Clone](INSTALL.ko.md#docker-compose)
+- [Git 저장소에서 CLI 실행](INSTALL.ko.md#direct-processes)
+
 설치 가이드는 방식별 요구사항·엔진 연결·저장 경로·인증·기동·검증·유지 관리를 설명합니다.
-CLI와 서버 직접 실행의 설정 경로·프로세스 관리 차이는
-[비교 안내](docs/configuration.ko.md#cli와-서버-직접-실행의-차이)를 참고하세요.
+
+- **설정 파일:** CLI·서버 직접 실행·`compose.sh`는 `DECIFLOW_ENV_PATH`에 지정한 파일만 읽습니다.
+- **초기화:** `deciflow init`은 `~/.config/deciflow/.env`를 생성합니다. 실행 전에 이 경로를 export하세요.
+- **상세 안내:** [설정 안내](docs/configuration.ko.md#환경-파일-위치)를 참고하세요.
+
 
 ## 소개
 
@@ -28,11 +34,10 @@ CLI와 서버 직접 실행의 설정 경로·프로세스 관리 차이는
 로컬·SSH·HDFS Source를 읽고 브라우저에서 결과를 제공합니다. Batch 모드로 기존 파일을
 조사하고 Realtime 모드로 새 로그 이벤트를 감시합니다.
 
-**Laya 서버**는 같은 호스트 또는 별도 호스트에서 판정 모델을 실행합니다.
-**Jev**는 대안으로 사용할 수 있는 유료 호스팅 추론 API입니다. DeciFlow가 데이터를
-읽고 선택한 엔진으로 이벤트를 보냅니다. 기본 엔진은 Laya이며 유료 Jev로 자동 전환하지
-않습니다. 공용 Laya 서버에 연결하는 DeciFlow 노드에는 로컬 GPU나 PyTorch가 필요하지
-않습니다. **OAuth2-Proxy**는 선택적으로 Google 로그인과 HTTPS를 제공합니다.
+- **Laya 서버:** 같은 호스트 또는 별도 호스트에서 판정 모델을 실행합니다. 공용 Laya 서버에 연결하는 DeciFlow 노드에는 로컬 GPU나 PyTorch가 필요하지 않습니다.
+- **Jev:** 대안으로 사용할 수 있는 유료 호스팅 추론 API입니다. DeciFlow가 데이터를 읽고 선택한 엔진으로 이벤트를 보냅니다. 기본 엔진은 Laya이며 유료 Jev로 자동 전환하지 않습니다.
+- **OAuth2-Proxy:** 선택적으로 Google 로그인과 HTTPS를 제공합니다.
+
 
 ## 핵심 개념
 
@@ -62,10 +67,8 @@ DeciFlow는 이벤트를 읽고 Laya 또는 Jev에 Task의 Criteria를 적용한
 적용됩니다. 여러 SSH Host의 결과를 통합하면서 호스트별 수집 상태도 보존합니다.
 브라우저는 분류를 반복하지 않고 실행에 다시 연결하며, 브라우저가 닫혀도 Task는 계속됩니다.
 
-정의·실행 이력·원본 입력·판정·검토 내용을 데이터 저장소에 보존합니다. 체크포인트가 있는
-Batch·Realtime 실행은 서버 재시작 후 재개할 수 있고 일시정지한 실행은 그대로 유지합니다.
-복구 시 원본 파일이 동일한지 검증합니다. 요구사항과 한계는
-[Task 복구](docs/tasks.ko.md#서버-재시작-후-복구)와 [결과 저장](docs/configuration.ko.md#storage)을 참고하세요.
+- 정의·실행 이력·원본 입력·판정·검토 내용을 데이터 저장소에 보존합니다. 체크포인트가 있는 Batch·Realtime 실행은 서버 재시작 후 재개할 수 있고 일시정지한 실행은 그대로 유지합니다. 복구 시 원본 파일이 동일한지 검증합니다.
+- 요구사항과 한계는 [Task 복구](docs/tasks.ko.md#서버-재시작-후-복구)와 [결과 저장](docs/configuration.ko.md#storage)을 참고하세요.
 
 ## 주요 기능
 

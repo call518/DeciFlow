@@ -25,10 +25,20 @@ def reset_directory() -> Path:
         Path.home(),
         Path.cwd().resolve(),
     }
-    from deciflow.paths import RESOURCE_ROOT
+    from deciflow.paths import RESOURCE_ROOT, default_config_directory
 
     project = RESOURCE_ROOT
     resolved = root.resolve()
+    configuration = (
+        Path(os.getenv("DECIFLOW_ENV_PATH") or default_config_directory() / ".env")
+        .expanduser()
+        .resolve()
+        .parent
+    )
+    if resolved == configuration or resolved in configuration.parents:
+        raise ValueError(
+            "The data directory must not contain application configuration."
+        )
     if root.is_symlink() or resolved in protected or resolved == project:
         raise ValueError("Reset requires a dedicated application data directory.")
     if resolved in project.parents or resolved in Path.cwd().resolve().parents:

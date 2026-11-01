@@ -19,10 +19,12 @@ def test_sigint_stops_open_realtime_stream(tmp_path: Path, persist: bool) -> Non
         port = listener.getsockname()[1]
     log = tmp_path / "live.log"
     log.write_text("")
+    (tmp_path / ".env").touch()
     output = tmp_path / "server-output.txt"
     env = {
         **os.environ,
         "PORT": str(port),
+        "DECIFLOW_ENV_PATH": str(tmp_path / ".env"),
         "DECIFLOW_DATA_DIR": str(tmp_path / "data"),
         "DECISION_ENGINE": "laya",
         "LAYA_CONCURRENCY": "4",

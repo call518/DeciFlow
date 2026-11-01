@@ -73,22 +73,30 @@ async def test_assets_and_status(monkeypatch: pytest.MonkeyPatch) -> None:
                 assert response.headers["content-type"] == "image/png"
                 assert (
                     response.content
-                    == (server.ROOT / "images" / "DeciFlow-Logo.png").read_bytes()
+                    == (
+                        server.RESOURCE_ROOT / "images" / "DeciFlow-Logo.png"
+                    ).read_bytes()
                 )
             if path == "/images/GitHub-Logo.png":
                 assert response.headers["content-type"] == "image/png"
-                assert response.content == (
-                    server.ROOT / "images" / "GitHub-Logo.png"
-                ).read_bytes()
+                assert (
+                    response.content
+                    == (
+                        server.RESOURCE_ROOT / "images" / "GitHub-Logo.png"
+                    ).read_bytes()
+                )
             if path == "/favicon.ico" or path.startswith("/icons/"):
                 name, media_type = server.ASSETS[path]
                 assert response.headers["content-type"] == media_type
-                assert response.content == (server.ROOT / "public" / name).read_bytes()
+                assert (
+                    response.content
+                    == (server.RESOURCE_ROOT / "public" / name).read_bytes()
+                )
         response = await client.get("/icons/deciflow-icon-32.png?v=deciflow-1")
         assert response.status_code == 200
         assert (
             response.content
-            == (server.ROOT / "images/icons/deciflow-icon-32.png").read_bytes()
+            == (server.RESOURCE_ROOT / "images/icons/deciflow-icon-32.png").read_bytes()
         )
         status = (await client.get("/api/status")).json()
         assert status["configured"] is False
@@ -265,7 +273,7 @@ async def test_remote_file_origin_allowlist(
 
 def test_startup_reads_changed_dotenv(tmp_path: Path) -> None:
     settings = tmp_path / ".env"
-    environment = dict(os.environ)
+    environment = {**os.environ, "DECIFLOW_ENV_PATH": str(settings)}
     for name in ("DECISION_ENGINE", "PORT", "LAYA_MODEL", "LAYA_MAX_TOKENS"):
         environment.pop(name, None)
     code = (
@@ -422,3 +430,47 @@ def test_ui_origin_policy(
         "server": (request.url.host, request.url.port or 80),
     }
     assert server._allowed_origin(Request(scope)) is expected
+
+
+@pytest.mark.parametrize("configured", [False, True])
+def test_direct_start_requires_explicit_environment_file(
+    tmp_path: Path, configured: bool
+) -> None:
+    home = tmp_path / "home"
+    configuration = home / ".config" / "deciflow"
+    configuration.mkdir(parents=True)
+    working = tmp_path / "working"
+    working.mkdir()
+    (working / ".env").write_text("DECISION_ENGINE=jev\nPORT=4999\n")
+    if configured:
+        (configuration / ".env").write_text(
+            "DECISION_ENGINE=laya\nPORT=4012\nOAUTH2_PROXY_ENABLED=false\n"
+        )
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith(("DECIFLOW_", "LAYA_", "JEV_", "OPENAI_", "OAUTH2_"))
+        and key not in {"PORT", "DECISION_ENGINE"}
+    }
+    environment.update(HOME=str(home), PYTHONPATH=str(server.RESOURCE_ROOT))
+    if configured:
+        environment["DECIFLOW_ENV_PATH"] = str(configuration / ".env")
+    code = (
+        "from deciflow import server; "
+        "server.uvicorn.run=lambda app, **kw: print(server.get_engine().name, kw['port']); "
+        "server.main(host='127.0.0.1')"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=working,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if configured:
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.splitlines()[-1] == "laya 4012"
+    else:
+        assert result.returncode != 0
+        assert "Set DECIFLOW_ENV_PATH" in result.stderr

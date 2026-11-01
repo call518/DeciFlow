@@ -6,13 +6,8 @@
 
 When signed in, your email appears in an account badge directly below the Decision Engine status at the top right. Click the badge to open the account menu and select **Sign Out**.
 
-The default HTTP demo opens `http://localhost:4000` without sign-in.
-The following sign-in instructions apply when `OAUTH2_PROXY_ENABLED=true`.
-Open the HTTPS origin in `.env`'s
-`OAUTH2_PROXY_PUBLIC_URL` (port 4443), then sign in with a Google account on the email
-allow list. This includes Workspace and other Google accounts, not only Gmail.
-A shared run link requires the same sign-in and permission; it does not grant access.
-All approved users share the installation's data and management capabilities.
+- The default HTTP demo opens `http://localhost:4000` without sign-in. The following sign-in instructions apply when `OAUTH2_PROXY_ENABLED=true`. Open the HTTPS origin in `.env`'s `OAUTH2_PROXY_PUBLIC_URL` (port 4443), then sign in with a Google account on the email allow list. This includes Workspace and other Google accounts, not only Gmail.
+- A shared run link requires the same sign-in and permission; it does not grant access. All approved users share the installation's data and management capabilities.
 
 If the UI reports that sign-in is required or the session expired, reload to sign in
 again; it does not automatically retry write operations. Background Tasks continue.
@@ -20,22 +15,19 @@ To sign out, open `/oauth2/sign_out` on that HTTPS origin, then reload the UI.
 This clears the proxy session, not the Google account session. See
 [authentication setup and operations](authentication.md).
 
-On wide screens, the left **40%** shows **Classification Overview → Task Monitor**;
-the right **60%** shows **Classification Results**. On wide screens, the left information panel and right results panel scroll independently. Narrow screens stack the panels and use normal page scrolling.
-The sidebar identifies the DeciFlow reader host by hostname, detected IPs, and
-OS/version. In WSL or containers, these identify that environment, not its host OS;
-IPs are not a full interface inventory. Source SSH hosts are selected per Source in Tasks. The engine status starts with Checking… on each page load or refresh. DeciFlow checks Laya `GET /health` or Jev `GET /v1/models` once on the backend, without inference. A successful HTTP check shows Reachable; it does not guarantee model readiness or authentication on Laya versions with public health endpoints. New classification requests then show Operational, Unreachable, Timed Out, Auth Error, or API Error. The tooltip includes the check basis and time. Historical results and local input rejections do not change the status; view changes do not repeat the HTTP check. A late HTTP check cannot overwrite an actual request result. This is not continuous monitoring. A missing DeciFlow check endpoint shows Check Unavailable (restart the UI server); a failed check request shows Check Failed, distinct from an engine API Error.
+- On wide screens, the left **40%** shows **Classification Overview → Task Monitor**; the right **60%** shows **Classification Results**. On wide screens, the left information panel and right results panel scroll independently.
+- Narrow screens stack the panels and use normal page scrolling. The sidebar identifies the DeciFlow reader host by hostname, detected IPs, and OS/version.
+- In WSL or containers, these identify that environment, not its host OS; IPs are not a full interface inventory. Source SSH hosts are selected per Source in Tasks. The engine status starts with Checking… on each page load or refresh.
+- DeciFlow checks Laya `GET /health` or Jev `GET /v1/models` once on the backend, without inference. A successful HTTP check shows Reachable; it does not guarantee model readiness or authentication on Laya versions with public health endpoints.
+- New classification requests then show Operational, Unreachable, Timed Out, Auth Error, or API Error. The tooltip includes the check basis and time.
+- Historical results and local input rejections do not change the status; view changes do not repeat the HTTP check. A late HTTP check cannot overwrite an actual request result. This is not continuous monitoring.
+- A missing DeciFlow check endpoint shows Check Unavailable (restart the UI server); a failed check request shows Check Failed, distinct from an engine API Error.
 
 ### Tasks and criteria
 
-Register inputs in **Sources**, then save their Criteria, Events/Chunk, and Action
-assignments in **Tasks**. Main lists enabled Tasks, with running/starting Tasks first and names sorted within each group. Click one to show its current or latest execution;
-a fresh page has no selection. Tasks supports manual Batch, cron Batch with a timezone,
-and continuous Realtime; there is no Paste input. Saving does not start analysis.
-Use the Enabled switch and Run, Stop, View, Edit, History, and Delete from the Task list.
-Disabling stops active execution and blocks manual runs, cron, and automatic
-restart; enabling does not start a run immediately.
-See [Tasks](tasks.md) for scheduling, restart behavior, and storage.
+- Register inputs in **Sources**, then save their Criteria, Events/Chunk, and Action assignments in **Tasks**. Main lists enabled Tasks, with running/starting Tasks first and names sorted within each group.
+- Click one to show its current or latest execution; a fresh page has no selection. Tasks supports manual Batch, cron Batch with a timezone, and continuous Realtime; there is no Paste input. Saving does not start analysis.
+- Use the Enabled switch and Run, Stop, View, Edit, History, and Delete from the Task list. Disabling stops active execution and blocks manual runs, cron, and automatic restart; enabling does not start a run immediately. See [Tasks](tasks.md) for scheduling, restart behavior, and storage.
 
 **Reset Selections** in the Task editor selects available sample Sources (or the
 first registration), sample criteria, one event per chunk, and Action None.
@@ -55,11 +47,9 @@ Criteria defines any number of named Choice, Score, and Noul decisions. Existing
 system profiles retain Category, Urgency, and Work Ticket. New profiles configure
 their own options and levels. See [Criteria](criteria.md).
 
-All decisions appear in compact cards in their configured order; **Probabilities and Criteria** expands its distribution and definitions.
-**Review** records typed corrections. Choice uncertainty is shown per
-item; Needs Review can come from any decision, while chart certainty refers to the
-selected Choice. These are separate judgments, not one combined probability.
-No ticket is created automatically. Missing or invalid answers fail the whole request.
+- All decisions appear in compact cards in their configured order; **Probabilities and Criteria** expands its distribution and definitions. **Review** records typed corrections.
+- Choice uncertainty is shown per item; Needs Review can come from any decision, while chart certainty refers to the selected Choice. These are separate judgments, not one combined probability. No ticket is created automatically.
+- Missing or invalid answers fail the whole request.
 
 | Criteria profile | Focus |
 | --- | --- |
@@ -68,23 +58,16 @@ No ticket is created automatically. Missing or invalid answers fail the whole re
 | Sample HTTP access | Responses, request failures, and suspicious access |
 | Sample Application | Application operations, exceptions, and dependencies |
 
-Use **Criteria** in the sidebar to add, edit, or delete profiles.
-System profiles retain Normal, Warning, Error, Security, and Other; custom
-profiles choose their own options. **Sample General System** follows the same editing and deletion
-rules as every other profile. **Save Changes** applies to new runs; running jobs keep their original
-criteria. See [Criteria management](criteria.md) for storage and deletion restrictions on Task references.
-Describe outcomes and evidence; keep specific log strings in evaluation samples.
+- Use **Criteria** in the sidebar to add, edit, or delete profiles. System profiles retain Normal, Warning, Error, Security, and Other; custom profiles choose their own options.
+- **Sample General System** follows the same editing and deletion rules as every other profile. **Save Changes** applies to new runs; running jobs keep their original criteria. See [Criteria management](criteria.md) for storage and deletion restrictions on Task references.
+- Describe outcomes and evidence; keep specific log strings in evaluation samples.
 
 The resulting log chunk is sent as the request `state` string: one event, or
 events joined with newlines. Classification instructions are in `questions`, not
 state. [Request/result examples](results.md) show all three questions and answers.
 
-Chunks never mix files. Batch flushes remaining events at EOF; Realtime flushes at
-the configured size or after one second without a new event, and separates
-file rotations. Blank lines are skipped; event boundaries are not automatically
-detected. Overlapping local matches with identical settings are deduplicated by resolved
-path; conflicting settings are rejected. Chunking does not bypass model budgets. Remote rotation uses size/prefix checks;
-see [SSH limitations](sources.md#ssh-configuration).
+- Chunks never mix files. Batch flushes remaining events at EOF; Realtime flushes at the configured size or after one second without a new event, and separates file rotations. Blank lines are skipped; event boundaries are not automatically detected.
+- Overlapping local matches with identical settings are deduplicated by resolved path; conflicting settings are rejected. Chunking does not bypass model budgets. Remote rotation uses size/prefix checks; see [SSH limitations](sources.md#ssh-configuration).
 
 Sample General System separates routine operation (Normal), recoverable problems
 (Warning), explicit failures (Error), and evidenced abuse or policy violations
@@ -92,14 +75,9 @@ Sample General System separates routine operation (Normal), recoverable problems
 of an incident. These criteria guide predictions; validate your deployed model
 against representative logs before relying on the categories.
 
-Authentication distinguishes unsuccessful individual attempts (Warning), service
-or supporting-mechanism failures (Error), and evidence of abuse (Security).
-Other means an unrelated or unidentifiable outcome, not merely unknown root cause.
-For recognized **single-line classic syslog**, Authentication removes timestamp,
-hostname, and PID from model input while preserving service and message contents
-(users, IPs, ports). Original logs remain intact; changed `decisionInput` appears
-in JSON. Multiline chunks and unrecognized formats are unchanged. Normalization
-reduces input variation; it does not guarantee identical predictions or accuracy.
+- Authentication distinguishes unsuccessful individual attempts (Warning), service or supporting-mechanism failures (Error), and evidence of abuse (Security). Other means an unrelated or unidentifiable outcome, not merely unknown root cause.
+- For recognized **single-line classic syslog**, Authentication removes timestamp, hostname, and PID from model input while preserving service and message contents (users, IPs, ports). Original logs remain intact; changed `decisionInput` appears in JSON.
+- Multiline chunks and unrecognized formats are unchanged. Normalization reduces input variation; it does not guarantee identical predictions or accuracy.
 
 ### Results and controls
 
@@ -107,38 +85,24 @@ The filter menu, Show Decisions, and review/host controls share a compact toolba
 Filter types appear in this order: Search Text, Processing Status, Source, Host, Review Status.
 Search Text is selected initially.
 
-Open the single filter menu, then hover over or click a filter type to show its
-choices. Selecting a value applies it and closes the menu. Search Text opens a text
-field; Enter applies the search and closes it. Outside clicks and Escape close the
-menu. Use Up/Down to navigate categories or values and Right/Left to move between
-levels. On narrow screens, the choices appear below the categories. Switching
-types preserves applied conditions and does not refresh results. Conditions combine
-with AND and appear as removable buttons below the toolbar. Use **Clear All** to reset
-them. Long Source values are shortened on the button; its tooltip keeps the full path.
+- Open the single filter menu, then hover over or click a filter type to show its choices. Selecting a value applies it and closes the menu. Search Text opens a text field; Enter applies the search and closes it. Outside clicks and Escape close the menu.
+- Use Up/Down to navigate categories or values and Right/Left to move between levels. On narrow screens, the choices appear below the categories. Switching types preserves applied conditions and does not refresh results.
+- Conditions combine with AND and appear as removable buttons below the toolbar. Use **Clear All** to reset them. Long Source values are shortened on the button; its tooltip keeps the full path.
 
 Processing Status offers **All Statuses**, **Successful**, and **Failed**. Failed includes source, input, engine request, and
 response-validation failures; Action execution has a separate status. Filters apply
 to the entire stored run; Clear All leaves display settings unchanged.
 
-**Show Decisions** is a separate display setting. Open it and select one or more
-checkboxes to choose the decisions shown in each card; **Show All** restores every
-decision. Click outside the menu or press Escape to close it. Multiple Criteria have
-separate group headings. Display changes do not
-filter cards, change counts or pages, fetch results, or run inference. Failed cards
-remain visible; cards with no selected decisions show a short message. Review,
-Response, Result JSON, and exports retain the complete result. Chart selections
-remain independent. A newly opened run starts with all decisions shown.
+- **Show Decisions** is a separate display setting. Open it and select one or more checkboxes to choose the decisions shown in each card; **Show All** restores every decision. Click outside the menu or press Escape to close it.
+- Multiple Criteria have separate group headings. Display changes do not filter cards, change counts or pages, fetch results, or run inference. Failed cards remain visible; cards with no selected decisions show a short message.
+- Review, Response, Result JSON, and exports retain the complete result. Chart selections remain independent. A newly opened run starts with all decisions shown.
 
 Each result displays the original input data in bold; JSON and Action code keep
 their own formatting.
 
-Newest **completed** chunks appear first, with 30 results per page by default (Settings → Configurations: 10, 30, 50, or 100); this is
-completion order, not log timestamp order. File locations show **File line(s)**
-for Batch and **Observed line(s)** for Realtime—the sequence read since monitoring
-started or the file rotated. `1 event (max 5)` means one event was submitted
-with a configured maximum of five. JSON uses `chunkEvents` for the configured
-limit and `eventCount` for actual events. `line`, `lineEnd`, and `lineCount`
-retain line locations/counts. Requests and results use `chunkEvents`.
+- Newest **completed** chunks appear first, with 30 results per page by default (Settings → Configurations: 10, 30, 50, or 100); this is completion order, not log timestamp order.
+- File locations show **File line(s)** for Batch and **Observed line(s)** for Realtime—the sequence read since monitoring started or the file rotated. `1 event (max 5)` means one event was submitted with a configured maximum of five.
+- JSON uses `chunkEvents` for the configured limit and `eventCount` for actual events. `line`, `lineEnd`, and `lineCount` retain line locations/counts. Requests and results use `chunkEvents`.
 
 #### Uncertainty and human review
 
@@ -153,22 +117,12 @@ For each Choice, any of the following conditions sets its
 | Highest minus second-highest category probability below 10 percentage points | `close_probabilities` | Laya and Jev |
 | Rendered options lose distinction (`usage.options.category.distinct < total`) | `collapsed_options` | Laya, when this metadata is present |
 
-Exactly 70% or a gap of exactly 10 percentage points does not trigger its
-respective condition. The 70% and 10-point thresholds are fixed project
-heuristics, not provider requirements or thresholds validated on DeciFlow's
-operating data. They are not configurable through `.env`. Category probabilities
-are model outputs, not measured correctness rates. Provider `confidence` is
-preserved separately and does not determine Uncertain.
+- Exactly 70% or a gap of exactly 10 percentage points does not trigger its respective condition. The 70% and 10-point thresholds are fixed project heuristics, not provider requirements or thresholds validated on DeciFlow's operating data. They are not configurable through `.env`.
+- Category probabilities are model outputs, not measured correctness rates. Provider `confidence` is preserved separately and does not determine Uncertain.
 
-The first two checks correspond to **confidence thresholding** and
-**margin-based uncertainty**. In active learning, related data-selection methods
-are called least-confidence and margin sampling; least confidence normally uses
-the maximum probability, matching our selected-category check only when the
-provider chooses the highest-probability category. See
-[Settles' Active Learning Literature Survey](https://burrsettles.com/pub/settles.activelearning.pdf).
-DeciFlow flags results for review while retaining predictions; it does not
-implement a formal reject-option classifier or use these flags to train the model.
-The third check detects input integrity problems rather than statistical uncertainty.
+- The first two checks correspond to **confidence thresholding** and **margin-based uncertainty**.
+- In active learning, related data-selection methods are called least-confidence and margin sampling; least confidence normally uses the maximum probability, matching our selected-category check only when the provider chooses the highest-probability category. See [Settles' Active Learning Literature Survey](https://burrsettles.com/pub/settles.activelearning.pdf).
+- DeciFlow flags results for review while retaining predictions; it does not implement a formal reject-option classifier or use these flags to train the model. The third check detects input integrity problems rather than statistical uncertainty.
 
 For example, **Uncertain · Normal** with Normal 42.1% and Error 21.9% means the
 provider selected Normal, but its probability is below 70%; it is a provisional
@@ -176,37 +130,20 @@ choice, not a confirmed normal event. The original choice and probabilities are
 preserved. The UI shows provisional candidates; JSON records `candidates`,
 `probabilityMargin`, and `reviewReasons`.
 
-**Needs Review** counts successful chunks once when any decision is Uncertain, a
-selected option is listed in `reviewOptions`, or instructions were shortened.
-Failed/rejected requests count as Failed and are excluded from review metrics/filters. Other alone does not set Uncertain. **Certain**
-means no Uncertain flag, not verified accuracy. Use labeled logs to evaluate
-misclassifications and review workload before treating the thresholds as an
-operating policy.
+- **Needs Review** counts successful chunks once when any decision is Uncertain, a selected option is listed in `reviewOptions`, or instructions were shortened. Failed/rejected requests count as Failed and are excluded from review metrics/filters.
+- Other alone does not set Uncertain. **Certain** means no Uncertain flag, not verified accuracy. Use labeled logs to evaluate misclassifications and review workload before treating the thresholds as an operating policy.
 
-Filter **All Results / Needs Review / No Review Needed**. Both review groups include
-only successful classifications. Dropdown counts cover the entire run, independent
-of filters and pages; All Results also includes failures. To inspect failures, choose All Results and **Processing Status → Failed**. Processing status
-and case-insensitive literal search of original log text combine with the review
-filter. **Source**, after Search data, filters by an entered path/pattern and shows
-completed counts, including failures. Overlapping patterns retain all matches in
-`sourcePatterns`; files are still processed once. Filters affect the list only,
-not run metrics or JSON export; the Overview chart aggregates all matching results.
+- Filter **All Results / Needs Review / No Review Needed**. Both review groups include only successful classifications. Dropdown counts cover the entire run, independent of filters and pages; All Results also includes failures.
+- To inspect failures, choose All Results and **Processing Status → Failed**. Processing status and case-insensitive literal search of original log text combine with the review filter.
+- **Source**, after Search data, filters by an entered path/pattern and shows completed counts, including failures. Overlapping patterns retain all matches in `sourcePatterns`; files are still processed once.
+- Filters affect the list only, not run metrics or JSON export; the Overview chart aggregates all matching results.
 
-**Decision** filters original AI answers. Select a Decision, then one value:
-Choice uses its classification options, Score uses the chart's rounded levels,
-and Noul uses the chart's 25% probability intervals. Criteria names distinguish
-Decisions from different profiles. One Decision/value condition can be active at
-a time and combines with the other filters. It affects only the full-run result list;
-the Overview chart ignores this condition and still follows the other filters.
-This is independent of **Show Decisions**. Reviewer corrections do
-not replace AI answers for filtering. Remove its filter chip or use **Clear All**
-to reset it. Run URLs retain the selected condition.
+- **Decision** filters original AI answers. Select a Decision, then one value: Choice uses its classification options, Score uses the chart's rounded levels, and Noul uses the chart's 25% probability intervals.
+- Criteria names distinguish Decisions from different profiles. One Decision/value condition can be active at a time and combines with the other filters. It affects only the full-run result list; the Overview chart ignores this condition and still follows the other filters. This is independent of **Show Decisions**.
+- Reviewer corrections do not replace AI answers for filtering. Remove its filter chip or use **Clear All** to reset it. Run URLs retain the selected condition.
 
-**Host** filters the selected run by its saved host identity and combines with Source,
-processing status, review, Decision, and log-text filters. The Overview chart aggregates all matching results across pages. Run metrics and exports remain whole-run.
-**Source Hosts Detail** opens a scrollable dialog with each host’s collection status
-and Success / Failed / Total counts for the entire selected run, including hosts
-with no completed records. Opening it does not reconnect to hosts.
+- **Host** filters the selected run by its saved host identity and combines with Source, processing status, review, Decision, and log-text filters. The Overview chart aggregates all matching results across pages. Run metrics and exports remain whole-run.
+- **Source Hosts Detail** opens a scrollable dialog with each host’s collection status and Success / Failed / Total counts for the entire selected run, including hosts with no completed records. Opening it does not reconnect to hosts.
 
 Host collection states (Pending, Reading, Completed, Failed, Stopped) are separate
 from decision counts: collection can finish while inference is still running.
@@ -231,82 +168,46 @@ continue. Older pages stay fixed; Latest Results returns to current results.
 | Export All JSON | Stream all Task results recorded when export starts, including paused or filtered-out rows; available during execution too. |
 | Export Reviewed JSON | Export successful results with any human correction different from its AI value, including original answers and reviewerDecisions. Cleared and unchanged corrections are excluded; display filters are ignored. |
 
-Use **Criteria** to select a classification scheme when several are present, then
-**Decision** to chart any of its decisions. A single Criteria is shown as bold text. Decision always uses a dropdown with bold selected values, including a single item. Default Chart Decision is selected initially; **Set as Default** saves a new preference without inference. Choice counts selected options; Score
-rounds weighted scores to the nearest level (half up); Noul groups Yes probabilities in
-[0%, 25%), [25%, 50%), [50%, 75%), and [75%, 100%]. Missing answers and failures are
-excluded. All / Certain / Uncertain refers to the selected Choice. Missing evidence is
-**Not Assessed**, never Certain. Score and Noul have no certainty groups. Switching decisions uses stored results without inference.
+- Use **Criteria** to select a classification scheme when several are present, then **Decision** to chart any of its decisions. A single Criteria is shown as bold text. Decision always uses a dropdown with bold selected values, including a single item.
+- Default Chart Decision is selected initially; **Set as Default** saves a new preference without inference.
+- Choice counts selected options; Score rounds weighted scores to the nearest level (half up); Noul groups Yes probabilities in [0%, 25%), [25%, 50%), [50%, 75%), and [75%, 100%]. Missing answers and failures are excluded.
+- All / Certain / Uncertain refers to the selected Choice. Missing evidence is **Not Assessed**, never Certain. Score and Noul have no certainty groups. Switching decisions uses stored results without inference.
 
-**Classification Overview** separates Criteria and decisions; select a
-decision to see its AI counts across sources,
-including uncertain choices. Counts are **chunks**, not raw lines; percentages use
-successfully classified chunks. Failed requests are shown separately. Filters and
-reviewer edits do not change the chart. Use the **All / Certain / Uncertain** buttons to chart all
-classified chunks or just one certainty group; percentages use the selected group.
-Choice buttons show their counts; Not Assessed appears when needed. All shows the total count; Certain and Uncertain show their counts and shares of
-all successfully classified chunks. Category-bar percentages use the selected group.
-Certain means no Uncertain flag, not verified accuracy. The failure count always
-shows all failed requests, which belong to neither certainty group.
-**Truncated** counts responses reporting `usage.truncated=true` across all groups;
-these rejected predictions are included in failures, not category bars. Missing
-truncation metadata and local byte-budget rejections are not counted as truncated.
-This is log/state truncation, not a count of shortened question instructions.
+- **Classification Overview** separates Criteria and decisions; select a decision to see its AI counts across sources, including uncertain choices. Counts are **chunks**, not raw lines; percentages use successfully classified chunks.
+- Failed requests are shown separately. Filters and reviewer edits do not change the chart. Use the **All / Certain / Uncertain** buttons to chart all classified chunks or just one certainty group; percentages use the selected group.
+- Choice buttons show their counts; Not Assessed appears when needed. All shows the total count; Certain and Uncertain show their counts and shares of all successfully classified chunks. Category-bar percentages use the selected group.
+- Certain means no Uncertain flag, not verified accuracy. The failure count always shows all failed requests, which belong to neither certainty group.
+- **Truncated** counts responses reporting `usage.truncated=true` across all groups; these rejected predictions are included in failures, not category bars. Missing truncation metadata and local byte-budget rejections are not counted as truncated. This is log/state truncation, not a count of shortened question instructions.
 
-Displayed, copied, and exported result JSON starts with per-result metadata,
-including `requestedAt`, engine, source, `sourceHosts`, `deciflowHost`, and processing
-duration. Details shows **Source Hosts** and **DeciFlow Host**; response diagnostics
-also includes both fields. See [host identity](configuration.md#result-host-identity). Timestamps use
-ISO 8601 in UTC (`+00:00`); `requestedAt` is request preparation time, not completion.
-Result JSON keeps `requestedModel`, UTC `requestedAt`, request size, input budget,
-and the question/criteria snapshot. `providerResponse` preserves the returned
-model, `routing` (actual checkpoint), `usage` (tokens/truncation), and full answer
-metadata, including provider confidence fields and action/abstention when present.
-Top-level `answerProbability` is the probability of the selected category;
-`confidence` remains the original provider value. `uncertaintyBasis` identifies
-the selected-category scale used by the fixed 70% threshold.
-HTTP status and available request-ID/inference-time headers are retained;
-credentials and authorization headers are excluded. API failures and rejected
-predictions retain available diagnostics too. `model` alone may be a generic
-Laya name: inspect `providerResponse.routing` for the actual checkpoint.
+- Displayed, copied, and exported result JSON starts with per-result metadata, including `requestedAt`, engine, source, `sourceHosts`, `deciflowHost`, and processing duration.
+- Details shows **Source Hosts** and **DeciFlow Host**; response diagnostics also includes both fields. See [host identity](configuration.md#result-host-identity). Timestamps use ISO 8601 in UTC (`+00:00`); `requestedAt` is request preparation time, not completion.
+- Result JSON keeps `requestedModel`, UTC `requestedAt`, request size, input budget, and the question/criteria snapshot.
+- `providerResponse` preserves the returned model, `routing` (actual checkpoint), `usage` (tokens/truncation), and full answer metadata, including provider confidence fields and action/abstention when present.
+- Top-level `answerProbability` is the probability of the selected category; `confidence` remains the original provider value. `uncertaintyBasis` identifies the selected-category scale used by the fixed 70% threshold.
+- HTTP status and available request-ID/inference-time headers are retained; credentials and authorization headers are excluded. API failures and rejected predictions retain available diagnostics too.
+- `model` alone may be a generic Laya name: inspect `providerResponse.routing` for the actual checkpoint.
 
 [Result JSON example and field reference](results.md)
 
 ### Refresh and reconnect
 
-Sidebar routes are Main `/`, Source `/#sources`, Criteria `/#criteria`,
-Actions `/#actions`, Tasks `/#tasks`, and Settings `/#settings`.
-Source, Criteria, Actions, and Tasks are Main submenus. Settings has SSH Keys
-`/#settings/ssh-keys` and SSH Hosts `/#settings/ssh-hosts`; selecting one shows
-only that section. Settings itself lists links to SSH Keys and SSH Hosts.
-Every page uses a title and a short caption above its content cards. Main keeps
-the engine connection status at the right; SSH pages have no duplicate section header.
-Selecting a sidebar menu always returns to its list and closes any View, Edit, or
-History screen. Unsaved editor drafts are discarded; saved settings and running
-Tasks are unchanged.
-Task executions continue after disconnecting or closing the browser. Refreshing
-reconnects to the same execution; History → View Results replays saved results
-without repeating classification or Actions. Main follows new executions of the
-selected Task; explicitly viewing a historical run keeps that run selected.
+- Sidebar routes are Main `/`, Source `/#sources`, Criteria `/#criteria`, Actions `/#actions`, Tasks `/#tasks`, and Settings `/#settings`. Source, Criteria, Actions, and Tasks are Main submenus.
+- Settings has SSH Keys `/#settings/ssh-keys` and SSH Hosts `/#settings/ssh-hosts`; selecting one shows only that section. Settings itself lists links to SSH Keys and SSH Hosts. Every page uses a title and a short caption above its content cards.
+- Main keeps the engine connection status at the right; SSH pages have no duplicate section header. Selecting a sidebar menu always returns to its list and closes any View, Edit, or History screen.
+- Unsaved editor drafts are discarded; saved settings and running Tasks are unchanged. Task executions continue after disconnecting or closing the browser.
+- Refreshing reconnects to the same execution; History → View Results replays saved results without repeating classification or Actions. Main follows new executions of the selected Task; explicitly viewing a historical run keeps that run selected.
 
-Task definitions, run status, settings snapshots, results, and Action outcomes
-persist under `DECIFLOW_DATA_DIR` (configurations and results in `deciflow.sqlite3`).
-Checkpoint-enabled Running executions recover under the same run ID after restart;
-Paused/Pausing executions recover as Paused. Older executions without checkpoints
-become Stopped. The optional Realtime startup setting starts a new run only when
-no execution is recoverable. See [Tasks](tasks.md).
+- Task definitions, run status, settings snapshots, results, and Action outcomes persist under `DECIFLOW_DATA_DIR` (configurations and results in `deciflow.sqlite3`).
+- Checkpoint-enabled Running executions recover under the same run ID after restart; Paused/Pausing executions recover as Paused. Older executions without checkpoints become Stopped.
+- The optional Realtime startup setting starts a new run only when no execution is recoverable. See [Tasks](tasks.md).
 
 Use one DeciFlow server process/instance per data directory. Results and reviewer
 corrections persist in SQLite; only the current page is loaded in the browser.
 Filters, page position, and unsaved drafts remain browser-only. No automatic history
 retention limit is applied. See [Result storage](configuration.md#storage).
 
-The low-level `/api/classify` text API and `/api/file-source` file API remain
-available. With `persist: true`, they return a browser-independent **temporary SQLite-backed**
-job (HTTP 202), not a saved Task or durable run. `/api/jobs/<jobId>` inspects a run,
-`/events` replays/follows NDJSON, and `/stop` stops a live run (POST). Without
-`persist: true`, direct APIs stream for the connection lifetime. Trusted-origin
-checks still apply; file access requires a local/trusted UI Origin.
+- The low-level `/api/classify` text API and `/api/file-source` file API remain available. With `persist: true`, they return a browser-independent **temporary SQLite-backed** job (HTTP 202), not a saved Task or durable run.
+- `/api/jobs/<jobId>` inspects a run, `/events` replays/follows NDJSON, and `/stop` stops a live run (POST). Without `persist: true`, direct APIs stream for the connection lifetime. Trusted-origin checks still apply; file access requires a local/trusted UI Origin.
 
 ### Timing metrics
 
@@ -351,16 +252,10 @@ List View opens details directly beneath the selected row. Click the same View t
 
 All Views use shared compact label/value styling. Short values sit side by side; long values wrap as needed. Read-only input boxes are omitted. Code and public keys preserve their contents in text blocks with a maximum height. Narrow screens stack fields; editing forms are unchanged.
 
-Task Monitor lists all saved Tasks, prioritizing running/starting Tasks. Cards
-show the name and Enabled/state badges, Source and distinct Source Host count,
-then Type / Mode / Action (None when unset). Running/starting cards use a pale
-green background; Stopped cards use a subdued neutral background. Selected cards
-retain a left accent. Keep the pointer still for one second or focus a card for complete Source settings and
-Host names/SSH addresses in a scrollable tooltip. Click to show its current/latest
-results; Tasks without history show an empty result state. Each card has one
-Pause/Resume button for its active run, disabled when no run can be controlled.
-Pausing lets in-flight work finish; Resume continues the same run. Start/stop Tasks in
-Tasks. See [Tasks](tasks.md) for scheduling and default Task restoration.
+- Task Monitor lists all saved Tasks, prioritizing running/starting Tasks. Cards show the name and Enabled/state badges, Source and distinct Source Host count, then Type / Mode / Action (None when unset).
+- Running/starting cards use a pale green background; Stopped cards use a subdued neutral background. Selected cards retain a left accent.
+- Keep the pointer still for one second or focus a card for complete Source settings and Host names/SSH addresses in a scrollable tooltip. Click to show its current/latest results; Tasks without history show an empty result state.
+- Each card has one Pause/Resume button for its active run, disabled when no run can be controlled. Pausing lets in-flight work finish; Resume continues the same run. Start/stop Tasks in Tasks. See [Tasks](tasks.md) for scheduling and default Task restoration.
 
 Once visible, the tooltip stays open while the pointer is over the Task card or
 tooltip. Move into the tooltip to select/copy text; leaving both closes it.
@@ -403,14 +298,9 @@ Existing `/#tasks` and `/#settings/...` links are converted automatically.
 | Configurations | `/settings/configuration` |
 | A specific execution | `/runs/{run-id}` |
 
-Execution URLs retain chart Decision/Criteria selection, chart certainty, Show Decisions,
-the active filter control, result filters, cursor pages, and an expanded result section
-using query parameters (`review`, `processing`, `host`, `source`, `search`, `cursors`,
-`through`, `result`, `detail`, `chart`, `certainty`, `show`, `filter`). Source Hosts Detail uses `dialog=hosts`.
-Automatic polling replaces the current URL rather than creating a history entry
-for every update. Run, Stop, Pause/Resume, Delete, Save, and Export remain explicit
-commands: visiting a link never runs those commands. Unsaved form contents and
-credentials are not encoded in URLs. A deleted item or run is reported unavailable.
+- Execution URLs retain chart Decision/Criteria selection, chart certainty, Show Decisions, the active filter control, result filters, cursor pages, and an expanded result section using query parameters (`review`, `processing`, `host`, `source`, `search`, `cursors`, `through`, `result`, `detail`, `chart`, `certainty`, `show`, `filter`).
+- Source Hosts Detail uses `dialog=hosts`. Automatic polling replaces the current URL rather than creating a history entry for every update. Run, Stop, Pause/Resume, Delete, Save, and Export remain explicit commands: visiting a link never runs those commands.
+- Unsaved form contents and credentials are not encoded in URLs. A deleted item or run is reported unavailable.
 
 Restart the DeciFlow UI server/container once to enable direct clean-path requests;
 no proxy rewrite is needed when all paths are forwarded to DeciFlow. URL sharing
