@@ -445,6 +445,8 @@ def test_direct_start_requires_explicit_environment_file(
     if configured:
         (configuration / ".env").write_text(
             "DECISION_ENGINE=laya\nPORT=4012\nOAUTH2_PROXY_ENABLED=false\n"
+            f"DECIFLOW_DATA_DIR={tmp_path / 'data'}\n"
+            f"DECIFLOW_LOG_DIR={tmp_path / 'logs'}\n"
         )
     environment = {
         key: value
@@ -471,6 +473,8 @@ def test_direct_start_requires_explicit_environment_file(
     if configured:
         assert result.returncode == 0, result.stderr
         assert result.stdout.splitlines()[-1] == "laya 4012"
+        assert (tmp_path / "data" / "deciflow.sqlite3").is_file()
+        assert (tmp_path / "logs").is_dir()
     else:
         assert result.returncode != 0
         assert "Set DECIFLOW_ENV_PATH" in result.stderr
