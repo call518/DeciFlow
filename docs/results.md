@@ -24,8 +24,11 @@ explicitly blank model disables analysis. `OPENAI_CRITERIA_MODEL` remains exclus
 Use one execution method: restart the native DeciFlow process, or recreate the UI
 container after changing Docker environment settings.
 
-For a saved, completed decision with input, clicking opens a separate tab and
-requests analysis once. Failed results and results without input cannot be analyzed.
+For a saved, completed decision with input, clicking opens a movable, resizable popup window and
+requests analysis once. It requests up to 1040 × 820 pixels, fits the available
+screen, and uses the shared confirmation-window styling with a close button.
+Browser settings may block popups or open them as tabs. Failed results and results
+without input cannot be analyzed.
 The server reads the original input, any normalized `decisionInput`, frozen run
 Criteria, decisions/probabilities, input-limit metadata, and reviewer corrections.
 It sends only the selected evidence to OpenAI; API charges apply. API keys stay on
@@ -42,7 +45,7 @@ the requested/response models, response status, request duration (including netw
 time), token usage (including cached input and reasoning token subsets), service
 tier, response/request IDs, and the provider creation time in UTC. Missing values
 show Not Reported rather than zero. Expanding details does not make API requests.
-Analysis is not saved in execution history or exports. Reloading the tab or choosing **Analyze Again** makes another paid
+Analysis is not saved in execution history or exports. Reloading the window or choosing **Analyze Again** makes another paid
 request; failures are not retried automatically. Inputs above 200,000 UTF-8 JSON
 bytes are rejected without being sent or silently truncated.
 

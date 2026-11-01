@@ -2505,13 +2505,20 @@ function processingPercentiles(stats) {
   stats.processingPercentiles={minMs:values[0],maxMs:values[1],medianMs:(values[2]+values[3])/2,p95Ms:values[4],p99Ms:values[5]};
   return stats.processingPercentiles;
 }
+function handleOpenAnalysis(run,sequence) {
+  const availableWidth=globalThis.screen?.availWidth || 1104,availableHeight=globalThis.screen?.availHeight || 900;
+  const width=Math.min(1040,Math.max(320,availableWidth-64)),height=Math.min(820,Math.max(300,availableHeight-80));
+  const left=(globalThis.screen?.availLeft || 0)+Math.round((availableWidth-width)/2);
+  const top=(globalThis.screen?.availTop || 0)+Math.round((availableHeight-height)/2);
+  return globalThis.open(`/analysis.html?run=${encodeURIComponent(run)}&result=${sequence}`,'_blank',`popup=yes,width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes,noopener`);
+}
 function renderAnalysisButton(result) {
   const button=element('button','AI Analysis','quiet result-analysis');button.type='button';
   const sequence=resultCursors.get(result),run=activeJobId;
   button.disabled=!analysisConfiguration.available || !run || !sequence || Boolean(result.error) || !result.input?.trim();
   button.title=!analysisConfiguration.available?'Configure OPENAI_API_KEY and OPENAI_ANALYSIS_MODEL in .env.':button.disabled?'Available for saved, completed decisions with input.':`Send this input, saved Criteria, and decision to OpenAI (${analysisConfiguration.model}). API charges apply.`;
   button.setAttribute('aria-label',`AI Analysis for Result #${result.resultNumber}`);
-  button.onclick=()=>globalThis.open(`/analysis.html?run=${encodeURIComponent(run)}&result=${sequence}`,'_blank','noopener');
+  button.onclick=()=>handleOpenAnalysis(run,sequence);
   return button;
 }
 function render(updateList = true, incremental = false) {

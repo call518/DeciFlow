@@ -5218,7 +5218,7 @@ test('Task Monitor disables unavailable controls and shows operation failures on
   assert.equal(nodes.get('running-tasks').children[0].children[1].disabled,false);
 });
 
-test('AI Analysis requires backend availability and a saved completed result, then opens an isolated tab',async()=>{
+test('AI Analysis requires backend availability and a saved completed result, then opens an isolated popup',async()=>{
   const {context}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
   vm.runInContext("globalThis.item={input:'saved input',resultNumber:7};activeJobId='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';resultCursors.set(item,12)",context);
   for(const available of [false,true]){
@@ -5227,9 +5227,18 @@ test('AI Analysis requires backend availability and a saved completed result, th
     assert.equal(button.textContent,'AI Analysis');assert.equal(button.disabled,!available);
     if(available){
       let opened;context.open=(...args)=>{opened=args;};button.onclick();
-      assert.deepEqual(opened,['/analysis.html?run=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&result=12','_blank','noopener']);
+      assert.deepEqual(opened.slice(0,2),['/analysis.html?run=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&result=12','_blank']);
+      for(const feature of ['popup=yes','width=1040','height=820','resizable=yes','scrollbars=yes','noopener'])assert.ok(opened[2].split(',').includes(feature));
       assert.match(button.title,/API charges apply/);
     }else assert.match(button.title,/OPENAI_API_KEY and OPENAI_ANALYSIS_MODEL/);
   }
   vm.runInContext("item.error='failed'",context);assert.equal(vm.runInContext('renderAnalysisButton(item).disabled',context),true);
+});
+
+
+test('Analysis popup fits small screens and centers on the available monitor',()=>{
+  const {context}=workspace([]);let features;context.open=(url,target,value)=>{features=value;};
+  context.screen={availWidth:800,availHeight:600,availLeft:-800,availTop:40};
+  vm.runInContext("handleOpenAnalysis('run',12)",context);
+  for(const feature of ['width=736','height=520','left=-768','top=80','noopener'])assert.ok(features.split(',').includes(feature));
 });

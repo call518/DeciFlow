@@ -55,6 +55,7 @@ async function handleAnalyze() {
   finally{busy=false;$('analyze').disabled=!available;}
 }
 $('analyze').onclick=handleAnalyze;
+$('close-analysis').onclick=()=>globalThis.close();
 async function handleLoadAnalysis() {
   try {
     if(!run || !/^[a-f0-9]{32}$/.test(run) || !Number.isSafeInteger(sequence) || sequence<1)throw new Error('Select a saved result from DeciFlow.');

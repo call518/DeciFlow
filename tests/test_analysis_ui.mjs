@@ -87,3 +87,10 @@ test('Failed reanalysis clears metadata from the preceding successful response',
   assert.equal(nodes.get('analysis-metadata').hidden,true);
   assert.equal(nodes.get('analysis-metadata-values').children.length,0);
 });
+
+
+test('Analysis window close button closes its own window without requesting analysis',()=>{
+  const {nodes,context}=page(()=>{throw Error('close must not fetch');});
+  let closed=false;context.close=()=>{closed=true;};
+  nodes.get('close-analysis').onclick();assert.equal(closed,true);
+});

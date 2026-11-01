@@ -8,16 +8,22 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body class="analysis-page">
-  <main>
-    <section class="card">
-      <header><h1>AI Analysis</h1><button id="analyze" class="quiet" disabled>Analyze Again</button></header>
+  <main class="ssh-trust-dialog analysis-window">
+    <header class="ssh-trust-header">
+      <h2>AI Analysis</h2>
+      <div class="analysis-window-actions">
+        <button id="analyze" class="quiet" disabled>Analyze Again</button>
+        <button id="close-analysis" type="button" class="quiet ssh-trust-close" aria-label="Close AI Analysis">×</button>
+      </div>
+    </header>
+    <section class="ssh-trust-body">
       <p id="identity" class="caption"></p>
       <p class="caption">Decision Result reports the saved engine output. AI Review Opinion provides an independent assessment, not the engine's internal reasoning. Saved decisions and Actions remain unchanged.</p>
       <p class="caption">Analysis sends the selected input, Criteria, and decision to OpenAI and incurs API charges. Reloading or choosing Analyze Again starts another request.</p>
       <p id="analysis-status" role="status">Loading saved result…</p>
       <div id="analysis-content" class="analysis-content"></div>
     </section>
-    <section id="analysis-evidence" class="card" hidden>
+    <section id="analysis-evidence" class="ssh-trust-body analysis-window-evidence" hidden>
       <details><summary>Input</summary><pre id="analysis-input"></pre></details>
       <details><summary>Saved Criteria and Decision</summary><pre id="analysis-context"></pre></details>
       <details id="analysis-metadata" hidden>

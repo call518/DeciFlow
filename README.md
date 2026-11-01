@@ -72,7 +72,7 @@ See [Task recovery](docs/tasks.md#recovery-after-a-server-restart) and
 ## Capabilities
 
 - **AI Analysis:** review a selected result against its saved input and Criteria
-  in a separate tab. Requires a separate OpenAI analysis model and incurs API
+  in a movable, resizable popup window. Requires a separate OpenAI analysis model and incurs API
   charges. See [result analysis](docs/results.md#ai-analysis).
 - **Flexible decisions:** combine category choices, probability-weighted scores, and
   yes/no probabilities. System profiles cover Normal, Warning, Error, Security,
