@@ -69,7 +69,7 @@ async def test_engine_connection_and_failure_review(
         batch = dict([row async for row in classify_batch(["event"], handle_classify)])
 
         async def records() -> AsyncGenerator[Result, None]:
-            yield {"log": "event", "source": "test.log"}
+            yield {"input": "event", "source": "test.log"}
 
         stream = [row async for row in classify_stream(records(), handle_classify)]
     for result in (batch[0], stream[0][1]):

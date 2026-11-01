@@ -28,7 +28,7 @@ async def evaluate(engine: Engine, cases: list[dict[str, str]]) -> list[Result]:
             async with semaphore:
                 try:
                     result = await classify_log(
-                        case["log"],
+                        case["input"],
                         engine,
                         client,
                         case.get("profile", GENERAL_PROFILE_ID),
@@ -96,7 +96,7 @@ def main() -> None:
     cases = json.loads(args.cases.read_text())
     if not cases or any(
         not isinstance(case, dict)
-        or not isinstance(case.get("log"), str)
+        or not isinstance(case.get("input"), str)
         or case.get("expected")
         not in PROFILES[GENERAL_PROFILE_ID]["questions"]["category"]["criteria"]
         or case.get("profile", GENERAL_PROFILE_ID) not in PROFILES

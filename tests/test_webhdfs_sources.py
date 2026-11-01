@@ -139,7 +139,7 @@ async def test_web_batch_preview_and_api(cluster: dict) -> None:
     await prepare_hdfs_sources([spec], "batch")
     assert len(spec["hdfsFiles"]) == 2
     rows = [row async for row in read_hdfs_sources([spec])]
-    assert {row["log"] for row in rows} == {"first", "second", "상담"}
+    assert {row["input"] for row in rows} == {"first", "second", "상담"}
     assert all(row["sourceType"] == "webhdfs" and not row.get("error") for row in rows)
     assert (
         len(await preview_samples({"sourceId": source["id"], "sampleCount": 10})) == 3
@@ -294,10 +294,10 @@ async def test_checkpoint_resume_and_early_close(cluster: dict) -> None:
     try:
         async with aclosing(read_hdfs_sources([spec])) as records:
             row = await anext(records)
-            assert row["log"] == first
+            assert row["input"] == first
         control.cursors[row["source"]] = row["_checkpoint"]
         remaining = [item async for item in read_hdfs_sources([spec])]
-        assert [item["log"] for item in remaining] == ["second", "third"]
+        assert [item["input"] for item in remaining] == ["second", "third"]
         assert any(
             int(request.url.params.get("offset", 0)) > 65536
             for request in cluster["requests"]

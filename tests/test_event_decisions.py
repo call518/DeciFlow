@@ -66,9 +66,9 @@ async def test_jsonl_preserves_duplicates_multiline_and_bad_records(
     assert specs[0]["chunkEvents"] == 1
     records = [row async for row in read_configured(resolve_configured_sources(specs))]
     assert len(records) == 5
-    assert records[0]["log"] == records[4]["log"] == content
+    assert records[0]["input"] == records[4]["input"] == content
     assert records[0]["inputRecord"] == {"case": 17}
-    assert records[0]["inputContentInLog"] is True
+    assert records[0]["contentInInput"] is True
     assert "rawInput" not in records[0]
     assert records[1]["rawInput"] == "{bad"
     assert records[0]["recordNumber"] == 1 and records[4]["recordNumber"] == 5
@@ -195,7 +195,7 @@ def test_custom_aggregates_filters_and_typed_review_export(tmp_path: Path) -> No
     questions = definition["questions"]
     answers = decision_answers(questions)
     result = {
-        "log": "Conversation",
+        "input": "Conversation",
         "criteriaGroup": "voc",
         "defaultDecision": "inquiry_type",
         "profileLabel": definition["label"],
@@ -309,11 +309,11 @@ async def test_local_gov_sample_preserves_metadata() -> None:
     assert len(records) == len(originals) == 3280
     for row, original in zip(records, originals, strict=True):
         assert "error" not in row
-        assert row["log"] == original["상담내용"]
+        assert row["input"] == original["상담내용"]
         assert row["inputRecord"] == {
             "지방자치단체명": original["지방자치단체명"],
             "상담담당부서": original["상담담당부서"],
         }
-        assert row["inputContentInLog"] is True
+        assert row["contentInInput"] is True
         assert row["eventCount"] == row["chunkEvents"] == 1
     assert any(row["inputRecord"]["상담담당부서"] == "" for row in records)

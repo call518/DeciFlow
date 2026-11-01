@@ -76,7 +76,7 @@ async def read_file(path: Path) -> AsyncGenerator[Result, None]:
             line_number += 1
             if log := raw.decode("utf-8").strip():
                 yield {
-                    "log": log,
+                    "input": log,
                     "source": str(path),
                     "line": line_number,
                     **(
@@ -136,7 +136,7 @@ async def follow_file(
                     offset += len(line) + 1
                     if log := line.decode("utf-8").strip():
                         yield {
-                            "log": log,
+                            "input": log,
                             "source": str(path),
                             "line": line_number,
                             **(
@@ -149,7 +149,7 @@ async def follow_file(
             if removed is not None and removed.is_set():
                 if pending and (log := pending.decode("utf-8").strip()):
                     yield {
-                        "log": log,
+                        "input": log,
                         "source": str(path),
                         "line": line_number + 1,
                         "incomplete": True,
@@ -175,7 +175,7 @@ async def follow_file(
             if rotated or truncated:
                 if pending and (log := pending.decode("utf-8").strip()):
                     yield {
-                        "log": log,
+                        "input": log,
                         "source": str(path),
                         "line": line_number + 1,
                         "incomplete": True,

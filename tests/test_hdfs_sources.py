@@ -81,7 +81,7 @@ async def test_frozen_manifest_dedup_and_jsonl(source: dict) -> None:
     rows = [row async for row in hdfs_sources.read_hdfs_sources([spec])]
     assert len(rows) == 3
     assert sum(bool(row.get("error")) for row in rows) == 1
-    assert {row["log"] for row in rows if not row.get("error")} == {"첫번째", "second"}
+    assert {row["input"] for row in rows if not row.get("error")} == {"첫번째", "second"}
     assert all(row["sourceType"] == "hdfs" for row in rows)
     assert all(
         row["source"].startswith("hdfs://namenode.example.test:8020/") for row in rows
@@ -106,10 +106,10 @@ async def test_resume_uses_cursor_and_rejects_changed_files(source: dict) -> Non
     try:
         async with aclosing(hdfs_sources.read_hdfs_sources([spec])) as records:
             first = await anext(records)
-            assert first["log"] == "one\ntwo"
+            assert first["input"] == "one\ntwo"
         control.cursors[first["source"]] = first["_checkpoint"]
         rows = [row async for row in hdfs_sources.read_hdfs_sources([spec])]
-        assert [row["log"] for row in rows] == ["three\nfour"]
+        assert [row["input"] for row in rows] == ["three\nfour"]
         path.write_text("replaced\n")
         rows = [row async for row in hdfs_sources.read_hdfs_sources([spec])]
         assert len(rows) == 1 and rows[0]["sourceFailure"]

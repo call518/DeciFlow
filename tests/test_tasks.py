@@ -246,7 +246,7 @@ async def test_failed_results_or_actions_fail_task(
 ) -> None:
     async def events() -> AsyncGenerator[str, None]:
         result = {
-            "log": "one",
+            "input": "one",
             **(
                 {"error": "engine failed"}
                 if failure == "decision"
@@ -342,7 +342,7 @@ async def test_delete_task_removes_files_and_database_history(
     store.create(identity, snapshot)
     store.append(
         identity,
-        {"type": "result", "result": {"log": "retained", "category": "normal"}},
+        {"type": "result", "result": {"input": "retained", "category": "normal"}},
         snapshot,
     )
     async with httpx.AsyncClient(
@@ -652,14 +652,14 @@ async def test_paused_task_does_not_block_other_tasks_or_inflight_action(
         engine: str,
     ) -> AsyncGenerator[tuple[int, Result], None]:
         async for index, result in original_actions(results, actions, engine):
-            if result["log"] == "one":
+            if result["input"] == "one":
                 action_entered.set()
                 await action_release.wait()
             yield index, result
 
     async def handle_live(specs: list[Result]) -> AsyncGenerator[Result, None]:
         for log in ("one", "two"):
-            yield {"log": log, "profile": "4e6d5417-611e-49e0-8e23-2444a0f49ee4"}
+            yield {"input": log, "profile": "4e6d5417-611e-49e0-8e23-2444a0f49ee4"}
         await asyncio.Event().wait()
 
     monkeypatch.setattr(server, "classify_log", handle_classify)

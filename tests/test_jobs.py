@@ -45,7 +45,7 @@ async def test_job_reconnect_replays_without_duplicate_decisions_or_actions(
         return {"category": "normal", "review": False}
 
     async def handle_action(action: Result, result: Result) -> Result:
-        actions.append(result["log"])
+        actions.append(result["input"])
         return {"name": action["name"], "status": "success"}
 
     monkeypatch.setattr(server, "classify_log", handle_classify)
@@ -106,7 +106,7 @@ async def test_stop_preserves_results_and_closes_producer() -> None:
                 {
                     "type": "result",
                     "index": 0,
-                    "result": {"log": "one"},
+                    "result": {"input": "one"},
                     "elapsedMs": 23,
                     "activeProcessingMs": 12,
                 }
@@ -130,7 +130,7 @@ async def test_stop_preserves_results_and_closes_producer() -> None:
         assert closed.is_set()
         replay = await client.post(f"/api/jobs/{job.id}/events")
         events = [json.loads(line) for line in replay.text.splitlines()]
-        assert events[1]["result"]["log"] == "one"
+        assert events[1]["result"]["input"] == "one"
         assert events[-1] == {
             "type": "done",
             "state": "stopped",
@@ -237,7 +237,7 @@ async def test_realtime_reads_new_logs_without_a_browser(
             for event in replay.text.splitlines()
             if json.loads(event)["type"] == "result"
         ]
-        assert [result["log"] for result in results] == ["new event"]
+        assert [result["input"] for result in results] == ["new event"]
         assert calls == ["new event"]
 
 

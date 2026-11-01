@@ -192,7 +192,7 @@ async def test_started_runs_keep_original_criteria(
         profile: str = "4e6d5417-611e-49e0-8e23-2444a0f49ee4",
     ) -> Result:
         observed.append(get_profile(profile)["instructions"])
-        return {"category": "normal", "log": log, "elapsedMs": 1}
+        return {"category": "normal", "input": log, "elapsedMs": 1}
 
     monkeypatch.setattr(server, "classify_log", handle_classify)
     if mode == "paste":

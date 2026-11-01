@@ -116,7 +116,7 @@ async def _lines(
         if removed is not None and removed.is_set():
             if pending and (log := pending.decode("utf-8").strip()):
                 yield {
-                    "log": log,
+                    "input": log,
                     "source": uri,
                     "line": line_number + 1,
                     "incomplete": True,
@@ -167,7 +167,7 @@ async def _lines(
                 ):
                     if pending and (log := pending.decode("utf-8").strip()):
                         yield {
-                            "log": log,
+                            "input": log,
                             "source": uri,
                             "line": line_number + 1,
                             "incomplete": True,
@@ -197,7 +197,7 @@ async def _lines(
                         line_position += len(line) + 1
                         if log := line.decode("utf-8").strip():
                             yield {
-                                "log": log,
+                                "input": log,
                                 "source": uri,
                                 "line": line_number,
                                 **metadata(),
@@ -209,7 +209,7 @@ async def _lines(
             if pending and (log := pending.decode("utf-8").strip()):
                 line_position += len(pending)
                 line_number += 1
-                yield {"log": log, "source": uri, "line": line_number, **metadata()}
+                yield {"input": log, "source": uri, "line": line_number, **metadata()}
             return
         if changed is None:
             await asyncio.sleep(0.25)

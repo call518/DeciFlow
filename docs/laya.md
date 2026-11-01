@@ -136,7 +136,7 @@ Use `--cases PATH` for a UTF-8 JSON list of labeled cases:
 ```json
 [
   {
-    "log": "application: database connection failed",
+    "input": "application: database connection failed",
     "expected": "error",
     "profile": "617706a3-c4ee-426f-81cf-7f5d80ecf67a"
   }

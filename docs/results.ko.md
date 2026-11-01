@@ -1,6 +1,6 @@
 # 요청 및 결과 JSON
 
-저장·내보내기 성공 결과에는 간결한 v2 계약을 적용합니다. 원문은 `log`에 한 번 두며,
+저장·내보내기 성공 결과에는 간결한 v2 계약을 적용합니다. 원문은 `input`에 한 번 두며,
 판정 정의가 있으면 반복 요청 `questions`는 생략합니다. 동일한 제공자 답변은
 `providerResponse.answersInDecisions`로 `decisions`를 참조합니다. 아래 원시 요청·
 분류기 진단 예시는 추가 필드를 포함할 수 있습니다. [Action 결과 계약](actions.ko.md#간결한-결과-json-계약-버전-2)을 참고하세요.
@@ -20,7 +20,7 @@ state로 전달합니다. 아래 예시는 기존 HTTP access 로그 흐름입�
 
 Authentication은 인식 가능한 한 줄 classic syslog를 `서비스명: 메시지`로
 정규화해 시간·호스트·PID를 제거합니다. 여러 줄 청크와 인식하지 못한 형식은
-유지합니다. 결과에는 원본 `log`를 보존하며 정규화로 바뀐 경우에만
+유지합니다. 결과에는 원본 `input`를 보존하며 정규화로 바뀐 경우에만
 `decisionInput`과 `inputNormalization`을 추가합니다.
 
 아래 [Laya 요청 파일](examples/laya-request.json)은 번들 HTTP access 기준과
@@ -87,7 +87,7 @@ Uncertain이 아닙니다. 이는 DeciFlow의 고정 검토 기준이며 정답 
 `schemaVersion`·`eventId`·`decidedAt`을 추가하고, 실행 후 `actionExecution`에
 결과를 기록합니다. `requestedAt`은 로그 시각이 아닌 요청 준비 시각이며,
 `decidedAt`은 Action 실행 전 시각입니다. 시각은 UTC ISO 8601, 소요 시간은 ms입니다.
-요청의 `state`는 결과 JSON에서 `log` 또는 정규화한 `decisionInput`으로 확인하며,
+요청의 `state`는 결과 JSON에서 `input` 또는 정규화한 `decisionInput`으로 확인하며,
 최상위 `state` 필드는 없습니다. 단독 `question` 필드도 사용하지 않습니다.
 
 
@@ -282,7 +282,7 @@ Uncertain이 아닙니다. 이는 DeciFlow의 고정 검토 기준이며 정답 
   "anyUncertain": false,
   "model": "laya-rl-agent",
   "review": false,
-  "log": "127.0.0.1 - - [15/Oct/2026:09:00:00 +0900] \"GET /health HTTP/1.1\" 200 2 \"-\" \"example-client\"",
+  "input": "127.0.0.1 - - [15/Oct/2026:09:00:00 +0900] \"GET /health HTTP/1.1\" 200 2 \"-\" \"example-client\"",
   "source": "/host-logs/example-access.log",
   "sourcePatterns": [
     "/host-logs/example-access.log"
@@ -320,11 +320,11 @@ Task 실행 정보와 호스트별 수집 상태는 실행 이력에 별도로 �
 | `decisions` | 판단 ID별 검증한 AI 원래 답변. |
 | `reviewerDecisions` | 판단 ID별 타입에 맞는 검토자 수정값. |
 | `rawInput` | 잘못되거나 서로 다른 JSONL 원래 줄. 유효한 중복 원본은 생략. |
-| `inputRecord` | 본문을 제외한 JSONL 메타데이터. `inputContentInLog: true`이면 `contentField` 값은 `log`에서 복원. |
+| `inputRecord` | 본문을 제외한 JSONL 메타데이터. `contentInInput: true`이면 `contentField` 값은 `input`에서 복원. |
 | `inputFormat` | 해당하는 경우 JSONL 입력 표시. |
 | `contentField` | JSONL 최상위 본문 필드의 정확한 이름. |
 | `recordNumber` | 파일 줄 번호 또는 Realtime 관측 줄 번호. |
-| `log` | 한 청크로 제출한 원본 로그 내용. |
+| `input` | 한 청크로 제출한 원본 로그 내용. |
 | `decisionInput` / `inputNormalization` | 전처리로 모델 입력이 바뀐 경우에만 표시. 원본은 log에 유지. |
 | `source` | 로컬 파일의 실제 경로 또는 원격 입력의 ssh://사용자@호스트:포트/경로. |
 | `sourceId` / `sourceName` / `sourceType` | 등록 소스 ID·이름 스냅샷·local, ssh, hdfs, webhdfs 타입. 명시적 경로 API 입력에는 생략. |

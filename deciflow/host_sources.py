@@ -39,7 +39,7 @@ async def _read_source(
             "sourcePatterns": [source_pattern(spec)],
             "profile": spec["profile"],
             "chunkEvents": spec["chunkEvents"],
-            "log": "",
+            "input": "",
             "error": str(error),
             "sourceFailure": True,
         }

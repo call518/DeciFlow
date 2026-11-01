@@ -73,7 +73,7 @@ async def test_auth_messages_share_input_but_preserve_original_logs(
 
         results = dict([row async for row in classify_batch(logs, handle_classify)])
     assert states == [f"{service}: {message}"] * 2
-    assert [results[i]["log"] for i in range(2)] == logs
+    assert [results[i]["input"] for i in range(2)] == logs
     assert results[0]["decisionInput"] == results[1]["decisionInput"]
     assert results[0]["inputNormalization"] == "single_line_syslog_header"
 

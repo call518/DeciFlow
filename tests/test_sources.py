@@ -68,7 +68,7 @@ async def test_batch_lines_and_final_partial_line(tmp_path: Path) -> None:
     path = tmp_path / "access.log"
     path.write_bytes("first\r\n\nsecond ☃\nlast".encode())
     records = [record async for record in read_file(path)]
-    assert [record["log"] for record in records] == ["first", "second ☃", "last"]
+    assert [record["input"] for record in records] == ["first", "second ☃", "last"]
     assert [record["line"] for record in records] == [1, 3, 4]
     assert all(record["source"] == str(path) for record in records)
 
@@ -90,20 +90,20 @@ async def test_follow_appends_utf8_rotation_and_truncation(
         with path.open("ab") as file:
             file.write(encoded[-2:])
         with anyio.fail_after(3):
-            assert (await task)["log"] == "new ☃"
+            assert (await task)["input"] == "new ☃"
 
         task = asyncio.create_task(anext(records))
         path.rename(tmp_path / "access.log.1")
         path.write_text("replacement\n")
         with anyio.fail_after(3):
-            assert (await task)["log"] == "replacement"
+            assert (await task)["input"] == "replacement"
 
         task = asyncio.create_task(anext(records))
         path.write_text("")
         await follow_poll()
         path.write_text("after truncate\n")
         with anyio.fail_after(3):
-            assert (await task)["log"] == "after truncate"
+            assert (await task)["input"] == "after truncate"
 
 
 @pytest.mark.anyio
@@ -116,13 +116,13 @@ async def test_follow_missing_file_and_recreation(
         await follow_poll()
         path.write_text("created\n")
         with anyio.fail_after(3):
-            assert (await task)["log"] == "created"
+            assert (await task)["input"] == "created"
         task = asyncio.create_task(anext(records))
         path.unlink()
         await follow_poll()
         path.write_text("recreated\n")
         with anyio.fail_after(3):
-            assert (await task)["log"] == "recreated"
+            assert (await task)["input"] == "recreated"
 
 
 @pytest.mark.anyio
@@ -153,9 +153,9 @@ async def test_rotation_retains_partial_line(
         path.write_text("next\n")
         with anyio.fail_after(3):
             result = await task
-            assert result["log"] == "partial"
+            assert result["input"] == "partial"
             assert result["incomplete"] is True
-            assert (await anext(records))["log"] == "next"
+            assert (await anext(records))["input"] == "next"
 
 
 @pytest.mark.anyio
@@ -179,7 +179,7 @@ async def test_stream_results_without_waiting_for_next_log(
         with anyio.fail_after(3):
             index, result = await task
         assert index == 0
-        assert result["log"] == "after"
+        assert result["input"] == "after"
     assert calls == 1
 
 
@@ -247,7 +247,7 @@ async def test_file_api_and_localhost_access(
         events = [json.loads(line) for line in response.text.splitlines()]
         assert events[0]["total"] is None
         assert events[-1]["type"] == "done"
-        assert {event["result"]["log"] for event in events[1:-1]} == {"first", "second"}
+        assert {event["result"]["input"] for event in events[1:-1]} == {"first", "second"}
         (tmp_path / "second.log").write_text("third\n")
         response = await client.post(
             "/api/file-source",
@@ -260,7 +260,7 @@ async def test_file_api_and_localhost_access(
         assert response.status_code == 200
         events = [json.loads(line) for line in response.text.splitlines()]
         assert len(events[0]["sources"]) == 2
-        assert {event["result"]["log"] for event in events[1:-1]} == {
+        assert {event["result"]["input"] for event in events[1:-1]} == {
             "first",
             "second",
             "third",
@@ -308,7 +308,7 @@ async def test_files_across_directories(tmp_path: Path) -> None:
     paths = resolve_sources(f"local.log\n{external}/*.log\n{remote}")
     assert paths == [local, remote]
     records = [record async for record in read_sources(paths)]
-    assert {record["log"] for record in records} == {"local", "remote"}
+    assert {record["input"] for record in records} == {"local", "remote"}
 
 
 @pytest.mark.anyio
@@ -317,7 +317,7 @@ async def test_multiple_batch_files_once(tmp_path: Path) -> None:
     (tmp_path / "b.log").write_text("b1\n")
     paths = resolve_sources("a.log\n*.log")
     records = [record async for record in read_sources(paths)]
-    assert {record["log"] for record in records} == {"a1", "a2", "b1"}
+    assert {record["input"] for record in records} == {"a1", "a2", "b1"}
     assert [r["line"] for r in records if r["source"].endswith("a.log")] == [1, 2]
     assert [r["line"] for r in records if r["source"].endswith("b.log")] == [1]
 
@@ -334,17 +334,17 @@ async def test_follow_many_and_discover_new_matches(tmp_path: Path) -> None:
         with b.open("a") as file:
             file.write("new b\n")
         with anyio.fail_after(3):
-            assert (await task)["log"] == "new b"
+            assert (await task)["input"] == "new b"
         task = asyncio.create_task(anext(records))
         with a.open("a") as file:
             file.write("new a\n")
         with anyio.fail_after(3):
-            assert (await task)["log"] == "new a"
+            assert (await task)["input"] == "new a"
         task = asyncio.create_task(anext(records))
         (tmp_path / "c.log").write_text("new file first line\n")
         with anyio.fail_after(3):
             record = await task
-            assert record["log"] == "new file first line"
+            assert record["input"] == "new file first line"
             assert record["source"].endswith("c.log")
 
 
@@ -355,7 +355,7 @@ async def test_follow_pattern_initially_empty(tmp_path: Path) -> None:
         await anyio.sleep(0.1)
         (tmp_path / "new-one.log").write_text("first\n")
         with anyio.fail_after(3):
-            assert (await task)["log"] == "first"
+            assert (await task)["input"] == "first"
 
 
 @pytest.mark.anyio
@@ -406,20 +406,20 @@ async def test_batch_slow_file_does_not_block_others_and_stop_closes_all() -> No
         try:
             started.set()
             await asyncio.Event().wait()
-            yield {"log": "slow"}
+            yield {"input": "slow"}
         finally:
             closed.add("slow")
 
     async def handle_fast() -> AsyncGenerator[Result, None]:
         try:
             await started.wait()
-            yield {"log": "fast"}
+            yield {"input": "fast"}
         finally:
             closed.add("fast")
 
     async with aclosing(merge_batch([handle_slow(), handle_fast()])) as records:
         with anyio.fail_after(2):
-            assert (await anext(records))["log"] == "fast"
+            assert (await anext(records))["input"] == "fast"
     assert closed == {"slow", "fast"}
 
 

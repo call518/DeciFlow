@@ -11,7 +11,7 @@ from deciflow.result_payload import compact_result
 def _combine(rows: list[Result], profile: str, size: int) -> Result:
     return {
         **rows[0],
-        "log": "\n".join(row["log"] for row in rows),
+        "input": "\n".join(row["input"] for row in rows),
         **(
             {"_checkpoint": rows[-1]["_checkpoint"]}
             if "_checkpoint" in rows[-1]
@@ -19,7 +19,7 @@ def _combine(rows: list[Result], profile: str, size: int) -> Result:
         ),
         "lineEnd": rows[-1].get("lineEnd", rows[-1]["line"]),
         "lineCount": sum(
-            row.get("lineCount", len(row["log"].splitlines())) for row in rows
+            row.get("lineCount", len(row["input"].splitlines())) for row in rows
         ),
         "eventCount": len(rows),
         "profile": profile,
@@ -87,7 +87,7 @@ async def _jsonl_records(
         async for row in records:
             item = {
                 **row,
-                "rawInput": row["log"],
+                "rawInput": row["input"],
                 "inputFormat": "jsonl",
                 "contentField": spec["contentField"],
                 "profile": spec["profile"],
@@ -99,13 +99,13 @@ async def _jsonl_records(
             try:
                 if row.get("incomplete"):
                     raise ValueError("Incomplete JSONL record at file rotation.")
-                data = json.loads(row["log"])
+                data = json.loads(row["input"])
                 if not isinstance(data, dict):
                     raise TypeError("JSONL records must be objects.")
                 content = data.get(spec["contentField"])
                 if not isinstance(content, str) or not content.strip():
                     raise ValueError("JSONL content field must contain nonempty text.")
-                item.update(log=content, inputRecord=data)
+                item.update(input=content, inputRecord=data)
             except (ValueError, TypeError) as error:
                 item.update(error=str(error), review=False)
             yield compact_result(item)

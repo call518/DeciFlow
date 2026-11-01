@@ -14,7 +14,7 @@ def compact_result(result: dict[str, Any]) -> dict[str, Any]:
         and isinstance(record, dict)
         and isinstance(field, str)
         and field in record
-        and record[field] == item.get("log")
+        and record[field] == item.get("input")
     ):
         raw = item.get("rawInput")
         if isinstance(raw, str):
@@ -26,7 +26,7 @@ def compact_result(result: dict[str, Any]) -> dict[str, Any]:
         item["inputRecord"] = {
             key: value for key, value in record.items() if key != field
         }
-        item["inputContentInLog"] = True
+        item["contentInInput"] = True
     if not item.get("error") and item.get("decisionDefinitions"):
         item.pop("questions", None)
     provider = item.get("providerResponse")

@@ -46,8 +46,8 @@ async def test_evaluation_records_mismatches_and_provider_metadata(
     rows = await evaluate(
         Engine("laya", "http://test/v1/systemone", "", "english", 120),
         [
-            {"log": "routine operation", "expected": "normal"},
-            {"log": "failed operation", "expected": "error"},
+            {"input": "routine operation", "expected": "normal"},
+            {"input": "failed operation", "expected": "error"},
         ],
     )
     assert [row["correct"] for row in rows] == [True, False]

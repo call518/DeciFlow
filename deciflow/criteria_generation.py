@@ -165,7 +165,7 @@ async def preview_samples(selection: dict[str, Any]) -> list[str]:
             async for record in records:
                 if record.get("error"):
                     raise ValueError("Could not read a valid Source sample.")
-                text = record["log"]
+                text = record["input"]
                 if not text.strip() or len(text.encode()) > MAX_SAMPLE_BYTES:
                     continue
                 seen += 1

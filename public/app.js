@@ -1319,7 +1319,7 @@ import sys
 
 result = json.load(sys.stdin)
 
-# Use result["category"], result["log"], and result["source"] here.
+# Use result["category"], result["input"], and result["source"] here.
 # Replace this handler with your notification, storage, or other integration.
 `;
 const profileLabels = { '4e6d5417-611e-49e0-8e23-2444a0f49ee4': 'Sample General System', '702ecfa5-01fb-4321-9692-996134a10802': 'Sample Authentication', '2e44ae00-7a3a-492d-8806-9177a8973582': 'Sample HTTP access', '617706a3-c4ee-426f-81cf-7f5d80ecf67a': 'Sample Application', '0181af82-c1ed-41c8-8cd3-22a385746b32': 'Sample Network / tcpdump text' };
@@ -2292,7 +2292,7 @@ function matchesResultFilters(result, includeDecision=true) {
   const source=$('source-filter').value || 'all',host=$('host-filter').value || 'all';
   return (review==='all' || (review==='needs-review'?needsReview(result):!result.error && !needsReview(result)))
     && (processing==='all' || (processing==='failed'?Boolean(result.error):!result.error))
-    && result.log.toLowerCase().includes($('log-search').value.toLowerCase())
+    && result.input.toLowerCase().includes($('log-search').value.toLowerCase())
     && (!includeDecision || matchesDecisionFilter(result))
     && (source==='all' || result.sourcePatterns?.includes(source) || result.source===source)
     && (host==='all' || resultHostId(result)===host);
@@ -2607,7 +2607,7 @@ function render(updateList = true, incremental = false) {
     const tokenWarning=renderTokenWarning(result);
     if(tokenWarning){row.className+=' token-limited';top.prepend(tokenWarning);}
     row.append(top);
-    const original=element('details','','original-input');original.append(element('summary','Input'),element('p',result.log,'log'));
+    const original=element('details','','original-input');original.append(element('summary','Input'),element('p',result.input,'log'));
     handleResultDisclosure(original,result,'input',result.inputFormat!=='jsonl');row.append(original);
     const fields=[];
     if (result.actionExecution) {

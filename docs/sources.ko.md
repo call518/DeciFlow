@@ -50,7 +50,7 @@ JSONL의 Task Events/Chunk는 1로 고정합니다. 이스케이프한 줄바꿈
 
 로컬·SSH의 Batch·Realtime은 같은 파서를 사용합니다. 잘못된 객체·누락되거나 문자열이
 아닌 본문·회전 시 불완전한 레코드는 개별 실패로 남기고 이후 처리를 계속합니다.
-결과에는 원문 `log`, 본문을 제외한 `inputRecord` 메타데이터, `inputContentInLog: true`,
+결과에는 원문 `input`, 본문을 제외한 `inputRecord` 메타데이터, `contentInInput: true`,
 `recordNumber`(파일 줄 번호 또는 Realtime 관측 줄 번호)를 보존합니다. 잘못된 원본은
 `rawInput`으로 보존합니다. 빈 줄은 건너뜁니다.
 이 버전에서는 중첩 필드 경로·JSON 배열·여러 줄 JSON 객체·CSV를 지원하지 않습니다.

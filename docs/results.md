@@ -1,7 +1,7 @@
 # Request and result JSON
 
 Persisted and exported successful results use the compact v2 contract: input text
-lives once in `log`, repeated request `questions` are omitted when definitions are
+lives once in `input`, repeated request `questions` are omitted when definitions are
 available, and identical provider answers reference `decisions` using
 `providerResponse.answersInDecisions`. Raw request/classifier diagnostic examples
 below can contain additional fields. See [Action result contract](actions.md#compact-result-json-contract-version-2).
@@ -23,7 +23,7 @@ criteria live in `questions`. There is no conversation history or separate
 
 Authentication normalizes recognized single-line classic syslog to
 `service: message`, removing timestamp, hostname, and PID. Multiline chunks and
-unrecognized formats stay unchanged. Results keep the original `log` and add
+unrecognized formats stay unchanged. Results keep the original `input` and add
 `decisionInput` plus `inputNormalization` only when normalization changes it.
 
 The following [Laya request](examples/laya-request.json) uses the bundled HTTP
@@ -92,7 +92,7 @@ added only when an assigned Action runs after successful classification;
 `actionExecution` then records its outcome. `requestedAt` is request preparation
 time, not log time; `decidedAt` is recorded before the Action. Timestamps use UTC
 ISO 8601; durations use milliseconds. The API request's `state` is represented by
-`log` or normalized `decisionInput` in result JSON, not a top-level `state` field.
+`input` or normalized `decisionInput` in result JSON, not a top-level `state` field.
 There is no standalone `question` field.
 
 
@@ -287,7 +287,7 @@ Action input. See [host configuration](configuration.md#result-host-identity).
   "anyUncertain": false,
   "model": "laya-rl-agent",
   "review": false,
-  "log": "127.0.0.1 - - [15/Oct/2026:09:00:00 +0900] \"GET /health HTTP/1.1\" 200 2 \"-\" \"example-client\"",
+  "input": "127.0.0.1 - - [15/Oct/2026:09:00:00 +0900] \"GET /health HTTP/1.1\" 200 2 \"-\" \"example-client\"",
   "source": "/host-logs/example-access.log",
   "sourcePatterns": [
     "/host-logs/example-access.log"
@@ -326,11 +326,11 @@ and per-host collection status are stored separately in run history; see [Tasks]
 | `decisions` | Validated answers keyed by decision ID; original AI values. |
 | `reviewerDecisions` | Optional typed human corrections keyed by decision ID. |
 | `rawInput` | Original line retained for malformed or differing JSONL input; omitted when redundant. |
-| `inputRecord` | Remaining parsed JSONL metadata; with `inputContentInLog: true`, restore `contentField` from `log`. |
+| `inputRecord` | Remaining parsed JSONL metadata; with `contentInInput: true`, restore `contentField` from `input`. |
 | `inputFormat` | JSONL input marker when applicable. |
 | `contentField` | Literal top-level JSONL text field. |
 | `recordNumber` | File line number, or observed line in Realtime. |
-| `log` | Original log text submitted as one chunk. |
+| `input` | Original log text submitted as one chunk. |
 | `decisionInput` / `inputNormalization` | Present only when preprocessing changed model input; the original stays in log. |
 | `source` | Resolved local file path, or ssh://user@host:port/path for remote input. |
 | `sourceId` / `sourceName` / `sourceType` | Registered source ID, name snapshot, and local, ssh, hdfs, or webhdfs type; omitted for explicit-path API input. |

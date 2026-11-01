@@ -361,9 +361,9 @@ async def classify_batch(
     async def handle_log(index: int) -> tuple[int, Result]:
         start = perf_counter()
         try:
-            result: Result = {"log": logs[index], **await classify(logs[index])}
+            result: Result = {"input": logs[index], **await classify(logs[index])}
         except Exception as error:  # noqa: BLE001 - retain individual failures in results
-            result = {"log": logs[index], "error": str(error), "review": False}
+            result = {"input": logs[index], "error": str(error), "review": False}
             if isinstance(error, DecisionError):
                 result.update(error.metadata)
         if metadata is not None:
@@ -417,7 +417,7 @@ async def classify_stream(
             decision = (
                 await classify_record(record)
                 if classify_record is not None
-                else await classify(record["log"])
+                else await classify(record["input"])
             )
             result = {**record, **decision}
         except Exception as error:  # noqa: BLE001 - keep per-event failures

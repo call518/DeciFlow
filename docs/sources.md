@@ -52,8 +52,8 @@ for the other consultation sample, use `/host-logs/sample-logs/voc-central-gov-c
 
 Local and SSH use the same parser in Batch and Realtime. Malformed objects,
 missing/nontext fields, and incomplete records at rotation become individual
-failures; subsequent records continue. Results retain canonical `log`, remaining `inputRecord` metadata on success,
-`inputContentInLog: true`, and `recordNumber` (file line or
+failures; subsequent records continue. Results retain canonical `input`, remaining `inputRecord` metadata on success,
+`contentInInput: true`, and `recordNumber` (file line or
 observed line in Realtime). Malformed raw input is preserved as `rawInput`. Blank lines are skipped. Nested field paths, JSON
 arrays, multiline JSON objects, and CSV are not supported in this version.
 

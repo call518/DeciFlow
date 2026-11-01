@@ -8,13 +8,13 @@ const prismRuntime=vm.createContext({});
 vm.runInContext(readFileSync(new URL('../public/vendor/prism/prism-python-1.30.0.min.js',import.meta.url),'utf8'),prismRuntime);
 const workspaceContexts = new WeakMap();
 const sampleProfileIds={"central_gov": "1dd02d79-f43e-49ef-a1f1-7a2ddfab1e8d", "consultation": "41bbe1dc-85cb-4ab0-ab79-cd7c4e6f8e72", "application": "617706a3-c4ee-426f-81cf-7f5d80ecf67a", "general": "4e6d5417-611e-49e0-8e23-2444a0f49ee4", "local_gov": "efb7c8ca-61c1-4785-b38d-0a86764ca758", "authentication": "702ecfa5-01fb-4321-9692-996134a10802", "network": "0181af82-c1ed-41c8-8cd3-22a385746b32", "http_access": "2e44ae00-7a3a-492d-8806-9177a8973582"};
-function readProfileTemplate(name) {const {id,...profile}=JSON.parse(readFileSync(new URL(`../profiles/${name}.json`,import.meta.url),'utf8'));return profile;}
+function readProfileTemplate(name) {const {id,...profile}=JSON.parse(readFileSync(new URL(`../deciflow/profiles/${name}.json`,import.meta.url),'utf8'));return profile;}
 const systemProfile=readProfileTemplate('general');
 function profileFixture(label,instructions,criteria=systemProfile.questions.category.criteria) {
   return {...structuredClone(systemProfile),label,instructions,questions:{...structuredClone(systemProfile.questions),category:{...structuredClone(systemProfile.questions.category),criteria}}};
 }
 function systemResult(log,overrides={}) {
-  return {log,elapsedMs:1,criteriaGroup:'system',profileId:'4e6d5417-611e-49e0-8e23-2444a0f49ee4',defaultDecision:'category',decisionDefinitions:structuredClone(systemProfile.questions),decisions:{category:{type:'choice',choice:'normal',confidence:.9,probabilities:{normal:1,warning:0,error:0,security:0,other:0}},urgency:{type:'score',score:undefined,probabilities:{},legend:Object.fromEntries(systemProfile.questions.urgency.criteria.map((text,i)=>[i,text]))},ticket:{type:'noul',noul:undefined}},...overrides};
+  return {input:log,elapsedMs:1,criteriaGroup:'system',profileId:'4e6d5417-611e-49e0-8e23-2444a0f49ee4',defaultDecision:'category',decisionDefinitions:structuredClone(systemProfile.questions),decisions:{category:{type:'choice',choice:'normal',confidence:.9,probabilities:{normal:1,warning:0,error:0,security:0,other:0}},urgency:{type:'score',score:undefined,probabilities:{},legend:Object.fromEntries(systemProfile.questions.urgency.criteria.map((text,i)=>[i,text]))},ticket:{type:'noul',noul:undefined}},...overrides};
 }
 function setDecisions(item,{choice,confidence,probabilities,score,scoreProbabilities,legend,noul,uncertain,reasons,candidates,...metadata}) {
   Object.assign(item,metadata);
@@ -171,7 +171,7 @@ test('average request duration includes failures, ignores filters, and resets', 
   const first = result(0, false);
   first.result.elapsedMs = 100;
   const failed = result(1);
-  failed.result = { log: 'failed-log', error: 'timeout', review: true, elapsedMs: 300 };
+  failed.result = { input: 'failed-log', error: 'timeout', review: true, elapsedMs: 300 };
   const events = [{ type: 'start', engine: 'laya', total: 2 }, first, failed,
     { type: 'done', elapsedMs: 5000 }];
   const { nodes, context } = workspace(events);
@@ -193,7 +193,7 @@ test('review filters exclude failures without changing success and failure total
   const events = [{ type: 'start', engine: 'laya', total: 3 },
     result(0, false), result(1),
     { type: 'result', index: 2, elapsedMs: 2,
-      result: { log: 'failed-log', error: 'timeout', elapsedMs: 2, review: true } }];
+      result: { input: 'failed-log', error: 'timeout', elapsedMs: 2, review: true } }];
   const { nodes } = workspace(events);
   await runTask(nodes);
   assert.deepEqual(logs(nodes), ['failed-log', 'log-1', 'log-0']);
@@ -239,7 +239,7 @@ test('active time uses server intervals, updates while idle, and resets', async 
   const first = result(0, false);
   first.result.elapsedMs = 100;
   const failed = result(1);
-  failed.result = { log: 'failed-log', error: 'timeout', review: true, elapsedMs: 300 };
+  failed.result = { input: 'failed-log', error: 'timeout', review: true, elapsedMs: 300 };
   const events = [{ type: 'start', engine: 'laya', total: 2 }, first, failed,
     { type: 'timing', elapsedMs: 200, activeProcessingMs: 150 },
     { type: 'done', elapsedMs: 1000, activeProcessingMs: 150 }];
@@ -313,9 +313,9 @@ test('Editing an existing Task restores saved per-Source criteria, chunk size an
 
 test('individual JSON reflects review changes and stays open after rendering', async () => {
   const event = result(0);
-  Object.assign(event.result, { profile: '2e44ae00-7a3a-492d-8806-9177a8973582', chunkEvents: 3, eventCount: 2, source: '/logs/access.log', line: 10, lineEnd: 11, log: '<script>example</script>' });
+  Object.assign(event.result, { profile: '2e44ae00-7a3a-492d-8806-9177a8973582', chunkEvents: 3, eventCount: 2, source: '/logs/access.log', line: 10, lineEnd: 11, input: '<script>example</script>' });
   const failed = result(1);
-  failed.result = { log: 'bad input', error: 'request failed', review: true, elapsedMs: 1, profile: '0181af82-c1ed-41c8-8cd3-22a385746b32' };
+  failed.result = { input: 'bad input', error: 'request failed', review: true, elapsedMs: 1, profile: '0181af82-c1ed-41c8-8cd3-22a385746b32' };
   const { nodes, context } = workspace([{ type: 'start', total: 2, engine: 'laya' }, event, failed]);
   await runTask(nodes);
   const row = nodes.get('results').children[1];
@@ -324,7 +324,7 @@ test('individual JSON reflects review changes and stays open after rendering', a
   assert.equal(details.children[1].children[1].textContent, '');
   details.open = true; details.ontoggle();
   assert.equal(JSON.parse(details.children[1].children[1].textContent).lineEnd, 11);
-  assert.equal(JSON.parse(details.children[1].children[1].textContent).log, '<script>example</script>');
+  assert.equal(JSON.parse(details.children[1].children[1].textContent).input, '<script>example</script>');
   const select = row.children.at(-2).children[1].children[0].children[0];
   select.value = 'warning'; select.onchange();
   assert.equal(JSON.parse(details.children[1].children[1].textContent).reviewerDecisions.category, 'warning');
@@ -392,7 +392,7 @@ test('pause freezes rows while analysis continues; resume includes pending resul
 test('pause excludes received results that have not yet been displayed', async () => {
   const { nodes, context } = workspace([{ type: 'start', total: null, engine: 'laya' }, result(0)]);
   await runTask(nodes);
-  vm.runInContext("results[1] = { log: 'queued', elapsedMs: 1, review: true }; completionOrder.push(1); completed++;", context);
+  vm.runInContext("results[1] = { input: 'queued', elapsedMs: 1, review: true }; completionOrder.push(1); completed++;", context);
   nodes.get('pause-updates').onclick();
   nodes.get('review-filter').onchange();
   assert.deepEqual(logs(nodes), ['log-0']);
@@ -462,7 +462,7 @@ test('category chart applies result filters and preserves original AI counts aft
     events.push(event);
   }
   const failure = result(6);
-  failure.result = { log: 'failed', error: 'timeout', review: true, elapsedMs: 1, category: 'error' };
+  failure.result = { input: 'failed', error: 'timeout', review: true, elapsedMs: 1, category: 'error' };
   events.push(failure);
   const { nodes, context } = workspace(events);
   const values = () => nodes.get('category-chart').children.map(row => row.children[2].textContent);
@@ -523,12 +523,12 @@ test('workspace places input and overview in the 40% column beside 60% results',
 
 test('category, review and literal log search combine and retain full aggregates', async () => {
   const normal = result(0, false);
-  normal.result.log = 'Service Started [OK]';
+  normal.result.input = 'Service Started [OK]';
   const warning = result(1);
   warning.result.decisions.category.choice = 'warning';
-  warning.result.log = 'Service retry [pending]';
+  warning.result.input = 'Service retry [pending]';
   const failed = { type: 'result', index: 2, elapsedMs: 3,
-    result: { log: 'Service request failed', error: 'timeout', review: true, elapsedMs: 2 } };
+    result: { input: 'Service request failed', error: 'timeout', review: true, elapsedMs: 2 } };
   const { nodes } = workspace([{ type: 'start', engine: 'laya', total: 3 }, normal, warning, failed]);
   await runTask(nodes);
   nodes.get('log-search').value = 'SERVICE'; nodes.get('log-search').oninput();
@@ -562,7 +562,7 @@ test('chart certainty groups partition classified results without treating failu
     setDecisions(event.result, { choice:category, uncertain });
     events.push(event);
   }
-  events.push({ type: 'result', index: 3, result: { log: 'failed', error: 'timeout', review: true, elapsedMs: 1 } });
+  events.push({ type: 'result', index: 3, result: { input: 'failed', error: 'timeout', review: true, elapsedMs: 1 } });
   const { nodes } = workspace(events);
   await runTask(nodes);
   const values = () => nodes.get('category-chart').children.map(row => row.children[2].textContent);
@@ -591,15 +591,15 @@ test('chart certainty buttons show zero counts before results arrive', () => {
 
 test('truncated count includes rejected responses across chart filters and paused updates', async () => {
   const events = [{ type: 'start', engine: 'laya', total: 3 }, result(0, false),
-    { type: 'result', index: 1, result: { log: 'too long', error: 'truncated', review: true, elapsedMs: 1, providerResponse: { usage: { truncated: true } } } },
-    { type: 'result', index: 2, result: { log: 'timeout', error: 'timeout', review: true, elapsedMs: 1 } }];
+    { type: 'result', index: 1, result: { input: 'too long', error: 'truncated', review: true, elapsedMs: 1, providerResponse: { usage: { truncated: true } } } },
+    { type: 'result', index: 2, result: { input: 'timeout', error: 'timeout', review: true, elapsedMs: 1 } }];
   const { nodes, context } = workspace(events);
   await runTask(nodes);
   assert.equal(nodes.get('chart-truncated').textContent, 'Truncated: 1');
   nodes.get('chart-certain').onclick();
   assert.equal(nodes.get('chart-truncated').textContent, 'Truncated: 1');
   nodes.get('pause-updates').onclick();
-  vm.runInContext("results.push({log:'more', error:'truncated', review:true, elapsedMs:1, providerResponse:{usage:{truncated:true}}}); render(false);", context);
+  vm.runInContext("results.push({input:'more', error:'truncated', review:true, elapsedMs:1, providerResponse:{usage:{truncated:true}}}); render(false);", context);
   assert.equal(nodes.get('chart-truncated').textContent, 'Truncated: 2');
   assert.equal(nodes.get('chart-totals').textContent, '1 classified chunk · 3 failed requests');
 });
@@ -639,7 +639,7 @@ test('Copy JSON copies current reviewer edits and reports success or failure', a
   assert.equal(actions.children[0].className, 'json-copy');
   await actions.children[0].onclick();
   assert.equal(JSON.parse(copied).reviewerDecisions.category, 'warning');
-  assert.equal(JSON.parse(copied).log, 'log-0');
+  assert.equal(JSON.parse(copied).input, 'log-0');
   assert.equal(actions.children[1].textContent, 'Copied');
   context.navigator.clipboard.writeText = async () => { throw new Error('Denied'); };
   await actions.children[0].onclick();
@@ -778,9 +778,9 @@ test('throughput uses active time, excludes failures, ignores idle time and rese
 
 test('source filtering uses input patterns with counts and combines with other filters', async () => {
   const first = result(0, false);
-  Object.assign(first.result, { source: '/logs/access-1.log', sourcePatterns: ['/logs/access*.log'], log: 'request ok' });
+  Object.assign(first.result, { source: '/logs/access-1.log', sourcePatterns: ['/logs/access*.log'], input: 'request ok' });
   const second = result(1);
-  setDecisions(second.result, { source: '/logs/messages', sourcePatterns: ['/logs/*', '/logs/messages'], log: 'service failed', choice: 'error' });
+  setDecisions(second.result, { source: '/logs/messages', sourcePatterns: ['/logs/*', '/logs/messages'], input: 'service failed', choice: 'error' });
   const events = [{ type: 'start', engine: 'jev', total: null,
     sourcePatterns: ['/logs/access*.log', '/logs/*', '/logs/messages', '/logs/empty.log'] },
     first, second];
@@ -996,10 +996,10 @@ test('source rows select registered sources, reject unknown text, and retain set
 
 test('result JSON puts metadata first and preserves UTC ISO 8601 timestamps and values', () => {
   const { context } = workspace([]);
-  const value = vm.runInContext("orderedResult({log:'original', category:'normal', source:'/logs/test', elapsedMs:12, requestedAt:'2026-10-12T03:00:00.123456+00:00', engine:'laya'})", context);
-  assert.deepEqual(Object.keys(value), ['requestedAt', 'engine', 'source', 'elapsedMs', 'log', 'category']);
+  const value = vm.runInContext("orderedResult({input:'original', category:'normal', source:'/logs/test', elapsedMs:12, requestedAt:'2026-10-12T03:00:00.123456+00:00', engine:'laya'})", context);
+  assert.deepEqual(Object.keys(value), ['requestedAt', 'engine', 'source', 'elapsedMs', 'input', 'category']);
   assert.equal(value.requestedAt, '2026-10-12T03:00:00.123456+00:00');
-  assert.equal(value.log, 'original');
+  assert.equal(value.input, 'original');
   assert.equal(value.category, 'normal');
 });
 
@@ -1122,7 +1122,7 @@ test('status initialization automatically restores the remembered job after refr
 
 test('Export stays visibly disabled during processing and enables only with downloadable results', () => {
   const { nodes, context } = workspace([]);
-  vm.runInContext("results=[{log:'one', category:'normal', probabilities:{normal:1}, elapsedMs:1}]; completionOrder=[0]; completed=1; busy=true; render();", context);
+  vm.runInContext("results=[{input:'one', category:'normal', probabilities:{normal:1}, elapsedMs:1}]; completionOrder=[0]; completed=1; busy=true; render();", context);
   assert.equal(nodes.get('export').disabled, true);
   nodes.get('export').onclick();
   vm.runInContext("busy=false; activeJobState='running'; render();", context);
@@ -1322,7 +1322,7 @@ test('engine connection follows actual requests for both providers without local
     context.readEvents = async (_, receive) => {
       receive(events[0]);
       states.forEach(([state, caption], index) => {
-        receive({ type: 'result', index, elapsedMs: index + 1, result: { log: `event-${index}`, elapsedMs: 1, ...(index === 0 || index === 5 ? { category: 'normal', review: true, probabilities: { normal: 1 } } : { error: 'failed', review: true }), ...(state ? { engineConnection: state } : {}) } });
+        receive({ type: 'result', index, elapsedMs: index + 1, result: { input: `event-${index}`, elapsedMs: 1, ...(index === 0 || index === 5 ? { category: 'normal', review: true, probabilities: { normal: 1 } } : { error: 'failed', review: true }), ...(state ? { engineConnection: state } : {}) } });
         assert.equal(connection.textContent, ` (${caption})`);
       });
       receive({ type: 'done', elapsedMs: 100 });
@@ -1478,7 +1478,7 @@ test('duration metrics use readable units without changing millisecond data', ()
     [3600000, '1 hour'], [3720000, '1 hour 2 min'],
     [86400000, '1 day'], [176400000, '2 days 1 hour'],
   ]) assert.equal(vm.runInContext(`formatDuration(${milliseconds})`, context), expected);
-  vm.runInContext("elapsedMs=3720000; activeProcessingMs=65000; results=[{elapsedMs:1500, log:'event', category:'normal', probabilities:{normal:1}}]; completionOrder=[0]; completed=1; render();", context);
+  vm.runInContext("elapsedMs=3720000; activeProcessingMs=65000; results=[{elapsedMs:1500, input:'event', category:'normal', probabilities:{normal:1}}]; completionOrder=[0]; completed=1; render();", context);
   assert.equal(elapsedValues(nodes)[0], '1 hour 2 min');
   assert.equal(elapsedValues(nodes)[1], '1 min 5 sec (1.7%)');
   assert.equal(processingValues(nodes).Avg, '1.5 sec');
@@ -1519,7 +1519,7 @@ test('Action metrics count completed executions separately from decision outcome
   success.result.actionExecution = {name:'Notify', status:'success', elapsedMs:1};
   const failure = result(1, false);
   failure.result.actionExecution = {name:'Notify', status:'failed', exitCode:1, elapsedMs:1};
-  const decisionFailure = {type:'result', index:3, elapsedMs:4, result:{log:'failed decision', error:'Could not connect', review:false, elapsedMs:1}};
+  const decisionFailure = {type:'result', index:3, elapsedMs:4, result:{input:'failed decision', error:'Could not connect', review:false, elapsedMs:1}};
   const events = [{type:'start', engine:'laya', total:4}, success, failure, result(2, false), decisionFailure];
   const { nodes, context } = workspace(events);
   const counts = index => nodes.get('summary').children[index].children[0].children.map(node => node.textContent).join('');
@@ -1533,7 +1533,7 @@ test('Action metrics count completed executions separately from decision outcome
   nodes.get('review-filter').value='needs-review'; nodes.get('review-filter').onchange();
   assert.equal(counts(1), '1 / 1 / 2');
   nodes.get('pause-updates').onclick();
-  vm.runInContext("results.push({log:'timeout', category:'normal', review:false, elapsedMs:1, actionExecution:{name:'Notify',status:'failed',error:'timeout',elapsedMs:30000}}); completionOrder.push(4); completed++; render(false);", context);
+  vm.runInContext("results.push({input:'timeout', category:'normal', review:false, elapsedMs:1, actionExecution:{name:'Notify',status:'failed',error:'timeout',elapsedMs:30000}}); completionOrder.push(4); completed++; render(false);", context);
   assert.equal(counts(0), '4 / 1 / 5');
   assert.equal(counts(1), '1 / 2 / 3');
   const colors = nodes.get('summary').children[1].children[0].children;
@@ -2212,7 +2212,7 @@ test('Host filter combines with Source filters and retains host failure diagnost
   const a=result(0,false),b=result(1,false),failed=result(2,false);
   a.result.hostId='a';a.result.hostName='Alpha';a.result.hostAddress='a';a.result.hostPort=22;a.result.source='/same';
   b.result.hostId='b';b.result.hostName='Beta';b.result.hostAddress='b';b.result.hostPort=22;b.result.source='/same';
-  failed.result={log:'',error:'Host unavailable',sourceFailure:true,hostId:'b',hostName:'Beta',hostAddress:'b',hostPort:22,source:'ssh://b/logs'};
+  failed.result={input:'',error:'Host unavailable',sourceFailure:true,hostId:'b',hostName:'Beta',hostAddress:'b',hostPort:22,source:'ssh://b/logs'};
   const {nodes}=workspace([{type:'start',engine:'laya',total:null,hosts:[{hostId:'a',hostName:'Alpha',hostAddress:'a',hostPort:22},{hostId:'b',hostName:'Beta',hostAddress:'b',hostPort:22}]},a,b,failed,{type:'host-status',hosts:[{hostId:'b',hostName:'Beta',hostAddress:'b',hostPort:22,collectionState:'failed',error:'Host unavailable'}]},{type:'done',state:'failed',elapsedMs:4}]);
   await runTask(nodes);
   nodes.get('host-filter').value='b';nodes.get('host-filter').onchange();
@@ -2235,7 +2235,7 @@ test('Host filter combines with Source filters and retains host failure diagnost
 test('Timing updates reuse visible cards and never rescan the result history', () => {
   const {nodes,context}=workspace([]);
   vm.runInContext(`
-    results=Array.from({length:20000},(_,index)=>({log:'record '+index,category:'normal',elapsedMs:2,probabilities:{normal:1},hostId:'host-'+index%3,source:'/data/input.txt'}));
+    results=Array.from({length:20000},(_,index)=>({input:'record '+index,category:'normal',elapsedMs:2,probabilities:{normal:1},hostId:'host-'+index%3,source:'/data/input.txt'}));
     completionOrder=results.map((_,index)=>index);completed=results.length;
     render();
     globalThis.historyReads=0;
@@ -2259,7 +2259,7 @@ for (const engine of ['laya','jev']) test(`${engine} incremental results preserv
   const details=retained.children.at(-1);details.open=true;details.ontoggle();
   const json=details.children[1].children[1].textContent;
   vm.runInContext(`
-    results[150]={log:'new',category:'error',error:'failed',elapsedMs:3,source:'/data/input.txt',hostId:'host-1',sourceFailure:true};
+    results[150]={input:'new',category:'error',error:'failed',elapsedMs:3,source:'/data/input.txt',hostId:'host-1',sourceFailure:true};
     completionOrder.push(150);completed++;render(false,true);
   `,context);
   assert.equal(nodes.get('results').children[1],retained);
@@ -2269,7 +2269,7 @@ for (const engine of ['laya','jev']) test(`${engine} incremental results preserv
   nodes.get('processing-filter').value='failed';nodes.get('processing-filter').onchange();
   assert.deepEqual(logs(nodes),['new']);
   vm.runInContext(`
-    results[151]={log:'another',error:'timeout',elapsedMs:5};completionOrder.push(151);completed++;
+    results[151]={input:'another',error:'timeout',elapsedMs:5};completionOrder.push(151);completed++;
     render(false,true);
   `,context);
   assert.deepEqual(logs(nodes),['another','new']);
@@ -2286,7 +2286,7 @@ test('Hidden dashboards defer scheduled DOM work and catch up on return', async 
   let flush;context.setTimeout=handler=>{flush=handler;return 1;};
   vm.runInContext("currentView='main';document.hidden=true;renderTimer=undefined;scheduleRender()",context);
   flush();assert.equal(nodes.get('results').children[0],first);
-  vm.runInContext("results[1]={log:'next',category:'normal',elapsedMs:1};completionOrder.push(1);completed++;document.hidden=false;scheduleRender()",context);
+  vm.runInContext("results[1]={input:'next',category:'normal',elapsedMs:1};completionOrder.push(1);completed++;document.hidden=false;scheduleRender()",context);
   flush();assert.deepEqual(logs(nodes),['next','log-0']);
   assert.equal(nodes.get('results').children[1],first);
 });
@@ -2327,7 +2327,7 @@ test('Static page, section and dialog headings consistently use Title Case', () 
 
 function pagedWorkspace(count=1000) {
   const state=workspace([]);
-  let records=Array.from({length:count},(_,index)=>({sequence:index+1,result:{log:`record-${index+1}`,category:'normal',elapsedMs:1,review:false,hostId:'host-1'}}));
+  let records=Array.from({length:count},(_,index)=>({sequence:index+1,result:{input:`record-${index+1}`,category:'normal',elapsedMs:1,review:false,hostId:'host-1'}}));
   let limit=50;
   const original=state.context.fetch;const queries=[];
   state.context.fetch=async(path,options)=>{
@@ -2338,7 +2338,7 @@ function pagedWorkspace(count=1000) {
     if(path.endsWith('/results')){
       const query=JSON.parse(options.body);queries.push(query);
       let items=records.filter(item=>(query.before==null || item.sequence<query.before) && (query.after==null || item.sequence>query.after) && (query.through==null || item.sequence<=query.through));
-      if(query.search)items=items.filter(item=>item.result.log.includes(query.search));
+      if(query.search)items=items.filter(item=>item.result.input.includes(query.search));
       items=items.toReversed();
       const summary={total:records.length,failed:0,review:0,truncated:0,processingMs:records.length,actionSuccess:0,actionFailed:0,groups:{all:records.length,certain:records.length,uncertain:0},categories:Object.fromEntries(['all','certain','uncertain'].map(group=>[group,{normal:group==='uncertain'?0:records.length,warning:0,error:0,security:0,other:0}])),hosts:{'host-1':{name:'Host',count:records.length,failed:0}},sources:{},processingPercentiles:{medianMs:1,p95Ms:1,p99Ms:1}};
       return {ok:true,json:async()=>JSON.parse(JSON.stringify({snapshot:{jobId:'paged',state:'completed',settings:{mode:'batch',taskName:'Paged Task'},hosts:[],elapsedMs:1000},summary,sequence:records.length,...(query.onlySummary?{}:{items:items.slice(0,limit),hasNext:items.length>limit,limit})}))};
@@ -2346,7 +2346,7 @@ function pagedWorkspace(count=1000) {
     if(path.endsWith('/review'))return {ok:true,json:async()=>({saved:true})};
     return original(path,options);
   };
-  return {...state,queries,append(){const sequence=records.length+1;records.push({sequence,result:{log:`record-${sequence}`,category:'normal',elapsedMs:1,review:false,hostId:'host-1'}});}};
+  return {...state,queries,append(){const sequence=records.length+1;records.push({sequence,result:{input:`record-${sequence}`,category:'normal',elapsedMs:1,review:false,hostId:'host-1'}});}};
 }
 
 test('SQLite-backed UI keeps only its 50-result page while showing whole-run aggregates', async()=>{
@@ -2632,7 +2632,7 @@ test('Criteria View uses compact full-width rows for instructions and category d
 test('Selecting a Task without history clears another Task results and statistics',async()=>{
   const {context,nodes}=workspace([]);
   await new Promise(resolve=>setImmediate(resolve));
-  vm.runInContext("registeredTasks=[{id:'idle',name:'Never Run',mode:'batch',sources:[]}];results=[{log:'old',category:'normal',elapsedMs:1}];completed=1;completionOrder=[0];render();renderTaskMonitor();",context);
+  vm.runInContext("registeredTasks=[{id:'idle',name:'Never Run',mode:'batch',sources:[]}];results=[{input:'old',category:'normal',elapsedMs:1}];completed=1;completionOrder=[0];render();renderTaskMonitor();",context);
   await nodes.get('running-tasks').children[0].onclick();
   assert.equal(vm.runInContext('results.length',context),0);
   assert.equal(vm.runInContext('completed',context),0);
@@ -3043,7 +3043,7 @@ for(const engine of ['laya','jev']) {
 test('Paged metrics use whole-run counts and server percentiles independently of visible rows',()=>{
   const {nodes,context}=workspace([]);
   vm.runInContext(`
-    results=[{log:'visible',category:'normal',elapsedMs:9999}];completionOrder=[0];completed=100;
+    results=[{input:'visible',category:'normal',elapsedMs:9999}];completionOrder=[0];completed=100;
     elapsedMs=10000;activeProcessingMs=10000;
     const stats=updateResultStatistics(false);
     pagedView={summary:{...stats,total:100,failed:5,processingMs:20000,
@@ -3064,7 +3064,7 @@ for(const values of [[],[7],[183,214,270,299],Array.from({length:100},(_,i)=>i+1
   test(`Whole-run latency percentiles for ${values.length} records include failures and ignore Action time`,()=>{
     const {nodes,context}=workspace([]);
     context.durations=values;
-    vm.runInContext(`results=durations.map((elapsedMs,index)=>({log:'case '+index,category:'normal',elapsedMs,...(index===durations.length-1?{error:'failed'}:{}),actionExecution:{status:'success',elapsedMs:5000}}));completionOrder=results.map((_,index)=>index);completed=results.length;render()`,context);
+    vm.runInContext(`results=durations.map((elapsedMs,index)=>({input:'case '+index,category:'normal',elapsedMs,...(index===durations.length-1?{error:'failed'}:{}),actionExecution:{status:'success',elapsedMs:5000}}));completionOrder=results.map((_,index)=>index);completed=results.length;render()`,context);
     const actual=index=>processingValues(nodes)[['P(50)','P(95)','P(99)'][index-6]];
     const sorted=[...values].sort((a,b)=>a-b),n=sorted.length;
     assert.equal(processingValues(nodes).Min,n?vm.runInContext(`formatDuration(${sorted[0]})`,context):'N/A');
@@ -3077,7 +3077,7 @@ for(const values of [[],[7],[183,214,270,299],Array.from({length:100},(_,i)=>i+1
 
 test('Processing Time groups six small labels in one metric without separate percentile boxes',()=>{
   const {nodes,context}=workspace([]);
-  vm.runInContext("results=[{log:'one',category:'normal',elapsedMs:200}];completionOrder=[0];completed=1;render()",context);
+  vm.runInContext("results=[{input:'one',category:'normal',elapsedMs:200}];completionOrder=[0];completed=1;render()",context);
   const metrics=nodes.get('summary').children;
   assert.equal(metrics.length,6);
   assert.equal(metrics[5].textContent,'Processing Time');
@@ -3091,7 +3091,7 @@ test('Source Hosts Detail builds many hosts only on demand and refreshes whole-r
   const {nodes,context}=workspace([]);
   vm.runInContext(`
     runHosts=Array.from({length:200},(_,i)=>({hostId:'host-'+i,hostName:'Host '+String(i).padStart(3,'0'),collectionState:'reading'}));
-    results=[{log:'record',hostId:'host-0',hostName:'Host 000',category:'normal',elapsedMs:2}];
+    results=[{input:'record',hostId:'host-0',hostName:'Host 000',category:'normal',elapsedMs:2}];
     completionOrder=[0];completed=1;render();
   `,context);
   assert.equal(nodes.get('source-hosts-detail').disabled,false);
@@ -3161,7 +3161,7 @@ test('Custom classification colors differ by option and match result badges',()=
   context.vocFixture=readProfileTemplate('consultation');
   vm.runInContext(`
     const definition=vocFixture.questions.inquiry_type;
-    results=Object.keys(definition.criteria).map(choice=>({log:choice,category:choice,
+    results=Object.keys(definition.criteria).map(choice=>({input:choice,category:choice,
       criteriaGroup:'voc',profileLabel:vocFixture.label,
       defaultDecision:'inquiry_type',decisionDefinitions:{inquiry_type:definition},
       decisions:{inquiry_type:{choice,probabilities:{[choice]:1}}},elapsedMs:1}));
@@ -3724,10 +3724,10 @@ test('Manager lists sort English and Korean names naturally without changing edi
 test('Token warnings distinguish truncated input, shortened Criteria and unsent requests', async () => {
   for(const engine of ['laya','jev']){
     const events=[result(0,false),result(1,false),result(2,false),result(3,false)];
-    events[0].result={...events[0].result,engine,log:'truncated input',error:'Input exceeded the budget.',providerResponse:{usage:{truncated:true}}};
-    events[1].result={...events[1].result,engine,log:'shortened criteria',review:true,providerResponse:{usage:{truncated:false,criteria_tokens_dropped:{category:15}}}};
-    events[2].result={...events[2].result,engine,log:'unsent request',error:'Request too large.',inputLimitExceeded:'request_bytes'};
-    events[3].result={...events[3].result,engine,log:'ordinary failure',error:'Could not inspect token limits.',providerResponse:{usage:{truncated:false,criteria_tokens_dropped:{category:0}}}};
+    events[0].result={...events[0].result,engine,input:'truncated input',error:'Input exceeded the budget.',providerResponse:{usage:{truncated:true}}};
+    events[1].result={...events[1].result,engine,input:'shortened criteria',review:true,providerResponse:{usage:{truncated:false,criteria_tokens_dropped:{category:15}}}};
+    events[2].result={...events[2].result,engine,input:'unsent request',error:'Request too large.',inputLimitExceeded:'request_bytes'};
+    events[3].result={...events[3].result,engine,input:'ordinary failure',error:'Could not inspect token limits.',providerResponse:{usage:{truncated:false,criteria_tokens_dropped:{category:0}}}};
     const {nodes,context}=workspace(events);
     await runTask(nodes);
     const row=log=>nodes.get('results').children.find(item=>item.children[1].children[1].textContent===log);
@@ -3988,7 +3988,7 @@ test('stream replay ignores completed runs and old requests in running runs',asy
     context.fetch=(path,options)=>path.endsWith('/events')?Promise.resolve({ok:true,body:{}}):original(path,options);
     context.readEvents=async(_,receive)=>{
       receive({type:'start',engine:'laya',total:1});
-      receive({type:'result',index:0,elapsedMs:1,result:{log:'old',category:'normal',elapsedMs:1,requestedAt:'2000-01-01T00:00:00Z',engineConnection:'connected'}});
+      receive({type:'result',index:0,elapsedMs:1,result:{input:'old',category:'normal',elapsedMs:1,requestedAt:'2000-01-01T00:00:00Z',engineConnection:'connected'}});
       receive({type:'done',state:'completed',elapsedMs:1});
     };
     await vm.runInContext(`handleProcessing({jobId:'old',state:'${state}',settings:{mode:'batch',sources:[]},counts:{completed:1}})`,context);
@@ -4021,7 +4021,7 @@ test('first page of a new stopped run updates availability without replaying old
       if(!path.endsWith('/results'))return response;
       const data=await response.json();
       data.snapshot.state='stopped';
-      data.items=[{sequence:2,result:{log:'new',engine,requestedAt,category:'normal',elapsedMs:1,engineConnection:'connected'}}];
+      data.items=[{sequence:2,result:{input:'new',engine,requestedAt,category:'normal',elapsedMs:1,engineConnection:'connected'}}];
       return {ok:true,json:async()=>data};
     };
     await runTask(nodes);
@@ -5001,7 +5001,7 @@ test('Default-expanded TEXT Input does not rewrite URLs and preserves manual col
 });
 
 test('Overview applies combined filters while metrics remain whole-run and decisions stay available for zero matches',async()=>{
-  const first=assessmentFixture(),second=assessmentFixture(1);Object.assign(first.result,{hostId:'one',source:'/a',log:'target one'});Object.assign(second.result,{hostId:'two',source:'/b',log:'target two'});
+  const first=assessmentFixture(),second=assessmentFixture(1);Object.assign(first.result,{hostId:'one',source:'/a',input:'target one'});Object.assign(second.result,{hostId:'two',source:'/b',input:'target two'});
   const {context,nodes}=workspace([first,second]);await runTask(nodes);
   const total=()=>nodes.get('summary').children[0].children[0].children.map(node=>node.textContent).join('');
   const metricBefore=total();nodes.get('host-filter').value='one';nodes.get('host-filter').onchange();

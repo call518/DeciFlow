@@ -88,7 +88,7 @@ async def test_oversized_event_does_not_abort_batch(log: str) -> None:
         logs = parse_logs(log + "\nsmall event")
         results = dict([row async for row in classify_batch(logs, handle_classify)])
     assert calls == 1
-    assert results[0]["log"] == log
+    assert results[0]["input"] == log
     assert results[0]["review"] is False
     assert "preflight" in results[0]["error"]
     assert results[0]["inputLimitExceeded"] == "request_bytes"

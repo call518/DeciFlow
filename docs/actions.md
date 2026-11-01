@@ -132,8 +132,8 @@ Remote input also includes `hostId`, `hostName`, `hostAddress`, `hostPort`, and
 `chunkSequence`; these identify the source host without changing the log text.
 
 All profiles expose validated answers under `decisions[decision_id]` and frozen
-configuration under `decisionDefinitions`. JSONL adds canonical `log`, remaining `inputRecord` metadata,
-`inputContentInLog: true`, and `recordNumber`; redundant valid `rawInput` is omitted. Use the source location/record number for business deduplication
+configuration under `decisionDefinitions`. JSONL adds canonical `input`, remaining `inputRecord` metadata,
+`contentInInput: true`, and `recordNumber`; redundant valid `rawInput` is omitted. Use the source location/record number for business deduplication
 when appropriate; eventId changes on reruns. Actions run before later human
 corrections and do not automatically rerun when a reviewer edits a result.
 
@@ -173,16 +173,16 @@ only changes display and never reruns Actions.
 
 ## Compact Result JSON Contract (Version 2)
 
-Input text lives once in `log`; other JSONL fields remain in `inputRecord`.
-With `inputContentInLog: true`, the field named by `contentField` lives in `log`.
-Custom Actions reading `inputRecord[contentField]` must read `log` instead.
+Input text lives once in `input`; other JSONL fields remain in `inputRecord`.
+With `contentInInput: true`, the field named by `contentField` lives in `input`.
+Custom Actions reading `inputRecord[contentField]` must read `input` instead.
 Reconstruct the parsed input object as follows; original whitespace and escape
 formatting are not reproduced:
 
 ```python
 record = dict(result.get("inputRecord", {}))
-if result.get("inputContentInLog"):
-    record[result["contentField"]] = result["log"]
+if result.get("contentInInput"):
+    record[result["contentField"]] = result["input"]
 ```
 
 Malformed or differing original `rawInput` and failure diagnostics are retained.

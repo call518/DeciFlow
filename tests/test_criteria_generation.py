@@ -361,7 +361,7 @@ async def test_ssh_preview_closes_reader(
     async def read_remote(spec: dict[str, Any]) -> Any:
         try:
             for i in range(150):
-                yield {"log": f"remote {i}"}
+                yield {"input": f"remote {i}"}
         finally:
             closed.append(True)
 
@@ -536,7 +536,7 @@ async def test_preview_byte_limit_preserves_complete_samples(
 
     async def read_remote(spec: dict[str, Any]) -> Any:
         for _ in range(50):
-            yield {"log": text}
+            yield {"input": text}
 
     monkeypatch.setattr(generation, "read_remote", read_remote)
     assert await generation.preview_samples(
@@ -598,7 +598,7 @@ async def test_random_preview_excludes_empty_and_oversized_inputs(
 
     async def read_remote(spec: dict[str, Any]) -> Any:
         for text in [" ", "가" * 50_001, "usable input"]:
-            yield {"log": text}
+            yield {"input": text}
 
     monkeypatch.setattr(generation, "read_remote", read_remote)
     assert await generation.preview_samples({"sourceId": "registered"}) == [
@@ -620,7 +620,7 @@ async def test_random_preview_timeout_never_returns_a_prefix(
     async def read_remote(spec: dict[str, Any]) -> Any:
         try:
             for i in range(10):
-                yield {"log": f"sample {i}"}
+                yield {"input": f"sample {i}"}
             await asyncio.sleep(1)
         finally:
             closed.append(True)

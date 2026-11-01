@@ -173,7 +173,7 @@ async def test_sftp_batch_streams_utf8_and_metadata(ssh_source: Result) -> None:
     (directory / "app.log").write_text("hello\n\n한글 로그\nlast", encoding="utf-8")
     spec = {**ssh_source, "chunkEvents": 2, "actionId": "notify-id"}
     rows = [row async for row in remote_sources.read_remote(spec)]
-    assert [row["log"] for row in rows] == ["hello\n한글 로그", "last"]
+    assert [row["input"] for row in rows] == ["hello\n한글 로그", "last"]
     assert rows[0]["line"] == 1 and rows[0]["lineEnd"] == 3
     assert rows[0]["source"] == source_pattern({**spec, "path": "/logs/app.log"})
     assert rows[0]["sourceId"] == spec["id"]
@@ -220,14 +220,14 @@ async def test_sftp_realtime_discovery_append_rotation_and_stop(
             directory.mkdir()
             path = directory / "new.log"
             path.write_text("new file\n")
-            assert (await pending)["log"] == "new file"
+            assert (await pending)["input"] == "new file"
             with path.open("a") as file:
                 file.write("appended\n")
-            assert (await anext(stream))["log"] == "appended"
+            assert (await anext(stream))["input"] == "appended"
             path.rename(directory / "old.txt")
             path.write_text("rotated\n")
             row = await anext(stream)
-            assert row["log"] == "rotated" and row["line"] == 1
+            assert row["input"] == "rotated" and row["line"] == 1
     with anyio.fail_after(5):
         while any(not conn.is_closed() for conn in ssh_source["connections"]):
             await anyio.sleep(0.01)
@@ -340,7 +340,7 @@ async def test_remote_recursive_patterns_and_non_regular_files(
     (directory / "directory.log").mkdir()
     spec = {**ssh_source, "path": "/logs/**/*.log"}
     rows = [row async for row in remote_sources.read_remote(spec)]
-    assert {row["log"] for row in rows} == {"root", "child"}
+    assert {row["input"] for row in rows} == {"root", "child"}
 
 
 @pytest.mark.anyio
@@ -368,7 +368,7 @@ async def test_remote_realtime_skips_existing_content_and_cancels_pending_read(
         with path.open("a") as file:
             file.write("new event\n")
         row = await pending
-        assert row["log"] == "new event" and row["line"] == 1
+        assert row["input"] == "new event" and row["line"] == 1
     pending = asyncio.create_task(anext(stream))
     await anyio.lowlevel.checkpoint()
     pending.cancel()
@@ -458,7 +458,7 @@ async def test_remote_scan_deduplicates_links_and_ignores_broken_links(
     (directory / "broken.log").symlink_to("missing")
     rows = [row async for row in remote_sources.read_remote(ssh_source)]
     assert len(rows) == 1
-    assert rows[0]["log"] == "one event"
+    assert rows[0]["input"] == "one event"
     assert rows[0]["source"].endswith("/logs/file.log")
 
 
@@ -491,7 +491,7 @@ async def test_remote_replacement_probe_handles_unchanged_metadata(
             path.write_text("changed!\n")
             clock[0] = 1
             row = await pending
-        assert row["log"] == "changed!" and row["line"] == 1
+        assert row["input"] == "changed!" and row["line"] == 1
 
 
 @pytest.mark.anyio
@@ -536,7 +536,7 @@ async def test_remote_deleted_glob_watchers_close_without_losing_partial_events(
                 assert len(opened - closed) == 1
                 with paths[-1].open("a") as file:
                     file.write("new event\n")
-                assert (await pending)["log"] == "new event"
+                assert (await pending)["input"] == "new event"
         finally:
             pending.cancel()
             await asyncio.gather(pending, return_exceptions=True)
@@ -578,7 +578,7 @@ async def test_remote_multiline_paths_share_connection_and_deduplicate(
     (directory / "second.txt").write_text("second\n")
     spec = {**ssh_source, "path": "/logs/*.log\n/logs/first.log\n/logs/second.txt"}
     rows = [row async for row in remote_sources.read_remote(spec)]
-    assert sorted(row["log"] for row in rows) == ["first", "second"]
+    assert sorted(row["input"] for row in rows) == ["first", "second"]
     assert all(len(row["sourcePatterns"]) == 3 for row in rows)
     with pytest.raises(ValueError, match="absolute POSIX"):
         save_sources([{**load_sources()[0], "path": "/logs/*.log\nrelative.log"}])
@@ -596,9 +596,9 @@ async def test_remote_multiline_realtime_discovers_each_pattern(
         try:
             await asyncio.sleep(0.4)
             (directory / "new.txt").write_text("new text\n")
-            assert (await asyncio.wait_for(pending, 5))["log"] == "new text"
+            assert (await asyncio.wait_for(pending, 5))["input"] == "new text"
             (directory / "new.log").write_text("new log\n")
-            assert (await asyncio.wait_for(anext(stream), 5))["log"] == "new log"
+            assert (await asyncio.wait_for(anext(stream), 5))["input"] == "new log"
         finally:
             pending.cancel()
             await asyncio.gather(pending, return_exceptions=True)
@@ -622,7 +622,7 @@ async def test_sftp_jsonl_retains_multiline_text_duplicates_and_invalid_rows(
     }
     rows = [row async for row in remote_sources.read_remote(spec)]
     assert len(rows) == 3
-    assert rows[0]["log"] == rows[2]["log"] == content
+    assert rows[0]["input"] == rows[2]["input"] == content
     assert rows[1]["error"] and rows[1]["rawInput"] == "{invalid"
     assert rows[2]["recordNumber"] == 3
 

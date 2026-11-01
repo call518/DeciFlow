@@ -185,7 +185,7 @@ async def test_action_intent_and_outcome_are_not_reexecuted(
         item = store.enqueue(
             snapshot["jobId"],
             {
-                "log": "queued",
+                "input": "queued",
                 "category": "normal",
                 "review": False,
                 "elapsedMs": 10,
@@ -214,7 +214,7 @@ async def test_action_intent_and_outcome_are_not_reexecuted(
         queued = next(
             item["result"]
             for item in page["items"]
-            if item["result"]["log"] == "queued"
+            if item["result"]["input"] == "queued"
         )
         assert "_workId" not in queued and "_recoveredResult" not in queued
         assert queued["actionExecution"]["status"] == (
@@ -436,7 +436,7 @@ async def test_sftp_cursor_resumes_utf8_without_repeating_first_line(
                     sftp, str(path), spec, live=False, from_start=True
                 )
             ]
-            assert [row["log"] for row in rows] == ["둘째", "마지막"]
+            assert [row["input"] for row in rows] == ["둘째", "마지막"]
             assert [row["line"] for row in rows] == [2, 3]
         finally:
             EXECUTION_CONTROL.reset(token)

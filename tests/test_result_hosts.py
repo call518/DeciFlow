@@ -30,7 +30,7 @@ async def test_stream_hosts(monkeypatch, engine, record, expected):
     monkeypatch.setenv("DECIFLOW_HOST", "analysis-01")
 
     async def records() -> AsyncGenerator[dict, None]:
-        yield {**record, "log": "event"}
+        yield {**record, "input": "event"}
 
     async def classify(log):
         return {"engine": engine}
@@ -49,14 +49,14 @@ async def test_failure_and_replay_hosts(monkeypatch):
     monkeypatch.setenv("DECIFLOW_HOST", "new-processor")
     recovered = {
         "_recoveredResult": True,
-        "log": "old",
+        "input": "old",
         "sourceHosts": ["old-source"],
         "deciflowHost": "old-processor",
     }
 
     async def records():
         yield {
-            "log": "",
+            "input": "",
             "sourceType": "ssh",
             "hostAddress": "offline",
             "error": "failed",

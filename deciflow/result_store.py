@@ -397,7 +397,7 @@ class SQLiteResultStore:
                 _host_id(result),
                 int(needs_review(result)),
                 int(failed),
-                result.get("log", "").lower(),
+                result.get("input", "").lower(),
             ),
         )
         if event["type"] != "result":

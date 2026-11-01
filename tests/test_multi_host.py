@@ -107,7 +107,7 @@ async def test_slow_host_gets_the_next_round_and_backpressure_is_bounded(
                 await idle.wait()
             for number in range(1000):
                 read[name] += 1
-                yield {"log": f"{name}-{number}"}
+                yield {"input": f"{name}-{number}"}
         finally:
             closed.add(name)
 
@@ -136,7 +136,7 @@ async def test_host_fairness_is_independent_of_number_of_sources(
 ) -> None:
     async def remote(spec: Result, **kwargs: object) -> AsyncGenerator[Result, None]:
         for number in range(1000):
-            yield {"log": str(number)}
+            yield {"input": str(number)}
 
     monkeypatch.setattr(host_sources, "read_remote", remote)
     specs = parse_source_settings([multi["selection"]])
@@ -170,7 +170,7 @@ async def test_partial_host_failure_and_frozen_run_replay(
         for number in range(2):
             yield {
                 "actionId": spec.get("actionId"),
-                "log": f"{spec['host']}-{number}",
+                "input": f"{spec['host']}-{number}",
                 "sourceId": spec["sourceId"],
                 "source": f"ssh://{spec['host']}/logs/app.log",
             }

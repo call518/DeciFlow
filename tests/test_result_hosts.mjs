@@ -12,6 +12,6 @@ test('response diagnostics and JSON ordering retain collection and processing ho
   assert.deepEqual(Array.from(result.sourceHosts), ['web-01']);
   assert.equal(result.deciflowHost, 'analysis-01');
   assert.equal(result.body.model, 'test');
-  const ordered = vm.runInContext(`orderedResult({log:'event',sourceHosts:['web-01'],deciflowHost:'analysis-01'})`, context);
-  assert.deepEqual(Object.keys(ordered), ['sourceHosts', 'deciflowHost', 'log']);
+  const ordered = vm.runInContext(`orderedResult({input:'event',sourceHosts:['web-01'],deciflowHost:'analysis-01'})`, context);
+  assert.deepEqual(Object.keys(ordered), ['sourceHosts', 'deciflowHost', 'input']);
 });

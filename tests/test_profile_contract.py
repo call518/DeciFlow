@@ -60,7 +60,7 @@ def test_compaction_preserves_original_response_and_input() -> None:
     result = {
         "decisionDefinitions": {"needed": {"type": "noul"}},
         "providerResponse": {"diagnostic": "Original response"},
-        "log": "Original input",
+        "input": "Original input",
         "error": "Keep failure diagnostics",
     }
     before = deepcopy(result)

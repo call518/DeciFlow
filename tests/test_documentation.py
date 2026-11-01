@@ -38,7 +38,7 @@ async def test_documented_request_and_result(
 
     def handle_request(request: httpx.Request) -> httpx.Response:
         assert json.loads(request.content) == expected_request
-        assert expected_request["state"] == example["log"]
+        assert expected_request["state"] == example["input"]
         if engine_name == "laya":
             assert len(request.content) == example["requestBytes"]
         return httpx.Response(200, json=response)
@@ -55,7 +55,7 @@ async def test_documented_request_and_result(
             transport=httpx.MockTransport(handle_request)
         ) as client:
             result = await classify_log(
-                example["log"], engine, client, example["profile"]
+                example["input"], engine, client, example["profile"]
             )
     assert "question" not in example
     assert set(result["questions"]) == {"category", "urgency", "ticket"}

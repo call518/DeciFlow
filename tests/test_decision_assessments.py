@@ -53,7 +53,7 @@ def profile() -> dict[str, Any]:
 def record(profile: dict[str, Any]) -> dict[str, Any]:
     """Make a record whose secondary Choice is uncertain while its primary is not."""
     return {
-        "log": "Synthetic record",
+        "input": "Synthetic record",
         "engine": "laya",
         "defaultDecision": profile["defaultDecision"],
         "criteriaGroup": "stable",
@@ -239,7 +239,7 @@ def test_indexed_filters_and_reopening_preserve_original_payload(
             }
         elif index % 3 == 2:
             item["decisions"]["response"].pop("probabilities")
-        item["log"] = f"row {index}"
+        item["input"] = f"row {index}"
         store.append("run", {"type": "result", "result": item}, snapshot)
     summary = store.state("run")["summary"]
     assert (

@@ -193,7 +193,7 @@ async def test_batch_concurrency_order_and_failures() -> None:
     logs = [str(index) for index in range(9)]
     results = dict([row async for row in classify_batch(logs, handle_classify)])
     assert peak == 4
-    assert [results[index]["log"] for index in range(9)] == logs
+    assert [results[index]["input"] for index in range(9)] == logs
     assert results[3]["error"] == "rate limited"
     assert results[3]["review"] is False
     assert results[8]["category"] == "normal"
@@ -211,7 +211,7 @@ async def test_ten_thousand_logs() -> None:
 
     results = dict([row async for row in classify_batch(logs, handle_classify)])
     assert len(results) == 10000
-    assert [results[index]["log"] for index in range(10000)] == logs
+    assert [results[index]["input"] for index in range(10000)] == logs
 
 
 @pytest.mark.anyio

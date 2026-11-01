@@ -130,7 +130,7 @@ Laya와 Jev는 같은 계약을 사용합니다. 판정 실패·Source 읽기 �
 
 모든 프로필은 검증한 답변을 `decisions[decision_id]`, 고정한 구성을
 `decisionDefinitions`에 제공합니다. JSONL에는 추출한
-`log`, 본문을 제외한 `inputRecord` 메타데이터, `inputContentInLog: true`,
+`input`, 본문을 제외한 `inputRecord` 메타데이터, `contentInInput: true`,
 `recordNumber`가 추가됩니다. 유효한 입력의 중복 `rawInput`은 생략합니다.
 필요한 업무 중복 방지는 출처·레코드 번호 등을 사용하세요. eventId는 재실행 시 바뀝니다.
 Action은 이후 사람의 수정 전에 실행되며 검토자가 결과를 수정해도 자동 재실행하지 않습니다.
@@ -168,16 +168,16 @@ Docker Compose는 `deciflow-data` 볼륨을 `DECIFLOW_DATA_DIR`
 
 ## 간결한 결과 JSON 계약 (버전 2)
 
-상담 원문은 `log` 한 곳에 저장하고 JSONL의 나머지 필드는 `inputRecord`에 유지합니다.
-`inputContentInLog: true`이면 `contentField`가 가리키는 값은 `log`에 있습니다.
-기존 사용자 Action에서 `inputRecord[contentField]`를 읽었다면 `log`로 변경하세요.
+상담 원문은 `input` 한 곳에 저장하고 JSONL의 나머지 필드는 `inputRecord`에 유지합니다.
+`contentInInput: true`이면 `contentField`가 가리키는 값은 `input`에 있습니다.
+기존 사용자 Action에서 `inputRecord[contentField]`를 읽었다면 `input`로 변경하세요.
 원래 JSON 객체가 필요하면 다음처럼 복원합니다(원래 줄의 공백·이스케이프 형식까지
 복원하는 것은 아닙니다).
 
 ```python
 record = dict(result.get("inputRecord", {}))
-if result.get("inputContentInLog"):
-    record[result["contentField"]] = result["log"]
+if result.get("contentInInput"):
+    record[result["contentField"]] = result["input"]
 ```
 
 잘못된 JSONL·불일치하는 원본의 `rawInput`과 오류 진단은 보존합니다. 성공한 결과의

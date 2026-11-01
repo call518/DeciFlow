@@ -10,7 +10,7 @@ def handle_result(result: dict[str, Any]) -> None:
     if result["category"] not in {"error", "security"}:
         return
     # Replace this with a notification, API call, or database write.
-    print(f"{result['eventId']}: {result['category']} — {result['log']}")
+    print(f"{result['eventId']}: {result['category']} — {result['input']}")
 
 
 if __name__ == "__main__":

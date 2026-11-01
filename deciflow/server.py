@@ -350,7 +350,7 @@ async def handle_events(
         for index in range(0, len(logs), chunk_events):
             events = logs[index : index + chunk_events]
             yield {
-                "log": "\n".join(events),
+                "input": "\n".join(events),
                 "profile": profile,
                 "chunkEvents": chunk_events,
                 "eventCount": len(events),
@@ -584,9 +584,9 @@ async def handle_file_events(
                         with use_profile_snapshot(snapshot):
                             profile = record.get("profile", GENERAL_PROFILE_ID)
                             if profile == GENERAL_PROFILE_ID:
-                                return await classify_log(record["log"], engine, client)
+                                return await classify_log(record["input"], engine, client)
                             return await classify_log(
-                                record["log"], engine, client, profile
+                                record["input"], engine, client, profile
                             )
                     finally:
                         clock.end()

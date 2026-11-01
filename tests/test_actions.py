@@ -66,7 +66,7 @@ async def test_file_action_delivery(
     ]
     result = next(event["result"] for event in events if event["type"] == "result")
     received = json.loads(output.read_text())
-    assert received["log"] == "hello"
+    assert received["input"] == "hello"
     assert received["source"] == str(source)
     assert received["engine"] == engine
     assert received["schemaVersion"] == 2

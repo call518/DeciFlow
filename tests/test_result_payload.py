@@ -13,7 +13,7 @@ def sample() -> dict:
     """Build synthetic JSONL metadata without customer records."""
     record = {"content": "상담 테스트", "caseId": "case-one"}
     return {
-        "log": record["content"],
+        "input": record["content"],
         "inputRecord": record,
         "inputFormat": "jsonl",
         "contentField": "content",
@@ -36,20 +36,20 @@ def sample() -> dict:
 def test_compaction_keeps_one_content_copy_and_is_idempotent() -> None:
     original = sample()
     packed = compact_result(original)
-    assert packed["log"] == "상담 테스트"
+    assert packed["input"] == "상담 테스트"
     assert packed["inputRecord"] == {"caseId": "case-one"}
-    assert packed["inputContentInLog"]
+    assert packed["contentInInput"]
     assert "rawInput" not in packed and "questions" not in packed
     assert compact_result(packed) == packed
     assert original["inputRecord"]["content"] == "상담 테스트"
-    reconstructed = {**packed["inputRecord"], packed["contentField"]: packed["log"]}
+    reconstructed = {**packed["inputRecord"], packed["contentField"]: packed["input"]}
     assert reconstructed == original["inputRecord"]
 
 
 def test_malformed_and_distinct_raw_input_are_retained() -> None:
     invalid = {
         "inputFormat": "jsonl",
-        "log": "broken",
+        "input": "broken",
         "rawInput": "broken",
         "error": "Invalid JSON",
     }
@@ -62,6 +62,18 @@ def test_malformed_and_distinct_raw_input_are_retained() -> None:
     packed = compact_result(distinct)
     assert packed["rawInput"] == distinct["rawInput"]
     assert packed["questions"] == distinct["questions"]
+
+
+@pytest.mark.parametrize("input_format", ["text", "jsonl"])
+def test_export_preserves_canonical_input(tmp_path: Path, input_format: str) -> None:
+    store = open_result_store(tmp_path)
+    snapshot = {"jobId": "run", "state": "running", "settings": {}}
+    store.create("run", snapshot)
+    item = {"input": "First event\nSecond event", "inputFormat": input_format}
+    store.append("run", {"type": "result", "index": 0, "result": item}, snapshot)
+    exported = json.loads(store.events("run")[0][1])["result"]
+    assert exported["input"] == item["input"]
+    assert "log" not in exported
 
 
 def test_sqlite_stores_context_once_and_hydrates_pages_reviews_and_exports(

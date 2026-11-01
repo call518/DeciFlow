@@ -206,7 +206,7 @@ async def _lines(
             line += 1
             if text := raw.decode("utf-8").strip():
                 yield {
-                    "log": text,
+                    "input": text,
                     "source": uri,
                     "line": line,
                     **(
@@ -256,7 +256,7 @@ async def _worker(
         except (OSError, ValueError, UnicodeError) as error:
             yield {
                 **_metadata(spec),
-                "log": "",
+                "input": "",
                 "profile": spec["profile"],
                 "chunkEvents": spec["chunkEvents"],
                 "sourceFailure": True,

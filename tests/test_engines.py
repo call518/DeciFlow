@@ -134,7 +134,7 @@ async def test_provider_truncation_keeps_original_and_continues(
                 async for row in classify_batch(["too long", "small"], handle_classify)
             ]
         )
-    assert results[0]["log"] == "too long"
+    assert results[0]["input"] == "too long"
     assert results[0]["review"] is False
     assert "partial prediction was discarded" in results[0]["error"]
     assert "category" not in results[0]

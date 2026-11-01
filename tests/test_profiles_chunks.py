@@ -83,14 +83,14 @@ def test_chunk_events_setting_is_preserved() -> None:
 async def test_chunks_count_multiline_events_separately_from_lines() -> None:
     async def records() -> AsyncGenerator[Result, None]:
         yield {
-            "log": "Traceback\n  frame\nValueError",
+            "input": "Traceback\n  frame\nValueError",
             "source": "application.log",
             "line": 1,
             "lineEnd": 3,
             "lineCount": 3,
         }
         yield {
-            "log": "Exception\n  frame",
+            "input": "Exception\n  frame",
             "source": "application.log",
             "line": 4,
             "lineEnd": 5,
@@ -150,7 +150,7 @@ async def test_batch_chunks_do_not_mix_files_and_flush_eof(tmp_path: Path) -> No
     rows = [row async for row in read_configured(resolve_configured_sources(specs))]
     for name in ("a.log", "b.log"):
         source_rows = [row for row in rows if row["source"].endswith(name)]
-        assert [row["log"] for row in source_rows] == ["one\ntwo", "three"]
+        assert [row["input"] for row in source_rows] == ["one\ntwo", "three"]
         assert [row["lineCount"] for row in source_rows] == [2, 1]
         assert source_rows[0]["line"] == 1 and source_rows[0]["lineEnd"] == 3
     assert all(row["profile"] == "617706a3-c4ee-426f-81cf-7f5d80ecf67a" for row in rows)
@@ -162,7 +162,7 @@ async def test_realtime_idle_flush_and_cancel() -> None:
 
     async def records() -> AsyncGenerator[Result, None]:
         try:
-            yield {"log": "one", "line": 1, "source": "live.log"}
+            yield {"input": "one", "line": 1, "source": "live.log"}
             await asyncio.Event().wait()
         finally:
             closed.set()
@@ -172,7 +172,7 @@ async def test_realtime_idle_flush_and_cancel() -> None:
     ) as chunks:
         async with asyncio.timeout(2):
             row = await anext(chunks)
-        assert row["log"] == "one" and row["lineCount"] == 1
+        assert row["input"] == "one" and row["lineCount"] == 1
     assert closed.is_set()
 
 
@@ -180,7 +180,7 @@ async def test_realtime_idle_flush_and_cancel() -> None:
 async def test_rotation_boundary_flushes_separate_chunks() -> None:
     async def records() -> AsyncGenerator[Result, None]:
         for line, text in [(1, "old"), (1, "new"), (2, "next")]:
-            yield {"line": line, "log": text, "source": "rotating.log"}
+            yield {"line": line, "input": text, "source": "rotating.log"}
 
     rows = [
         row
@@ -188,7 +188,7 @@ async def test_rotation_boundary_flushes_separate_chunks() -> None:
             records(), "4e6d5417-611e-49e0-8e23-2444a0f49ee4", 3
         )
     ]
-    assert [row["log"] for row in rows] == ["old", "new\nnext"]
+    assert [row["input"] for row in rows] == ["old", "new\nnext"]
 
 
 @pytest.mark.anyio
@@ -308,7 +308,7 @@ async def test_realtime_discovers_globs_with_per_file_chunks(tmp_path: Path) -> 
             async with asyncio.timeout(4):
                 first = await pending
                 second = await anext(records)
-            assert {first["log"], second["log"]} == {"one-a\none-b", "two-a\ntwo-b"}
+            assert {first["input"], second["input"]} == {"one-a\none-b", "two-a\ntwo-b"}
             assert first["source"] != second["source"]
             assert (
                 first["profile"]
@@ -341,8 +341,8 @@ async def test_live_rotation_does_not_mix_generations(tmp_path: Path) -> None:
             async with asyncio.timeout(4):
                 first = await pending
                 second = await anext(records)
-            assert first["log"] == "old line"
-            assert second["log"] == "new line\nsecond new line"
+            assert first["input"] == "old line"
+            assert second["input"] == "new line\nsecond new line"
             assert first["line"] == second["line"] == 1
         finally:
             pending.cancel()

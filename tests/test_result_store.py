@@ -30,7 +30,7 @@ def event(number: int) -> Result:
         "index": number,
         "elapsedMs": number * 10,
         "result": {
-            "log": f"record {number} % literal",
+            "input": f"record {number} % literal",
             "criteriaGroup": "system",
             "defaultDecision": "category",
             "decisionDefinitions": DEFAULT_PROFILES[
@@ -66,7 +66,7 @@ def test_keyset_pages_filters_and_aggregates_stay_independent(tmp_path: Path) ->
         store.append(run["jobId"], event(number), run)
     first = store.page(run["jobId"], {}, 30)
     assert len(first["items"]) == 30 and first["hasNext"]
-    assert first["items"][0]["result"]["log"].startswith("record 999 ")
+    assert first["items"][0]["result"]["input"].startswith("record 999 ")
     second = store.page(run["jobId"], {"before": first["items"][-1]["sequence"]}, 30)
     assert not {item["sequence"] for item in first["items"]}.intersection(
         item["sequence"] for item in second["items"]
@@ -85,7 +85,7 @@ def test_keyset_pages_filters_and_aggregates_stay_independent(tmp_path: Path) ->
     reopened = SQLiteResultStore(tmp_path / "results.db")
     for item in filtered["items"]:
         number = item["result"]["resultNumber"]
-        assert number == int(item["result"]["log"].split()[1]) + 1
+        assert number == int(item["result"]["input"].split()[1]) + 1
         restored = reopened.page(run["jobId"], {"before": item["sequence"] + 1}, 10)
         assert restored["items"][0]["result"]["resultNumber"] == number
     assert all(
@@ -509,7 +509,7 @@ def test_processing_status_filters_combine_with_source_host_and_paging(
         },
         10,
     )
-    assert [item["result"]["log"] for item in filtered["items"]] == [
+    assert [item["result"]["input"] for item in filtered["items"]] == [
         "record 1 % literal"
     ]
     assert not store.page(
@@ -555,7 +555,7 @@ def test_filtered_chart_aggregates_all_matches_independently_of_pages(
             providerResponse={"usage": {"truncated": index % 17 == 0}},
             hostId="node-a" if index % 2 else "node-b",
             sourcePatterns=["/source-a" if index % 3 else "/source-b"],
-            log="target event" if index % 4 else "other event",
+            input="target event" if index % 4 else "other event",
             review=index % 5 == 0,
         )
         choice = "normal" if index % 2 else "warning"
@@ -575,7 +575,7 @@ def test_filtered_chart_aggregates_all_matches_independently_of_pages(
         for value in records
         if (filters.get("host", value["hostId"]) == value["hostId"])
         and ("source" not in filters or filters["source"] in value["sourcePatterns"])
-        and filters.get("search", "").lower() in value["log"].lower()
+        and filters.get("search", "").lower() in value["input"].lower()
         and (filters.get("processing") != "successful" or not value.get("error"))
         and (filters.get("processing") != "failed" or value.get("error"))
         and (
@@ -654,7 +654,7 @@ def test_decision_value_filter_leaves_chart_counts_unchanged_across_pages(
         identity, {**filters, "before": first["items"][-1]["sequence"]}, 10
     )
     rows = first["items"] + second["items"]
-    assert [row["result"]["log"] for row in rows] == [
+    assert [row["result"]["input"] for row in rows] == [
         f"record {number} % literal" for number in reversed(expected) for _ in range(5)
     ]
     chart = first["chartSummary"]

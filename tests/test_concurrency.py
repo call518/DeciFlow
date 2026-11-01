@@ -47,7 +47,7 @@ async def test_worker_limit(mode: str, concurrency: int) -> None:
 
     async def records() -> AsyncGenerator[Result, None]:
         for index in range(9):
-            yield {"log": str(index)}
+            yield {"input": str(index)}
 
     if mode == "batch":
         results = classify_batch(
@@ -78,6 +78,6 @@ async def test_server_uses_engine_concurrency(
         return {"category": "normal"}
 
     monkeypatch.setattr(server, "classify_log", handle_classify)
-    events = [event async for event in server.handle_events(["log"] * 6, get_engine())]
+    events = [event async for event in server.handle_events(["input"] * 6, get_engine())]
     assert len(events) == 8
     assert peak == 2

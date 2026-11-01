@@ -130,7 +130,7 @@ UI에서 편집한 기준은 정답 로그를 UTF-8 파일로 만들고 Local Fi
 ```json
 [
   {
-    "log": "application: database connection failed",
+    "input": "application: database connection failed",
     "expected": "error",
     "profile": "617706a3-c4ee-426f-81cf-7f5d80ecf67a"
   }
