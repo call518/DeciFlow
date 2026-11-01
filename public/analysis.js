@@ -19,15 +19,37 @@ function showError(error) {
   $('analysis-status').textContent=error.message;
   $('analysis-status').className='error-message';
 }
+function renderAnalysisMetadata(metadata) {
+  const usage=metadata.usage || {};
+  const created=typeof metadata.createdAt==='number'?new Date(metadata.createdAt*1000):null;
+  const fields=[
+    ['Requested Model',metadata.requestedModel],['Response Model',metadata.model],
+    ['Response Status',metadata.status],
+    ['Request Duration',Number.isFinite(metadata.elapsedMs)?`${(metadata.elapsedMs/1000).toFixed(2)} s (${metadata.elapsedMs} ms)`:null],
+    ['Input Tokens',usage.input_tokens],['Output Tokens',usage.output_tokens],['Total Tokens',usage.total_tokens],
+    ['Cached Input Tokens',usage.input_tokens_details?.cached_tokens],
+    ['Reasoning Tokens',usage.output_tokens_details?.reasoning_tokens],
+    ['Service Tier',metadata.serviceTier],['Response ID',metadata.responseId],['Request ID',metadata.requestId],
+    ['Created At (UTC)',created && Number.isFinite(created.getTime())?created.toISOString():null],
+  ];
+  const list=$('analysis-metadata-values');list.replaceChildren();
+  for(const [label,value] of fields){
+    const item=document.createElement('div'),term=document.createElement('dt'),description=document.createElement('dd');
+    term.textContent=label;description.textContent=value===undefined || value===null || value===''?'Not Reported':String(value);
+    item.append(term,description);list.append(item);
+  }
+  $('analysis-metadata').hidden=false;
+}
 async function handleAnalyze() {
   if(busy || !available)return;
   busy=true;$('analyze').disabled=true;
   $('analysis-status').className='';$('analysis-status').textContent='Analyzing…';
-  $('analysis-content').textContent='';$('analysis-model').textContent='';
+  $('analysis-content').textContent='';$('analysis-metadata').hidden=true;
+  $('analysis-metadata-values').replaceChildren();
   try {
     const data=await requestAnalysis(true);
     $('analysis-content').textContent=data.analysis;
-    $('analysis-model').textContent=`Analysis Model: ${data.model}`;
+    renderAnalysisMetadata(data.metadata);
     $('analysis-status').textContent='Analysis complete.';
   }catch(error){showError(error);}
   finally{busy=false;$('analyze').disabled=!available;}

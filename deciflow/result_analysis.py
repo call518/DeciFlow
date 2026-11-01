@@ -2,6 +2,7 @@
 
 import json
 import os
+from time import perf_counter
 from typing import Any
 
 import httpx
@@ -70,6 +71,7 @@ async def analyze_result(context: dict[str, Any], language: str) -> dict[str, An
     configuration = analysis_configuration()
     if not configuration["available"]:
         raise ValueError("Configure OPENAI_API_KEY and OPENAI_ANALYSIS_MODEL in .env.")
+    started = perf_counter()
     async with httpx.AsyncClient(timeout=120) as client:
         response = await client.post(
             "https://api.openai.com/v1/responses",
@@ -89,15 +91,29 @@ async def analyze_result(context: dict[str, Any], language: str) -> dict[str, An
                     "excerpts and the applicable Criteria. Identify missing context, "
                     "truncated input, contradictions, unsupported confidence, and plausible "
                     "alternatives. Probabilities are model estimates, not measured accuracy. "
-                    "Distinguish original decisions from reviewer corrections. Do not invent "
+                    "Call the saved engine output 'Decision Result', not 'original decision', "
+                    "'previous decision', or 'initial decision'. Report its values factually "
+                    "in the first section without mixing in recommendations. Label your "
+                    "assessment and suggested alternatives 'AI Review Opinion'; they are "
+                    "advisory and do not create a new decision or change the saved result. "
+                    "Mention user corrections only when reviewerDecisions are supplied, "
+                    "and label them separately as 'User Corrections'. Do not invent "
                     "events, change decisions, or claim any Action was performed. "
-                    "Respond concisely in plain text with four sections: Decision Summary, "
-                    "Evidence, Alternative Interpretations, and Further Checks. "
-                    + ("Write in Korean." if language == "ko" else "Write in English.")
+                    "Respond concisely in plain text with four sections: Decision Result, "
+                    "Evidence, AI Review Opinion, and Further Checks. "
+                    + (
+                        "Write in Korean. Use the section headings '판정 결과', '판정 근거', "
+                        "'AI 검토 의견', and '추가 확인 사항'. Refer to the saved output as "
+                        "'판정 결과', never '원래 결정', '기존 결정', or '최초 결정'. "
+                        "Use '사용자 정정' only for supplied user corrections."
+                        if language == "ko"
+                        else "Write in English."
+                    )
                 ),
                 "input": json.dumps(context, ensure_ascii=False),
             },
         )
+    elapsed_ms = round((perf_counter() - started) * 1000)
     if response.status_code != 200:
         raise ValueError(
             f"OpenAI analysis failed (HTTP {response.status_code}). "
@@ -124,6 +140,15 @@ async def analyze_result(context: dict[str, Any], language: str) -> dict[str, An
         raise ValueError("OpenAI returned no analysis text.")
     return {
         "analysis": "\n".join(parts),
-        "model": payload.get("model", configuration["model"]),
-        "usage": payload.get("usage", {}),
+        "metadata": {
+            "requestedModel": configuration["model"],
+            "model": payload.get("model"),
+            "status": payload["status"],
+            "responseId": payload.get("id"),
+            "requestId": response.headers.get("x-request-id"),
+            "createdAt": payload.get("created_at"),
+            "serviceTier": payload.get("service_tier"),
+            "elapsedMs": elapsed_ms,
+            "usage": payload.get("usage") or {},
+        },
     }

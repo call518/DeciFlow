@@ -128,11 +128,26 @@ async def test_generation_uses_dedicated_model_and_never_changes_results(
         )
         assert "internal reasoning" in body["instructions"]
         assert "Write in Korean" in body["instructions"]
+        assert "'판정 결과'" in body["instructions"]
+        assert "'AI 검토 의견'" in body["instructions"]
+        assert "without mixing in recommendations" in body["instructions"]
+        assert "do not create a new decision" in body["instructions"]
         return httpx.Response(
             200,
+            headers={"x-request-id": "req-test", "set-cookie": "private-cookie"},
             json={
                 "status": "completed",
                 "model": "actual-analysis-model",
+                "id": "resp-test",
+                "created_at": 1_700_000_000,
+                "service_tier": "default",
+                "usage": {
+                    "input_tokens": 100,
+                    "output_tokens": 50,
+                    "total_tokens": 150,
+                    "input_tokens_details": {"cached_tokens": 0},
+                    "output_tokens_details": {"reasoning_tokens": 20},
+                },
                 "output": [
                     {
                         "type": "message",
@@ -163,7 +178,17 @@ async def test_generation_uses_dedicated_model_and_never_changes_results(
         )
     assert response.status_code == 200
     assert response.json()["analysis"] == "Evidence supports normal."
-    assert response.json()["model"] == "actual-analysis-model"
+    metadata = response.json()["metadata"]
+    assert metadata["model"] == "actual-analysis-model"
+    assert metadata["requestedModel"] == "analysis-model"
+    assert metadata["responseId"] == "resp-test"
+    assert metadata["requestId"] == "req-test"
+    assert metadata["createdAt"] == 1_700_000_000
+    assert metadata["serviceTier"] == "default"
+    assert metadata["elapsedMs"] >= 0
+    assert metadata["usage"]["total_tokens"] == 150
+    assert metadata["usage"]["input_tokens_details"]["cached_tokens"] == 0
+    assert "private-cookie" not in response.text
     assert "private-key" not in response.text
     assert len(sent) == 1
     assert saved_result[0].events(RUN) == before

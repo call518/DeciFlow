@@ -32,11 +32,17 @@ It sends only the selected evidence to OpenAI; API charges apply. API keys stay 
 the backend. The analysis model reviews supporting evidence, alternatives, missing
 context and further checks; it cannot recover the original engine's internal
 reasoning and must not assume the original answer is correct.
+**Decision Result** reports the saved engine output; **AI Review Opinion** contains
+the analysis model's assessment and alternatives, without creating a new decision.
 
 The analysis follows the browser language (Korean or English) and leaves decisions,
-reviews and Actions unchanged. Results are shown as text with the analysis model;
-input and saved Criteria are expandable. Analysis is not saved in execution history
-or exports. Reloading the tab or choosing **Analyze Again** makes another paid
+reviews and Actions unchanged. Results are shown as text; input and saved Criteria
+are expandable. A collapsed **Analysis Metadata** section below them summarizes
+the requested/response models, response status, request duration (including network
+time), token usage (including cached input and reasoning token subsets), service
+tier, response/request IDs, and the provider creation time in UTC. Missing values
+show Not Reported rather than zero. Expanding details does not make API requests.
+Analysis is not saved in execution history or exports. Reloading the tab or choosing **Analyze Again** makes another paid
 request; failures are not retried automatically. Inputs above 200,000 UTF-8 JSON
 bytes are rejected without being sent or silently truncated.
 

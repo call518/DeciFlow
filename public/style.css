@@ -1700,6 +1700,7 @@ a.quiet[aria-disabled="true"] { opacity: .5; cursor: default; pointer-events: no
 .analysis-page .card { margin-bottom: 16px; }
 .analysis-content { white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: 14px; line-height: 1.7; }
 .analysis-page pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.analysis-page .view-details { margin-top: 10px; }
 .result-number { order: -1; display: block; color: #38584a; font-size: 12px; overflow-wrap: anywhere; }
 
 .chart-fields { grid-template-columns: minmax(0, 1fr); gap: 8px; margin: 12px 0; padding: 10px 0; border-top: 1px solid #e1e9e4; border-bottom: 1px solid #e1e9e4; background: transparent; }
