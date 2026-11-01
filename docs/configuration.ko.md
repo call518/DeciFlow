@@ -53,6 +53,7 @@ Docker는 컨테이너 내부 경로를 이름 있는 볼륨으로 보존하고,
 
 | 환경변수 | 미설정 시 코드 기본값 | 역할 |
 | --- | --- | --- |
+| `OPENAI_ANALYSIS_MODEL` | `gpt-5.6-terra` | 결과 분석 전용 OpenAI Responses 모델. `OPENAI_CRITERIA_MODEL`과 별개이며 이 값과 `OPENAI_API_KEY`가 모두 있어야 AI Analysis 활성화 |
 | `COMPOSE_PROFILES` | 미설정(로컬 Laya 미실행) | Compose 전용. cpu·cuda 중 하나만 선택. .env.example은 cpu 지정 |
 | `OAUTH2_PROXY_ENABLED` | `false` | true: Google 로그인·HTTPS, false: 인증 없는 HTTP 데모. Docker·네이티브 공통 |
 | `OAUTH2_PROXY_MANAGED` | `true` | CLI가 프록시 프로세스를 관리. 별도 Docker 프록시는 false; 호스트 바이너리·HTTPS 포트 점유 검사를 생략하며 인증 UI는 유지 |
@@ -225,6 +226,9 @@ Jev 모델·요청 바이트 예산·동시 요청 수, OpenAI Criteria 작성 �
 Configurations가 바뀌어도 원래 설정으로 복구합니다. 스냅샷이 없는 기존 실행은
 엔진·모델 변경 시 복구를 중단하는 기존 정책을 유지합니다. 인증정보는 환경변수에서
 읽으며 실행 스냅샷에 저장하지 않습니다. AI Criteria 생성도 요청 시작 시 설정을 사용합니다.
+
+`OPENAI_ANALYSIS_MODEL`은 `.env`에서 별도로 관리하며 Environment and Deployment에
+읽기 전용으로 표시합니다. Criteria 모델로 자동 대체하지 않습니다.
 
 API 키(`LAYA_API_KEY`, `JEV_API_KEY`, `OPENAI_API_KEY`)는 `.env`에 남기고 UI에는
 설정 여부만 표시합니다. 포트·데이터/로그 경로·신뢰 출처·Compose 프로필은 배포 환경에서

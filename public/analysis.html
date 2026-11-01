@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AI Analysis · DeciFlow</title>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="analysis-page">
+  <main>
+    <section class="card">
+      <header><h1>AI Analysis</h1><button id="analyze" class="quiet" disabled>Analyze Again</button></header>
+      <p id="identity" class="caption"></p>
+      <p class="caption">This is an independent review of the input and saved Criteria, not the original engine's internal reasoning. Original decisions and Actions remain unchanged.</p>
+      <p class="caption">Analysis sends the selected input, Criteria, and decision to OpenAI and incurs API charges. Reloading or choosing Analyze Again starts another request.</p>
+      <p id="analysis-status" role="status">Loading saved result…</p>
+      <p id="analysis-model" class="caption"></p>
+      <div id="analysis-content" class="analysis-content"></div>
+    </section>
+    <section id="analysis-evidence" class="card" hidden>
+      <details><summary>Input</summary><pre id="analysis-input"></pre></details>
+      <details><summary>Saved Criteria and Decision</summary><pre id="analysis-context"></pre></details>
+    </section>
+  </main>
+  <script type="module" src="/analysis.js"></script>
+</body>
+</html>

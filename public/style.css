@@ -1693,6 +1693,13 @@ a.quiet[aria-disabled="true"] { opacity: .5; cursor: default; pointer-events: no
 
 .result-summary { display: flex; flex-direction: column; }
 .result-header { order: -1; margin-bottom: 8px; }
+.result-analysis { margin-left: auto; padding: 3px 8px; font-size: 11px; }
+.analysis-page { display: block; padding: 20px; }
+.analysis-page main { margin: 0 auto; padding: 0; width: 100%; max-width: 1000px; }
+.analysis-page header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.analysis-page .card { margin-bottom: 16px; }
+.analysis-content { white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: 14px; line-height: 1.7; }
+.analysis-page pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .result-number { order: -1; display: block; color: #38584a; font-size: 12px; overflow-wrap: anywhere; }
 
 .chart-fields { grid-template-columns: minmax(0, 1fr); gap: 8px; margin: 12px 0; padding: 10px 0; border-top: 1px solid #e1e9e4; border-bottom: 1px solid #e1e9e4; background: transparent; }

@@ -97,8 +97,9 @@ or incomplete responses do not populate the editor or change saved Criteria.
 Generation failure preserves the draft and sample edits so you can retry.
 Validation checks structure and required fields, not business-rule accuracy.
 Samples come from the beginning of matched inputs and may miss rare cases.
-OpenAI drafts Criteria only; actual classification still uses Laya or Jev with no
-provider fallback. Existing profiles can be cloned before generating a new draft.
+Criteria generation drafts rules; actual classification still uses Laya or Jev
+with no provider fallback. The separate [AI Analysis](results.md#ai-analysis)
+feature reviews individual decisions on demand. Existing profiles can be cloned before generating a new draft.
 
 ## Understand the Three Parts First
 

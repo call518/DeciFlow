@@ -338,6 +338,7 @@ async function copyText(text) {
   }
 }
 let results = [];
+let analysisConfiguration = {available:false,model:''};
 let pagedView = null;
 let resultsPerPage = 30;
 const resultCursors = new WeakMap();
@@ -2504,6 +2505,15 @@ function processingPercentiles(stats) {
   stats.processingPercentiles={minMs:values[0],maxMs:values[1],medianMs:(values[2]+values[3])/2,p95Ms:values[4],p99Ms:values[5]};
   return stats.processingPercentiles;
 }
+function renderAnalysisButton(result) {
+  const button=element('button','AI Analysis','quiet result-analysis');button.type='button';
+  const sequence=resultCursors.get(result),run=activeJobId;
+  button.disabled=!analysisConfiguration.available || !run || !sequence || Boolean(result.error) || !result.input?.trim();
+  button.title=!analysisConfiguration.available?'Configure OPENAI_API_KEY and OPENAI_ANALYSIS_MODEL in .env.':button.disabled?'Available for saved, completed decisions with input.':`Send this input, saved Criteria, and decision to OpenAI (${analysisConfiguration.model}). API charges apply.`;
+  button.setAttribute('aria-label',`AI Analysis for Result #${result.resultNumber}`);
+  button.onclick=()=>globalThis.open(`/analysis.html?run=${encodeURIComponent(run)}&result=${sequence}`,'_blank','noopener');
+  return button;
+}
 function render(updateList = true, incremental = false) {
   const stats = updateResultStatistics(incremental);
   if (!incremental || renderedCount !== completed || renderedHosts !== runHosts) {
@@ -2600,7 +2610,7 @@ function render(updateList = true, incremental = false) {
     const identity=element('strong',`Result #${result.resultNumber}`,'result-number');
     identity.title='Completion number within this run; unchanged by filtering or paging.';
     if (result.error) {
-      top.append(element('span', result.sourceFailure?'Source failed':'Processing Failed', 'badge error'), element('span', `${result.elapsedMs}ms`),identity);
+      top.append(element('span', result.sourceFailure?'Source failed':'Processing Failed', 'badge error'), element('span', `${result.elapsedMs}ms`),identity,renderAnalysisButton(result));
     } else {
       const decisions = element('div', '', 'decision-grid');
       decisions.setAttribute('role', 'group'); decisions.setAttribute('aria-label', 'Decision results');
@@ -2615,6 +2625,7 @@ function render(updateList = true, incremental = false) {
       metadata.append(identity);
       metadata.append(element('span', `Processing: ${result.elapsedMs}ms`));
       if (needsReview(result)) metadata.append(element('span', 'Needs Review', 'review'));
+      metadata.append(renderAnalysisButton(result));
       top.append(metadata);
     }
     const tokenWarning=renderTokenWarning(result);
@@ -3361,6 +3372,8 @@ fetch('/api/status').then(async response => {
   if (!response.ok) throw new Error(data.error);
   return data;
 }).then(async data => {
+  analysisConfiguration=data.analysis || {available:false,model:''};
+  if(results.length)render();
   handleLoadSignedInUser(data.authenticationEnabled);
   $('host-name').textContent = data.host.hostname;
   $('host-os').textContent = data.host.os;

@@ -80,6 +80,11 @@ from deciflow.profiles import (
     validate_settings,
 )
 from deciflow.reset import reset_data, reset_directory, restart_process
+from deciflow.result_analysis import (
+    analysis_configuration,
+    analysis_context,
+    analyze_result,
+)
 from deciflow.result_payload import compact_result
 from deciflow.result_store import close_result_store, open_result_store
 from deciflow.runtime_config import configuration_description
@@ -125,6 +130,8 @@ ASSETS = {
     "/": ("index.html", "text/html"),
     "/app.js": ("app.js", "text/javascript"),
     "/stream.js": ("stream.js", "text/javascript"),
+    "/analysis.html": ("analysis.html", "text/html"),
+    "/analysis.js": ("analysis.js", "text/javascript"),
     "/vendor/prism/prism-python-1.30.0.min.js": (
         "vendor/prism/prism-python-1.30.0.min.js",
         "text/javascript",
@@ -193,6 +200,7 @@ async def handle_status(request: Request) -> Response:
             "engine": engine.name,
             "model": engine.model,
             "authenticationEnabled": os.getenv("OAUTH2_PROXY_ENABLED") == "true",
+            "analysis": analysis_configuration(),
             "workingDirectory": str(Path.cwd()),
             "profiles": {key: value["label"] for key, value in PROFILES.items()},
             "chartDefaults": {
@@ -1593,6 +1601,71 @@ async def handle_configuration(request: Request) -> Response:
         return _json(400, {"error": str(error)})
 
 
+async def handle_result_analysis(request: Request) -> Response:
+    """Preview a saved result or analyze it only on an explicit POST request."""
+    if not _allowed_origin(request):
+        return _json(403, {"error": "AI Analysis requires a trusted UI origin."})
+    try:
+        raw = bytearray()
+        async for chunk in request.stream():
+            raw.extend(chunk)
+            if len(raw) > 4096:
+                raise ValueError("AI Analysis request is too large.")
+        body = json.loads(raw)
+        if not isinstance(body, dict):
+            raise TypeError("Provide an AI Analysis request object.")
+        sequence = body.get("sequence")
+        if type(sequence) is not int or not 0 < sequence < 2**63:
+            raise ValueError("Select a saved result.")
+        generate = body.get("generate", False)
+        language = body.get("language", "en")
+        if type(generate) is not bool or language not in {"en", "ko"}:
+            raise ValueError("Invalid AI Analysis options.")
+        identity = request.path_params["job_id"]
+        job = JOBS.get(identity)
+        store = (
+            job.store
+            if job
+            else await anyio.to_thread.run_sync(open_result_store, get_data_directory())
+        )
+        page = await anyio.to_thread.run_sync(
+            partial(
+                store.page, identity, {"after": sequence - 1, "through": sequence}, 10
+            )
+        )
+        if not page["items"]:
+            return _json(404, {"error": "Saved result not found."})
+        result = page["items"][0]["result"]
+        state = await anyio.to_thread.run_sync(store.state, identity)
+        context = analysis_context(result, state["snapshot"])
+        if not generate:
+            return _json(
+                200,
+                {
+                    "configuration": analysis_configuration(),
+                    "context": context,
+                    "resultNumber": result.get("resultNumber", sequence),
+                },
+            )
+        return _json(200, await analyze_result(context, language))
+    except (httpx.HTTPError, TimeoutError):
+        return _json(
+            502,
+            {
+                "error": "OpenAI analysis timed out or could not connect. Retry if needed."
+            },
+        )
+    except (ValueError, TypeError, KeyError) as error:
+        # Never expose provider response bodies, credentials, or saved input in errors.
+        message = (
+            str(error)
+            if isinstance(error, ValueError)
+            and not isinstance(error, json.JSONDecodeError)
+            else "Invalid AI Analysis request or response."
+        )
+        return _json(400, {"error": message})
+
+
 async def handle_result_page(request: Request) -> Response:
     """Query bounded result pages, save corrections, or stream a complete export."""
     if not _allowed_origin(request):
@@ -1859,6 +1932,7 @@ app = Starlette(
         Route("/api/restart", handle_restart, methods=["POST"]),
         Route("/api/settings", handle_settings, methods=["POST", "PUT"]),
         Route("/api/jobs/{job_id}/results", handle_result_page, methods=["POST"]),
+        Route("/api/jobs/{job_id}/analysis", handle_result_analysis, methods=["POST"]),
         Route("/api/jobs/{job_id}/review", handle_result_page, methods=["POST"]),
         Route(
             "/api/jobs/{job_id}/export-reviewed", handle_result_page, methods=["POST"]

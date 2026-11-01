@@ -62,7 +62,7 @@ def test_fresh_defaults_are_persisted_and_empty_lists_stay_empty() -> None:
                     "SELECT kind,COUNT(*) FROM configuration_records GROUP BY kind"
                 )
             )
-        assert counts == {"sources": 7, "criteria": 8, "tasks": 1, "settings": 1}
+        assert counts == {"sources": 7, "criteria": len(DEFAULT_PROFILES), "tasks": 1, "settings": 1}
         save_sources([])
         assert load_sources() == []
         assert not list(get_data_directory().rglob("*.json"))

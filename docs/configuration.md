@@ -56,6 +56,7 @@ The native quick start explicitly overrides them with `./data` and `./logs`.
 
 | Variable | Code default (when unset) | Purpose |
 | --- | --- | --- |
+| `OPENAI_ANALYSIS_MODEL` | `gpt-5.6-terra` | Dedicated OpenAI Responses model for result analysis; independent of `OPENAI_CRITERIA_MODEL`. AI Analysis requires both this value and `OPENAI_API_KEY` |
 | `COMPOSE_PROFILES` | Unset (no local Laya) | Compose only: set cpu or cuda, exactly one; .env.example selects cpu |
 | `OAUTH2_PROXY_ENABLED` | `false` | true: Google sign-in and HTTPS; false: unauthenticated HTTP demo. Docker and native |
 | `OAUTH2_PROXY_MANAGED` | `true` | CLI supervises the proxy process. Set false for a separate Docker proxy; skips host binary/HTTPS port availability checks while retaining the authentication UI |
@@ -236,6 +237,9 @@ restore them even if Configurations changed. Existing legacy runs without such a
 snapshot still stop recovery if the engine/model changed. Credentials are read from
 the environment and never saved in run snapshots. AI Criteria generation uses the
 settings captured when that request starts.
+
+`OPENAI_ANALYSIS_MODEL` is managed separately in `.env` and displayed read-only
+under Environment and Deployment. It is never substituted with the Criteria model.
 
 API keys (`LAYA_API_KEY`, `JEV_API_KEY`, `OPENAI_API_KEY`) remain in `.env`; the UI
 shows only whether they are set. Server port, data/log directories, trusted origins,

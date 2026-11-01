@@ -5217,3 +5217,19 @@ test('Task Monitor disables unavailable controls and shows operation failures on
   assert.match(nodes.get('task-monitor-message').textContent,/Task state changed/);
   assert.equal(nodes.get('running-tasks').children[0].children[1].disabled,false);
 });
+
+test('AI Analysis requires backend availability and a saved completed result, then opens an isolated tab',async()=>{
+  const {context}=workspace([]);await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext("globalThis.item={input:'saved input',resultNumber:7};activeJobId='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';resultCursors.set(item,12)",context);
+  for(const available of [false,true]){
+    vm.runInContext(`analysisConfiguration={available:${available},model:'analysis-model'}`,context);
+    const button=vm.runInContext('renderAnalysisButton(item)',context);
+    assert.equal(button.textContent,'AI Analysis');assert.equal(button.disabled,!available);
+    if(available){
+      let opened;context.open=(...args)=>{opened=args;};button.onclick();
+      assert.deepEqual(opened,['/analysis.html?run=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&result=12','_blank','noopener']);
+      assert.match(button.title,/API charges apply/);
+    }else assert.match(button.title,/OPENAI_API_KEY and OPENAI_ANALYSIS_MODEL/);
+  }
+  vm.runInContext("item.error='failed'",context);assert.equal(vm.runInContext('renderAnalysisButton(item).disabled',context),true);
+});

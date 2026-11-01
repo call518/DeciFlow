@@ -14,6 +14,33 @@ profiles use category, urgency, and ticket; custom profiles choose their own IDs
 options, and number of decisions. JSONL uses the extracted content field as state.
 The examples below retain the system HTTP access workflow.
 
+
+## AI Analysis
+
+Each result card has an **AI Analysis** button. Configure both `OPENAI_API_KEY`
+and the dedicated `OPENAI_ANALYSIS_MODEL` in DeciFlow's `.env`, then restart
+DeciFlow and refresh the browser. The model defaults to `gpt-5.6-terra`; an
+explicitly blank model disables analysis. `OPENAI_CRITERIA_MODEL` remains exclusive to Criteria authoring.
+Use one execution method: restart the native DeciFlow process, or recreate the UI
+container after changing Docker environment settings.
+
+For a saved, completed decision with input, clicking opens a separate tab and
+requests analysis once. Failed results and results without input cannot be analyzed.
+The server reads the original input, any normalized `decisionInput`, frozen run
+Criteria, decisions/probabilities, input-limit metadata, and reviewer corrections.
+It sends only the selected evidence to OpenAI; API charges apply. API keys stay on
+the backend. The analysis model reviews supporting evidence, alternatives, missing
+context and further checks; it cannot recover the original engine's internal
+reasoning and must not assume the original answer is correct.
+
+The analysis follows the browser language (Korean or English) and leaves decisions,
+reviews and Actions unchanged. Results are shown as text with the analysis model;
+input and saved Criteria are expandable. Analysis is not saved in execution history
+or exports. Reloading the tab or choosing **Analyze Again** makes another paid
+request; failures are not retried automatically. Inputs above 200,000 UTF-8 JSON
+bytes are rejected without being sent or silently truncated.
+
+
 ## Request body
 
 `state` is a string: one log event for Events/Chunk 1, or events joined with `\n`

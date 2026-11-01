@@ -71,6 +71,9 @@ See [Task recovery](docs/tasks.md#recovery-after-a-server-restart) and
 
 ## Capabilities
 
+- **AI Analysis:** review a selected result against its saved input and Criteria
+  in a separate tab. Requires a separate OpenAI analysis model and incurs API
+  charges. See [result analysis](docs/results.md#ai-analysis).
 - **Flexible decisions:** combine category choices, probability-weighted scores, and
   yes/no probabilities. System profiles cover Normal, Warning, Error, Security,
   Other, urgency, and work-ticket probability.
@@ -122,8 +125,9 @@ requires a vision model.
 - Higher client concurrency does not guarantee greater inference throughput.
   Engine capacity and admission limits apply.
 - Laya receives inputs on your selected server; Jev sends them to TypeSafe and
-  incurs charges. Optional AI authoring sends reviewed samples to OpenAI. Result
-  storage includes original inputs and Action outcomes. Protect data and backups;
+  incurs charges. Optional AI authoring sends reviewed samples to OpenAI.
+  AI Analysis sends the selected input, saved Criteria, and decision. Result storage
+  includes original inputs and Action outcomes. Protect data and backups;
   disk retention is not automatic.
 
 See [Sources](docs/sources.md), [Usage](docs/usage.md), and

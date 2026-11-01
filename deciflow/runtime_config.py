@@ -138,6 +138,7 @@ def configuration_description() -> dict[str, Any]:
         "DECIFLOW_LOG_DIR",
         "DECIFLOW_CSRF_TRUSTED_ORIGINS",
         "COMPOSE_PROFILES",
+        "OPENAI_ANALYSIS_MODEL",
     ]:
         environment.append(
             {
