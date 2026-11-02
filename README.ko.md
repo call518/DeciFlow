@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://youtu.be/bXuBJs4Hf70" target="_blank" rel="noopener noreferrer"><img src="images/DeciFlow-Logo.png" alt="DeciFlow" width="480"></a>
+  <a href="https://youtu.be/WpRIM6wLN8k" target="_blank" rel="noopener noreferrer"><img src="images/DeciFlow-Logo.png" alt="DeciFlow" width="480"></a>
 </p>
 
 # DeciFlow
@@ -9,7 +9,7 @@
 **다양한 데이터를 AI로 빠르게 판단하고 결과에 따른 후속 처리까지 자유롭게 자동화하세요.**
 
 <p align="left">
-  <a href="https://youtu.be/bXuBJs4Hf70" target="_blank" rel="noopener noreferrer">Demo Video - YouTube</a>
+  <a href="https://youtu.be/WpRIM6wLN8k" target="_blank" rel="noopener noreferrer">Demo Video - YouTube</a>
 </p>
 
 **[설치와 설정 → INSTALL.ko.md](INSTALL.ko.md)**

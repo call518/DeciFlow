@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://youtu.be/bXuBJs4Hf70" target="_blank" rel="noopener noreferrer"><img src="images/DeciFlow-Logo.png" alt="DeciFlow" width="480"></a>
+  <a href="https://youtu.be/WpRIM6wLN8k" target="_blank" rel="noopener noreferrer"><img src="images/DeciFlow-Logo.png" alt="DeciFlow" width="480"></a>
 </p>
 
 # DeciFlow
@@ -9,7 +9,7 @@
 **Make fast AI decisions across diverse datasets and automate follow-up workflows your way.**
 
 <p align="left">
-  <a href="https://youtu.be/bXuBJs4Hf70" target="_blank" rel="noopener noreferrer">Demo Video - YouTube</a>
+  <a href="https://youtu.be/WpRIM6wLN8k" target="_blank" rel="noopener noreferrer">Demo Video - YouTube</a>
 </p>
 
 **[Installation and Configuration → INSTALL.md](INSTALL.md)**
